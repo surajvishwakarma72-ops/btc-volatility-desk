@@ -125,5 +125,81 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
       timestamp: new Date().toISOString(),
     };
   });
+
+  // POST /api/v1/alerts/register-device - Register or update mobile push device & sound preference
+  fastify.post('/register-device', async (request, reply) => {
+    const { pushDevices } = await import('../db/index.js');
+    const body = request.body as any;
+    if (!body || !body.token) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Missing required field: token',
+      });
+    }
+
+    const { token, platform = 'android', soundChoice = 'chime', enabled = true } = body;
+
+    // Upsert device record
+    const existing = await db
+      .select()
+      .from(pushDevices)
+      .where(and(eq(pushDevices.token, token), eq(pushDevices.userId, DEFAULT_USER_ID)));
+
+    let result;
+    if (existing.length > 0) {
+      const updated = await db
+        .update(pushDevices)
+        .set({
+          platform,
+          soundChoice,
+          enabled: Boolean(enabled),
+          updatedAt: new Date(),
+        })
+        .where(eq(pushDevices.token, token))
+        .returning();
+      result = updated[0];
+    } else {
+      const inserted = await db
+        .insert(pushDevices)
+        .values({
+          id: crypto.randomUUID(),
+          userId: DEFAULT_USER_ID,
+          token,
+          platform,
+          soundChoice,
+          enabled: Boolean(enabled),
+          updatedAt: new Date(),
+        })
+        .returning();
+      result = inserted[0];
+    }
+
+    return {
+      success: true,
+      message: 'Mobile push device registered successfully',
+      data: result,
+    };
+  });
+
+  // GET /api/v1/alerts/device-settings - Get latest device push & sound settings
+  fastify.get('/device-settings', async (_request, reply) => {
+    const { pushDevices } = await import('../db/index.js');
+    const devices = await db
+      .select()
+      .from(pushDevices)
+      .where(eq(pushDevices.userId, DEFAULT_USER_ID))
+      .orderBy(desc(pushDevices.updatedAt))
+      .limit(1);
+
+    return {
+      success: true,
+      data: devices[0] || {
+        enabled: true,
+        soundChoice: 'chime',
+        platform: 'android',
+      },
+    };
+  });
 };
+
 

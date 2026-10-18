@@ -73,7 +73,52 @@ export class AlertService {
       }
     }
 
-    // 3. Log to PostgreSQL alert_logs table
+    // 3. Native Mobile Push Dispatch (Registered Capacitor / FCM devices)
+    try {
+      const { pushDevices } = await import('../db/index.js');
+      const { and, eq } = await import('drizzle-orm');
+      const devices = await db
+        .select()
+        .from(pushDevices)
+        .where(and(eq(pushDevices.userId, DEFAULT_USER_ID), eq(pushDevices.enabled, true)));
+
+      for (const dev of devices) {
+        const fcmKey = process.env.FCM_SERVER_KEY;
+        if (fcmKey && dev.token) {
+          try {
+            await fetch('https://fcm.googleapis.com/fcm/send', {
+              method: 'POST',
+              headers: {
+                Authorization: `key=${fcmKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                to: dev.token,
+                priority: 'high',
+                notification: {
+                  title,
+                  body: message,
+                  sound: dev.soundChoice ? `${dev.soundChoice}.wav` : 'chime.wav',
+                  android_channel_id: `btc_alerts_${dev.soundChoice || 'chime'}`,
+                },
+                data: {
+                  title,
+                  message,
+                  soundChoice: dev.soundChoice || 'chime',
+                  ruleId: ruleId || '',
+                },
+              }),
+            });
+          } catch (fcmErr: any) {
+            console.error('[AlertService] FCM send error:', fcmErr.message);
+          }
+        }
+      }
+    } catch (pushErr: any) {
+      console.error('[AlertService] Error reading push_devices:', pushErr.message);
+    }
+
+    // 4. Log to PostgreSQL alert_logs table
     try {
       await db.insert(alertLogs).values({
         id: crypto.randomUUID(),

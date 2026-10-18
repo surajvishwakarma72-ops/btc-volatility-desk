@@ -221,6 +221,24 @@ export const alertLogs = pgTable('alert_logs', {
 });
 
 /**
+ * 9b. Registered Push Notification Devices
+ * 
+ * Stores mobile device tokens (FCM/Capacitor) and user-selected notification sounds.
+ */
+export const pushDevices = pgTable('push_devices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  token: text('token').unique().notNull(),
+  platform: varchar('platform', { length: 20 }).default('android').notNull(),
+  soundChoice: varchar('sound_choice', { length: 50 }).default('chime').notNull(),
+  enabled: boolean('enabled').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
  * 10. Historical Market Timeseries
  * 
  * Canonical time-series storage for normalized OHLCV candles,
