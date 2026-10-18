@@ -468,95 +468,6 @@
 -->
 <html lang="en">
 <head>
-
-<script id="appTelemetryDiag">
-window.__diag = { errors: [], logs: [], wsState: 'init', lastSpot: null };
-window.addEventListener('error', function(e) {
-  var msg = (e.message || e) + ' (' + (e.filename ? e.filename.split('/').pop() : '') + ':' + (e.lineno || '') + ')';
-  window.__diag.errors.push(msg);
-  console.error('[DIAG ERR]', msg);
-  var el = document.getElementById('diagErrStrip');
-  if (el) { el.style.display = 'block'; el.textContent = '⚠ ' + msg; }
-});
-window.addEventListener('unhandledrejection', function(e) {
-  var msg = 'Rejection: ' + (e.reason?.message || e.reason || e);
-  window.__diag.errors.push(msg);
-  console.error('[DIAG REJ]', msg);
-  var el = document.getElementById('diagErrStrip');
-  if (el) { el.style.display = 'block'; el.textContent = '⚠ ' + msg; }
-});
-</script>
-
-<script id="backendSyncBridge">
-(function() {
-  console.log('[BackendBridge] Initializing synchronization with Fastify backend...');
-
-  async function fetchQuick(url, ms=1500) {
-    const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms);
-    try {
-      return await fetch(url, { signal: ctrl.signal });
-    } finally {
-      clearTimeout(to);
-    }
-  }
-
-  // Auto-sync data from PostgreSQL into browser storage on initial boot
-  async function syncFromBackend() {
-    try {
-      // 1. Sync User Preferences
-      const prefRes = await fetchQuick('/api/v1/preferences');
-      if (prefRes.ok) {
-        const prefData = await prefRes.json();
-        if (prefData.success && prefData.data) {
-          const p = prefData.data;
-          if (p.activeIndicators) localStorage.setItem('v132_ind', JSON.stringify(p.activeIndicators));
-          if (p.theme === 'classic_light') localStorage.setItem('v143_skin', '0');
-          if (p.chartLayout?.viewPreferences) {
-            for (const [k, v] of Object.entries(p.chartLayout.viewPreferences)) {
-              if (v !== undefined) localStorage.setItem(k, typeof v === 'object' ? JSON.stringify(v) : String(v));
-            }
-          }
-        }
-      }
-
-      // 2. Sync Trades
-      const tradeRes = await fetchQuick('/api/v1/trades');
-      if (tradeRes.ok) {
-        const tradeData = await tradeRes.json();
-        if (tradeData.success && Array.isArray(tradeData.data)) {
-          localStorage.setItem('v99_trades', JSON.stringify(tradeData.data));
-        }
-      }
-
-      // 3. Sync Nightly Reviews
-      const nightRes = await fetchQuick('/api/v1/nights?limit=500');
-      if (nightRes.ok) {
-        const nightData = await nightRes.json();
-        if (nightData.success && Array.isArray(nightData.data)) {
-          localStorage.setItem('v147_nights', JSON.stringify(nightData.data));
-        }
-      }
-
-      // 4. Sync Chart Drawings
-      const drawRes = await fetchQuick('/api/v1/drawings');
-      if (drawRes.ok) {
-        const drawData = await drawRes.json();
-        if (drawData.success && Array.isArray(drawData.data)) {
-          localStorage.setItem('btc_drawings_v1', JSON.stringify(drawData.data));
-        }
-      }
-
-      console.log('[BackendBridge] Initial PostgreSQL hydration complete.');
-    } catch (err) {
-      console.warn('[BackendBridge] Offline or backend unreachable, using cached state:', err);
-    }
-  }
-
-  // Run initial sync before DOM renders
-  syncFromBackend();
-})();
-</script>
-
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script id="v105_17Early">/* v105.17 · smooth + fast start (runs before every other script).
@@ -4645,7 +4556,6 @@ D.addEventListener('DOMContentLoaded',arrange);try{matchMedia('(min-width:1360px
   </div>
   <div class="save-line" aria-live="polite"><span id="saveDot" class="save-dot"></span><span id="storage">Loading saved data…</span></div>
 </section>
-
 <section class="panel" id="resetPanel" aria-label="Reset to default">
   <h2 class="metrics-title">Reset to default</h2>
   <p class="rs-note">Puts the layout and every chart setting back to how the desk ships: page, timeframe, 1D range, indicator panes, chart layers, RV window, heat-map view, theme and panel choices. Your recorded history, backups and alert settings stay.</p>
@@ -4925,6 +4835,7 @@ D.addEventListener('DOMContentLoaded',arrange);try{matchMedia('(min-width:1360px
       }});
   }catch(e){console.warn('chart registry',e);}
 })();
+
 </script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js" onload="window.__lwcReady&&window.__lwcReady()" onerror="this.onerror=null;this.src='https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js'"></script>
 <script data-block="02_core" data-v71="2683-5080">
@@ -4972,38 +4883,6 @@ let liveSpot=null,liveSpotAt=0,restSpot=null,restSpotAt=0;
 let wsLastMessageAt=0,wsLastHeartbeatAt=0,wsMarketTs=0,wsExpiry='',wsBuffer=new Map(),lastRestAt=0;
 let wsExplicitSubscribed=false,wsSubscriptionFallbackAt=0;
 let lastA=null;
-
-async function pollFastSpot(){
-  const endpoints=[
-    'https://api.india.delta.exchange/v2/tickers/BTCUSD',
-    'https://api.delta.exchange/v2/tickers/BTCUSD',
-    'https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT'
-  ];
-  for(const u of endpoints){
-    try{
-      const ctrl=new AbortController(),to=setTimeout(()=>ctrl.abort(),2500);
-      const res=await fetch(u,{signal:ctrl.signal}).finally(()=>clearTimeout(to));
-      if(!res.ok)continue;
-      const data=await res.json();
-      let sp=null;
-      if(data?.result?.spot_price) sp=Number(data.result.spot_price);
-      else if(data?.price) sp=Number(data.price);
-      if(validSpot(sp)){
-        liveSpot=sp;liveSpotAt=Date.now();
-        restSpot=sp;restSpotAt=Date.now();
-        if(!wsLastMessageAt)wsLastMessageAt=Date.now();
-        try{if(window.__diag)window.__diag.lastSpot=sp;}catch(e){}
-        if(typeof spot==='function')try{spot();}catch(e){}
-        if(typeof liveRv==='function')try{liveRv();}catch(e){}
-        if(typeof scheduleRender==='function')try{scheduleRender();}catch(e){}
-        if(typeof termDirty==='function')try{termDirty();}catch(e){}
-        break;
-      }
-    }catch(err){}
-  }
-}
-setInterval(()=>{if(!validSpot(liveSpot)||Date.now()-liveSpotAt>3500)pollFastSpot();},2500);
-pollFastSpot();
 
 const $=id=>document.getElementById(id);
 const N=x=>{if(x==null||x==='')return null;const n=parseFloat(x);return Number.isFinite(n)?n:null};
@@ -5248,23 +5127,17 @@ async function discover(){
     const quick=!discoverFull&&cached&&cached.length>=2;
     const ds=quick?cached:candidateDates().filter(d=>expiryEpoch(d)>now);
     if(quick)setTimeout(()=>{discoverFull=true;discover();},45000);       // full scan once things are running
-    const rs=await Promise.allSettled(ds.slice(0, 5).map(getChain));
-    let found=rs.map((r,i)=>r.status==='fulfilled'&&Array.isArray(r.value)&&r.value.some(isBTCOption)?ds[i]:null).filter(Boolean).sort();
+    const rs=await Promise.allSettled(ds.map(getChain));
+    let found=rs.map((r,i)=>r.status==='fulfilled'&&r.value.some(isBTCOption)?ds[i]:null).filter(Boolean).sort();
     if(!found.length){
-      try{
-        const products=await getProducts(),set=new Set();
-        for(const p of products){
-          if(!isBTCOption(p))continue;
-          const ex=String(p.settlement_time||p.expiry||p.expiry_date||'').slice(0,10);
-          const date=/^\d{4}-\d{2}-\d{2}$/.test(ex)?ex:expiryFromSymbol(p.symbol);
-          if(date&&expiryEpoch(date)>now)set.add(date);
-        }
-        found=[...set].sort();
-      }catch(err){console.warn('getProducts fallback',err);}
-    }
-    if(!found.length&&ds.length){
-      // Resilient fallback: Delta has daily BTC expiries at 17:30 IST
-      found=ds.slice(0, 4);
+      const products=await getProducts(),set=new Set();
+      for(const p of products){
+        if(!isBTCOption(p))continue;
+        const ex=String(p.settlement_time||p.expiry||p.expiry_date||'').slice(0,10);
+        const date=/^\d{4}-\d{2}-\d{2}$/.test(ex)?ex:expiryFromSymbol(p.symbol);
+        if(date&&expiryEpoch(date)>now)set.add(date);
+      }
+      found=[...set].sort();
     }
     const old=selected;
     if(!quick)discoverFull=true;
@@ -5284,18 +5157,7 @@ async function discover(){
       selected='';setBadge(false,'No data');setText('status','No live or upcoming BTC option expiry found.');
     }
   }catch(e){
-    console.error(e);
-    // On error, do not leave selected empty if upcoming dates exist
-    const cands=candidateDates().filter(d=>expiryEpoch(d)>Date.now());
-    if(!selected&&cands.length){
-      selected=cands[0];expiryList=cands.slice(0,4);
-      $('expiry').innerHTML=expiryList.map((d,i)=>`<option value="${d}">${d}${i===0?' (nearest)':''} · ${fmtDuration(expiryEpoch(d)-Date.now())}</option>`).join('');
-      $('expiry').value=selected;
-      sessionState=getExpirySessionState(selected);
-      setBadge('ok','Ready');
-    } else {
-      setBadge(false,'Error');
-    }
+    console.error(e);setBadge(false,'Error');
     setText('status','Could not list expiries ('+(e?.name==='AbortError'?'timeout':e?.message||e)+'). Retrying.');
   }finally{discovering=false;try{onExpiryList();}catch(e){console.error(e);}}
 }
@@ -5911,24 +5773,10 @@ function applySpotMessage(m){
   const sy=String(m.sy||m.symbol||'');
   if(sy!=='.DEXBTUSD')return;
   const p=N(m.p??m.price);
-  if(validSpot(p)){
-    liveSpot=p;liveSpotAt=Date.now();restSpot=p;restSpotAt=Date.now();
-    if(!wsLastMessageAt)wsLastMessageAt=Date.now();
-    for(const r of chain)r.spot=p;
-    if(typeof liveRv==='function')try{liveRv();}catch(e){}
-    scheduleRender();
-  }
+  if(validSpot(p)){liveSpot=p;liveSpotAt=Date.now();restSpot=p;restSpotAt=Date.now();for(const r of chain)r.spot=p;}
 }
 function connectWS(){
-  if(typeof WebSocket==='undefined')return;
-  if(!selected){
-    const cands=candidateDates(7).filter(d=>expiryEpoch(d)>Date.now());
-    if(cands.length){
-      selected=cands[0];
-      if(!expiryList.length)expiryList=cands.slice(0, 4);
-    }
-  }
-  if(!selected)return;
+  if(!selected||typeof WebSocket==='undefined')return;
   if(wsReconnectTimer){clearTimeout(wsReconnectTimer);wsReconnectTimer=null;}
   const sym=expiryWsSymbol(selected);if(!sym)return;
   const generation=++wsGeneration;
@@ -5942,8 +5790,7 @@ function connectWS(){
       if(chain.length)subscribeExplicitTickerFallback();   // chain already known from REST: don't wait for the fallback timer
       setTimeout(()=>{
         if(generation===wsGeneration&&ws===sock&&wsConnected&&!wsLastMessageAt&&Date.now()-wsSubscriptionFallbackAt>=WS_HARD_CONNECT_TIMEOUT_MS){
-          console.warn('Socket quiet, retrying explicit subscription fallback');
-          subscribeExplicitTickerFallback();
+          console.warn('Socket opened but sent no market data; reconnecting');closeSocket(sock);
         }
       },WS_HARD_CONNECT_TIMEOUT_MS+250);
     };
@@ -5951,9 +5798,9 @@ function connectWS(){
       if(generation!==wsGeneration)return;
       try{
         const m=JSON.parse(e.data);
-        if(m.type==='heartbeat'||m.type==='pong'){wsLastHeartbeatAt=Date.now();if(!wsLastMessageAt)wsLastMessageAt=Date.now();return;}
-        if(m.type==='subscriptions'||m.type==='subscription'){wsLastHeartbeatAt=Date.now();if(!wsLastMessageAt)wsLastMessageAt=Date.now();setText('status','Socket subscribed, live feed active.');return;}
-        if(m.type==='error'||m.type==='subscription_error'){console.warn('Delta WS',m);subscribeExplicitTickerFallback();return;}
+        if(m.type==='heartbeat'||m.type==='pong'){wsLastHeartbeatAt=Date.now();return;}
+        if(m.type==='subscriptions'||m.type==='subscription'){setText('status','Socket subscribed, waiting for the live ticker…');return;}
+        if(m.type==='error'||m.type==='subscription_error'){console.warn('Delta WS',m);if(!wsLastMessageAt)subscribeExplicitTickerFallback();return;}
         if(m.type==='ticker'){applyTickerMessage(m);scheduleRender();}
         else if(m.type==='spot_price'){applySpotMessage(m);scheduleRender();}
       }catch(err){console.warn('WS parse error',err)}
@@ -6637,7 +6484,7 @@ function initCharts(){
   if(chartsReady||!window.LightweightCharts)return;
   const L=window.LightweightCharts;
   for(const p of panes){
-    const el=$('chart'+p.i);if(!el)continue;
+    const el=$('chart'+p.i);if(!el)return;
     p.chart=L.createChart(el,{autoSize:true,...chartThemeOptions(),
       crosshair:{mode:L.CrosshairMode.Normal},
       rightPriceScale:{borderColor:cssVar('--line2'),scaleMargins:{top:0.18,bottom:0.08}},
@@ -6671,7 +6518,6 @@ function initCharts(){
       p.capBusy=true;setTimeout(()=>{p.capBusy=false;p.cap=Math.min(p.total,p.cap*2);try{renderPane(p.i);}catch(e){}},250);});
   }
   for(const p of panes){
-    if(!p.chart)continue;
     // crosshair: legend follows the cursor, and the other charts mirror it
     p.chart.subscribeCrosshairMove(param=>{
       if(chartSync)return;
@@ -7353,16 +7199,6 @@ document.addEventListener('visibilitychange',()=>{
     $('expiry').value=selected;
     sessionState=getExpirySessionState(selected);
   }
-  const upcomingCandidates = candidateDates(7).filter(d=>expiryEpoch(d)>Date.now());
-  if(!selected && upcomingCandidates.length){
-    selected=upcomingCandidates[0];
-    expiryList=upcomingCandidates.slice(0, 5);
-    if($('expiry')){
-      $('expiry').innerHTML=expiryList.map((d, i)=>`<option value="${d}">${d}${i===0?' (nearest)':''} · ${fmtDuration(expiryEpoch(d)-Date.now())}</option>`).join('');
-      $('expiry').value=selected;
-    }
-    sessionState=getExpirySessionState(selected);
-  }
   const fresh=isFreshStorageState();
   if(fresh)showFreshWarning();
   render();
@@ -8041,11 +7877,7 @@ function deskUpdate(){
       const now=Date.now(),last=newest(),hadErr=!!RV.err;
       if(!RV.bars.size){
         status('Loading BTC index 1-minute history…');
-        // Fetch recent 24h first for instant rendering (1 single API request), then backfill the rest
-        absorb(await fetch1m(now-86400000,now));RV.at=Date.now();RV.err='';paintAll();changed=false;
-        setTimeout(async()=>{
-          try{absorb(await fetch1m(now-RV_FIRST_DAYS*86400000,now-86400000));paintAll();}catch(e){}
-        },3000);
+        absorb(await fetch1m(now-RV_FIRST_DAYS*86400000,now));RV.at=Date.now();RV.err='';paintAll();changed=false;
       }else{
         changed=absorb(await fetch1m(Math.max(last-5*MIN_MS,now-RV_DAYS*86400000),now+MIN_MS))>0||hadErr;   // only the gap since last time
         const cut=now-(RV_DAYS+1)*86400000;for(const t of RV.bars.keys())if(t<cut)RV.bars.delete(t);
@@ -8056,10 +7888,7 @@ function deskUpdate(){
       if(!RV.full&&!RV.oldBusy){RV.oldBusy=true;setTimeout(async()=>{
         try{const o=Math.min(oldest(),Date.now());absorb(await fetch1m(Date.now()-RV_DAYS*86400000,o+MIN_MS));RV.full=true;saveCache(true);paintAll();}
         catch(e){console.warn('rv older',e);}finally{RV.oldBusy=false;}},15000);}
-    }catch(e){
-      RV.err=e?.name==='AbortError'?'timed out':(e?.message||String(e));console.warn('rv load',e);
-      if(!RV.bars.size)setTimeout(load,3000);
-    }
+    }catch(e){RV.err=e?.name==='AbortError'?'timed out':(e?.message||String(e));console.warn('rv load',e);}
     finally{RV.loading=false;if(changed)paintAll();else statusFromState();}
   }
   addEventListener('pagehide',()=>{if(RV.bars.size)saveCache(true);});
@@ -8446,18 +8275,13 @@ function deskUpdate(){
   }
   let liveBusy=false;
   function liveRv(){
-    if(liveBusy||document.hidden||!chartsReady)return;liveBusy=true;
+    if(liveBusy||document.hidden||!chartsReady||!RV.bars.size)return;liveBusy=true;
     try{
       const sp=typeof liveSpot==='number'&&validSpot(liveSpot)&&Date.now()-liveSpotAt<20000?liveSpot:null;if(!sp)return;
-      const m=Math.floor(Date.now()/MIN_MS)*MIN_MS;
-      if(!RV.bars.size){
-        RV.bars.set(m,{t:m,o:sp,h:sp,l:sp,c:sp});RV.ver++;
-        if(typeof paintAll==='function')try{paintAll();}catch(e){}
-      }
-      const last=newest();
+      const m=Math.floor(Date.now()/MIN_MS)*MIN_MS,last=newest();
       if(m<last)return;                                   // clock behind the feed: leave it to the poll
       let b=RV.bars.get(m);
-      if(!b){const prev=RV.bars.get(last);if(!prev||m-last>5*MIN_MS){b={t:m,o:sp,h:sp,l:sp,c:sp};RV.bars.set(m,b);}else{b={t:m,o:prev.c,h:sp,l:sp,c:sp};RV.bars.set(m,b);}}
+      if(!b){const prev=RV.bars.get(last);if(!prev||m-last>5*MIN_MS)return;b={t:m,o:prev.c,h:sp,l:sp,c:sp};RV.bars.set(m,b);}
       else{b.c=sp;if(sp>b.h)b.h=sp;if(sp<b.l)b.l=sp;}
       const tf=TF_SEC[chartPrefs.tf],t=bucketOf(Math.floor(Date.now()/1000),tf);
       for(const p of panes){
@@ -8896,15 +8720,7 @@ function deskUpdate(){
 
   /* ---------------- BTC index candles ---------------- */
   function indexBars(tf){
-    const src=window.rvIndexBars?window.rvIndexBars():null;
-    if(!src||!src.bars||!src.bars.size){
-      const sp=typeof liveSpot==='number'&&validSpot(liveSpot)?liveSpot:(typeof restSpot==='number'&&validSpot(restSpot)?restSpot:null);
-      if(sp){
-        const nowSec=Math.floor(Date.now()/1000),t=bucketOf(nowSec,tf);
-        return [{time:t,open:sp,high:sp,low:sp,close:sp}];
-      }
-      return [];
-    }
+    const src=window.rvIndexBars?window.rvIndexBars():null;if(!src||!src.bars.size)return [];
     const LG=window.rvIndexLong?window.rvIndexLong():null;
     const key=src.ver+'|'+(LG?LG.ver:0)+'|'+tf;if(G.key===key)return G.data;
     let arr=[...src.bars.values()].sort((a,b)=>a.t-b.t);const out=[];let cur=null;
@@ -8926,7 +8742,7 @@ function deskUpdate(){
   }
 
   function initGex(){
-    if(G.chart||!window.LightweightCharts)return;
+    if(G.chart||!window.LightweightCharts||!chartsReady)return;
     const L=window.LightweightCharts,box=el('chartG');if(!box)return;
     G.chart=L.createChart(box,{autoSize:true,...chartThemeOptions(),
       rightPriceScale:{borderVisible:false,scaleMargins:{top:0.12,bottom:0.08},minimumWidth:78},
@@ -9405,7 +9221,7 @@ Signs follow Settings → Dealer positioning.`;
 
   function boot(){
     wireMenu();renderNext();sayWire();
-    const t=setInterval(()=>{if(window.LightweightCharts){clearInterval(t);initGex();initIv();tfSeen=chartPrefs.tf;}},150);
+    const t=setInterval(()=>{if(chartsReady&&window.LightweightCharts){clearInterval(t);initGex();initIv();tfSeen=chartPrefs.tf;}},250);
     setInterval(()=>levels(false),1500);
     setInterval(()=>{renderNext();evDirty();schedProfile();},3000);   // v80: renderSide() retired — #sideEv was never visible
     el('chartFit')?.addEventListener('click',()=>G.chart?.timeScale().fitContent());
@@ -14977,14 +14793,7 @@ Signs follow Settings → Dealer positioning.`;
       if(O){const f=O.funding8hPct;set('tkFund',f==null?'—':sgn(f,4)+'%',O.oi24hPct!=null?'OI '+sgn(O.oi24hPct,1)+'%':(O.fundingZ!=null?'z '+sgn(O.fundingZ,1):''),f==null?'muted':Math.abs(f)>=0.03?'neg':'muted');}
     }catch(e){}}
   function live(){try{const b=$('badge'),L=$('tkLive'),T=$('tkLiveTxt');if(!b||!L)return;const cls=b.classList.contains('ok')?'':b.classList.contains('bad')?'off':b.classList.contains('warn')?'warn':'warn';
-      L.className='live '+cls;if(T)T.textContent=cls===''?'LIVE':cls==='off'?'OFFLINE':(b.textContent||'…').trim().slice(0,14).toUpperCase();
-      if(!L._diagWired){L._diagWired=true;
-        L.addEventListener('click',()=>{
-          const errs=(window.__diag?.errors||[]).slice(-3).join('\n')||'None';
-          const wsSt=['CONNECTING','OPEN','CLOSING','CLOSED'][ws?.readyState]||'NULL';
-          alert(`BTC Volatility Desk Diagnostics:\n• Feed Status: ${T?.textContent}\n• WS State: ${wsSt}\n• Live Spot: ${liveSpot||'none'}\n• REST Spot: ${restSpot||'none'}\n• Selected Expiry: ${selected||'none'}\n• Contracts: ${chain.length}\n• LWC: ${typeof window.LightweightCharts}\n• ChartG: ${!!window.__gexChart}\n• Recent Errors:\n${errs}`);
-        });
-      }}catch(e){}}
+      L.className='live '+cls;if(T)T.textContent=cls===''?'LIVE':cls==='off'?'OFFLINE':(b.textContent||'…').trim().slice(0,14).toUpperCase();}catch(e){}}
   let n=0;
   const tick=()=>{if(document.hidden)return;n++;spot();live();if(n%3===0)vols();};
   bus?bus.on('tick',tick):setInterval(tick,1000);
