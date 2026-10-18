@@ -73,7 +73,7 @@ export class AlertService {
       }
     }
 
-    // 3. Native Mobile Push Dispatch (Registered Capacitor / FCM devices)
+    // 3. Web Push Dispatch (Registered FCM/browser devices)
     try {
       const { pushDevices } = await import('../db/index.js');
       const { and, eq } = await import('drizzle-orm');

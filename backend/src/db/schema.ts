@@ -223,7 +223,7 @@ export const alertLogs = pgTable('alert_logs', {
 /**
  * 9b. Registered Push Notification Devices
  * 
- * Stores mobile device tokens (FCM/Capacitor) and user-selected notification sounds.
+ * Stores registered push notification device tokens (FCM/WebPush) and user-selected notification sounds.
  */
 export const pushDevices = pgTable('push_devices', {
   id: uuid('id').primaryKey().defaultRandom(),

@@ -1,5 +1,5 @@
 import './style.css';
-import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
+import { createChart, ColorType } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 
 // State container
@@ -344,7 +344,7 @@ function initChart() {
     },
   });
 
-  candleSeries = chart.addSeries(CandlestickSeries, {
+  candleSeries = chart.addCandlestickSeries({
     upColor: '#10b981',
     downColor: '#ef4444',
     borderVisible: false,
