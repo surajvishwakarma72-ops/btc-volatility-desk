@@ -67,7 +67,26 @@ CREATE TABLE trades (
 );
 ```
 
-### 1.4 Nightly Session Reviews (`nightly_reviews`)
+### 1.4 Trade Legs (`trade_legs`)
+```sql
+CREATE TABLE trade_legs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trade_id UUID NOT NULL REFERENCES trades(id) ON DELETE CASCADE,
+    leg_type VARCHAR(10) NOT NULL CHECK (leg_type IN ('CALL', 'PUT')),
+    strike NUMERIC(12, 2) NOT NULL,
+    entry_premium NUMERIC(12, 2) NOT NULL,
+    exit_premium NUMERIC(12, 2),
+    entry_iv NUMERIC(6, 2) NOT NULL,
+    exit_iv NUMERIC(6, 2),
+    status VARCHAR(20) DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'CLOSED', 'STOPPED')),
+    stop_loss_level NUMERIC(12, 2),
+    triggered_exit BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### 1.5 Nightly Session Reviews (`nightly_reviews`)
 ```sql
 CREATE TABLE nightly_reviews (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -143,7 +162,7 @@ CREATE TABLE alert_logs (
 );
 ```
 
-### 1.8 Historical Market Timeseries (`market_timeseries`)
+### 1.9 Historical Market Timeseries (`market_timeseries`)
 ```sql
 CREATE TABLE market_timeseries (
     time TIMESTAMPTZ NOT NULL,
@@ -159,6 +178,31 @@ CREATE TABLE market_timeseries (
     atm_iv NUMERIC(6, 2),
     open_interest NUMERIC(16, 4),
     PRIMARY KEY (symbol, interval, time)
+);
+```
+
+### 1.10 Indicator Snapshots (`indicator_snapshots`)
+```sql
+-- Replaces IndexedDB suraj_ind_v1 ('rows') and suraj_archive_v1 5-minute recordings
+CREATE TABLE indicator_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    recorded_at TIMESTAMPTZ NOT NULL, -- 't' (5-min boundary)
+    symbol VARCHAR(20) DEFAULT 'BTCUSDT' NOT NULL,
+    term_current_n2n NUMERIC(6, 2), -- 'tc' (Current - N2N IV)
+    term_next_n2n NUMERIC(6, 2), -- 'tn' (Next - N2N IV)
+    forward_vol NUMERIC(6, 2), -- 'fwd'
+    n2n_iv NUMERIC(6, 2), -- 'n2n'
+    skew_25d NUMERIC(6, 2), -- 'rr' (25Δ put - call IV risk reversal)
+    butterfly NUMERIC(6, 2), -- 'fly'
+    master_expiry VARCHAR(20), -- 'se'
+    atm_iv NUMERIC(6, 2), -- 'satm'
+    funding_rate NUMERIC(10, 6), -- 'fund' (Delta BTCUSD perp funding)
+    open_interest NUMERIC(16, 4), -- 'oi'
+    liquidation_longs_usd NUMERIC(16, 2), -- 'liqL' (OKX longs liquidated USD)
+    liquidation_shorts_usd NUMERIC(16, 2), -- 'liqS' (OKX shorts liquidated USD)
+    raw_snapshot JSONB, -- lossless raw legacy snapshot bundle
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(symbol, recorded_at)
 );
 ```
 

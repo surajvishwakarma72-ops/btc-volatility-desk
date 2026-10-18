@@ -53,10 +53,11 @@ export const apiCredentials = pgTable('api_credentials', {
 });
 
 /**
- * 3. Trades & Strangle Executions
+ * 3. Trades & Strangle Executions (Summary Header)
  * 
  * Tracks active and closed strangle positions, strike parameters,
  * execution IV, realized P&L, and Greek attribution.
+ * Flattened strike/IV fields retained for fast summary queries.
  */
 export const trades = pgTable('trades', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -85,7 +86,32 @@ export const trades = pgTable('trades', {
 });
 
 /**
- * 4. Nightly Session Reviews
+ * 4. Trade Legs
+ * 
+ * Detailed breakdown per leg (Call and Put) for each strangle trade.
+ * Tracks leg-specific entry/exit premiums, leg-specific IV, stop-loss levels,
+ * and records which specific leg triggered an exit or stop-loss.
+ */
+export const tradeLegs = pgTable('trade_legs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tradeId: uuid('trade_id')
+    .notNull()
+    .references(() => trades.id, { onDelete: 'cascade' }),
+  legType: varchar('leg_type', { length: 10 }).notNull(), // 'CALL' | 'PUT'
+  strike: numeric('strike', { precision: 12, scale: 2 }).notNull(),
+  entryPremium: numeric('entry_premium', { precision: 12, scale: 2 }).notNull(),
+  exitPremium: numeric('exit_premium', { precision: 12, scale: 2 }),
+  entryIv: numeric('entry_iv', { precision: 6, scale: 2 }).notNull(),
+  exitIv: numeric('exit_iv', { precision: 6, scale: 2 }),
+  status: varchar('status', { length: 20 }).default('OPEN').notNull(), // 'OPEN' | 'CLOSED' | 'STOPPED'
+  stopLossLevel: numeric('stop_loss_level', { precision: 12, scale: 2 }),
+  triggeredExit: boolean('triggered_exit').default(false).notNull(), // true if this leg caused exit/stop
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 5. Nightly Session Reviews
  * 
  * Replaces `localStorage['v147_nights']` and `localStorage['ivcool:nights']`.
  * Records session parameters, playbook verdict, and historical outcomes.
@@ -116,7 +142,7 @@ export const nightlyReviews = pgTable(
 );
 
 /**
- * 5. Chart Drawings & Annotations
+ * 6. Chart Drawings & Annotations
  * 
  * Replaces `localStorage['btc_drawings_v1']`.
  * Canonical storage for user-drawn rays, trendlines, and levels.
@@ -136,7 +162,7 @@ export const chartDrawings = pgTable('chart_drawings', {
 });
 
 /**
- * 6. User Workspace Preferences
+ * 7. User Workspace Preferences
  * 
  * Replaces `v132_ind`, `v143_skin`, `pa_layer_prefs_v3`, and `btc_vol_desk_prefs_v1`.
  * Stores theme, active indicator set for fx menu, and UI geometry.
@@ -156,7 +182,7 @@ export const userPreferences = pgTable('user_preferences', {
 });
 
 /**
- * 7. Alert Rules Configuration
+ * 8. Alert Rules Configuration
  * 
  * Replaces `localStorage['vt_alert_prefs_v1']`.
  * Rules evaluated 24x7 by backend workers.
@@ -176,7 +202,7 @@ export const alertRules = pgTable('alert_rules', {
 });
 
 /**
- * 8. Alert Delivery Audit Logs
+ * 9. Alert Delivery Audit Logs
  * 
  * Replaces `localStorage['btc_alerts_v1']`.
  * Keeps audit trail of dispatched push and in-app alerts.
@@ -195,7 +221,7 @@ export const alertLogs = pgTable('alert_logs', {
 });
 
 /**
- * 9. Historical Market Timeseries
+ * 10. Historical Market Timeseries
  * 
  * Canonical time-series storage for normalized OHLCV candles,
  * ATM IV, Realized Volatility, DVOL, and Open Interest.
@@ -218,5 +244,50 @@ export const marketTimeseries = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.symbol, table.interval, table.time] }),
+  ]
+);
+
+/**
+ * 11. Indicator Snapshots (5-Minute Interval Recordings)
+ * 
+ * Replaces IndexedDB `suraj_ind_v1` (store 'rows') and `suraj_archive_v1`.
+ * Used by Season and Day Coach (v136/v139) to grade historical nights by weekday.
+ * Matches the exact fields and shapes recorded in the original prototype:
+ * - t / recordedAt: 5-min boundary timestamp
+ * - tc: Term spread (Current - N2N IV)
+ * - tn: Term spread (Next - N2N IV)
+ * - fwd: Forward volatility between expiries
+ * - n2n: N2N reference IV
+ * - rr: 25-delta risk reversal skew (put IV - call IV)
+ * - fly: 25-delta butterfly
+ * - se / masterExpiry: master expiry code
+ * - satm: ATM IV of master expiry
+ * - fund: Delta BTCUSD perpetual funding rate
+ * - oi: Open interest
+ * - liqL / liqS: OKX swaps liquidation volume for longs and shorts (USD)
+ */
+export const indicatorSnapshots = pgTable(
+  'indicator_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(), // 't'
+    symbol: varchar('symbol', { length: 20 }).default('BTCUSDT').notNull(),
+    termCurrentN2n: numeric('term_current_n2n', { precision: 6, scale: 2 }), // 'tc' (Cur - N2N)
+    termNextN2n: numeric('term_next_n2n', { precision: 6, scale: 2 }), // 'tn' (Next - N2N)
+    forwardVol: numeric('forward_vol', { precision: 6, scale: 2 }), // 'fwd'
+    n2nIv: numeric('n2n_iv', { precision: 6, scale: 2 }), // 'n2n'
+    skew25Delta: numeric('skew_25d', { precision: 6, scale: 2 }), // 'rr' (25Δ put - call IV)
+    butterfly: numeric('butterfly', { precision: 6, scale: 2 }), // 'fly'
+    masterExpiry: varchar('master_expiry', { length: 20 }), // 'se'
+    atmIv: numeric('atm_iv', { precision: 6, scale: 2 }), // 'satm'
+    fundingRate: numeric('funding_rate', { precision: 10, scale: 6 }), // 'fund' (perp funding)
+    openInterest: numeric('open_interest', { precision: 16, scale: 4 }), // 'oi'
+    liquidationLongsUsd: numeric('liquidation_longs_usd', { precision: 16, scale: 2 }), // 'liqL'
+    liquidationShortsUsd: numeric('liquidation_shorts_usd', { precision: 16, scale: 2 }), // 'liqS'
+    rawSnapshot: jsonb('raw_snapshot'), // Full raw legacy object for lossless migration
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('indicator_snapshots_symbol_time_idx').on(table.symbol, table.recordedAt),
   ]
 );
