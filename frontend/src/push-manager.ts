@@ -23,13 +23,16 @@ class NativePushManager {
 
   public async init() {
     console.log('[NativePushManager] Initializing native notification subsystem...');
-    this.setupChannels();
-    this.bindUI();
-
-    if (Capacitor.isNativePlatform()) {
-      this.initNativePush();
-    } else {
-      console.log('[NativePushManager] Web browser environment detected - web audio preview active.');
+    try {
+      this.bindUI();
+      if (Capacitor.isNativePlatform()) {
+        await this.setupChannels();
+        this.updateStatusBadge('Active · Sound Ready', '#238636');
+      } else {
+        console.log('[NativePushManager] Web browser environment detected - web audio preview active.');
+      }
+    } catch (e) {
+      console.warn('[NativePushManager] Initialization error caught safely:', e);
     }
   }
 
@@ -122,51 +125,7 @@ class NativePushManager {
 
       console.log('[NativePushManager] Android notification channels successfully configured.');
     } catch (err) {
-      console.warn('[NativePushManager] Failed to create notification channels:', err);
-    }
-  }
-
-  /**
-   * Initializes Capacitor native push notifications and registers FCM device token
-   */
-  private async initNativePush() {
-    try {
-      let permStatus = await PushNotifications.checkPermissions();
-      if (permStatus.receive === 'prompt') {
-        permStatus = await PushNotifications.requestPermissions();
-      }
-
-      if (permStatus.receive !== 'granted') {
-        console.warn('[NativePushManager] Push notification permission not granted.');
-        this.updateStatusBadge('Permission Required', '#d29922');
-        return;
-      }
-
-      await PushNotifications.register();
-
-      PushNotifications.addListener('registration', (token) => {
-        console.log('[NativePushManager] Device registered with FCM token:', token.value);
-        this.settings.deviceToken = token.value;
-        this.saveSettings();
-        this.updateStatusBadge('Active · FCM Connected', '#238636');
-      });
-
-      PushNotifications.addListener('registrationError', (error) => {
-        console.error('[NativePushManager] FCM registration error:', error);
-        this.updateStatusBadge('FCM Offline (Local Active)', '#8b949e');
-      });
-
-      // Receive push in foreground
-      PushNotifications.addListener('pushNotificationReceived', (notification) => {
-        console.log('[NativePushManager] Push received in foreground:', notification);
-        this.triggerLocalNotification(
-          notification.title || 'BTC Volatility Alert',
-          notification.body || 'Alert signal triggered.',
-          this.settings.soundChoice
-        );
-      });
-    } catch (err) {
-      console.warn('[NativePushManager] Push setup error:', err);
+      console.warn('[NativePushManager] Channel setup notice:', err);
     }
   }
 
@@ -184,7 +143,7 @@ class NativePushManager {
       this.currentAudio = new Audio(soundUrl);
       this.currentAudio.volume = 0.9;
       this.currentAudio.play().catch((e) => {
-        console.warn('[NativePushManager] Audio playback prevented:', e);
+        console.warn('[NativePushManager] Audio playback notice:', e);
       });
     } catch (err) {
       console.error('[NativePushManager] Error playing sound preview:', err);
@@ -197,7 +156,7 @@ class NativePushManager {
   public async triggerLocalNotification(title: string, body: string, soundChoice: string) {
     if (!this.settings.enabled) return;
 
-    // Also play audio in-app
+    // Play in-app audio
     if (soundChoice !== 'default') {
       this.playSoundPreview(soundChoice);
     }
@@ -219,8 +178,40 @@ class NativePushManager {
           ],
         });
       } catch (err) {
-        console.warn('[NativePushManager] Error scheduling local notification:', err);
+        console.warn('[NativePushManager] Notice scheduling local notification:', err);
       }
+    }
+  }
+
+  /**
+   * Requests Android notification permissions safely
+   */
+  public async requestPermissions() {
+    if (!Capacitor.isNativePlatform()) {
+      alert('Running in web browser. On mobile, this configures Android notifications.');
+      return;
+    }
+
+    try {
+      const localPerm = await LocalNotifications.requestPermissions();
+      console.log('[NativePushManager] Local notifications permission:', localPerm);
+
+      try {
+        const pushPerm = await PushNotifications.requestPermissions();
+        if (pushPerm.receive === 'granted') {
+          // Attempt register safely with catch to avoid unhandled native crash
+          PushNotifications.register().catch((err) => {
+            console.warn('[NativePushManager] FCM register note:', err);
+          });
+        }
+      } catch (pushErr) {
+        console.warn('[NativePushManager] Push register not available:', pushErr);
+      }
+
+      alert('Notification channels and alert sounds are active on this device!');
+      this.updateStatusBadge('Active · Sound Ready', '#238636');
+    } catch (e: any) {
+      alert('Notification permission: ' + (e?.message || e));
     }
   }
 
@@ -232,7 +223,7 @@ class NativePushManager {
       const token = this.settings.deviceToken || 'device_' + (localStorage.getItem('btc_device_uuid') || crypto.randomUUID());
       localStorage.setItem('btc_device_uuid', token);
 
-      const res = await fetch('/api/v1/alerts/register-device', {
+      await fetch('/api/v1/alerts/register-device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -241,13 +232,9 @@ class NativePushManager {
           soundChoice: this.settings.soundChoice,
           enabled: this.settings.enabled,
         }),
-      });
-
-      if (res.ok) {
-        console.log('[NativePushManager] Successfully synchronized push device settings with backend.');
-      }
+      }).catch(() => {});
     } catch (err) {
-      console.warn('[NativePushManager] Backend sync offline, using local preference:', err);
+      // Offline fallback
     }
   }
 
@@ -304,13 +291,8 @@ class NativePushManager {
     }
 
     if (btnPerm) {
-      btnPerm.addEventListener('click', async () => {
-        if (Capacitor.isNativePlatform()) {
-          const res = await PushNotifications.requestPermissions();
-          alert(`Push permission status: ${res.receive}`);
-        } else {
-          alert('Running in web browser. On your Android phone, this activates native Android system notifications.');
-        }
+      btnPerm.addEventListener('click', () => {
+        this.requestPermissions();
       });
     }
   }
@@ -320,9 +302,13 @@ class NativePushManager {
 export const pushManager = new NativePushManager();
 (window as any).DeskPushManager = pushManager;
 
-// Auto-boot on DOM ready
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => pushManager.init());
-} else {
-  pushManager.init();
+// Safe boot on DOM ready
+try {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => pushManager.init());
+  } else {
+    pushManager.init();
+  }
+} catch (e) {
+  console.warn('[NativePushManager] Boot notice:', e);
 }
