@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BTC Volatility Desk — Browser Data Exporter</title>
+  <style>
+    :root {
+      --bg: #0b0e14;
+      --card: #141822;
+      --card-border: #232a3b;
+      --text: #e6edf3;
+      --text-muted: #8b949e;
+      --accent: #2f81f7;
+      --accent-hover: #388bfd;
+      --green: #238636;
+      --green-hover: #2ea043;
+      --amber: #d29922;
+      --red: #f85149;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.5;
+      padding: 32px 20px;
+    }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 20px;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    h1 .badge {
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(47, 129, 247, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(47, 129, 247, 0.4);
+      padding: 2px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-top: 6px;
+    }
+
+    .notice-box {
+      background: rgba(210, 153, 34, 0.1);
+      border: 1px solid rgba(210, 153, 34, 0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 24px;
+      font-size: 13.5px;
+      color: #e3b341;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .notice-box svg {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      font-family: inherit;
+      font-size: 13.5px;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    button.primary {
+      background: var(--green);
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    button.primary:hover:not(:disabled) {
+      background: var(--green-hover);
+    }
+
+    button.secondary {
+      background: var(--card);
+      color: var(--text);
+      border-color: var(--card-border);
+    }
+
+    button.secondary:hover:not(:disabled) {
+      background: #1f2433;
+      border-color: #384259;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    .stat-card .value {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      margin-top: 4px;
+      color: var(--text);
+    }
+
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 14px 18px;
+      background: #10141d;
+      border-bottom: 1px solid var(--card-border);
+      font-size: 14px;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-header .count-chip {
+      font-size: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-family: var(--font-mono);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 18px;
+      background: #10141d;
+      color: var(--text-muted);
+      font-size: 11.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    td {
+      padding: 10px 18px;
+      border-bottom: 1px solid #1a202c;
+      font-family: var(--font-sans);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .mono {
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+
+    .tag-ok {
+      background: rgba(35, 134, 54, 0.2);
+      color: #3fb950;
+      border: 1px solid rgba(35, 134, 54, 0.4);
+    }
+
+    .tag-empty {
+      background: rgba(139, 148, 158, 0.15);
+      color: var(--text-muted);
+    }
+
+    .tag-warn {
+      background: rgba(210, 153, 34, 0.2);
+      color: #e3b341;
+      border: 1px solid rgba(210, 153, 34, 0.4);
+    }
+
+    #previewJson {
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 14px 18px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      background: #0d1117;
+      color: #c9d1d9;
+      white-space: pre;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>
+        BTC Volatility Desk
+        <span class="badge">Migration Tool</span>
+      </h1>
+      <p class="subtitle">Extracts all operational data stored in this browser profile (localStorage + IndexedDB) into a JSON backup bundle.</p>
+    </header>
+
+    <div class="notice-box">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/>
+        <line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      <div>
+        <strong>Origin Check:</strong> This tool only reads data that belongs to the current browser origin (<span id="originText" class="mono"></span>).
+        Make sure you opened this file in the <strong>exact same browser profile</strong> where you ran <code>Volatility Desk.html</code>. No data leaves your machine.
+      </div>
+    </div>
+
+    <div class="stats-bar">
+      <div class="stat-card">
+        <div class="label">localStorage Keys</div>
+        <div class="value" id="lsKeyCount">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">IndexedDB Databases</div>
+        <div class="value" id="idbCount">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Records Found</div>
+        <div class="value" id="totalRecords">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Payload Size</div>
+        <div class="value" id="totalBytes">—</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="downloadBtn" class="primary" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download Export JSON
+      </button>
+      <button id="refreshBtn" class="secondary">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6"/>
+          <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+        </svg>
+        Re-Scan Browser Storage
+      </button>
+      <button id="copyBtn" class="secondary" disabled>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy to Clipboard
+      </button>
+    </div>
+
+    <!-- IndexedDB Details -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>IndexedDB Databases</span>
+        <span class="count-chip" id="idbSummaryChip">Scanning...</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Database</th>
+            <th>Store</th>
+            <th>Records</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="idbTableBody">
+          <tr><td colspan="4" style="color:var(--text-muted);text-align:center;">Scanning IndexedDB...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- localStorage Details -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>localStorage Items</span>
+        <span class="count-chip" id="lsSummaryChip">Scanning...</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Key Name</th>
+            <th>Type / Items</th>
+            <th>Size</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="lsTableBody">
+          <tr><td colspan="4" style="color:var(--text-muted);text-align:center;">Scanning localStorage...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- JSON Preview -->
+    <div class="panel">
+      <div class="panel-header">
+        <span>Export Bundle Preview</span>
+        <span class="count-chip">Top-Level Metadata</span>
+      </div>
+      <div id="previewJson">Scanning storage...</div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    // Known target databases cataloged in ARCHITECTURE_AUDIT.md
+    const TARGET_DBS = [
+      'btc_desk_market_cache',
+      'btc_atm_iv_persistent_v30',
+      'suraj_archive_v1',
+      'suraj_ind_v1',
+      'v146fut',
+      'v18:lab'
+    ];
+
+    let exportBundle = null;
+
+    document.getElementById('originText').textContent = window.location.origin || window.location.href;
+
+    async function scanAll() {
+      document.getElementById('downloadBtn').disabled = true;
+      document.getElementById('copyBtn').disabled = true;
+
+      const bundle = {
+        exportedAt: new Date().toISOString(),
+        origin: window.location.origin || window.location.href,
+        userAgent: navigator.userAgent,
+        summary: {
+          localStorageKeysCount: 0,
+          indexedDbDatabasesCount: 0,
+          totalRecordsCount: 0,
+          estimatedBytes: 0,
+        },
+        localStorage: {},
+        indexedDB: {},
+      };
+
+      // 1. Scan localStorage
+      let lsRowsHtml = '';
+      let lsItemsCount = 0;
+      let totalRecords = 0;
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        const rawVal = localStorage.getItem(key);
+        let parsed = null;
+        let isJson = false;
+        let count = 1;
+
+        try {
+          parsed = JSON.parse(rawVal);
+          isJson = true;
+          if (Array.isArray(parsed)) count = parsed.length;
+          else if (parsed && typeof parsed === 'object') count = Object.keys(parsed).length;
+        } catch (e) {
+          parsed = rawVal;
+        }
+
+        bundle.localStorage[key] = {
+          raw: rawVal,
+          parsed: parsed,
+          byteSize: (rawVal || '').length * 2,
+          isJson: isJson,
+          itemCount: count,
+        };
+
+        totalRecords += count;
+        lsItemsCount++;
+
+        const byteStr = bundle.localStorage[key].byteSize > 1024 
+          ? (bundle.localStorage[key].byteSize / 1024).toFixed(1) + ' KB' 
+          : bundle.localStorage[key].byteSize + ' B';
+
+        lsRowsHtml += `
+          <tr>
+            <td class="mono"><strong>${escapeHtml(key)}</strong></td>
+            <td>${isJson ? (Array.isArray(parsed) ? `Array [${count} items]` : `Object {${count} keys}`) : 'String'}</td>
+            <td class="mono">${byteStr}</td>
+            <td><span class="tag tag-ok">Captured</span></td>
+          </tr>
+        `;
+      }
+
+      document.getElementById('lsTableBody').innerHTML = lsRowsHtml || '<tr><td colspan="4" style="color:var(--text-muted);text-align:center;">No localStorage keys found on this origin.</td></tr>';
+      document.getElementById('lsKeyCount').textContent = lsItemsCount;
+      document.getElementById('lsSummaryChip').textContent = `${lsItemsCount} keys`;
+      bundle.summary.localStorageKeysCount = lsItemsCount;
+
+      // 2. Scan IndexedDB
+      let dbNames = [...TARGET_DBS];
+      if (indexedDB.databases) {
+        try {
+          const browserDbs = await indexedDB.databases();
+          for (const d of browserDbs) {
+            if (d.name && !dbNames.includes(d.name)) {
+              dbNames.push(d.name);
+            }
+          }
+        } catch (e) {
+          console.warn('indexedDB.databases() not supported or blocked:', e);
+        }
+      }
+
+      let idbRowsHtml = '';
+      let idbFoundCount = 0;
+
+      for (const dbName of dbNames) {
+        try {
+          const dbData = await readDatabase(dbName);
+          if (dbData && dbData.stores && Object.keys(dbData.stores).length > 0) {
+            bundle.indexedDB[dbName] = dbData;
+            idbFoundCount++;
+
+            for (const [storeName, records] of Object.entries(dbData.stores)) {
+              totalRecords += records.length;
+              idbRowsHtml += `
+                <tr>
+                  <td class="mono"><strong>${escapeHtml(dbName)}</strong></td>
+                  <td class="mono">${escapeHtml(storeName)}</td>
+                  <td class="mono">${records.length.toLocaleString()} entries</td>
+                  <td><span class="tag ${records.length ? 'tag-ok' : 'tag-empty'}">${records.length ? 'Extracted' : 'Empty'}</span></td>
+                </tr>
+              `;
+            }
+          } else {
+            idbRowsHtml += `
+              <tr>
+                <td class="mono" style="color:var(--text-muted);">${escapeHtml(dbName)}</td>
+                <td style="color:var(--text-muted);">—</td>
+                <td class="mono" style="color:var(--text-muted);">0</td>
+                <td><span class="tag tag-empty">Not Present</span></td>
+              </tr>
+            `;
+          }
+        } catch (err) {
+          idbRowsHtml += `
+            <tr>
+              <td class="mono">${escapeHtml(dbName)}</td>
+              <td style="color:var(--red);">Error opening</td>
+              <td class="mono">0</td>
+              <td><span class="tag tag-warn">${escapeHtml(err.message || 'Failed')}</span></td>
+            </tr>
+          `;
+        }
+      }
+
+      document.getElementById('idbTableBody').innerHTML = idbRowsHtml;
+      document.getElementById('idbCount').textContent = idbFoundCount;
+      document.getElementById('idbSummaryChip').textContent = `${idbFoundCount} databases active`;
+      bundle.summary.indexedDbDatabasesCount = idbFoundCount;
+      bundle.summary.totalRecordsCount = totalRecords;
+
+      // Estimate total payload size
+      const jsonStr = JSON.stringify(bundle, null, 2);
+      const totalBytes = new Blob([jsonStr]).size;
+      bundle.summary.estimatedBytes = totalBytes;
+
+      const sizeStr = totalBytes > 1048576 
+        ? (totalBytes / 1048576).toFixed(2) + ' MB' 
+        : (totalBytes / 1024).toFixed(1) + ' KB';
+
+      document.getElementById('totalRecords').textContent = totalRecords.toLocaleString();
+      document.getElementById('totalBytes').textContent = sizeStr;
+
+      // Show top-level summary preview
+      const preview = {
+        exportedAt: bundle.exportedAt,
+        origin: bundle.origin,
+        summary: bundle.summary,
+        localStorageKeysCaptured: Object.keys(bundle.localStorage),
+        indexedDatabasesCaptured: Object.keys(bundle.indexedDB),
+      };
+      document.getElementById('previewJson').textContent = JSON.stringify(preview, null, 2);
+
+      exportBundle = bundle;
+      document.getElementById('downloadBtn').disabled = false;
+      document.getElementById('copyBtn').disabled = false;
+    }
+
+    function readDatabase(dbName) {
+      return new Promise((resolve) => {
+        let req;
+        try {
+          req = indexedDB.open(dbName);
+        } catch (e) {
+          return resolve(null);
+        }
+
+        const timeout = setTimeout(() => {
+          try { req.result?.close(); } catch(x) {}
+          resolve(null);
+        }, 3000);
+
+        req.onupgradeneeded = (e) => {
+          // If it triggered upgrade on open, the db didn't exist before — abort
+          try {
+            e.target.transaction.abort();
+          } catch(x) {}
+          clearTimeout(timeout);
+          resolve(null);
+        };
+
+        req.onerror = () => {
+          clearTimeout(timeout);
+          resolve(null);
+        };
+
+        req.onsuccess = async (e) => {
+          clearTimeout(timeout);
+          const db = e.target.result;
+          const storeNames = Array.from(db.objectStoreNames || []);
+          if (!storeNames.length) {
+            db.close();
+            return resolve({ version: db.version, stores: {} });
+          }
+
+          const storesData = {};
+          try {
+            for (const storeName of storeNames) {
+              storesData[storeName] = await readStore(db, storeName);
+            }
+          } catch (err) {
+            console.warn(`Error reading stores for ${dbName}:`, err);
+          } finally {
+            db.close();
+          }
+
+          resolve({
+            version: db.version,
+            stores: storesData,
+          });
+        };
+      });
+    }
+
+    function readStore(db, storeName) {
+      return new Promise((resolve) => {
+        try {
+          const tx = db.transaction(storeName, 'readonly');
+          const store = tx.objectStore(storeName);
+          
+          let records = [];
+          let keys = [];
+
+          const reqVal = store.getAll();
+          const reqKey = store.getAllKeys ? store.getAllKeys() : null;
+
+          tx.oncomplete = () => {
+            const vals = reqVal.result || [];
+            const ks = reqKey ? (reqKey.result || []) : [];
+            const combined = vals.map((v, idx) => ({
+              key: ks[idx] !== undefined ? ks[idx] : idx,
+              value: v,
+            }));
+            resolve(combined);
+          };
+
+          tx.onerror = () => resolve([]);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    }
+
+    function downloadJson() {
+      if (!exportBundle) return;
+      const jsonStr = JSON.stringify(exportBundle, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `browser-data-export-${nowStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function copyToClipboard() {
+      if (!exportBundle) return;
+      const jsonStr = JSON.stringify(exportBundle, null, 2);
+      navigator.clipboard.writeText(jsonStr).then(() => {
+        const btn = document.getElementById('copyBtn');
+        const orig = btn.innerHTML;
+        btn.textContent = '✓ Copied!';
+        setTimeout(() => { btn.innerHTML = orig; }, 2000);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>'"]/g, 
+        tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag));
+    }
+
+    document.getElementById('downloadBtn').addEventListener('click', downloadJson);
+    document.getElementById('refreshBtn').addEventListener('click', scanAll);
+    document.getElementById('copyBtn').addEventListener('click', copyToClipboard);
+
+    // Initial scan on load
+    window.addEventListener('DOMContentLoaded', scanAll);
+  </script>
+</body>
+</html>
