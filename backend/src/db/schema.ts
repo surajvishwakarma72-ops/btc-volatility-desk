@@ -1,0 +1,222 @@
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  boolean,
+  numeric,
+  timestamp,
+  date,
+  integer,
+  jsonb,
+  primaryKey,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+
+/**
+ * 1. Users Table
+ * 
+ * Canonical user account record supporting single-user operation today
+ * and multi-user SaaS tenancy in the future without schema changes.
+ */
+export const users = pgTable('users', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: varchar('email', { length: 255 }).unique().notNull(),
+  passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+  displayName: varchar('display_name', { length: 100 }),
+  role: varchar('role', { length: 20 }).default('trader').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 2. Encrypted Exchange & Notification API Credentials
+ * 
+ * Stores sensitive credentials encrypted with AES-256-GCM.
+ * Client browsers never receive these secrets.
+ */
+export const apiCredentials = pgTable('api_credentials', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  exchange: varchar('exchange', { length: 50 }).notNull(), // 'delta_india' | 'deribit' | 'binance' | 'telegram' | 'ntfy'
+  apiKeyEncrypted: text('api_key_encrypted').notNull(),
+  apiSecretEncrypted: text('api_secret_encrypted'),
+  salt: varchar('salt', { length: 64 }).notNull(),
+  iv: varchar('iv', { length: 32 }).notNull(),
+  tag: varchar('tag', { length: 32 }).notNull(),
+  meta: jsonb('meta').default('{}'), // e.g. chat_id, ntfy_topic, testnet flag
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 3. Trades & Strangle Executions
+ * 
+ * Tracks active and closed strangle positions, strike parameters,
+ * execution IV, realized P&L, and Greek attribution.
+ */
+export const trades = pgTable('trades', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  strategy: varchar('strategy', { length: 50 }).default('SHORT_STRANGLE').notNull(),
+  status: varchar('status', { length: 20 }).default('OPEN').notNull(), // 'OPEN' | 'CLOSED' | 'CANCELLED'
+  underlying: varchar('underlying', { length: 20 }).default('BTC').notNull(),
+  expiryDate: timestamp('expiry_date', { withTimezone: true }).notNull(),
+  callStrike: numeric('call_strike', { precision: 12, scale: 2 }).notNull(),
+  putStrike: numeric('put_strike', { precision: 12, scale: 2 }).notNull(),
+  entryTime: timestamp('entry_time', { withTimezone: true }).notNull(),
+  exitTime: timestamp('exit_time', { withTimezone: true }),
+  entrySpot: numeric('entry_spot', { precision: 12, scale: 2 }).notNull(),
+  exitSpot: numeric('exit_spot', { precision: 12, scale: 2 }),
+  entryIv: numeric('entry_iv', { precision: 6, scale: 2 }).notNull(),
+  exitIv: numeric('exit_iv', { precision: 6, scale: 2 }),
+  contracts: numeric('contracts', { precision: 10, scale: 4 }).notNull(),
+  realizedPnl: numeric('realized_pnl', { precision: 12, scale: 2 }),
+  exitReason: varchar('exit_reason', { length: 100 }), // 'TAKE_PROFIT' | 'STOP_LOSS' | 'IV_REVERT' | 'TIME_EXPIRY' | 'PANIC'
+  entryGreeks: jsonb('entry_greeks').default('{}'), // { delta, gamma, theta, vega }
+  pnlAttribution: jsonb('pnl_attribution').default('{}'), // { delta_pnl, gamma_pnl, theta_pnl, vega_pnl }
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 4. Nightly Session Reviews
+ * 
+ * Replaces `localStorage['v147_nights']` and `localStorage['ivcool:nights']`.
+ * Records session parameters, playbook verdict, and historical outcomes.
+ */
+export const nightlyReviews = pgTable(
+  'nightly_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    sessionDate: date('session_date').notNull(),
+    verdict: varchar('verdict', { length: 20 }).notNull(), // 'SELL_FULL' | 'SELL_HALF' | 'NO_TRADE'
+    outcome: varchar('outcome', { length: 20 }), // 'PROFIT' | 'LOSS' | 'SCRATCH' | 'NO_ENTRY'
+    iv1730: numeric('iv_1730', { precision: 6, scale: 2 }),
+    ivNyOpen: numeric('iv_ny_open', { precision: 6, scale: 2 }),
+    ivExit: numeric('iv_exit', { precision: 6, scale: 2 }),
+    speedVsIv: numeric('speed_vs_iv', { precision: 6, scale: 3 }),
+    adxTrend: varchar('adx_trend', { length: 20 }), // 'FALLING' | 'FLAT' | 'RISING'
+    exitHour: integer('exit_hour'),
+    eventTags: text('event_tags').array(), // ['NFP', 'FED', 'EXP', 'VOTE', 'HOL']
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex('user_session_date_idx').on(table.userId, table.sessionDate),
+  ]
+);
+
+/**
+ * 5. Chart Drawings & Annotations
+ * 
+ * Replaces `localStorage['btc_drawings_v1']`.
+ * Canonical storage for user-drawn rays, trendlines, and levels.
+ */
+export const chartDrawings = pgTable('chart_drawings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  symbol: varchar('symbol', { length: 20 }).default('BTCUSDT').notNull(),
+  drawingType: varchar('drawing_type', { length: 50 }).notNull(), // 'HORIZONTAL_RAY' | 'TRENDLINE' | 'BOX' | 'TEXT'
+  points: jsonb('points').notNull(), // [{ time, price }]
+  style: jsonb('style').notNull(), // { color, lineWidth, lineStyle }
+  label: varchar('label', { length: 100 }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 6. User Workspace Preferences
+ * 
+ * Replaces `v132_ind`, `v143_skin`, `pa_layer_prefs_v3`, and `btc_vol_desk_prefs_v1`.
+ * Stores theme, active indicator set for fx menu, and UI geometry.
+ */
+export const userPreferences = pgTable('user_preferences', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .unique()
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  theme: varchar('theme', { length: 20 }).default('coinglass_dark').notNull(),
+  activeIndicators: jsonb('active_indicators').default('[]'), // array of enabled fx indicator IDs
+  chartLayout: jsonb('chart_layout').default('{}'), // multi-pane heights, collapsed sections
+  riskLimits: jsonb('risk_limits').default('{}'), // max contracts, stop-loss thresholds
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 7. Alert Rules Configuration
+ * 
+ * Replaces `localStorage['vt_alert_prefs_v1']`.
+ * Rules evaluated 24x7 by backend workers.
+ */
+export const alertRules = pgTable('alert_rules', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  ruleName: varchar('rule_name', { length: 100 }).notNull(),
+  ruleType: varchar('rule_type', { length: 50 }).notNull(), // 'IV_SPIKE' | 'SPEED_BREAK' | 'PANIC_EXPANSION' | 'STOP_LOSS'
+  thresholdValue: numeric('threshold_value', { precision: 10, scale: 4 }).notNull(),
+  channels: text('channels').array().default(['telegram', 'ntfy', 'in_app']),
+  cooldownSeconds: integer('cooldown_seconds').default(300).notNull(),
+  isActive: boolean('is_active').default(true).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 8. Alert Delivery Audit Logs
+ * 
+ * Replaces `localStorage['btc_alerts_v1']`.
+ * Keeps audit trail of dispatched push and in-app alerts.
+ */
+export const alertLogs = pgTable('alert_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  alertRuleId: uuid('alert_rule_id').references(() => alertRules.id, { onDelete: 'set null' }),
+  title: varchar('title', { length: 200 }).notNull(),
+  message: text('message').notNull(),
+  channel: varchar('channel', { length: 50 }).notNull(), // 'telegram' | 'ntfy' | 'in_app'
+  status: varchar('status', { length: 20 }).default('SENT').notNull(), // 'SENT' | 'FAILED' | 'SNOOZED'
+  deliveredAt: timestamp('delivered_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 9. Historical Market Timeseries
+ * 
+ * Canonical time-series storage for normalized OHLCV candles,
+ * ATM IV, Realized Volatility, DVOL, and Open Interest.
+ */
+export const marketTimeseries = pgTable(
+  'market_timeseries',
+  {
+    time: timestamp('time', { withTimezone: true }).notNull(),
+    symbol: varchar('symbol', { length: 20 }).notNull(),
+    interval: varchar('interval', { length: 10 }).notNull(), // '1m' | '5m' | '15m' | '1h' | '1d'
+    open: numeric('open', { precision: 12, scale: 2 }).notNull(),
+    high: numeric('high', { precision: 12, scale: 2 }).notNull(),
+    low: numeric('low', { precision: 12, scale: 2 }).notNull(),
+    close: numeric('close', { precision: 12, scale: 2 }).notNull(),
+    volume: numeric('volume', { precision: 16, scale: 4 }).notNull(),
+    dvol: numeric('dvol', { precision: 6, scale: 2 }),
+    rv: numeric('rv', { precision: 6, scale: 2 }),
+    atmIv: numeric('atm_iv', { precision: 6, scale: 2 }),
+    openInterest: numeric('open_interest', { precision: 16, scale: 4 }),
+  },
+  (table) => [
+    primaryKey({ columns: [table.symbol, table.interval, table.time] }),
+  ]
+);
