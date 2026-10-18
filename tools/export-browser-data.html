@@ -653,7 +653,7 @@
       const nowStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `browser-data-export-${nowStr}.json`;
+      a.download = 'browser-data-export.json';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
