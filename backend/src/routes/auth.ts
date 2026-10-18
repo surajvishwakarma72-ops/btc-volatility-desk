@@ -1,18 +1,36 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { eq } from 'drizzle-orm';
+import { db, users } from '../db/index.js';
+
+const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
- * Authentication & User Management Routes Stub
+ * Authentication & Profile Routes
  * 
- * Future Endpoints:
- * - POST /api/v1/auth/register    Register a new trader account
- * - POST /api/v1/auth/login       Authenticate and issue JWT cookie
- * - POST /api/v1/auth/logout      Revoke active session
- * - GET  /api/v1/auth/me          Retrieve current authenticated user profile
- * 
- * Notes:
- * - Architectural decision: Single-user first, multi-user ready.
- * - Authenticates against the canonical `users` table in PostgreSQL.
+ * Endpoints:
+ * - GET /api/v1/auth/me          Retrieve current authenticated user profile
  */
-export const authRoutes: FastifyPluginAsync = async (_fastify) => {
-  // Empty stub - no business logic implemented yet
+export const authRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.get('/me', async (_request, reply) => {
+    const userRes = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        role: users.role,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, DEFAULT_USER_ID))
+      .limit(1);
+
+    if (!userRes.length) {
+      return reply.status(404).send({ success: false, error: 'User not found' });
+    }
+
+    return {
+      success: true,
+      data: userRes[0],
+    };
+  });
 };

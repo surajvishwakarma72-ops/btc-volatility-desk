@@ -72,9 +72,9 @@ export const trades = pgTable('trades', {
   putStrike: numeric('put_strike', { precision: 12, scale: 2 }).notNull(),
   entryTime: timestamp('entry_time', { withTimezone: true }).notNull(),
   exitTime: timestamp('exit_time', { withTimezone: true }),
-  entrySpot: numeric('entry_spot', { precision: 12, scale: 2 }).notNull(),
+  entrySpot: numeric('entry_spot', { precision: 12, scale: 2 }),
   exitSpot: numeric('exit_spot', { precision: 12, scale: 2 }),
-  entryIv: numeric('entry_iv', { precision: 6, scale: 2 }).notNull(),
+  entryIv: numeric('entry_iv', { precision: 6, scale: 2 }),
   exitIv: numeric('exit_iv', { precision: 6, scale: 2 }),
   contracts: numeric('contracts', { precision: 10, scale: 4 }).notNull(),
   realizedPnl: numeric('realized_pnl', { precision: 12, scale: 2 }),
@@ -99,9 +99,9 @@ export const tradeLegs = pgTable('trade_legs', {
     .references(() => trades.id, { onDelete: 'cascade' }),
   legType: varchar('leg_type', { length: 10 }).notNull(), // 'CALL' | 'PUT'
   strike: numeric('strike', { precision: 12, scale: 2 }).notNull(),
-  entryPremium: numeric('entry_premium', { precision: 12, scale: 2 }).notNull(),
+  entryPremium: numeric('entry_premium', { precision: 12, scale: 2 }),
   exitPremium: numeric('exit_premium', { precision: 12, scale: 2 }),
-  entryIv: numeric('entry_iv', { precision: 6, scale: 2 }).notNull(),
+  entryIv: numeric('entry_iv', { precision: 6, scale: 2 }),
   exitIv: numeric('exit_iv', { precision: 6, scale: 2 }),
   status: varchar('status', { length: 20 }).default('OPEN').notNull(), // 'OPEN' | 'CLOSED' | 'STOPPED'
   stopLossLevel: numeric('stop_loss_level', { precision: 12, scale: 2 }),
@@ -272,18 +272,18 @@ export const indicatorSnapshots = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull(), // 't'
     symbol: varchar('symbol', { length: 20 }).default('BTCUSDT').notNull(),
-    termCurrentN2n: numeric('term_current_n2n', { precision: 6, scale: 2 }), // 'tc' (Cur - N2N)
-    termNextN2n: numeric('term_next_n2n', { precision: 6, scale: 2 }), // 'tn' (Next - N2N)
-    forwardVol: numeric('forward_vol', { precision: 6, scale: 2 }), // 'fwd'
-    n2nIv: numeric('n2n_iv', { precision: 6, scale: 2 }), // 'n2n'
-    skew25Delta: numeric('skew_25d', { precision: 6, scale: 2 }), // 'rr' (25Δ put - call IV)
-    butterfly: numeric('butterfly', { precision: 6, scale: 2 }), // 'fly'
+    termCurrentN2n: numeric('term_current_n2n', { precision: 16, scale: 4 }), // 'tc' (Cur - N2N)
+    termNextN2n: numeric('term_next_n2n', { precision: 16, scale: 4 }), // 'tn' (Next - N2N)
+    forwardVol: numeric('forward_vol', { precision: 16, scale: 4 }), // 'fwd'
+    n2nIv: numeric('n2n_iv', { precision: 16, scale: 4 }), // 'n2n'
+    skew25Delta: numeric('skew_25d', { precision: 20, scale: 4 }), // 'rr' (25Δ put - call IV or GEX net USD)
+    butterfly: numeric('butterfly', { precision: 16, scale: 4 }), // 'fly'
     masterExpiry: varchar('master_expiry', { length: 20 }), // 'se'
-    atmIv: numeric('atm_iv', { precision: 6, scale: 2 }), // 'satm'
-    fundingRate: numeric('funding_rate', { precision: 10, scale: 6 }), // 'fund' (perp funding)
-    openInterest: numeric('open_interest', { precision: 16, scale: 4 }), // 'oi'
-    liquidationLongsUsd: numeric('liquidation_longs_usd', { precision: 16, scale: 2 }), // 'liqL'
-    liquidationShortsUsd: numeric('liquidation_shorts_usd', { precision: 16, scale: 2 }), // 'liqS'
+    atmIv: numeric('atm_iv', { precision: 16, scale: 4 }), // 'satm'
+    fundingRate: numeric('funding_rate', { precision: 12, scale: 6 }), // 'fund' (perp funding)
+    openInterest: numeric('open_interest', { precision: 20, scale: 4 }), // 'oi'
+    liquidationLongsUsd: numeric('liquidation_longs_usd', { precision: 20, scale: 4 }), // 'liqL'
+    liquidationShortsUsd: numeric('liquidation_shorts_usd', { precision: 20, scale: 4 }), // 'liqS'
     rawSnapshot: jsonb('raw_snapshot'), // Full raw legacy object for lossless migration
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
@@ -291,3 +291,31 @@ export const indicatorSnapshots = pgTable(
     uniqueIndex('indicator_snapshots_symbol_time_idx').on(table.symbol, table.recordedAt),
   ]
 );
+
+/**
+ * 12. Option Flow Buckets (15-Minute Aggregations)
+ * 
+ * Replaces IndexedDB `suraj_archive_v1` (store 'flow').
+ * Stores historical and live aggregated Deribit options flow telemetry.
+ * Captures 15-minute buy/sell volume distributions across calls and puts,
+ * along with block trade activity and executed trade count.
+ */
+export const optionFlowBuckets = pgTable(
+  'option_flow_buckets',
+  {
+    time: timestamp('time', { withTimezone: true }).primaryKey(), // 15-minute bucket start timestamp ('t')
+    symbol: varchar('symbol', { length: 20 }).default('BTC').notNull(),
+    callSellVol: numeric('call_sell_vol', { precision: 16, scale: 4 }).default('0').notNull(), // side[0]
+    callBuyVol: numeric('call_buy_vol', { precision: 16, scale: 4 }).default('0').notNull(),   // side[1]
+    putSellVol: numeric('put_sell_vol', { precision: 16, scale: 4 }).default('0').notNull(),   // side[2]
+    putBuyVol: numeric('put_buy_vol', { precision: 16, scale: 4 }).default('0').notNull(),     // side[3]
+    blockCallSellVol: numeric('block_call_sell_vol', { precision: 16, scale: 4 }).default('0'), // blk[0]
+    blockCallBuyVol: numeric('block_call_buy_vol', { precision: 16, scale: 4 }).default('0'),   // blk[1]
+    blockPutSellVol: numeric('block_put_sell_vol', { precision: 16, scale: 4 }).default('0'),   // blk[2]
+    blockPutBuyVol: numeric('block_put_buy_vol', { precision: 16, scale: 4 }).default('0'),     // blk[3]
+    tradeCount: integer('trade_count').default(0).notNull(), // 'n'
+    rawFlow: jsonb('raw_flow'), // Raw bucket object for lossless fidelity
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  }
+);
+

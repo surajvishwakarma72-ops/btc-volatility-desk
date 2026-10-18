@@ -1,7 +1,14 @@
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import fastifyStatic from '@fastify/static';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { apiV1Routes } from './routes/index.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Fastify Application Factory
@@ -31,6 +38,41 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Mount API v1 router
   await app.register(apiV1Routes, { prefix: '/api/v1' });
+
+  // Serve static frontend if built (for unified cloud deployment on Railway/Render)
+  const possibleDistPaths = [
+    path.resolve(__dirname, '../../frontend/dist'),
+    path.resolve(__dirname, '../public'),
+    path.resolve(process.cwd(), 'frontend/dist'),
+    path.resolve(process.cwd(), '../frontend/dist'),
+  ];
+  const frontendDist = possibleDistPaths.find((p) => fs.existsSync(p));
+
+  if (frontendDist) {
+    app.log.info(`Serving static frontend from: ${frontendDist}`);
+    await app.register(fastifyStatic, {
+      root: frontendDist,
+      prefix: '/',
+    });
+
+    app.setNotFoundHandler((req, reply) => {
+      if (req.raw.url && req.raw.url.startsWith('/api')) {
+        return reply.status(404).send({ success: false, error: 'API endpoint not found' });
+      }
+      return reply.sendFile('index.html');
+    });
+  }
+
+  // 24/7 Background Market Ingestion & Alert Workers
+  app.addHook('onReady', async () => {
+    const { workerManager } = await import('./services/index.js');
+    workerManager.startAll();
+  });
+
+  app.addHook('onClose', async () => {
+    const { workerManager } = await import('./services/index.js');
+    workerManager.stopAll();
+  });
 
   return app;
 }

@@ -9,11 +9,17 @@ build/
 
 # Environment & Local secrets
 .env
-.env.local
-.env.*.local
+.env*
+*.env.txt
+
+# Large data exports
+*.json-export
+browser-data-export.json
+skipped-records.json
 
 # OS & IDE metadata
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+

@@ -1,0 +1,12 @@
+node_modules
+dist
+build
+.git
+.env*
+*.env.txt
+browser-data-export.json
+skipped-records.json
+.DS_Store
+Thumbs.db
+.vscode
+.idea

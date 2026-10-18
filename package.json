@@ -1,0 +1,14 @@
+{
+  "name": "btc-volatility-desk-unified",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unified 24/7 BTC Volatility Desk options workstation",
+  "scripts": {
+    "postinstall": "npm --prefix frontend install && npm --prefix backend install",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build",
+    "start": "npm --prefix backend start"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
