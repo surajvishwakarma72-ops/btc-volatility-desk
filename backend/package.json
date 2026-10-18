@@ -1,6 +1,7 @@
 {
   "name": "btc-volatility-desk-backend",
   "version": "1.0.0",
+  "type": "module",
   "description": "Always-on backend service for BTC Volatility Desk options workstation",
   "main": "dist/index.js",
   "scripts": {
