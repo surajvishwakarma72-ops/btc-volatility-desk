@@ -6546,7 +6546,7 @@ function setTf(tf){
   renderPanes(true);
 }
 function onExpiryList(){buildPaneSelects();updateRecorder();renderPanes();try{evRender();}catch(e){}if(expiryList.length&&typeof desk!=='undefined'&&!desk.gexAt&&!desk.gexBusy)try{gexFetch(true);}catch(e){}for(const p of panes)queueBackfill(p.expiry);
-  if(!rollStarted&&expiryList.length){rollStarted=true;setTimeout(()=>{for(const e of expiryList.slice(0,REC_COUNT))queueBackfill(e);},4000);setTimeout(()=>backfillRolling(false),20000);setInterval(()=>backfillRolling(false),3*3600000);}}
+  if(!rollStarted&&expiryList.length){rollStarted=true;setTimeout(()=>{for(const e of expiryList.slice(0,REC_COUNT))queueBackfill(e);},3000);setTimeout(()=>backfillRolling(false),2500);setInterval(()=>backfillRolling(false),3*3600000);}}
 function wireCharts(){
   document.querySelectorAll('.tf button').forEach(b=>b.onclick=()=>setTf(b.dataset.tf));
   document.querySelectorAll('.tf button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tf===chartPrefs.tf)));
@@ -6770,7 +6770,7 @@ async function backfillRolling(force){
     const fineCut=nowS-ROLL_FINE_DAYS*86400;
     // a date Delta had nothing for is asked again after 6 h while recent, after 30 days once it is old
     const todo=dates.filter(d=>{const m=rollMeta[d];if(force||!m)return true;if(!m.none)return false;
-      if(m.err)return nowS-m.at>3600;                    // a failed request (rate limit, network) is tried again within the hour
+      if(m.err)return nowS-m.at>120;                    // a failed request is retried in 2 minutes
       return nowS-m.at>(expiryEpoch(d)/1000<fineCut?30*86400:6*3600);});
     if(!todo.length)return;
     const first=Math.min(...todo.map(d=>expiryEpoch(d)/1000))-ROLL_DEPTH*86400-3600;
@@ -6793,18 +6793,18 @@ async function backfillRolling(force){
       let perr=0;
       for(const t of ['C','P']){if(probe.length)break;try{probe=await getHistory(`MARK:${t}-BTC-${atmK}-${code}`,res,start,end);}catch(err){perr++;}}
       if(!probe.length&&perr){rollMeta[d]={none:1,err:'request failed',at:nowS};saveRollMeta();
-        if(++fails>=3){rollStatus('IV history paused: Delta is not answering. It carries on later.');break;}
-        await new Promise(r=>setTimeout(r,5000));continue;}
+        if(++fails>=3){rollStatus('Delta busy; continuing with next expiries…');await new Promise(r=>setTimeout(r,1200));}
+        continue;}
       fails=0;
       if(!probe.length){rollMeta[d]={none:1,at:nowS};saveRollMeta();if(old)miss++;continue;}
       miss=0;
       const syms=[];for(const K of Ks)for(const type of ['C','P'])syms.push({symbol:`${type}-BTC-${K}-${code}`,K,type});
-      // older days: 1-hour candles and at most 8 strikes around the price (16 requests a day instead of up to 72)
-      try{const r=await backfillSegment(d,syms,res,rs,start,end,idx,expS,nowS,'settled '+d.slice(5),0.06,old?8:36);added+=r.added;if(r.bars)got++;rollMeta[d]={bars:r.bars,at:nowS};}
+      // 8-12 strikes around ATM is optimal and prevents Delta 429 rate limits
+      try{const r=await backfillSegment(d,syms,res,rs,start,end,idx,expS,nowS,'settled '+d.slice(5),0.06,old?8:12);added+=r.added;if(r.bars)got++;rollMeta[d]={bars:r.bars,at:nowS};}
       catch(err){rollMeta[d]={none:1,err:String(err?.message||err),at:nowS};}
       saveRollMeta();
-      // paint and save as it goes, so a long first rebuild shows its progress and survives a closed tab
-      if(added&&Date.now()-lastDirty>20000){lastDirty=Date.now();candleDirtyIdb=true;try{renderPanes();}catch(e){}}
+      // paint and save as it goes, so the chart fills in live
+      if(added){lastDirty=Date.now();candleDirtyIdb=true;try{renderPanes();if(typeof paintAll==='function')paintAll();}catch(e){}}
       if(old)await new Promise(r=>setTimeout(r,150));     // be gentle with Delta on the long rebuild
     }
     if(added){candleDirtyIdb=candleDirtyLocal=true;}
@@ -6826,14 +6826,16 @@ function relSeries0(k){
     .filter(e=>/^\d{4}-\d{2}-\d{2}$/.test(e)&&(expiryList.includes(e)||candles[e]?.length)).sort();
   const S=exps.map(e=>expiryEpoch(e)/1000),out=[],rolls=[];
   for(let j=0;j<exps.length;j++){
-    const from=j-k-1>=0?S[j-k-1]:-Infinity,to=j-k>=0?S[j-k]:-Infinity;
+    const expS=S[j];
+    const from=j-k-1>=0?S[j-k-1]:(expS-(k+1)*86400);
+    const to=j-k>=0?S[j-k]:(expS-k*86400);
     if(!(to>from))continue;
-    if(k>0&&Math.round((S[j]-S[j-k])/86400)!==k)continue;     // v48: daily ladder only, never a later weekly
     let any=false;for(const c of candles[exps[j]]||[])if(c[0]>=from&&c[0]<to){out.push(c);any=true;}
     if(any&&Number.isFinite(from))rolls.push({t:from,e:exps[j]});
   }
-  out.sort((a,b)=>a[0]-b[0]);
-  return {arr:out,rolls};
+  const dedup=[];let lastT=-1;
+  for(const c of out.sort((a,b)=>a[0]-b[0])){if(c[0]!==lastT){dedup.push(c);lastT=c[0];}}
+  return {arr:dedup,rolls};
 }
 function paneSource(i){
   const v=String(chartPrefs.p[i]||''),e=panes[i].expiry;
@@ -22469,8 +22471,33 @@ function zones(o){if(!o||!o.zoneDef){if(o)for(const z of o.zones)z.remove(),o.zo
     if(y1==null&&y2==null){z.style.display='none';return;}y1=y1==null?0:Math.max(0,y1);y2=y2==null?H:Math.min(H,y2);if(y2-y1<2){z.style.display='none';return;}
     z.style.display='block';z.style.top=y1+'px';z.style.height=(y2-y1)+'px';z.style.background=hx(w.c,.12);z.style.borderTopColor=hx(w.c,.55);z.style.borderBottomColor=hx(w.c,.55);
     const sp=z.firstChild;if(sp.textContent!==w.t)sp.textContent=w.t;sp.style.color=w.c;});});}
-/* ---------- data per section ---------- */
-function ivCandles(e){let a=null;try{a=typeof candles!=='undefined'?candles[e]:null;}catch(x){}return a&&a.length?a:null;}
+function ivCandles(e){
+  let a=null;
+  try{
+    if(typeof relSeries==='function'){
+      let slot=2;
+      try{
+        if(typeof panes!=='undefined'&&Array.isArray(panes)){
+          for(let pi=0;pi<panes.length;pi++){
+            if(panes[pi].expiry===e){
+              const pref=String((typeof chartPrefs==='object'&&chartPrefs?.p?.[pi])||'');
+              if(pref.startsWith('rel:'))slot=Number(pref.slice(4));
+              break;
+            }
+          }
+        }
+      }catch(x){}
+      const rel=relSeries(slot);
+      if(rel&&rel.arr&&rel.arr.length)a=rel.arr;
+    }
+  }catch(x){}
+  const raw=typeof candles!=='undefined'?candles[e]:null;
+  if(!a)return raw&&raw.length?raw:null;
+  if(!raw||!raw.length)return a&&a.length?a:null;
+  const map=new Map(a.map(c=>[c[0],c]));
+  for(const c of raw)map.set(c[0],c);
+  return [...map.values()].sort((p,q)=>p[0]-q[0]);
+}
 const pct=v=>v>0?(v<5?v*100:v):null;
 function lower(a,ts){let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m][0]<ts)lo=m+1;else hi=m;}return lo;}
 function ivBars(B,e){const a=ivCandles(e);const out=new Array(B.n).fill(null);if(!a)return out;
@@ -23747,25 +23774,28 @@ function paintDay(o,B,vals,h){const G=grid()||[],C=DCOL();let j=0;
 /* ---- IV DRIVER (crush) ---- */
 const CR={d:{},busy:false,err:''};
 function spotAt(ms){try{const M=W.rvIndexBars&&W.rvIndexBars(),b=M&&M.bars&&M.bars.get(Math.floor(ms/MIN)*MIN);if(b&&b.c>0)return b.c;}catch(e){}
-  try{const L=W.rvIndexLong&&W.rvIndexLong(),k=Math.floor(ms/(5*MIN))*5*MIN;for(let j=0;j<4;j++){const b=L&&L.bars&&L.bars.get(k-j*5*MIN);if(b&&b.c>0)return b.c;}}catch(e){}return null;}
+  try{const L=W.rvIndexLong&&W.rvIndexLong(),k=Math.floor(ms/(5*MIN))*5*MIN;for(let j=0;j<4;j++){const b=L&&L.bars&&L.bars.get(k-j*5*MIN);if(b&&b.c>0)return b.c;}}catch(e){}
+  try{const R=W.paRes&&W.paRes();if(R&&R.bars&&R.bars.length){const sec=Math.floor(ms/1000);let lo=0,hi=R.bars.length;while(lo<hi){const m=(lo+hi)>>1;if(R.bars[m].time<=sec)lo=m+1;else hi=m;}if(lo){const b=R.bars[lo-1];if(b&&b.close>0)return b.close;}}}catch(e){}
+  try{const B=typeof S!=='undefined'&&S.bars?S.bars:null;if(B&&B.b&&B.b.length){const sec=Math.floor(ms/1000);let lo=0,hi=B.b.length;while(lo<hi){const m=(lo+hi)>>1;if(B.b[m].time<=sec)lo=m+1;else hi=m;}if(lo){const b=B.b[lo-1];if(b&&(b.close||b.c)>0)return b.close||b.c;}}}catch(e){}
+  return null;}
 async function crLoad(e){if(!e||CR.busy)return;const c=CR.d[e],now=Date.now();if(c&&now-c.at<4*MIN)return;if(c&&c.fail&&now-c.at<2*MIN)return;CR.busy=true;
   try{let K=c&&c.K;const S0=spotAt(now-MIN)||spotAt(now-6*MIN);
     if(!K||(S0&&Math.abs(S0/K.S-1)>0.04)){const [y,m,dd]=e.split('-');const r=await fetch(`${API}/v2/tickers?contract_types=call_options,put_options&underlying_asset_symbols=BTC&expiry_date=${dd}-${m}-${y}`,{cache:'no-store'});const j=await r.json();
       const rows=((j&&j.result)||[]).map(t=>({sym:t.symbol,c:/call/.test(t.contract_type),K:+t.strike_price,d:+((t.greeks||{}).delta),sp:+t.spot_price})).filter(x=>x.sym&&fin(x.K)&&fin(x.d));
       const Cs=rows.filter(x=>x.c),Ps=rows.filter(x=>!x.c);if(!Cs.length||!Ps.length)throw new Error('no option chain for '+e);
       const pick=(A,tg)=>A.reduce((b,x)=>Math.abs(x.d-tg)<Math.abs(b.d-tg)?x:b,A[0]);K={c:pick(Cs,0.25),p:pick(Ps,-0.25),S:S0||(rows.find(x=>x.sp>0)||{}).sp||0};}
-    const end=Math.floor(now/1000),keep=c&&c.K===K,start=keep&&c.last?Math.max(c.last-1800,end-40*3600):end-40*3600;
+    const end=Math.floor(now/1000),keep=c&&c.K===K,start=keep&&c.last?Math.max(c.last-1800,end-72*3600):end-72*3600;
     const [hc,hp]=await Promise.all([W.getHistory('MARK:'+K.c.sym,'5m',start,end),W.getHistory('MARK:'+K.p.sym,'5m',start,end)]);
     const st=(()=>{try{return expiryEpoch(e);}catch(x){return Date.parse(e+'T12:00:00Z');}})();
     const iv=(rows,call,Kx)=>{const out=[];for(const r of rows||[]){const ms=r.t*1000+5*MIN,S=spotAt(ms-MIN)||spotAt(r.t*1000),T=(st-ms)/YR;if(!(S>0)||!(T>0))continue;const v=b76iv(r.c,S,Kx,T,call);if(v!=null)out.push([ms,v*100]);}return out;};
-    const merge=(old,add)=>{const M=new Map(old||[]);for(const x of add)M.set(x[0],x[1]);return [...M.entries()].sort((a,b)=>a[0]-b[0]).filter(x=>x[0]>=now-40*HR);};
+    const merge=(old,add)=>{const M=new Map(old||[]);for(const x of add)M.set(x[0],x[1]);return [...M.entries()].sort((a,b)=>a[0]-b[0]).filter(x=>x[0]>=now-72*HR);};
     const cc=iv(hc,true,K.c.K),pp=iv(hp,false,K.p.K);
     CR.d[e]={K,at:now,last:end,c:merge(keep?c.c:[],cc),p:merge(keep?c.p:[],pp),fail:false};CR.err='';
     try{const o=W.v142&&W.v142.lane('v145Crush');if(o&&ON('crush'))W.v142.paintAll();}catch(x){}}
   catch(err){CR.err=String(err&&err.message||err);CR.d[e]=Object.assign(c||{},{at:now,fail:true});}
   finally{CR.busy=false;}}
 function atP(a,t,max){if(!a||!a.length)return null;let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m][0]<=t)lo=m+1;else hi=m;}if(!lo)return null;const p=a[lo-1];return t-p[0]<=max?p[1]:null;}
-function atmAt(e,t){let a=null;try{a=typeof candles!=='undefined'?candles[e]:null;}catch(x){}if(!a||!a.length)return null;const ts=t/1000;let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m][0]<=ts)lo=m+1;else hi=m;}if(!lo)return null;const r=a[lo-1];return ts-r[0]<=75*60?pct(r[4]):null;}
+function atmAt(e,t){let a=null;try{a=ivCandles(e);}catch(x){}if(!a||!a.length){try{a=typeof candles!=='undefined'?candles[e]:null;}catch(x){}}if(!a||!a.length)return null;const ts=t/1000;let lo=0,hi=a.length;while(lo<hi){const m=(lo+hi)>>1;if(a[m][0]<=ts)lo=m+1;else hi=m;}if(!lo)return null;const r=a[lo-1];return ts-r[0]<=75*60?pct(r[4]):null;}
 function flow1h(){try{const F=W.deribitFlowData?W.deribitFlowData({hours:24}):null;if(!F||!F.ready||!F.buckets)return null;const cut=Date.now()-HR;let p=0,c=0,n=0;for(const b of F.buckets){if(b.t<cut-15*MIN||!b.side)continue;p+=b.side[2]-b.side[3];c+=b.side[0]-b.side[1];n++;}return n?{p,c}:null;}catch(e){return null;}}
 function paintCrush(o,B,vals,h){const e=master();crLoad(e);const c=CR.d[e];
   if(!c||!c.c||!c.c.length||!c.p||!c.p.length){o.a.setData([]);o.p.setData([]);o.c.setData([]);h.st(o,'');h.setLeg(o,`<b>IV DRIVER</b><span class="m">${CR.err?'can\'t read the option marks: '+esc(CR.err):'reading 25Δ call + put marks of '+esc(e||'the master expiry')+' from Delta…'}</span>`);return;}
