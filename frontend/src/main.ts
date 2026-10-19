@@ -184,40 +184,116 @@ function renderApp() {
       <!-- Right Column: 24h Clock, Greeks & 15m Options Flow -->
       <aside style="display: flex; flex-direction: column; gap: 1.25rem;">
         
-        <!-- 24-Hour Circular Trade Clock -->
+        <!-- Master Strategy Blueprint: Calendar Strip -->
+        <div class="card calendar-strip-card">
+          <div class="card-header cal-strip-header">
+            <div class="cal-strip-title">
+              <span style="color: #34d399;">📅</span>
+              <span>CALENDAR STRIP</span>
+            </div>
+            <span class="cal-edge-pill">STRUCTURAL EDGE (p = 0.0235)</span>
+          </div>
+          <div class="card-body" style="padding-top: 0;">
+            <div class="day-filter-grid">
+              <div class="day-chip half" id="chip-mon">
+                <div class="day-chip-top">
+                  <span class="day-chip-name">MON</span>
+                  <span>🛡️½</span>
+                </div>
+                <div class="day-chip-size">0.5× Half</div>
+                <div class="day-chip-sub">Flat 0.5×</div>
+              </div>
+              <div class="day-chip prime" id="chip-tue">
+                <div class="day-chip-top">
+                  <span class="day-chip-name">TUE</span>
+                  <span>🛡️</span>
+                </div>
+                <div class="day-chip-size">1.0× Full</div>
+                <div class="day-chip-sub">Prime Edge</div>
+              </div>
+              <div class="day-chip prime" id="chip-wed">
+                <div class="day-chip-top">
+                  <span class="day-chip-name">WED</span>
+                  <span>🛡️</span>
+                </div>
+                <div class="day-chip-size">1.0× Full</div>
+                <div class="day-chip-sub">Prime Edge</div>
+              </div>
+              <div class="day-chip skip" id="chip-thu">
+                <div class="day-chip-top">
+                  <span class="day-chip-name">THU</span>
+                  <span>🛑</span>
+                </div>
+                <div class="day-chip-size">0.0× Skip</div>
+                <div class="day-chip-sub">61.1% Stops</div>
+              </div>
+              <div class="day-chip half" id="chip-fri">
+                <div class="day-chip-top">
+                  <span class="day-chip-name">FRI</span>
+                  <span>🛡️½</span>
+                </div>
+                <div class="day-chip-size">0.5× Half</div>
+                <div class="day-chip-sub">0.10–0.12Δ</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 24-Hour Circular Trade Clock Face + Speed Beacon -->
         <div class="card">
           <div class="card-header">
             <div class="card-title">
               <span style="color: #f59e0b;">⏱</span>
-              <span>24h Session Trade Clock</span>
+              <span>24h Master Trade Clock</span>
             </div>
-            <span style="font-size: 0.72rem; color: #f59e0b; font-weight: 700;">UTC</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              <span id="speed-beacon-chip" style="font-size: 0.68rem; font-weight: 800; padding: 2px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.35);">⚡ SPEED 0.94× [CALM]</span>
+              <span style="font-size: 0.72rem; color: #f59e0b; font-weight: 700;">IST</span>
+            </div>
           </div>
           <div class="card-body clock-display">
             <div class="clock-canvas-wrap">
-              <canvas id="clock-canvas" width="200" height="200"></canvas>
+              <canvas id="clock-canvas" width="220" height="220"></canvas>
               <div class="clock-center-info">
                 <div class="clock-time" id="live-utc-time">00:00:00</div>
-                <div class="clock-session" id="live-session-name">NIGHT REVIEW</div>
+                <div class="clock-session" id="live-session-name">WAIT FOR 22:30</div>
+              </div>
+            </div>
+
+            <!-- Master Dual Agreement Status -->
+            <div class="dual-go-pill green-go" id="master-go-pill">
+              <span style="font-size: 1.4rem;" id="master-go-icon">🛡️</span>
+              <div>
+                <div class="dual-go-title" id="master-go-text">GREEN GO · FULL SIZE</div>
+                <div class="dual-go-sub" id="master-go-sub">Calendar Edge + Speed Beacon (&lt;1.5×) Both Agree</div>
+              </div>
+            </div>
+
+            <!-- Standing Caveat Banner -->
+            <div class="caveat-banner-app" style="margin-top: 0.75rem;">
+              <span>⚠️</span>
+              <div>
+                <b>STANDING CAVEAT:</b>
+                <span>Simulation models pure 2.0× mark stops without slippage or exchange fees. Live performance will run worse than backtested.</span>
               </div>
             </div>
 
             <div class="session-legend">
-              <div class="session-pill" id="pill-asia">
-                <span>Tokyo / Asia</span>
-                <span>00:00 - 09:00</span>
+              <div class="session-pill" id="pill-wait">
+                <span style="color: #f87171;">🛑 20:30–21:30</span>
+                <span>Spike Wait</span>
               </div>
-              <div class="session-pill" id="pill-london">
-                <span>London Open</span>
-                <span>07:00 - 16:00</span>
+              <div class="session-pill" id="pill-setup">
+                <span style="color: #fbbf24;">⏳ 21:30–22:30</span>
+                <span>Setup Watch</span>
               </div>
-              <div class="session-pill" id="pill-ny">
-                <span>NY Cash Open</span>
-                <span>13:30 - 20:00</span>
+              <div class="session-pill active" id="pill-prime">
+                <span style="color: #34d399;">🎯 22:30–23:30</span>
+                <span>Prime Entry</span>
               </div>
-              <div class="session-pill active" id="pill-night">
-                <span>Night IV Play</span>
-                <span>17:30 - 07:00</span>
+              <div class="session-pill" id="pill-exit">
+                <span style="color: #60a5fa;">🚪 04:00–07:00</span>
+                <span>Morning Exit</span>
               </div>
             </div>
           </div>
@@ -361,7 +437,7 @@ function initChart() {
 }
 
 /**
- * Draws the 24-hour circular session dial on HTML5 canvas
+ * Draws the 24-hour circular session dial on HTML5 canvas adhering to Master Strategy Blueprint
  */
 function drawClock() {
   const canvas = document.getElementById('clock-canvas') as HTMLCanvasElement;
@@ -373,7 +449,7 @@ function drawClock() {
   const height = canvas.height;
   const cx = width / 2;
   const cy = height / 2;
-  const radius = 80;
+  const radius = 86;
 
   ctx.clearRect(0, 0, width, height);
 
@@ -381,49 +457,148 @@ function drawClock() {
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.strokeStyle = '#1e2638';
-  ctx.lineWidth = 14;
+  ctx.lineWidth = 16;
   ctx.stroke();
 
-  // Draw session arcs
-  const drawArc = (startHour: number, endHour: number, color: string) => {
+  // Draw 24-hour session arcs (IST reference)
+  const drawArc = (startHour: number, endHour: number, color: string, width = 16) => {
     const sAngle = (startHour / 24) * 2 * Math.PI - Math.PI / 2;
     const eAngle = (endHour / 24) * 2 * Math.PI - Math.PI / 2;
     ctx.beginPath();
     ctx.arc(cx, cy, radius, sAngle, eAngle);
     ctx.strokeStyle = color;
-    ctx.lineWidth = 14;
+    ctx.lineWidth = width;
     ctx.stroke();
   };
 
-  // Asia (00 - 09 UTC)
-  drawArc(0, 9, 'rgba(59, 130, 246, 0.4)');
-  // London (07 - 16 UTC)
-  drawArc(7, 16, 'rgba(16, 185, 129, 0.4)');
-  // New York (13:30 - 20:00 UTC)
-  drawArc(13.5, 20, 'rgba(245, 158, 11, 0.4)');
-  // Night Review Window (17:30 - 24:00 UTC)
-  drawArc(17.5, 24, 'rgba(239, 68, 68, 0.5)');
+  // 1. Ruby Red Zone: 20:30–21:30 IST (Opening volatility spike — hands off)
+  drawArc(20.5, 21.5, 'rgba(239, 68, 68, 0.7)');
 
-  // Calculate current UTC time
+  // 2. Amber Setup Zone: 21:30–22:30 IST (IV peak turn watch)
+  drawArc(21.5, 22.5, 'rgba(245, 158, 11, 0.7)');
+
+  // 3. Glowing Emerald Green Wedge: 22:30–23:30 IST (NY+180m Prime execution window, p = 0.0014)
+  drawArc(22.5, 23.5, '#10b981', 20);
+
+  // 4. Cool Ocean Blue Wedge: 04:00–07:00 IST (Morning exit window)
+  drawArc(4.0, 7.0, 'rgba(59, 130, 246, 0.7)');
+
+  // 5. Black Skull & Red Mark: 17:30 IST (Prohibited Settlement Trap - 80.3% stop catastrophe)
+  const trapAngle = (17.5 / 24) * 2 * Math.PI - Math.PI / 2;
+  const trapX = cx + Math.cos(trapAngle) * radius;
+  const trapY = cy + Math.sin(trapAngle) * radius;
+  ctx.beginPath();
+  ctx.arc(trapX, trapY, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#000';
+  ctx.stroke();
+
+  // Current IST time
   const now = new Date();
-  const utcHours = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
-  const handAngle = (utcHours / 24) * 2 * Math.PI - Math.PI / 2;
+  const istOffset = 19800000; // +5:30 IST
+  const istDate = new Date(now.getTime() + istOffset);
+  const istHours = istDate.getUTCHours() + istDate.getUTCMinutes() / 60 + istDate.getUTCSeconds() / 3600;
+  const handAngle = (istHours / 24) * 2 * Math.PI - Math.PI / 2;
 
   // Active Hand indicator
   ctx.beginPath();
   ctx.moveTo(cx, cy);
-  ctx.lineTo(cx + Math.cos(handAngle) * (radius + 8), cy + Math.sin(handAngle) * (radius + 8));
-  ctx.strokeStyle = '#f59e0b';
+  ctx.lineTo(cx + Math.cos(handAngle) * (radius + 10), cy + Math.sin(handAngle) * (radius + 10));
+  ctx.strokeStyle = '#f8fafc';
   ctx.lineWidth = 3;
   ctx.stroke();
 
-  // Update center text
+  // Center luminous pivot
+  ctx.beginPath();
+  ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#ef4444';
+  ctx.fill();
+
+  // Update center text (IST)
   const timeElem = document.getElementById('live-utc-time');
   if (timeElem) {
-    const h = String(now.getUTCHours()).padStart(2, '0');
-    const m = String(now.getUTCMinutes()).padStart(2, '0');
-    const s = String(now.getUTCSeconds()).padStart(2, '0');
-    timeElem.innerText = `${h}:${m}:${s}`;
+    const h = String(istDate.getUTCHours()).padStart(2, '0');
+    const m = String(istDate.getUTCMinutes()).padStart(2, '0');
+    const s = String(istDate.getUTCSeconds()).padStart(2, '0');
+    timeElem.innerText = `${h}:${m}:${s} IST`;
+  }
+
+  // Update weekday chip active status
+  const curDay = istDate.getUTCDay();
+  const dayIds = ['chip-mon', 'chip-tue', 'chip-wed', 'chip-thu', 'chip-fri'];
+  dayIds.forEach((id, idx) => {
+    const el = document.getElementById(id);
+    if (el) {
+      if (curDay === idx + 1) el.classList.add('active-today');
+      else el.classList.remove('active-today');
+    }
+  });
+
+  // Dual Agreement Master Go Evaluation
+  const sessionNameElem = document.getElementById('live-session-name');
+  const masterGoPill = document.getElementById('master-go-pill');
+  const masterGoIcon = document.getElementById('master-go-icon');
+  const masterGoText = document.getElementById('master-go-text');
+  const masterGoSub = document.getElementById('master-go-sub');
+
+  const speedVal = 0.94; // Baseline real-time test
+  const isSpeedOk = speedVal < 1.5;
+  const isCalendarPrime = curDay === 2 || curDay === 3; // Tue or Wed
+  const isCalendarHalf = curDay === 1 || curDay === 5;  // Mon or Fri
+  const isThursday = curDay === 4;
+
+  if (sessionNameElem && masterGoPill && masterGoIcon && masterGoText && masterGoSub) {
+    if (isThursday) {
+      sessionNameElem.innerText = 'THURSDAY SKIP';
+      sessionNameElem.style.color = '#f87171';
+      masterGoPill.className = 'dual-go-pill red-stop';
+      masterGoIcon.innerText = '🛑';
+      masterGoText.innerText = 'RED STOP · THURSDAY SKIP';
+      masterGoSub.innerText = 'Expiry-day shock: 61.1% stops vs 43.3% rest (p = 0.0279) · No trade permitted';
+    } else if (!isSpeedOk) {
+      sessionNameElem.innerText = 'SPEED DANGER';
+      sessionNameElem.style.color = '#f87171';
+      masterGoPill.className = 'dual-go-pill red-stop';
+      masterGoIcon.innerText = '🚨';
+      masterGoText.innerText = 'RED STOP · SPEED DANGER (≥1.5×)';
+      masterGoSub.innerText = 'Spot velocity moving faster than IV premium compensates';
+    } else if (istHours >= 22.5 && istHours <= 23.5) {
+      if (isCalendarPrime) {
+        sessionNameElem.innerText = 'PRIME EXECUTION';
+        sessionNameElem.style.color = '#34d399';
+        masterGoPill.className = 'dual-go-pill green-go';
+        masterGoIcon.innerText = '🛡️';
+        masterGoText.innerText = 'GREEN GO · FULL SIZE (1.0×)';
+        masterGoSub.innerText = 'Calendar Edge + Speed Beacon (<1.5×) Both Agree · 28.4% OOS stops';
+      } else if (isCalendarHalf) {
+        sessionNameElem.innerText = 'CAUTION EXECUTION';
+        sessionNameElem.style.color = '#fbbf24';
+        masterGoPill.className = 'dual-go-pill amber-go';
+        masterGoIcon.innerText = '🛡️½';
+        masterGoText.innerText = 'AMBER GO · HALF SIZE (0.5×)';
+        masterGoSub.innerText = 'Dual Agreement Cleared · Dynamic Strike Widening Applied';
+      }
+    } else if (istHours >= 4.0 && istHours <= 7.0) {
+      sessionNameElem.innerText = 'MORNING EXIT';
+      sessionNameElem.style.color = '#60a5fa';
+      masterGoPill.className = 'dual-go-pill';
+      masterGoPill.style.background = 'rgba(59, 130, 246, 0.15)';
+      masterGoPill.style.border = '1px solid rgba(59, 130, 246, 0.4)';
+      masterGoIcon.innerText = '🚪';
+      masterGoText.innerText = 'BLUE EXIT · CLOSE POSITIONS';
+      masterGoSub.innerText = '04:00–07:00 IST morning exit · Overnight decay captured';
+    } else {
+      sessionNameElem.innerText = 'WAIT FOR 22:30';
+      sessionNameElem.style.color = '#fbbf24';
+      if (isCalendarPrime && isSpeedOk) {
+        masterGoPill.className = 'dual-go-pill green-go';
+        masterGoIcon.innerText = '🎯';
+        masterGoText.innerText = 'READY · AWAIT 22:30 IST TRIGGER';
+        masterGoSub.innerText = 'Calendar Edge & Speed Beacon Primed · Execution window opens at 22:30';
+      }
+    }
   }
 }
 

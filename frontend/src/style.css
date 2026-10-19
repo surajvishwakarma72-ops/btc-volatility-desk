@@ -463,3 +463,158 @@ table.data-table tr:hover {
   align-items: center;
   gap: 1.25rem;
 }
+
+/* Master Blueprint: Calendar Strip & Day Filter */
+.calendar-strip-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.cal-strip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cal-strip-title {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  color: #fff;
+}
+
+.cal-edge-pill {
+  font-size: 0.68rem;
+  font-weight: 800;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+}
+
+.day-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+}
+
+.day-chip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  transition: all 0.15s ease;
+}
+
+.day-chip.prime {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.35);
+}
+
+.day-chip.skip {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.35);
+}
+
+.day-chip.half {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.day-chip.active-today {
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+.day-chip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.day-chip-name {
+  font-weight: 800;
+  font-size: 0.78rem;
+  color: #fff;
+}
+
+.day-chip-size {
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.prime .day-chip-size { color: #34d399; }
+.skip .day-chip-size { color: #f87171; }
+.half .day-chip-size { color: #fbbf24; }
+
+.day-chip-sub {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* Master Go Status Pill */
+.dual-go-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  margin-top: 0.75rem;
+}
+
+.dual-go-pill.green-go {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.dual-go-pill.amber-go {
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.dual-go-pill.red-stop {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.dual-go-title {
+  font-weight: 900;
+  font-size: 0.92rem;
+  letter-spacing: 0.02em;
+}
+
+.green-go .dual-go-title { color: #34d399; }
+.amber-go .dual-go-title { color: #fbbf24; }
+.red-stop .dual-go-title { color: #f87171; }
+
+.dual-go-sub {
+  font-size: 0.72rem;
+  color: #cbd5e1;
+}
+
+/* App Standing Caveat Banner */
+.caveat-banner-app {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: #cbd5e1;
+}
+
+.caveat-banner-app b {
+  color: #f87171;
+}

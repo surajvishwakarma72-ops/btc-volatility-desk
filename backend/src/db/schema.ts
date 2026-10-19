@@ -337,3 +337,72 @@ export const optionFlowBuckets = pgTable(
   }
 );
 
+/**
+ * 13. Session Telemetry & Self-Testing Audit Logs
+ * 
+ * Automatically records every trading session (traded or skipped):
+ * - Entry / exit timestamps
+ * - Option premiums per leg (bid/ask/mark)
+ * - Strike deltas
+ * - Speed vs IV reading
+ * - Day of week & sizing used
+ * - Realized P&L & stop/win outcome
+ * - Exact Calendar/Clock/Speed state the UI displayed
+ * - Self-testing verification: flags immediately if live display ever diverged from locked rule.
+ */
+export const sessionAuditLogs = pgTable('session_audit_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  sessionDate: date('session_date').notNull(),
+  dayOfWeek: integer('day_of_week').notNull(), // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  dayName: varchar('day_name', { length: 10 }).notNull(), // 'Mon', 'Tue', etc.
+  sessionStatus: varchar('session_status', { length: 20 }).notNull(), // 'TRADED' | 'SKIPPED'
+  entryTime: timestamp('entry_time', { withTimezone: true }),
+  exitTime: timestamp('exit_time', { withTimezone: true }),
+  callStrike: numeric('call_strike', { precision: 12, scale: 2 }),
+  putStrike: numeric('put_strike', { precision: 12, scale: 2 }),
+  callDelta: numeric('call_delta', { precision: 6, scale: 4 }),
+  putDelta: numeric('put_delta', { precision: 6, scale: 4 }),
+  callEntryPremium: numeric('call_entry_premium', { precision: 12, scale: 2 }),
+  putEntryPremium: numeric('put_entry_premium', { precision: 12, scale: 2 }),
+  callExitPremium: numeric('call_exit_premium', { precision: 12, scale: 2 }),
+  putExitPremium: numeric('put_exit_premium', { precision: 12, scale: 2 }),
+  speedVsIv: numeric('speed_vs_iv', { precision: 6, scale: 3 }),
+  sizing: numeric('sizing', { precision: 4, scale: 2 }).default('0').notNull(), // 0.0, 0.5, 1.0
+  realizedPnl: numeric('realized_pnl', { precision: 12, scale: 2 }),
+  outcome: varchar('outcome', { length: 20 }).default('SKIPPED').notNull(), // 'WIN' | 'STOP' | 'SKIPPED' | 'SCRATCH'
+  uiState: jsonb('ui_state').notNull(), // { calendarDay, clockWindow, speedBeacon, goSignal, statusWord }
+  ruleState: jsonb('rule_state').notNull(), // { expectedCalendar, expectedWindow, expectedSpeed, expectedGo, expectedSizing }
+  telemetryMatch: boolean('telemetry_match').default(true).notNull(), // true if UI perfectly matched rule
+  mismatchReason: text('mismatch_reason'), // null if match, or description of discrepancy
+  meta: jsonb('meta').default('{}'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * 14. Recalibration Audits (Automated Bonferroni & OOS Re-runs)
+ * 
+ * Periodically re-tests the growing dataset against the Bonferroni bar
+ * and 50/50 walk-forward split to ensure edge remains robust and flag any decay.
+ */
+export const recalibrationAudits = pgTable('recalibration_audits', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runAt: timestamp('run_at', { withTimezone: true }).defaultNow().notNull(),
+  totalSessions: integer('total_sessions').notNull(),
+  inSampleSessions: integer('in_sample_sessions').notNull(),
+  outOfSampleSessions: integer('out_of_sample_sessions').notNull(),
+  bonferroniAlpha: numeric('bonferroni_alpha', { precision: 8, scale: 6 }).notNull(),
+  tueWedStopRate: numeric('tue_wed_stop_rate', { precision: 6, scale: 2 }),
+  speedStopRate: numeric('speed_stop_rate', { precision: 6, scale: 2 }),
+  comboStopRate: numeric('combo_stop_rate', { precision: 6, scale: 2 }),
+  comboPValue: numeric('combo_p_value', { precision: 8, scale: 6 }),
+  clearedBonferroni: boolean('cleared_bonferroni').notNull(),
+  oosStopRate: numeric('oos_stop_rate', { precision: 6, scale: 2 }),
+  oosStabilityVerdict: varchar('oos_stability_verdict', { length: 30 }).notNull(), // 'STABLE' | 'DECAYING' | 'ENHANCED'
+  auditSummary: jsonb('audit_summary').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+});
+
+

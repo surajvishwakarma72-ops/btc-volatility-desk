@@ -8,6 +8,7 @@ import { marketRoutes } from './market.js';
 import { alertRoutes } from './alerts.js';
 import { deltaRoutes } from './delta.js';
 import { migrationRoutes } from './migration.js';
+import { telemetryRoutes } from './telemetry.js';
 
 /**
  * Primary API v1 Router Registration
@@ -24,4 +25,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(alertRoutes, { prefix: '/alerts' });
   await fastify.register(deltaRoutes, { prefix: '/delta' });
   await fastify.register(migrationRoutes, { prefix: '/migration' });
+  await fastify.register(telemetryRoutes, { prefix: '/telemetry' });
 };
