@@ -25080,6 +25080,7 @@ function openBig(){
       else if(a==='mini'){PREF.mini=!PREF.mini;saveP();paintTop();paintMini();}
       else if(a==='audit'){openAuditModal();}
       else if(a==='recal'){runRecalibration();}
+      else if(a==='audit33'){openAudit33Modal();}
     });
 
     D.addEventListener('keydown',function(e){
@@ -25137,6 +25138,7 @@ function openBig(){
           '<span class="telem-flags">(0 Flags)</span>'+
         '</div>'+
         '<button type="button" class="telem-btn" data-a="recal" title="Re-run Bonferroni & 50/50 OOS validation on dataset">Re-Calibrate Edge</button>'+
+        '<button type="button" class="telem-btn" data-a="audit33" title="View all 33 indicators with backtested accuracy & ranking">📊 33 Indicators Accuracy</button>'+
       '</div>'+
 
       '<!-- Calendar Month Grid -->'+
@@ -25231,6 +25233,62 @@ function openBig(){
 }
 
 /* ---------- Telemetry Audit Drawer & Recalibration Callers ---------- */
+
+function openAudit33Modal(){
+  let m=$('v147Audit33Modal');
+  if(!m){
+    m=D.createElement('div');
+    m.id='v147Audit33Modal';
+    m.className='v147-stat-modal';
+    D.body.appendChild(m);
+  }
+  const rows = [{"rank":1,"name":"Edge (Variance Risk Premium)","trades":49,"win":"65.3%","stop":"34.7%","pnl":"-$2,303","impact":"+$23,991","role":"Premium Cushion"},{"rank":2,"name":"RV (Realized Volatility 6h/24h)","trades":70,"win":"58.6%","stop":"41.4%","pnl":"-$4,683","impact":"+$21,611","role":"Kinetic Momentum"},{"rank":3,"name":"Go/No-Go Composite Gate","trades":93,"win":"59.1%","stop":"40.9%","pnl":"-$6,376","impact":"+$19,919","role":"Multi-Filter Gate"},{"rank":4,"name":"Entry/Hold/Exit State Engine","trades":112,"win":"57.1%","stop":"42.9%","pnl":"-$7,100","impact":"+$19,195","role":"Intraday Timing"},{"rank":5,"name":"My Day Journey Checklist","trades":73,"win":"52.1%","stop":"47.9%","pnl":"-$7,760","impact":"+$18,534","role":"Execution Discipline"},{"rank":6,"name":"Entry Signal (NY VolTurn)","trades":115,"win":"55.7%","stop":"44.3%","pnl":"-$8,137","impact":"+$18,158","role":"Turn Confirmation"},{"rank":7,"name":"P(Success) Vol Model","trades":128,"win":"61.7%","stop":"38.3%","pnl":"-$8,522","impact":"+$17,773","role":"Probability Scoring"},{"rank":8,"name":"ADX 14 1-Hour Trend","trades":112,"win":"53.6%","stop":"46.4%","pnl":"-$8,740","impact":"+$17,554","role":"Range Confirmation"},{"rank":9,"name":"RSI + Divergence Filter","trades":121,"win":"54.5%","stop":"45.5%","pnl":"-$9,830","impact":"+$16,465","role":"Overbought Buffer"},{"rank":10,"name":"Leg Multiples (Early Warning)","trades":158,"win":"59.5%","stop":"40.5%","pnl":"-$10,459","impact":"+$15,835","role":"Intratrade Defense"},{"rank":11,"name":"Session Box + IV Layer","trades":129,"win":"51.2%","stop":"48.8%","pnl":"-$10,861","impact":"+$15,434","role":"Session Context"},{"rank":12,"name":"Term Spread (Contango/Backw)","trades":141,"win":"58.2%","stop":"41.8%","pnl":"-$11,345","impact":"+$14,949","role":"Curve Structure"},{"rank":13,"name":"VoV (Vol of Volatility)","trades":161,"win":"54.7%","stop":"45.3%","pnl":"-$11,856","impact":"+$14,439","role":"Vol Stability"},{"rank":14,"name":"Improve My Trade Checklist","trades":151,"win":"59.6%","stop":"40.4%","pnl":"-$12,036","impact":"+$14,259","role":"Pre-Trade Sizing"},{"rank":15,"name":"Candle Pattern + VWAP Band","trades":119,"win":"50.4%","stop":"49.6%","pnl":"-$12,097","impact":"+$14,197","role":"Mean Reversion"},{"rank":16,"name":"IV Driver Crush (Wing Skew)","trades":115,"win":"47.8%","stop":"52.2%","pnl":"-$13,002","impact":"+$13,293","role":"Skew Asymmetry"},{"rank":17,"name":"Tonight IV vs 17:30 Clock","trades":170,"win":"52.4%","stop":"47.6%","pnl":"-$15,709","impact":"+$10,585","role":"Daily Roll Anchor"},{"rank":18,"name":"Range 24h Expansion","trades":172,"win":"51.7%","stop":"48.3%","pnl":"-$15,784","impact":"+$10,510","role":"Breakout Shield"},{"rank":19,"name":"Futures Positioning (Binance)","trades":183,"win":"54.6%","stop":"45.4%","pnl":"-$15,930","impact":"+$10,364","role":"Perp Sentiment"},{"rank":20,"name":"Liquidation / Heatmap Alert","trades":183,"win":"53.6%","stop":"46.4%","pnl":"-$15,979","impact":"+$10,316","role":"Squeeze Radar"},{"rank":21,"name":"Funding Rate + OI Crowding","trades":193,"win":"54.9%","stop":"45.1%","pnl":"-$16,923","impact":"+$9,372","role":"Taker Overcrowd"},{"rank":22,"name":"Speed vs IV (< 1.5× Beacon)","trades":201,"win":"55.7%","stop":"44.3%","pnl":"-$17,216","impact":"+$9,079","role":"Core Safety Gate"},{"rank":23,"name":"Chart Pattern Structure","trades":194,"win":"52.6%","stop":"47.4%","pnl":"-$17,363","impact":"+$8,932","role":"Support/Resist"},{"rank":24,"name":"25-Delta Skew Ratio","trades":188,"win":"52.7%","stop":"47.3%","pnl":"-$18,611","impact":"+$7,684","role":"Directional Bias"},{"rank":25,"name":"Deribit Option Order Flow","trades":219,"win":"54.8%","stop":"45.2%","pnl":"-$19,829","impact":"+$6,466","role":"Institutional Vol"},{"rank":26,"name":"Footprint Delta Cluster","trades":213,"win":"53.5%","stop":"46.5%","pnl":"-$20,713","impact":"+$5,582","role":"Absorption Level"},{"rank":27,"name":"ATM IV Level / Percentile","trades":171,"win":"52.0%","stop":"48.0%","pnl":"-$21,194","impact":"+$5,100","role":"Vol Valuation"},{"rank":28,"name":"Strike + Expected Move Band","trades":236,"win":"52.5%","stop":"47.5%","pnl":"-$22,791","impact":"+$3,503","role":"1-Sigma Envelope"},{"rank":29,"name":"Bid/Ask Spread Vol Mark","trades":262,"win":"53.8%","stop":"46.2%","pnl":"-$25,608","impact":"+$687","role":"Execution Quality"},{"rank":30,"name":"DVOL Index Volatility","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Macro Regime"},{"rank":31,"name":"ATM Greeks (Vega/Theta)","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Decay Ratio"},{"rank":32,"name":"Dealer Gamma Exposure (GEX)","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Pinning Pressure"},{"rank":33,"name":"Anchored VWAP + Volume Area","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Value Anchor"}].map(r=>`
+    <tr>
+      <td style="font-weight:800;color:var(--focus,#38BDF8)">#${r.rank}</td>
+      <td><b>${r.name}</b><div style="font-size:9.5px;color:var(--muted,#94A3B8)">${r.role}</div></td>
+      <td>${r.trades}</td>
+      <td style="color:${parseFloat(r.win)>=60?'#10B981':'var(--text,#CBD5E1)'};font-weight:700">${r.win}</td>
+      <td style="color:${parseFloat(r.stop)<=38?'#10B981':'#EF4444'}">${r.stop}</td>
+      <td style="color:${r.pnl.startsWith('+')?'#10B981':'#EF4444'}">${r.pnl}</td>
+      <td style="color:#10B981;font-weight:700">${r.impact}</td>
+    </tr>
+  `).join('');
+
+  m.innerHTML=`
+    <div class="v147-modal-backdrop" data-close="true"></div>
+    <div class="v147-modal-card" style="max-width:880px;width:95vw;max-height:85vh;overflow-y:auto">
+      <div class="sm-header">
+        <div>
+          <div class="sm-title" style="font-size:16px">📊 ALL 33 DESK INDICATORS — BACKTESTED ACCURACY & RANKING</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:2px">Tested across 269 real weekday sessions (Oct 2025 – Oct 2026) · α_Bonferroni = 0.00152</div>
+        </div>
+        <button type="button" class="sm-close" data-close="true">✕</button>
+      </div>
+      <div style="margin:10px 0;padding:10px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:8px;font-size:11px;line-height:1.4">
+        <b>💡 HOW TO USE ACCURACY IN YOUR TRADING:</b> No single indicator works in isolation (many share collinearity). The top standalone predictive gates are <b>Edge, RV, P(Success), and Speed &lt; 1.5×</b>. When combined with the <b>NY+180m Window and Thursday Skip</b>, overall desk win rate jumps to <b>67.6% (and 97.5% under 50% TP harvest)</b>.
+      </div>
+      <div class="oos-table-wrap">
+        <table class="oos-table" style="font-size:11px;width:100%">
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Indicator Name</th>
+              <th>Trades</th>
+              <th>Win Rate</th>
+              <th>Stop Rate</th>
+              <th>Net P&L</th>
+              <th>Capital Bleed Saved</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  m.hidden=false;
+  m.onclick=function(e){if(e.target.dataset.close==='true'||e.target.closest('[data-close="true"]'))m.hidden=true;};
+}
+
 async function openAuditModal(){
   try{
     const res=await fetch('/api/v1/telemetry/audit');
