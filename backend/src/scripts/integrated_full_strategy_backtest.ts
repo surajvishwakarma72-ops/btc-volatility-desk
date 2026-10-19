@@ -409,6 +409,42 @@ async function main() {
   const inStats = getStats(inSample);
   const oosStats = getStats(outSample);
 
+  const dows = [1, 2, 3, 4, 5];
+  const dowNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  console.log('\n================================================================================');
+  console.log('  DAY-OF-WEEK BREAKDOWN (BASELINE TRADES ACROSS 269 SESSIONS)');
+  console.log('================================================================================');
+  for (const dw of dows) {
+    const sub = baselineTrades.filter(t => t.dow === dw);
+    const s = getStats(sub);
+    console.log(`  ${dowNames[dw]}: N=${s.N}, WinRate=${s.winRate.toFixed(1)}% (${s.win}/${s.N}), StopRate=${s.stopRate.toFixed(1)}% (${s.stp}/${s.N}), NetP&L=$${s.netPnlDollars.toFixed(0)}`);
+  }
+
+  console.log('\n================================================================================');
+  console.log('  DAY-OF-WEEK BREAKDOWN (MASTER EXECUTED TRADES - AFTER FILTERS)');
+  console.log('================================================================================');
+  for (const dw of dows) {
+    const sub = executedTrades.filter(t => t.dow === dw);
+    const s = getStats(sub);
+    const totalDayCount = allTrades.filter(t => t.dow === dw).length;
+    const skippedCount = allTrades.filter(t => t.dow === dw && !t.executed).length;
+    console.log(`  ${dowNames[dw]}: Total=${totalDayCount}, Executed=${s.N}, Skipped=${skippedCount}, WinRate=${s.winRate.toFixed(1)}% (${s.win}/${s.N}), StopRate=${s.stopRate.toFixed(1)}% (${s.stp}/${s.N}), NetP&L=$${s.netPnlDollars.toFixed(0)}`);
+  }
+
+  const dayResults: Record<string, { dow: number; executed: boolean; skipReason?: string; stopped: boolean; win: boolean; pnlPct: number; speed: number }> = {};
+  for (const t of allTrades) {
+    dayResults[t.day] = {
+      dow: t.dow,
+      executed: t.executed,
+      skipReason: t.skipReason,
+      stopped: t.stopped,
+      win: t.win,
+      pnlPct: Math.round(t.pnlPct * 10) / 10,
+      speed: Math.round(t.speedAtEntry * 100) / 100,
+    };
+  }
+  fs.writeFileSync('backtest_days_269.json', JSON.stringify(dayResults));
+
   console.log('\n================================================================================');
   console.log('  INTEGRATED STRATEGY VS BASELINE DEFAULT (269 SESSIONS)');
   console.log('================================================================================\n');
