@@ -26041,8 +26041,15 @@ W.v147={status:status,plan:plan,face:face,open:openBig,lights:R121,__test:{cellS
 
 .nt-headline{font:700 11.5px var(--font);color:var(--text,#F8FAFC);overflow:hidden;text-overflow:ellipsis}
 .nt-policy-pill{font:700 10px var(--mono,monospace);padding:2px 7px;border-radius:4px;background:var(--panel2,#16232F);border:1px solid var(--line2,#2A3E50);color:#38BDF8;flex-shrink:0}
-.nt-btn-log{background:var(--panel2,#16232F);border:1px solid var(--line2,#2A3E50);border-radius:5px;color:var(--text,#CBD5E1);font:700 10px var(--font);padding:3px 8px;cursor:pointer;flex-shrink:0;margin-left:auto}
+.nt-btn-log{background:var(--panel2,#16232F);border:1px solid var(--line2,#2A3E50);border-radius:5px;color:var(--text,#CBD5E1);font:700 10px var(--font);padding:3px 8px;cursor:pointer;flex-shrink:0;margin-left:auto;display:inline-flex;align-items:center;gap:5px;transition:all .15s}
 .nt-btn-log:hover{background:var(--line,#1F2F3E);color:#fff}
+.nt-btn-log.has-unread{border-color:#EF4444;background:rgba(239,68,68,.15);color:#FCA5A5;animation:newsBtnPulse 1.8s infinite ease-in-out}
+@keyframes newsBtnPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{box-shadow:0 0 0 5px rgba(239,68,68,0)}}
+.nt-unread-pill{background:#EF4444;color:#fff;font:800 9px var(--font);padding:1px 5px;border-radius:999px;line-height:1.2}
+.news-ctrl-bar{display:flex;align-items:center;justify-content:space-between;background:var(--panel2,#16232F);border:1px solid var(--line2,#2A3E50);border-radius:8px;padding:8px 12px;margin-bottom:6px;flex-wrap:wrap;gap:8px}
+.news-ctrl-btn{background:var(--panel,#111C27);border:1px solid var(--line2,#2A3E50);border-radius:6px;color:var(--text,#CBD5E1);font:700 11px var(--font);padding:4px 10px;cursor:pointer}
+.news-ctrl-btn:hover{background:var(--line,#1F2F3E);color:#fff}
+.news-ctrl-btn.active{border-color:#10B981;color:#10B981;background:rgba(16,185,129,.12)}
 
 /* Economy Status Badge beside Clock */
 #v148EconomyBadge{position:absolute;top:42px;left:180px;z-index:6;display:flex;flex-direction:column;gap:5px;pointer-events:auto;font-family:var(--font)}
@@ -26267,15 +26274,89 @@ function evaluateEconomy(snapshot){
   };
 }
 
+/* ---------- Sound Synthesizer & Audio Alert Engine ---------- */
+let newsAudioCtx = null;
+function getAudioCtx(){
+  try{
+    if(!newsAudioCtx) newsAudioCtx = new (W.AudioContext || W.webkitAudioContext)();
+    if(newsAudioCtx.state === 'suspended') newsAudioCtx.resume();
+  }catch(e){}
+  return newsAudioCtx;
+}
+D.addEventListener('pointerdown', function(){ getAudioCtx(); }, {once: true, capture: true});
+
+function playTone(freq, t0, dur, gain, type){
+  const a = getAudioCtx();
+  if(!a) return;
+  try{
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type || 'sine';
+    o.frequency.value = freq;
+    const t = a.currentTime + t0;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g);
+    g.connect(a.destination);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+  }catch(e){}
+}
+
+function playNewsAlert(severity, state){
+  const soundOn = LSg('v148_news_sound', true);
+  if(!soundOn) return;
+  if(severity === 'Breaking' || state === 'STORM'){
+    // Fast urgent alarm (880 Hz -> 660 Hz -> 880 Hz)
+    playTone(880, 0, 0.22, 0.45, 'square');
+    playTone(660, 0.26, 0.22, 0.45, 'square');
+    playTone(880, 0.52, 0.30, 0.45, 'square');
+    try{ navigator.vibrate && navigator.vibrate([260, 90, 260, 90, 420]); }catch(e){}
+  } else if(severity === 'Warning' || state === 'INFLATION' || state === 'CRISIS' || state === 'RUMOUR'){
+    // Double cautionary chime (740 Hz -> 740 Hz)
+    playTone(740, 0, 0.25, 0.35, 'triangle');
+    playTone(740, 0.35, 0.25, 0.35, 'triangle');
+    try{ navigator.vibrate && navigator.vibrate([180, 80, 180]); }catch(e){}
+  } else if(state === 'STABLE'){
+    // Ascending major chord (523 Hz -> 659 Hz -> 784 Hz)
+    playTone(523, 0, 0.20, 0.30, 'sine');
+    playTone(659, 0.18, 0.20, 0.30, 'sine');
+    playTone(784, 0.36, 0.35, 0.32, 'sine');
+  }
+}
+
 /* ---------- Permanent News Storage & History ---------- */
 const LOG_KEY = 'v148_economy_news_log';
+let unreadCount = LSg('v148_news_unread', 0);
+let lastAlertState = null;
+
 function getNewsLog(){
   try{ return JSON.parse(localStorage.getItem(LOG_KEY)) || []; }catch(e){ return []; }
 }
 function saveNewsFlash(flash){
   try{
     const list = getNewsLog();
-    // deduplicate within 15 min if identical state
+    // trigger alert if state changed or first time
+    const isNewAlert = (lastAlertState !== flash.state);
+    if(isNewAlert){
+      lastAlertState = flash.state;
+      unreadCount++;
+      LSs('v148_news_unread', unreadCount);
+      playNewsAlert(flash.severity, flash.state);
+      
+      // System Notification
+      try{
+        if(D.hidden && W.Notification && Notification.permission === 'granted'){
+          new Notification(flash.headline, {
+            body: flash.policy,
+            tag: 'v148-news-' + flash.state,
+            renotify: true
+          });
+        }
+      }catch(e){}
+    }
+    
+    // deduplicate log entries within 15 min if identical state
     if (list.length > 0 && list[0].state === flash.state && (Date.now() - list[0].timestamp < 15 * MIN)) {
       return;
     }
@@ -26339,7 +26420,7 @@ function paintEconomy(){
       <span class="nt-headline">${report.headline}</span>
     </div>
     <span class="nt-policy-pill">${report.policy}</span>
-    <button type="button" class="nt-btn-log" id="v148BtnLog">📰 Internal News</button>
+    <button type="button" class="nt-btn-log ${unreadCount > 0 ? 'has-unread' : ''}" id="v148BtnLog">📰 Internal News ${unreadCount > 0 ? `<span class="nt-unread-pill">${unreadCount} NEW</span>` : ''}</button>
   `;
   
   const btnLog = $('v148BtnLog');
@@ -26424,7 +26505,18 @@ function openNewsLogModal(){
     D.body.appendChild(m);
   }
   
+  // Clear unread on open
+  unreadCount = 0;
+  LSs('v148_news_unread', 0);
+  const btn = $('v148BtnLog');
+  if(btn){
+    btn.className = 'nt-btn-log';
+    btn.innerHTML = '📰 Internal News';
+  }
+  
+  const soundOn = LSg('v148_news_sound', true);
   const list = getNewsLog();
+  
   m.innerHTML = `
     <div class="v148-backdrop" onclick="$('v148NewsLogModal').hidden=true"></div>
     <div class="v148-dialog" style="max-width:680px">
@@ -26436,20 +26528,69 @@ function openNewsLogModal(){
         <button type="button" class="btn-close" onclick="$('v148NewsLogModal').hidden=true">✕</button>
       </div>
       
-      <div style="display:grid;gap:8px;max-height:60vh;overflow-y:auto">
-        ${list.length === 0 ? '<p style="color:var(--muted);text-align:center;padding:20px">No bulletins recorded yet.</p>' : list.map((item, idx) => `
-          <div style="background:var(--panel2,#16232F);border:1px solid var(--line,#1F2F3E);border-radius:8px;padding:10px 12px;display:grid;gap:4px">
+      <!-- Audio & Archive Controls Bar -->
+      <div class="news-ctrl-bar">
+        <div style="display:flex;align-items:center;gap:6px">
+          <button type="button" class="news-ctrl-btn ${soundOn ? 'active' : ''}" id="v148SoundToggle">
+            ${soundOn ? '🔔 Alert Sound: ON' : '🔕 Alert Sound: MUTED'}
+          </button>
+          <button type="button" class="news-ctrl-btn" id="v148TestChime">
+            🔊 Test Chime
+          </button>
+        </div>
+        <button type="button" class="news-ctrl-btn" id="v148ClearLog" style="color:#EF4444">
+          🗑️ Clear Archive
+        </button>
+      </div>
+      
+      <div style="display:grid;gap:8px;max-height:55vh;overflow-y:auto" id="v148NewsList">
+        ${list.length === 0 ? '<p style="color:var(--muted);text-align:center;padding:24px">No bulletins recorded yet.</p>' : list.map((item, idx) => `
+          <div style="background:var(--panel2,#16232F);border:1px solid var(--line,#1F2F3E);border-radius:8px;padding:10px 12px;display:grid;gap:5px">
             <div style="display:flex;justify-content:space-between;align-items:center">
-              <span class="nt-badge ${item.badgeCls}" style="font-size:9.5px">${item.state}</span>
+              <span class="nt-badge ${item.badgeCls}" style="font-size:9.5px">${item.state} · ${item.severity}</span>
               <span style="font:600 10.5px var(--mono,monospace);color:var(--muted,#94A3B8)">${item.timeStr}</span>
             </div>
-            <div style="font:700 12.5px var(--font);color:var(--text,#F8FAFC)">${item.headline}</div>
-            <div style="font:600 11px var(--mono,monospace);color:#38BDF8">${item.policy}</div>
+            <div style="font:700 13px var(--font);color:var(--text,#F8FAFC)">${item.headline}</div>
+            <div style="font:600 11px var(--mono,monospace);color:#38BDF8;background:var(--bg,#0B141C);padding:4px 8px;border-radius:4px;border:1px solid var(--line2,#2A3E50)">
+              📋 ${item.policy}
+            </div>
           </div>
         `).join('')}
       </div>
     </div>
   `;
+  
+  // Wire controls
+  const toggleBtn = $('v148SoundToggle');
+  if(toggleBtn){
+    toggleBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      const cur = LSg('v148_news_sound', true);
+      LSs('v148_news_sound', !cur);
+      openNewsLogModal();
+    });
+  }
+  
+  const testBtn = $('v148TestChime');
+  if(testBtn){
+    testBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      getAudioCtx();
+      playNewsAlert('Breaking', 'STORM');
+      setTimeout(function(){ playNewsAlert('Warning', 'INFLATION'); }, 1200);
+      setTimeout(function(){ playNewsAlert('Info', 'STABLE'); }, 2200);
+    });
+  }
+  
+  const clearBtn = $('v148ClearLog');
+  if(clearBtn){
+    clearBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      localStorage.removeItem(LOG_KEY);
+      openNewsLogModal();
+    });
+  }
+  
   m.hidden = false;
 }
 
