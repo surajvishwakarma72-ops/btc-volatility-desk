@@ -21517,6 +21517,7 @@ function save(){LSs('v133_ind',on);}
 function refit(){try{W.paRefit&&W.paRefit();}catch(e){}setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(e){}},60);setTimeout(()=>{try{W.v128&&W.v128.refit&&W.v128.refit();}catch(e){}},700);}
 /* ---------- the menu ---------- */
 function button(){const top=$('gTop');if(!top||$('v132IndBtn'))return;const r=top.querySelector('.r')||top;
+  const clk=D.createElement('button');clk.type='button';clk.id='v147ClockBtn';clk.className='tool';clk.title='Master Trade Clock & Calendar Strip (24h Dial + Speed Beacon)';clk.innerHTML='<b style="color:var(--focus,#38bdf8)">⏱</b> Clock';clk.addEventListener('click',e=>{e.stopPropagation();try{W.v147&&W.v147.open?W.v147.open():$('v147Mini')?.click();}catch(x){}});r.insertBefore(clk,r.firstChild);
   const b=D.createElement('button');b.type='button';b.id='v132IndBtn';b.className='tool v132ib';b.setAttribute('aria-haspopup','dialog');
   b.innerHTML='<b>ƒx</b> Indicators <span class="v132n"></span>';r.insertBefore(b,r.firstChild);b.addEventListener('click',e=>{e.stopPropagation();openMenu();});}
 function count(){const n=Object.values(on).filter(Boolean).length;const s=D.querySelector('#v132IndBtn .v132n');if(s)s.textContent=n;}
@@ -23547,168 +23548,73 @@ function grid(){const S=SIG();if(!S)return null;const G=S.grid||[],now=Date.now(
   GX.key=key;GX.g=out;return out;}
 
 /* =================================================================== 2. the ƒx menu */
-// Aligned with Stage 6 Full Indicator Audit (269 real sessions, α_Bonferroni = 0.00152):
-// - Active Decision Path: Speed vs IV Beacon (< 1.50x) + Calendar & Timing Clocks (Stages 1–5 Proven)
-// - Tier B: Collinear proxies of Thursday-skip + Speed < 1.5x (demoted to Reference, annotated inline)
-// - Tier C: 30 indicators with no standalone edge (p > 0.05) (demoted to collapsed Reference Charts, zero decision weight)
-
-const TIER_B_KEYS = new Set(['pwin','legs','tip']);
-const COLLINEAR_NOTES = {
-  pwin: 'Collinear proxy: r = 0.84 with Improve My Trade, r = 0.66 with Speed vs IV — redundant with Calendar + Speed rules, no incremental edge.',
-  legs: 'Speed re-expression: r = 0.69 with Speed vs IV — threshold shift from 1.5× to 1.25×, no incremental edge.',
-  tip: 'Collinear composite: r = 0.84 with P(Success), r = 0.66 with Speed vs IV — bundles Thursday-skip + Speed < 1.5×, no incremental edge.'
-};
-let REF_COLLAPSED = LSg('v147_ref_collapsed', true);
-
+// rank · tag · how to use it for the short strangle (honest about tested vs watch-only)
 const TAGN={t:'TESTED',g:'GUIDE',c:'CONFIRM',h:'HOLD',x:'EXIT',w:'WATCH',n:'NEW'};
 const INFO={
- spd:[1,'p','RV ÷ IV kinetic filter. Real-time speed beacon: calm (< 1.50×) vs storm (≥ 1.50×). <em class="ok">Bonferroni-proven combined with Tue/Wed (p = 0.0012, χ² = 10.52).</em> Zero unproven gates.'],
- pwin:[2,'b','P(Success): Empirical win rate estimate. Collinear proxy with Thursday-skip & Speed Beacon (r = 0.84 with Improve My Trade, r = 0.66 with Speed vs IV). Fails Bonferroni; redundant with Master Blueprint.'],
- legs:[3,'b','Per-leg multiples vs entry credit. Speed re-expression at 1.25× vs 1.50× (r = 0.69 with Speed vs IV). Fails Bonferroni; redundant with Speed Beacon.'],
- tip:[4,'b','Improve My Trade post-trade review rule. Collinear composite of Thursday-skip + Speed < 1.5× (r = 0.84 with P(Success), r = 0.66 with Speed vs IV); zero incremental edge.'],
- ready:[10,'c','The tested night, replayed every 15 min. Discretionary context only.'],
- day:[11,'c','Tonights journey from the Decision page: step by step tracker. Discretionary context only.'],
- gng:[12,'c','Composite score per 15 min. No standalone edge (p > 0.05). Discretionary context only.'],
- iv:[13,'c','ATM IV curve of the chosen expiry. Level alone shows no standalone stop-avoidance edge (p = 0.88).'],
- adx:[14,'c','1-h ADX trend: 46.4% stops falling vs 47.1% rising (p = 1.000). Zero standalone stop-shield edge.'],
- ton:[15,'c','Tonights IV vs 17:30 listing level: 45.1% stops below vs 48.0% above (p = 0.825). Zero standalone edge.'],
- sig:[16,'c','SELL / EXIT / BOOK markers on the price chart. Context only.'],
- ses:[17,'c','Asia / London / New York boxes with session IV changes. Context only.'],
- strk:[18,'c','Strikes and ±1σ expected move to expiry on the BTC chart. Context only.'],
- fut:[19,'c','Binance perp futures positioning and taker flow regime. Reference only.'],
- crush:[20,'c','Put wing vs call wing IV driver comparison. Context only.'],
- vov:[21,'c','Vol of Vol (IV rate-of-change). 46.6% stops falling vs 47.3% rising (p = 1.000). Zero standalone edge.'],
- rv:[22,'c','1-h and 6-h realised volatility curves. Reference only.'],
- edge:[23,'c','IV minus 24-h realised vol. Fails Bonferroni; redundant with calendar filters.'],
- rng:[24,'c','BTC 24-h move vs DVOL expected move. Zero standalone stop-avoidance edge.'],
- term:[25,'c','Current vs N2N term structure spread. Zero standalone stop-avoidance edge.'],
- dv:[26,'c','Deribit 30-day volatility index (DVOL). Context only.'],
- skew:[27,'c','25Δ risk reversal of the master expiry. Context only.'],
- dfl:[28,'c','Deribit option taker flow per 15 min. Context only.'],
- liq:[29,'c','OKX liquidations, last 15 min. Context only.'],
- lhm:[30,'c','Estimated liquidation clusters model. Context only.'],
- grk:[31,'c','ATM Greeks of the master expiry (Θ, Vega, Γ, Δ). Reference only.'],
- spr:[32,'c','Bid / ask spread of ATM IV and option premium. Reference only.'],
- fund:[33,'c','Delta perp funding rate + open interest. Context only.'],
- gex:[34,'c','Dealer gamma profile and call/put walls. Context only.'],
- pat:[35,'c','Chart patterns on the BTC price chart. Context only.'],
- cdl:[36,'c','Candlestick patterns. Context only.'],
- vwap:[37,'c','Session VWAP with ±1σ / ±2σ standard deviation bands. Context only.'],
- avp:[38,'c','Anchored VWAP from NY open with volume profile. Context only.'],
- rsi:[39,'c','RSI 14 with regular / hidden divergence. Context only.'],
- fp:[40,'c','Binance footprint trades per price row. Context only.']
-};
-
+ ready:[1,'t','The tested night, replayed every 15 min. <em class="ok">Green = sell</em> (IV turn + ADX falling + the day\'s rule). Amber = IV turn only → wait. Blue = holding. Red = exit. Grey = no-entry time: before NY, the first hour, Thu / Sat / Sun, or the window has closed. Only sell on green.'],
+ day:[2,'g','Your journey for the night, from the Decision page: day check → news → NY open → wait 60 min → IV turn → ADX → sell window → hold → book. The blue chip is the step you are on; the legend says what comes next. Keep it near the top.'],
+ gng:[3,'t','One bar per 15 min. GO (full green) only when the tested verdict says SELL. Cautions (spread, option flow, odds) show as amber but never block. Use it as the final yes / no before you place the order.'],
+ iv:[4,'t','The core rule: let the NY spike happen, then sell when ATM IV is <em>1.5–6 % off the NY high</em> with 1–2 red 15-min candles (+10.5 % of credit vs +4.5 % at a fixed time in the 1-year test). <em class="bad">Never sell into rising IV.</em>'],
+ adx:[5,'t','Sell only when 1-h ADX is <em>≤ 40 and lower than 3 h ago</em> (trend fading): +10.8 % of credit vs +7.0 % without it. Rising ADX = BTC trending = the strangle gets run over.'],
+ ton:[6,'c','Tonight\'s IV against its usual clock path. <em class="ok">Above the clock after 21:00 = premium rich → sell OK.</em> Below = IV cheaper than usual → wait. ▲▼ marks are the crossovers. A confirmation, not an entry by itself.'],
+ sig:[7,'t','SELL / EXIT / BOOK pills drawn on the BTC chart from the tested playbook, with the hold band and entry price between them, plus a live SELL NOW / EXIT NOW tag on the last candle — decide straight from the price chart.'],
+ ses:[8,'c','Asia / London / New York boxes, each labelled with the IV change in that session. <em class="ok">Green box = IV fell</em> (sellers in control). A red NY box = IV still rising → wait for the turn.'],
+ spd:[9,'c','RV ÷ IV: how fast BTC moves against what the premium prices. <em class="ok">Under 1× = good for sellers.</em> The tested entry needs it under 1.5×. Above 1.5× = moving too fast → don\'t sell, protect an open strangle.'],
+ legs:[10,'h','Only with an open strangle: each leg\'s price ÷ its entry price. <em class="bad">2× on one leg = close that leg</em> (tested per-leg stop, keep the other). Treat 1.6× as the warning.'],
+ strk:[11,'h','Your strikes (or tonight\'s suggested ones) and the ±1σ move to expiry on the BTC chart. Price walking toward a strike = that leg is in danger; strikes outside ±1σ are the safer sell.'],
+ pwin:[12,'t','Chance the strangle ends in profit if you sell now — your own archive once it has 30+ rule trades, else the 1-year test (61 %). Under 50 % = skip unless everything else is green.'],
+ fut:[13,'n','Futures positioning: is a move built on <em>new</em> positions or on positions closing? Price ↑ OI ↑ = new longs, price ↓ OI ↑ = new shorts (fuel for the move), faded bars = positions closing (covering / liquidation). FUEL / FLUSH marks show their 30-day hit rate — grey = not proven. New — not part of the tested strangle rule.'],
+ crush:[13,'n','Who moves IV: put wing vs call wing (25Δ). <em class="bad">Puts driving a rise</em> = fear of a drop → put-leg danger. <em class="bad">Calls driving a rise</em> = squeeze → call-leg danger. A crush led by one side = that leg decays faster. New — not part of the tested rule.'],
+ vov:[14,'c','How fast IV itself is moving. <em class="ok">Turning down = IV calming</em> → supports the entry. Spiking = IV unstable → wait.'],
+ rv:[15,'c','1-h realised vol (area) and 6-h (dashed). <em class="ok">RV falling after the NY move</em> = calm returning → supports the sell. Rising RV = stay out or protect.'],
+ edge:[16,'w','Mark IV minus the realised vol expected to your exit. <em class="bad">Above +3 = too quiet: 85 % of those trades were stopped</em> in the test → skip. Around 0 or below = fair.'],
+ rng:[17,'w','BTC\'s 24-h move ÷ the day move DVOL priced. 1–2× is good. <em class="bad">Under 1× lost in every test</em> → skip. Above 2× = BTC still running → wait.'],
+ term:[18,'w','Current − N2N IV. Tested: <em class="ok">Current above N2N → IV fell overnight 85 %</em> of the time. Use it as a confidence boost, not an entry by itself.'],
+ dv:[19,'w','Deribit\'s 30-day vol index. <em class="bad">DVOL up 6+ pts in 24 h = fresh vol shock</em> (a hard stop on the Decision page). A falling DVOL supports sellers.'],
+ skew:[20,'w','25Δ risk reversal of the master expiry. <em class="bad">Puts rich (RR above +4)</em> = the market fears a drop → give the put leg more room or wait.'],
+ dfl:[21,'w','Net puts / calls bought on Deribit per 15 min. Heavy put buying = put-leg threat; heavy call buying = call-leg threat. Watch it while you hold.'],
+ liq:[22,'x','OKX liquidations, last 15 min. A burst = forced move → check both legs; close a leg that nears 2×.'],
+ lhm:[23,'w','Estimated liquidation clusters (a model, like CoinGlass). Price is often pulled toward big clusters → avoid a strike sitting inside a nearby cluster.'],
+ grk:[24,'w','Θ $/day you earn vs Vega $/pt you lose if IV rises, for the master expiry and your strangle. If Θ is smaller than Vega × the IV jump you fear, the trade is thin.'],
+ spr:[25,'w','Bid / ask of IV and premium. <em class="bad">Wide (red, over 1.5× usual)</em> = sell with a limit at mid or wait — don\'t hit the bid.'],
+ fund:[26,'w','Perp funding + open interest: a crowding gauge. Extreme funding with rising OI = squeeze risk on that side.'],
+ gex:[27,'w','Dealer gamma: γ flip and call / put walls. Above the flip price tends to pin (good for sellers); below it moves speed up.'],
+ pat:[28,'w','Head & shoulders, double top / bottom, BOS / CHoCH. A fresh break toward one of your strikes = that leg is in danger.'],
+ cdl:[29,'w','Engulfing / hammer / star labels on candles. Minor — context only, near a strike.'],
+ vwap:[30,'w','Session VWAP from 05:30 IST with ±1σ / ±2σ. Price outside ±2σ = stretched → wait for it to come back before selling.'],
+ avp:[31,'w','VWAP anchored at the NY open (or a candle you pick) with its volume profile. POC and value area show accepted prices; strikes outside the value area are safer.'],
+ rsi:[32,'w','RSI 14 with regular / hidden divergence. Divergence = momentum fading; with ADX falling it supports the "range" story. Not a tested entry.'],
+ fp:[33,'w','Buy vs sell volume per price inside each candle (zoom in). Big one-sided prints at a level = someone pushing price.'],
+ tip:[34,'w','After trading: your closed Delta trades checked against the tested rule, with what to change next time.']};
 const favs=()=>new Set((LSg('v145_fav',[])||[]).filter(k=>typeof k==='string'));
 function toggleFav(k){const f=favs();f.has(k)?f.delete(k):f.add(k);LSs('v145_fav',[...f]);}
 const OPEN=new Set();
-
-function mpaint(m,LIST,on){
-  wireMenu();
-  const ls=m.querySelector('.ls');if(!ls)return;
-  const q=((m.querySelector('input')||{}).value||'').toLowerCase().trim(),fav=favs();
-  const items=LIST.map(([k,n,d])=>{const I=INFO[k]||[90,'c','Reference indicator'];return {k,n,d,r:I[0],tg:I[1],how:I[2]};}).sort((a,b)=>a.r-b.r);
-  const match=it=>!q||(it.n+' '+it.d+' '+(COLLINEAR_NOTES[it.k]||'')+' '+it.how.replace(/<[^>]+>/g,'')).toLowerCase().includes(q);
-
-  const row=it=>{
-    const f=fav.has(it.k),o=!!on[it.k];
-    const isProven=it.k==='spd';
-    const isTierB=TIER_B_KEYS.has(it.k);
-    const isTierC=!isProven&&!isTierB;
-    const itemCls=isTierC?' tier-c':isTierB?' tier-b':' proven-it';
-
-    let tagHtml='';
-    if(isProven)tagHtml='<i class="tag proven">PROVEN CORE</i>';
-    else if(isTierB)tagHtml='<i class="tag tier-b">TIER B · COLLINEAR</i>';
-
-    const collinHtml=isTierB?`<span class="collin-note">${esc(COLLINEAR_NOTES[it.k])}</span>`:'';
-
-    return `<div class="v145-it${o?' on':''}${itemCls}" role="listitem">`+
-      `<button type="button" class="v145-tg" data-k="${it.k}" aria-pressed="${o}" title="${o?'Remove from the chart':'Show on the chart'}">`+
-      `<em class="rk">${isProven?'★':it.r}</em>`+
-      `<span><b>${esc(it.n)}${tagHtml}</b><i>${esc(it.d)}</i>${collinHtml}</span>`+
-      `<em class="ck">${o?'✓':'+'}</em></button>`+
-      `<button type="button" class="v145-st${f?' on':''}" data-fav="${it.k}" aria-pressed="${f}" aria-label="${f?'Remove from':'Add to'} favourites" title="${f?'Remove from':'Add to'} favourites">${f?'★':'☆'}</button>`+
-      `<button type="button" class="v145-in" data-info="${it.k}" aria-expanded="${OPEN.has(it.k)}" aria-label="How to use ${esc(it.n)}" title="How to use it for the short strangle">ⓘ</button>`+
-      (OPEN.has(it.k)?`<div class="v145-how"><b>How to use it for the short strangle</b>${it.how}</div>`:'')+
-      `</div>`;
-  };
-
-  const A=items.filter(match);
-  const onI=A.filter(it=>on[it.k]);
-  const fI=A.filter(it=>!on[it.k]&&fav.has(it.k));
-  const provenItems=A.filter(it=>it.k==='spd');
-  const tierBItems=A.filter(it=>!on[it.k]&&TIER_B_KEYS.has(it.k));
-  const tierCItems=A.filter(it=>!on[it.k]&&!TIER_B_KEYS.has(it.k)&&it.k!=='spd');
-
+function mpaint(m,LIST,on){wireMenu();const ls=m.querySelector('.ls');if(!ls)return;const q=((m.querySelector('input')||{}).value||'').toLowerCase().trim(),fav=favs();
+  const items=LIST.map(([k,n,d])=>{const I=INFO[k]||[90,'w',''];return {k,n,d,r:I[0],tg:I[1],how:I[2]};}).sort((a,b)=>a.r-b.r);
+  const match=it=>!q||(it.n+' '+it.d+' '+it.how.replace(/<[^>]+>/g,'')).toLowerCase().includes(q);
+  const row=it=>{const f=fav.has(it.k),o=!!on[it.k];return `<div class="v145-it${o?' on':''}" role="listitem"><button type="button" class="v145-tg" data-k="${it.k}" aria-pressed="${o}" title="${o?'Remove from the chart':'Show on the chart'}"><em class="rk">${it.r}</em><span><b>${esc(it.n)}<i class="tag ${it.tg}">${TAGN[it.tg]}</i></b><i>${esc(it.d)}</i></span><em class="ck">${o?'✓':'+'}</em></button>`+
+    `<button type="button" class="v145-st${f?' on':''}" data-fav="${it.k}" aria-pressed="${f}" aria-label="${f?'Remove from':'Add to'} favourites" title="${f?'Remove from':'Add to'} favourites">${f?'★':'☆'}</button>`+
+    `<button type="button" class="v145-in" data-info="${it.k}" aria-expanded="${OPEN.has(it.k)}" aria-label="How to use ${esc(it.n)}" title="How to use it for the short strangle">ⓘ</button>`+
+    (OPEN.has(it.k)?`<div class="v145-how"><b>How to use it for the short strangle</b>${it.how}</div>`:'')+`</div>`;};
+  const A=items.filter(match),onI=A.filter(it=>on[it.k]),fI=A.filter(it=>!on[it.k]&&fav.has(it.k)),rest=A.filter(it=>!on[it.k]&&!fav.has(it.k));
   let h='';
-
-  // 1. Currently active on chart
-  if(onI.length){
-    h+=`<div class="v145-grp on">ON THE CHART · ${onI.length} ACTIVE · tap ✓ to remove</div>`+onI.map(row).join('');
-  }
-
-  // 2. Favourites
-  if(fI.length){
-    h+=`<div class="v145-grp fav">★ FAVOURITES</div>`+fI.map(row).join('');
-  }
-
-  // 3. Proven Execution Decision Tree (Stage 1–5 Approved)
-  h+=`<div class="v145-grp" style="color:#10B981">PROVEN EXECUTION DECISION TREE (STAGES 1–5 APPROVED)</div>`;
-  if(provenItems.length&&!on.spd){
-    h+=provenItems.map(row).join('');
-  }
-  h+=`<div class="v145-proven-box">`+
-    `<b class="p-title">MASTER STRATEGY BLUEPRINT (ZERO UNPROVEN GATES)</b>`+
-    `<ul>`+
-    `<li><b>Speed Beacon:</b> Speed vs IV &lt; 1.50× (Kinetic Volatility Filter, p = 0.0012)</li>`+
-    `<li><b>Calendar Strip:</b> Tue/Wed Prime (1.0×), Mon/Fri (0.5×), Thu Skip (p = 0.0279)</li>` +
-    `<li><b>Timing Clocks:</b> Entry NY+180m (22:30–23:30 IST, p = 0.0014), Morning Exit (04:00–07:00 IST)</li>`+
-    `<li><b>Dual Agreement:</b> Full Green Go requires both Calendar day &amp; Speed beacon agreement</li>`+
-    `</ul></div>`;
-
-  // 4. Reference Charts Section (Collapsed by default, carrying zero decision weight)
-  const isRefOpen=!REF_COLLAPSED||!!q;
-  h+=`<div class="v145-ref-banner">`+
-    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex:none;color:#E3A008;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`+
-    `<span>33 indicators tested across 269 sessions — none showed standalone statistical edge beyond the proven Calendar + Speed combo. Shown for discretionary context only.</span>`+
-    `</div>`;
-
-  h+=`<button type="button" class="v145-ref-toggle" data-a="tog-ref">`+
-    `<span>${isRefOpen?'▼ Hide Reference Charts (33 Indicators)':'▶ Show Reference Charts (33 Indicators · Zero Decision Weight)'}</span>`+
-    `<em style="font-style:normal;font-size:11px;opacity:0.7">${isRefOpen?'Click to collapse':'Collapsed by default'}</em>`+
-    `</button>`;
-
-  if(isRefOpen){
-    if(tierBItems.length){
-      h+=`<div class="v145-grp" style="color:#F59E0B">TIER B · COLLINEAR PROXIES (FAILS BONFERRONI · REDUNDANT WITH CALENDAR + SPEED)</div>`+tierBItems.map(row).join('');
-    }
-    if(tierCItems.length){
-      h+=`<div class="v145-grp" style="color:#64748B">TIER C · REFERENCE CHARTS (30 INDICATORS · NO MEASURABLE EDGE · p &gt; 0.05)</div>`+tierCItems.map(row).join('');
-    }
-  }
-
-  const st=ls.scrollTop;ls.innerHTML=h||'<p class="no">No match</p>';ls.scrollTop=st;favBtn(m);
-}
-
+  if(onI.length)h+=`<div class="v145-grp on">ON THE CHART · ${onI.length} · tap ✓ to remove</div>`+onI.map(row).join('');
+  if(fI.length)h+=`<div class="v145-grp fav">★ FAVOURITES</div>`+fI.map(row).join('');
+  if(!fav.size&&!q)h+=`<div class="v145-hint">Tap ☆ on any indicator to save it to ★ Favourites. The “★ Favourites” layout above then shows exactly those.</div>`;
+  if(rest.length)h+=`<div class="v145-grp">ALL · RANKED BY IMPORTANCE FOR THE SHORT STRANGLE</div>`+rest.map(row).join('');
+  const st=ls.scrollTop;ls.innerHTML=h||'<p class="no">No match</p>';ls.scrollTop=st;favBtn(m);}
 function favBtn(m){const row=m.querySelector('.v138-presets');if(!row||row.querySelector('.v145-favp'))return;const b=D.createElement('button');b.type='button';b.className='v145-favp';b.dataset.v145p='fav';b.textContent='★ Favourites';b.title='Show only your favourite indicators';
   const cl=row.querySelector('[data-p="Clean"]');if(cl)cl.after(b);else row.appendChild(b);}
 function useFavs(m){const f=favs();if(!f.size){flash(m,'No favourites yet — tap ☆ next to an indicator first.');return;}const on=W.v132ind.state();
   for(const k of Object.keys(on))on[k]=f.has(k);for(const k of f)on[k]=true;
-  const au=m.querySelector('.v139-auto input');if(au&&au.checked){au.checked=false;au.dispatchEvent(new Event('change'));}
+  const au=m.querySelector('.v139-auto input');if(au&&au.checked){au.checked=false;au.dispatchEvent(new Event('change'));}   // auto layout would switch it back
   try{W.v132ind.save();}catch(e){LSs('v133_ind',on);}try{W.v132ind.apply(true);}catch(e){}try{W.v132ind.paint();}catch(e){}
   setTimeout(()=>{try{W.v138&&W.v138.paintAll();W.v142&&W.v142.paintAll();W.v137&&W.v137.paintAll();}catch(e){}},150);}
 function flash(m,t){let n=m.querySelector('.v145-hint.tmp');if(!n){n=D.createElement('div');n.className='v145-hint tmp';const ls=m.querySelector('.ls');if(ls)ls.before(n);}n.textContent=t;clearTimeout(flash.t);flash.t=setTimeout(()=>n.remove(),3500);}
 function wireMenu(){const m=$('v132Ind');if(!m||m.__v145)return;m.__v145=1;try{new MutationObserver(()=>favBtn(m)).observe(m,{childList:true});}catch(e){}
-  m.addEventListener('click',e=>{
-    const tr=e.target.closest('[data-a="tog-ref"]');
-    if(tr){e.stopPropagation();REF_COLLAPSED=!REF_COLLAPSED;LSs('v147_ref_collapsed',REF_COLLAPSED);try{W.v132ind.paint();}catch(x){}return;}
-    const f=e.target.closest('[data-fav]');
-    if(f){e.stopPropagation();toggleFav(f.dataset.fav);try{W.v132ind.paint();}catch(x){}return;}
-    const i=e.target.closest('[data-info]');
-    if(i){e.stopPropagation();const k=i.dataset.info;OPEN.has(k)?OPEN.delete(k):OPEN.add(k);try{W.v132ind.paint();}catch(x){}return;}
-    const p=e.target.closest('[data-v145p]');
-    if(p){e.stopPropagation();useFavs(m);}});
+  m.addEventListener('click',e=>{const f=e.target.closest('[data-fav]');if(f){e.stopPropagation();toggleFav(f.dataset.fav);try{W.v132ind.paint();}catch(x){}return;}
+    const i=e.target.closest('[data-info]');if(i){e.stopPropagation();const k=i.dataset.info;OPEN.has(k)?OPEN.delete(k):OPEN.add(k);try{W.v132ind.paint();}catch(x){}return;}
+    const p=e.target.closest('[data-v145p]');if(p){e.stopPropagation();useFavs(m);}});
   favBtn(m);}
 W.v145menu={paint:mpaint};
 
@@ -24817,7 +24723,7 @@ function face(big){
   // Center Speed Beacon Light & Master Combined Verdict Hub
   s+='<g class="clk-beacon-hub" data-reveal="speed_beacon" style="cursor:pointer">'+
      '<circle cx="'+C+'" cy="'+C+'" r="58" fill="url(#beaconGlow)"/>'+
-     '<circle cx="'+C+'" cy="'+C+'" r="48" fill="'+F0.bg+'" stroke="'+(isSpeedCalm?F0.green:F0.red)+'" stroke-width="2.5" '+(isSpeedCalm?'filter="url(#glowGreen)"':'filter="url(#glowRed)"')+"/>';
+     '<circle cx="'+C+'" cy="'+C+'" r="48" fill="'+F0.bg+'" stroke="'+(isSpeedCalm?F0.green:F0.red)+'" stroke-width="2.5" '+(isSpeedCalm?'filter="url(#glowGreen)"':'filter="url(#glowRed)"')+'/>';
 
   // Center Child-Simple Visual Icon
   let centerIcon=SVG_ICONS.beacon(isSpeedCalm,28);
