@@ -1,0 +1,147 @@
+{
+  "n": 259,
+  "avgWin": 6.289562223643238,
+  "avgLoss": 11.73477335322584,
+  "breakeven": 0.34894835356454057,
+  "baseSL": 65,
+  "baseNet": 221.13500362077073,
+  "vetoes": [
+    {
+      "name": "rsi15 > 60",
+      "blocked": 55,
+      "slBlocked": 23,
+      "goodBlocked": 32,
+      "precision": 0.41818181818181815,
+      "saved": 269.89978712419435,
+      "lost": 201.26599115658362,
+      "net": 68.63379596761072,
+      "oosHolds": true
+    },
+    {
+      "name": "weekday = Tue",
+      "blocked": 54,
+      "slBlocked": 15,
+      "goodBlocked": 39,
+      "precision": 0.2777777777777778,
+      "saved": 176.0216002983876,
+      "lost": 245.2929267220863,
+      "net": -69.2713264236987,
+      "oosHolds": false
+    },
+    {
+      "name": "speed >= 1.5",
+      "blocked": 76,
+      "slBlocked": 22,
+      "goodBlocked": 54,
+      "precision": 0.2894736842105263,
+      "saved": 258.16501377096847,
+      "lost": 339.6363600767349,
+      "net": -81.47134630576642,
+      "oosHolds": false
+    },
+    {
+      "name": "weekday = Mon",
+      "blocked": 51,
+      "slBlocked": 13,
+      "goodBlocked": 38,
+      "precision": 0.2549019607843137,
+      "saved": 152.55205359193593,
+      "lost": 239.00336449844306,
+      "net": -86.45131090650713,
+      "oosHolds": false
+    },
+    {
+      "name": "vwapSigma > 1",
+      "blocked": 62,
+      "slBlocked": 16,
+      "goodBlocked": 46,
+      "precision": 0.25806451612903225,
+      "saved": 187.75637365161344,
+      "lost": 289.31986228758893,
+      "net": -101.56348863597549,
+      "oosHolds": false
+    },
+    {
+      "name": "|vwapSigma| > 1.5",
+      "blocked": 64,
+      "slBlocked": 15,
+      "goodBlocked": 49,
+      "precision": 0.234375,
+      "saved": 176.0216002983876,
+      "lost": 308.18854895851865,
+      "net": -132.16694866013106,
+      "oosHolds": false
+    },
+    {
+      "name": "range24 > 2",
+      "blocked": 108,
+      "slBlocked": 30,
+      "goodBlocked": 78,
+      "precision": 0.2777777777777778,
+      "saved": 352.0432005967752,
+      "lost": 490.5858534441726,
+      "net": -138.5426528473974,
+      "oosHolds": false
+    },
+    {
+      "name": "edge < -10",
+      "blocked": 88,
+      "slBlocked": 23,
+      "goodBlocked": 65,
+      "precision": 0.26136363636363635,
+      "saved": 269.89978712419435,
+      "lost": 408.8215445368105,
+      "net": -138.92175741261616,
+      "oosHolds": false
+    },
+    {
+      "name": "adx15 >= 30",
+      "blocked": 105,
+      "slBlocked": 28,
+      "goodBlocked": 77,
+      "precision": 0.26666666666666666,
+      "saved": 328.5736538903235,
+      "lost": 484.2962912205293,
+      "net": -155.72263733020583,
+      "oosHolds": false
+    },
+    {
+      "name": "rsi15 < 40",
+      "blocked": 63,
+      "slBlocked": 13,
+      "goodBlocked": 50,
+      "precision": 0.20634920634920634,
+      "saved": 152.55205359193593,
+      "lost": 314.4781111821619,
+      "net": -161.92605759022598,
+      "oosHolds": false
+    },
+    {
+      "name": "iv < 35",
+      "blocked": 106,
+      "slBlocked": 21,
+      "goodBlocked": 85,
+      "precision": 0.19811320754716982,
+      "saved": 246.43024041774265,
+      "lost": 534.6127890096752,
+      "net": -288.1825485919326,
+      "oosHolds": false
+    },
+    {
+      "name": "NOT vovSmooth",
+      "blocked": 189,
+      "slBlocked": 47,
+      "goodBlocked": 142,
+      "precision": 0.24867724867724866,
+      "saved": 551.5343476016145,
+      "lost": 893.1178357573398,
+      "net": -341.58348815572526,
+      "oosHolds": false
+    }
+  ],
+  "combo": [
+    "rsi15 > 60"
+  ],
+  "slRemain": 42,
+  "keptNet": 393.0180217001108
+}

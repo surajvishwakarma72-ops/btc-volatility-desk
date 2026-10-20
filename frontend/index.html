@@ -469,6 +469,7 @@
 <html lang="en">
 <head>
 <script src="data/shadow_backtest_dataset.js"></script>
+<script src="data/rulebook.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script id="v105_17Early">/* v105.17 · smooth + fast start (runs before every other script).
@@ -23324,6 +23325,7 @@ function paint(k){const o=lane(k);if(!o)return;const on=ON(k);if(!on){o.box.clas
     const sr=lastSpr();if(sr&&sr.r!=null&&sr.r>1.5)cau.push('IV spread '+sr.r.toFixed(1)+'× usual');
     const fl=flowNow();if(fl&&fl.pNet!=null&&fl.pNet>0&&fl.pB>2*Math.max(1,fl.pS))cau.push('puts being bought');
     if(word==='GO'&&cau.length){word='GO · caution';cls='a';}
+    try{const rbv=W.rulebookVerdict&&W.rulebookVerdict();if(rbv&&rbv.action==='NO-GO'&&word!=='EXIT'&&word!=='HOLD'){word='NO-GO · rulebook';cls='r';why.push('rulebook: '+rbv.reasons.join(', '));}}catch(e){}
     if(score!=null&&B.n){const i=B.n-1;data[i]={time:B.b[i].time,value:Math.max(8,score),color:cls==='g'?'#22A06B':cls==='b'?'#4C9BE8':cls==='r'?'#E05252':'#E3AE45'};vals[i]=word;}
     o.a.setData(data);st(o,cls==='g'?'g':cls==='r'?'r':cls==='a'?'a':'');
     setLeg(o,`<b>GO / NO-GO</b><span class="${cls==='b'?'':cls}">${esc(word)}${score!=null?' · '+score:''}</span>${why.length?`<span class="r">${esc(why.join(' · '))}</span>`:''}${cau.length?`<span class="a">caution: ${esc(cau.join(' · '))}</span>`:''}<span class="m">GO only when the tested verdict says SELL</span>`);}
@@ -23334,7 +23336,7 @@ function paint(k){const o=lane(k);if(!o)return;const on=ON(k);if(!on){o.box.clas
       if(live.p!=null&&B.n){const i=B.n-1;const p=rule?live.p:Math.min(live.p,45);data[i]={time:B.b[i].time,value:p,color:p>=61?'#22A06B':p>=50?'#E3AE45':'#E05252'};vals[i]=p;live.rule=rule;live.shown=p;}}
     o.a.setData(data);st(o,live&&live.shown!=null?(live.shown>=61?'g':live.shown>=50?'a':'r'):'');
     setLeg(o,`<b>P(SUCCESS)</b><span class="${live&&live.shown!=null?(live.shown>=61?'g':live.shown>=50?'a':'r'):'m'}">${live&&live.shown!=null?Math.round(live.shown)+'%':live&&live.why?esc(live.why):'—'}</span>${live&&live.p!=null?`<span class="m">${live.rule?'if sold now':'no IV turn yet → fixed-time odds (45 %)'} · ${esc(live.src)}${live.n?' · '+live.n+' similar · avg '+sg1(live.avg)+'% of credit':''}</span>`:''}${PW.busy?'<span class="m">reading archive…</span>':''}`);}
-  if(k==='rsi'){const C=B.b.map(b=>b.close),Rr=rsiCalc(C,14);o.R=Rr;o.div=divergences(B,Rr);vals=Rr;
+  if(k==='rsi'){const C=B.b.map(b=>b.close),Rr=rsiCalc(C,14);o.R=Rr;o.div=divergences(B,Rr);vals=Rr;try{W.__deskRsi=Rr[B.n-1];}catch(e){}
     o.a.setData(Rr.map((v,i)=>v==null?blank(B,i):{time:B.b[i].time,value:v}));
     const M=o.div.map(d=>({time:B.b[d.i].time,position:/bull/.test(d.k)?'belowBar':'aboveBar',shape:/bull/.test(d.k)?'arrowUp':'arrowDown',color:/bull/.test(d.k)?'#22A06B':'#E05252',text:d.t,size:0.8}));
     try{o.a.setMarkers(M);}catch(e){}o.prim.req();const l=Rr[B.n-1],last=o.div[o.div.length-1];st(o,l==null?'':l>70||l<30?'a':'g');
@@ -26998,5 +27000,59 @@ W.openShadowDashboard = openShadowDashboard;
 })();
 </script>
 
+<!-- MODULE: Backtest Rulebook advisory badge + GO/NO-GO gate evaluator (data/rulebook.js) -->
+<script>
+(function rulebookDesk(){
+  const W=window,D=document;
+  const DOWN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function istNow(){const d=new Date(Date.now()+19800000);return {dow:d.getUTCDay(),min:d.getUTCHours()*60+d.getUTCMinutes()};}
+  // Live evaluator: current weekday/time/RSI vs the backtest rulebook. Null-safe.
+  W.rulebookVerdict=function(rsiOverride){
+    try{
+      const RB=W.__STRANGLE_RULEBOOK;if(!RB)return null;
+      const n=istNow(),name=DOWN[n.dow];
+      const wd=(RB.weekdays||[]).find(x=>String(x.weekday)===name)||null;
+      const weekdayVerdict=(n.dow===0||n.dow===6)?'SKIP':(wd?wd.verdict:'—');
+      const late=(n.dow===5)?90:60; // Fri window to 01:30, else 01:00 IST
+      const inWindow=(n.min>=22*60+30)||(n.min<=late);
+      const rsi=(rsiOverride!=null)?rsiOverride:(W.__deskRsi!=null?W.__deskRsi:null);
+      const rsiVeto=(rsi!=null&&rsi>60);
+      const reasons=[];
+      if(n.dow===0||n.dow===6)reasons.push('weekend — desk off');
+      else if(weekdayVerdict==='SKIP')reasons.push(name+' is SKIP (OOS win <65%)');
+      if(!inWindow)reasons.push('outside 22:30–01:00 IST window');
+      if(rsiVeto)reasons.push('RSI '+Math.round(rsi)+' > 60 veto');
+      const action=reasons.length?'NO-GO':(String(weekdayVerdict).indexOf('TRADE')===0?'GO':'CAUTION');
+      return {dow:n.dow,name,weekdayVerdict,inWindow,rsi,rsiVeto,conviction:wd?wd.conviction:'—',action,reasons,oosWin:wd?wd.oosWinPct:null,expectancy:wd?wd.expectancyUsd:null};
+    }catch(e){return null;}
+  };
+  // Advisory badge (click to expand). Purely additive — never blocks the desk.
+  const COL={'GO':'#22A06B','NO-GO':'#E05252','CAUTION':'#E3AE45'};
+  let el=null,open=false;
+  function render(){
+    try{
+      const v=W.rulebookVerdict&&W.rulebookVerdict();
+      if(!v){if(el)el.style.display='none';return;}
+      if(!el){el=D.createElement('div');el.id='rulebookBadge';el.style.cssText='position:fixed;left:10px;bottom:10px;z-index:9000;font:600 11px/1.35 system-ui,sans-serif;max-width:300px;background:#0B141C;border:1px solid #1F2F3E;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.6);color:#CBD5E1;overflow:hidden;cursor:pointer';el.title='Backtest rulebook (advisory) — click to expand';el.addEventListener('click',function(){open=!open;render();});D.body.appendChild(el);}
+      el.style.display='';
+      const c=COL[v.action]||'#8FA3B5';
+      const head='<div style="padding:7px 10px;background:'+c+'22;border-left:3px solid '+c+'"><b style="color:'+c+';font-size:12px">RULEBOOK · '+v.action+'</b> <span style="opacity:.85">'+v.name+' '+v.weekdayVerdict+(v.conviction&&v.conviction!=='—'?' · '+v.conviction:'')+'</span></div>';
+      let body='';
+      if(open){
+        const r=[];
+        r.push('entry window 22:30–01:00 IST: <b style="color:'+(v.inWindow?'#22A06B':'#E05252')+'">'+(v.inWindow?'OPEN':'closed')+'</b>');
+        r.push('RSI veto (&gt;60): <b style="color:'+(v.rsiVeto?'#E05252':'#22A06B')+'">'+(v.rsi!=null?Math.round(v.rsi):'n/a')+(v.rsiVeto?' ✕':' ✓')+'</b>');
+        if(v.oosWin!=null)r.push('OOS win '+v.oosWin+'% · exp $'+v.expectancy);
+        if(v.reasons.length)r.push('<span style="color:#E05252">NO-GO: '+v.reasons.join('; ')+'</span>');
+        r.push('<span style="opacity:.6">Backtest advisory; also gates the GO/NO-GO signal. Click to collapse.</span>');
+        body='<div style="padding:8px 10px;border-top:1px solid #1F2F3E">'+r.join('<br>')+'</div>';
+      }
+      el.innerHTML=head+body;
+    }catch(e){}
+  }
+  function boot(){if(!D.body)return setTimeout(boot,500);render();setInterval(render,20000);}
+  if(D.readyState==='loading')D.addEventListener('DOMContentLoaded',boot);else boot();
+})();
+</script>
 </body>
 </html>

@@ -1,0 +1,39 @@
+{
+  "variants": [
+    {
+      "label": "symmetric 0.15/0.15",
+      "n": 204,
+      "sl": 42,
+      "slRate": 20.6,
+      "net": 393
+    },
+    {
+      "label": "symmetric 0.12/0.12",
+      "n": 204,
+      "sl": 48,
+      "slRate": 23.5,
+      "net": 197
+    },
+    {
+      "label": "symmetric 0.10/0.10",
+      "n": 204,
+      "sl": 54,
+      "slRate": 26.5,
+      "net": 35
+    },
+    {
+      "label": "VWAP-skew (0.10 risk leg)",
+      "n": 204,
+      "sl": 48,
+      "slRate": 23.5,
+      "net": 236
+    },
+    {
+      "label": "VWAP-skew (0.08 risk leg)",
+      "n": 204,
+      "sl": 50,
+      "slRate": 24.5,
+      "net": 137
+    }
+  ]
+}
