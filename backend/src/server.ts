@@ -5,6 +5,7 @@ import fastifyStatic from '@fastify/static';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { serializerCompiler, validatorCompiler, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 import { apiV1Routes } from './routes/index.js';
 import { handleDeltaProxy } from './routes/delta.js';
 
@@ -21,12 +22,36 @@ export async function buildServer(): Promise<FastifyInstance> {
     logger: {
       level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
     },
+    bodyLimit: 1_048_576,
   });
 
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+
   // Cross-Origin Resource Sharing
+  const corsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
   await app.register(cors, {
-    origin: true,
+    origin: corsOrigins.length ? corsOrigins : ['http://localhost:3000', 'http://localhost:4000'],
     credentials: true,
+  });
+
+  app.setErrorHandler((err: any, req, reply) => {
+    if (hasZodFastifySchemaValidationErrors(err) || err.validation) {
+      return reply.status(400).send({
+        success: false,
+        error: 'Validation failed',
+        details: err.validation ?? err.issues ?? undefined,
+      });
+    }
+    req.log.error(err);
+    const status = err.statusCode && err.statusCode >= 400 ? err.statusCode : 500;
+    return reply.status(status).send({
+      success: false,
+      error: status === 500 ? 'Internal server error' : err.message,
+    });
   });
 
   // Native WebSocket support on same port
