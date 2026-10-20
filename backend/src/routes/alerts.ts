@@ -52,6 +52,9 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
 
     const inserted = await db.insert(alertRules).values(newRule).returning();
 
+    const { alertService } = await import('../services/index.js');
+    alertService.invalidateRulesCache();
+
     return reply.status(201).send({
       success: true,
       data: inserted[0],
@@ -70,6 +73,9 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
     if (!deleted.length) {
       return reply.status(404).send({ success: false, error: 'Alert rule not found' });
     }
+
+    const { alertService } = await import('../services/index.js');
+    alertService.invalidateRulesCache();
 
     return {
       success: true,
@@ -113,8 +119,8 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
 
     const sent = await alertService.sendNotification({
       title: '🚨 BTC Volatility Desk Test Alert',
-      message: `BTC Spot: $82,015 | Deribit DVOL: 37.84% | Test signal dispatched successfully from Fastify at ${new Date().toLocaleTimeString()} UTC.`,
-      channel: channel,
+      message: `Test signal dispatched at ${new Date().toLocaleTimeString()} UTC.`,
+      channels: [channel] as any,
     });
 
     return {
