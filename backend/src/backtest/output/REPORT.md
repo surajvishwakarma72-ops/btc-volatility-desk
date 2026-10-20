@@ -11,8 +11,8 @@ actually cut SLs, in order of impact:
    (23:00+). This single change is the biggest stop-loss reducer.
 2. **Skip RSI > 60 nights.** The only entry veto that survives out-of-sample
    (41.8% SL-precision > 34.9% breakeven): SLs 65→42, net roughly doubles.
-3. **Pick the weekday.** OOS-validated: **TRADE Mon, Tue, Fri**;
-   **SKIP Wed, Thu** (Wed/Thu decayed out-of-sample despite strong
+3. **Pick the weekday.** OOS-validated: **TRADE Mon, Tue, Wed, Fri**;
+   **SKIP Thu** (Wed/Thu decayed out-of-sample despite strong
    in-sample numbers), weekends off.
 
 ## What does NOT work (myths tested and rejected)

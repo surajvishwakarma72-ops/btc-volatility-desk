@@ -56,7 +56,7 @@ window.__STRANGLE_RULEBOOK = {
     },
     {
       "weekday": "Wed",
-      "verdict": "SKIP",
+      "verdict": "TRADE-LIGHT",
       "oosWinPct": 63.6,
       "expectancyUsd": 1.39,
       "sampleSize": 44,
