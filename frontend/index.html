@@ -18128,8 +18128,7 @@ async function apiPoll(force){if(!API.on()||API.busy)return;const now=Date.now()
     API.err=/ip_not_whitelisted|whitelist/i.test(m)?'Delta wants this IP whitelisted for the key':/invalid_api_key|InvalidApiKey/i.test(m)?'API key not accepted':/signature/i.test(m)?'signature rejected (check secret / phone clock)':/proxy_missing/.test(m)?'Delta blocks the browser and the desk proxy is not on Vercel yet':/Failed to fetch|NetworkError|TypeError|Load failed/i.test(m)?'cannot reach Delta from this page (browser blocked, proxy unreachable)':m.slice(0,80);}
   finally{API.busy=false;}}
 function onConn(e){const b=e.target.closest('[data-v100]');if(!b)return;const a=b.dataset.v100;
-  if(a==='save'){const key=($('v100Key')||{}).value||'',secret=($('v100Sec')||{}).value||'';if(key.trim().length<6||secret.trim().length<6){const p=b.closest('section');if(p){const m=p.querySelector('p');if(m)m.innerHTML='<b class="neg">Paste both the API key and the secret.</b>';}return;}
-    LS.set('v100_dkey',{key:key.trim(),secret:secret.trim()});try{W.v99&&W.v99.closeForm&&W.v99.closeForm();}catch(x){}API.route='direct';LS.set('v100_droute','direct');API.err=null;API.at=0;API.last=null;apiPoll(true);try{W.v99&&W.v99.render();}catch(x){}}
+  if(a==='save'){const p=b.closest('section');if(p){const m=p.querySelector('p');if(m)m.innerHTML='<b>Account sync is paused.</b> Live Delta account / P&L is disabled until desk login is added (signing moved server-side). Nothing is stored in this browser.';}return;}
   else if(a==='off'){LS.del('v100_dkey');API.err=null;API.last=null;API.at=0;const cur=LS.get('v99_trade',null);if(cur&&cur.src==='api')LS.del('v99_trade');try{W.v99&&W.v99.render();}catch(x){}}
   else if(a==='check'){API.err=null;apiPoll(true);}
   else if(a==='toggleRoute'){API.route=API.route==='proxy'?'direct':'proxy';LS.set('v100_droute',API.route);API.err=null;apiPoll(true);try{W.v18&&W.v18.render&&W.v18.render();}catch(x){}}
