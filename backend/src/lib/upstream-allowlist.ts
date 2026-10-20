@@ -8,11 +8,11 @@ interface Rule { host: string; prefixes: string[] }
 const RULES: Rule[] = [
   { host: 'api.india.delta.exchange', prefixes: ['/v2/products', '/v2/tickers', '/v2/history/candles', '/v2/l2orderbook/', '/v2/trades/'] },
   { host: 'www.deribit.com', prefixes: ['/api/v2/public/'] },
-  { host: 'fapi.binance.com', prefixes: ['/fapi/'] },
+  { host: 'fapi.binance.com', prefixes: ['/fapi/', '/futures/data/'] },
   { host: 'api.binance.com', prefixes: ['/api/v3/'] },
   { host: 'data-api.binance.vision', prefixes: ['/api/v3/'] },
   { host: 'data.binance.vision', prefixes: ['/data/'] },
-  { host: 'www.okx.com', prefixes: ['/api/v5/public/'] },
+  { host: 'www.okx.com', prefixes: ['/api/v5/public/', '/api/v5/rubik/'] },
   { host: 'cryptocurrency.cv', prefixes: ['/api/'] },
   { host: 'api.llama.fi', prefixes: ['/hacks'] },
 ];

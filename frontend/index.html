@@ -552,7 +552,7 @@ function flushLow(){if(!P.ready||SC.on)return;var now=Date.now(),wait=1e9;
 function start(j){lowActive++;var done=function(){lowActive--;var h=host[j.h];if(h)h.a--;st.call(W,flushLow,0);};
   F(j.u,j.o).then(function(r){done();j.res(r);},function(e){done();j.rej(e);});}
 P.lowQueue=function(){return {queued:LOW.length,active:lowActive,ready:P.ready};};
-var GW_HOSTS={'api.india.delta.exchange':['/v2/products','/v2/tickers','/v2/history/candles','/v2/l2orderbook/','/v2/trades/'],'www.deribit.com':['/api/v2/public/'],'fapi.binance.com':['/fapi/'],'api.binance.com':['/api/v3/'],'data-api.binance.vision':['/api/v3/'],'data.binance.vision':['/data/'],'www.okx.com':['/api/v5/public/'],'cryptocurrency.cv':['/api/'],'api.llama.fi':['/hacks']};
+var GW_HOSTS={'api.india.delta.exchange':['/v2/products','/v2/tickers','/v2/history/candles','/v2/l2orderbook/','/v2/trades/'],'www.deribit.com':['/api/v2/public/'],'fapi.binance.com':['/fapi/','/futures/data/'],'api.binance.com':['/api/v3/'],'data-api.binance.vision':['/api/v3/'],'data.binance.vision':['/data/'],'www.okx.com':['/api/v5/public/','/api/v5/rubik/'],'cryptocurrency.cv':['/api/'],'api.llama.fi':['/hacks']};
 function gwRewrite(u){try{var p=new URL(u,location.href);var ps=GW_HOSTS[p.hostname];if(ps&&ps.some(function(x){return p.pathname.indexOf(x)===0;}))return '/api/v1/mkt?u='+encodeURIComponent(p.href);}catch(e){}return u;}
 if(F)W.fetch=function(input,init){var u0=typeof input==='string'?input:(input&&input.url)||'';
   var rw=gwRewrite(u0); if(rw!==u0){input=rw;} var u=rw, uLow=rw!==u0?u0:rw; // slow-lane + priority classified on the ORIGINAL url (the rewritten /api/v1/mkt?u= is %2F-encoded)

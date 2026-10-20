@@ -12,6 +12,10 @@ describe('isAllowed', () => {
     expect(isAllowed('https://www.okx.com/api/v5/public/liquidation-orders?instType=SWAP')).toBe(true);
     expect(isAllowed('https://api.llama.fi/hacks')).toBe(true);
   });
+  it('allows the open-interest paths the frontend actually calls (regression: were bypassing the gateway)', () => {
+    expect(isAllowed('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=5m')).toBe(true);
+    expect(isAllowed('https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=BTC&period=5m')).toBe(true);
+  });
   it('rejects unknown hosts and non-https', () => {
     expect(isAllowed('https://evil.example.com/v2/tickers')).toBe(false);
     expect(isAllowed('http://api.india.delta.exchange/v2/tickers')).toBe(false);
