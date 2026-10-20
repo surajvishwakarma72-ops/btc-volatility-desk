@@ -21,7 +21,7 @@ import { frame, d0, dk, DAY, HR, MIN } from '../lib/frame.js';
 import { simulateStrangle, DEFAULT_SIM } from '../lib/simulate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SHADOW = path.resolve(__dirname, '../../../../frontend/data/shadow_backtest_dataset.json');
+const SHADOW = path.resolve(__dirname, '../../../../frontend/public/data/shadow_backtest_dataset.json');
 const INR = 85;
 const FIRST_DAY = '2025-10-06';
 const LAST_DAY = '2026-10-17';

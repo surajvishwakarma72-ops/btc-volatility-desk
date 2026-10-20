@@ -362,10 +362,13 @@ async function buildShadowData() {
   };
 
   const outJson = JSON.stringify(output, null, 2);
-  fs.writeFileSync('frontend/data/shadow_backtest_dataset.json', outJson);
+  // MUST live under frontend/public/ so `vite build` ships it to dist/data/ (served
+  // at /data/…); frontend/data/ is NOT copied into the production bundle.
+  fs.mkdirSync('frontend/public/data', { recursive: true });
+  fs.writeFileSync('frontend/public/data/shadow_backtest_dataset.json', outJson);
   // The dashboard loads the .js wrapper — keep both in sync so the fix reaches the UI.
-  fs.writeFileSync('frontend/data/shadow_backtest_dataset.js', `window.__SHADOW_BACKTEST_DATA = ${outJson};\n`);
-  console.log(`Saved ${sessions.length} sessions to frontend/data/shadow_backtest_dataset.{json,js}!`);
+  fs.writeFileSync('frontend/public/data/shadow_backtest_dataset.js', `window.__SHADOW_BACKTEST_DATA = ${outJson};\n`);
+  console.log(`Saved ${sessions.length} sessions to frontend/public/data/shadow_backtest_dataset.{json,js}!`);
   console.log(`Baseline: ${aggregates.baseline.trades} trades, ${aggregates.baseline.winRate} win, $${aggregates.baseline.pnl}`);
   console.log(`Master Dual-Engine: ${aggregates.master.trades} trades, ${aggregates.master.winRate} win, $${aggregates.master.pnl}`);
   console.log(`Saved Stopped Trades: ${aggregates.savedLossCount} sessions avoided 2.0x SL.`);
