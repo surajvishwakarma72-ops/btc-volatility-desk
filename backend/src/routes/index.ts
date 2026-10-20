@@ -9,10 +9,11 @@ import { alertRoutes } from './alerts.js';
 import { deltaRoutes } from './delta.js';
 import { migrationRoutes } from './migration.js';
 import { telemetryRoutes } from './telemetry.js';
+import { marketGatewayRoutes } from './mkt.js';
 
 /**
  * Primary API v1 Router Registration
- * 
+ *
  * Mounts all domain route stubs under /api/v1/*
  */
 export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
@@ -26,4 +27,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(deltaRoutes, { prefix: '/delta' });
   await fastify.register(migrationRoutes, { prefix: '/migration' });
   await fastify.register(telemetryRoutes, { prefix: '/telemetry' });
+  await fastify.register(marketGatewayRoutes, { prefix: '/mkt' });
 };
