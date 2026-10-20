@@ -18093,27 +18093,13 @@ async function paintOI(force){const S=W.__gexSeries;if(!S||!S.createPriceLine||O
   catch(x){}finally{OI.busy=false;}}
 
 /* ================= my trade from Delta (API key entered in My trade) ================= */
-// The key and secret stay on this device (localStorage v100_dkey). Requests are signed here (HMAC-SHA256, Web Crypto).
-// Delta is asked directly; if the browser blocks the cross-site call, the same signed request is relayed by the
-// desk's Vercel function api/delta-proxy (it only forwards; it never sees the secret).
+// Authenticated Delta account/P&L calls are DEFERRED until the desk has real login auth.
+// The browser holds NO key/secret and does NO signing (that moves to the backend /api/v1/delta/signed,
+// which stays dormant until auth exists). dget is a dormant stub so account panels render an
+// "unavailable" state rather than calling an unauthenticated endpoint. See OPERATIONS_HANDOFF.md.
 const DELTA='https://api.india.delta.exchange';
-const API={key:()=>LS.get('v100_dkey',null),on:()=>{const k=API.key();return !!(k&&k.key&&k.secret);},at:0,err:null,busy:false,last:null,route:LS.get('v100_droute','direct'),tried:0};
-function proxyUrl(){const c=LS.get('v100_dproxy',null);if(c)return c;if(location.protocol!=='file:')return '/api/delta-proxy';return 'https://truthful-courtesy-production-241d.up.railway.app/api/delta-proxy';}
-async function hmacHex(secret,msg){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);const s=await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(msg));return [...new Uint8Array(s)].map(b=>b.toString(16).padStart(2,'0')).join('');}
-async function dget(path,query){const K=API.key();const q=query?'?'+query:'';
-  // v105.20: a signed request is tried by the route that last worked, then by the other one. Before, one failed direct call
-  // switched the desk to the proxy for good, and if the proxy was missing every later call failed ("cannot reach Delta").
-  const sign=async()=>{const ts=String(Math.floor(Date.now()/1000));return {ts,sig:await hmacHex(K.secret,'GET'+ts+path+q)};};
-  const tryDirect=async()=>{const {ts,sig}=await sign();return fetch(DELTA+path+q,{headers:{'api-key':K.key,timestamp:ts,signature:sig,Accept:'application/json'},cache:'no-store'});};
-  const tryProxy=async()=>{const {ts,sig}=await sign();const u=proxyUrl()+'?path='+encodeURIComponent(path)+'&query='+encodeURIComponent(query||'');return fetch(u,{headers:{'x-api-key':K.key,'x-ts':ts,'x-sig':sig,Accept:'application/json'},cache:'no-store'});};
-  const order=API.route==='proxy'?[['proxy',tryProxy],['direct',tryDirect]]:[['direct',tryDirect],['proxy',tryProxy]];
-  let r=null,lastErr=null;API.tries=[];
-  for(const [name,fn] of order){try{r=await fn();if(r.status===404&&name==='proxy'){API.tries.push(name+': not found');r=null;lastErr=new Error('proxy_missing');continue;}
-      if(API.route!==name){API.route=name;LS.set('v100_droute',name);}API.tries.push(name+': '+r.status);break;}
-    catch(e){API.tries.push(name+': blocked');lastErr=e;r=null;}}
-  if(!r)throw lastErr||new Error('Failed to fetch');
-  const j=await r.json().catch(()=>null);if(!r.ok||!j||j.success===false){const c=j&&j.error?(j.error.code||j.error.message||JSON.stringify(j.error)):'HTTP '+r.status;const er=new Error(String(c));er.detail=j&&j.error||null;er.status=r.status;throw er;}
-  dget.meta=j.meta||null;return j.result;}
+const API={key:()=>null,on:()=>false,at:0,err:null,busy:false,last:null,route:'disabled',tried:0};
+async function dget(path,query){const e=new Error('Account data disabled (server-side auth pending)');e.disabled=true;e.status=503;throw e;}
 function legIv(px,K,type,t,exp){const S=(()=>{try{const R=W.rvIndexBars&&W.rvIndexBars();if(R&&R.bars){let best=null;for(const b of R.bars.values())if(b&&b.t<=t&&(!best||b.t>best.t))best=b;if(best&&t-best.t<15*MIN)return best.c;}}catch(e){}return null;})();
   const st=settleOf(exp);if(!(S>0&&px>0&&st>t))return null;const T=(st-t)/(365*DAY);
   const nc=x=>{const a=1/(1+0.2316419*Math.abs(x)),d=0.3989423*Math.exp(-x*x/2),p=d*a*(0.3193815+a*(-0.3565638+a*(1.781478+a*(-1.821256+a*1.330274))));return x>=0?1-p:p;};
