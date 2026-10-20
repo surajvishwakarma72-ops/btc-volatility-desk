@@ -1,5 +1,6 @@
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
@@ -9,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { serializerCompiler, validatorCompiler, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 import { apiV1Routes } from './routes/index.js';
 import { calRoutes } from './routes/cal.js';
+
+declare module 'fastify' { interface FastifyInstance { authenticate: any } }
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +49,12 @@ export async function buildServer(): Promise<FastifyInstance> {
     max: Number(process.env.RATE_LIMIT_MAX) || 3000, // req/min — one desk page-load bursts ~145 gateway calls; generous for a single user, still a bot backstop
     timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
     allowList: ['127.0.0.1'], // Caddy/health checks on the local docker network
+  });
+
+  await app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-insecure-change-me' });
+  app.decorate('authenticate', async function (request: any, reply: any) {
+    try { await request.jwtVerify(); }
+    catch { return reply.status(401).send({ success: false, error: 'Unauthorized' }); }
   });
 
   app.setErrorHandler((err: any, req, reply) => {
