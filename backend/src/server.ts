@@ -1,5 +1,6 @@
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import path from 'node:path';
@@ -36,6 +37,12 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: corsOrigins.length ? corsOrigins : ['http://localhost:3000', 'http://localhost:4000'],
     credentials: true,
+  });
+
+  await app.register(rateLimit, {
+    max: Number(process.env.RATE_LIMIT_MAX) || 600, // requests
+    timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
+    allowList: ['127.0.0.1'], // Caddy/health checks on the local docker network
   });
 
   app.setErrorHandler((err: any, req, reply) => {
