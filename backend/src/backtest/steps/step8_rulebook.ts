@@ -64,7 +64,7 @@ function main() {
     const oosW = win(dd.filter((t) => t.half === 1));
     const w = win(dd);
     const exp = mean(dd.map((t) => t.pnl));
-    const verdict = oosW >= 70 && exp > 0 ? 'TRADE' : oosW >= 65 && exp > 0 ? 'TRADE-LIGHT' : 'SKIP';
+    const verdict = oosW >= 70 && exp > 0 ? 'TRADE' : oosW >= 60 && exp > 0 ? 'TRADE-LIGHT' : 'SKIP';
     const fragile = Math.abs(oosW - BREAKEVEN_WIN) <= 5;
     perDay.push({ dow: DOW[d], n: dd.length, winRate: +w.toFixed(1), isWin: +isW.toFixed(1), oosWin: +oosW.toFixed(1), expectancy: +exp.toFixed(2), verdict, fragile });
     console.log(`  ${DOW[d]}  ${String(dd.length).padStart(3)}  ${w.toFixed(1).padStart(5)}  ${isW.toFixed(1).padStart(6)}  ${oosW.toFixed(1).padStart(7)}  ${exp.toFixed(2).padStart(10)}   ${verdict.padEnd(12)}  ${fragile ? 'FRAGILE' : ''}`);
