@@ -122,7 +122,7 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(503).send({ success: false, error: 'Delta credentials not configured on server' });
     }
     const ts = String(Math.floor(Date.now() / 1000));
-    const q = query ? '?' + query.replace(/^\?/, '') : ''; // client signs with the '?'-prefixed query
+    const q = query ? '?' + query.replace(/^\?/, '') : ''; // normalise to exactly one leading '?' (mirrors the desk's original signing scheme)
     const sig = signDelta(secret, 'GET', ts, path, q);
     try {
       const upstream = await fetch(`${DELTA_BASE}${path}${q}`, {
