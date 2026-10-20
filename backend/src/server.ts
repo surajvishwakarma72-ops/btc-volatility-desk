@@ -1,5 +1,6 @@
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import websocket from '@fastify/websocket';
 import fastifyStatic from '@fastify/static';
 import path from 'node:path';
@@ -7,7 +8,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { serializerCompiler, validatorCompiler, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 import { apiV1Routes } from './routes/index.js';
-import { handleDeltaProxy } from './routes/delta.js';
+import { calRoutes } from './routes/cal.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,9 @@ export async function buildServer(): Promise<FastifyInstance> {
       level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
     },
     bodyLimit: 1_048_576,
+    // Behind Caddy (the only thing that can reach app:4000), trust X-Forwarded-For so
+    // req.ip is the real client — makes per-client rate-limiting + the allowList work.
+    trustProxy: true,
   });
 
   app.setValidatorCompiler(validatorCompiler);
@@ -36,6 +40,12 @@ export async function buildServer(): Promise<FastifyInstance> {
   await app.register(cors, {
     origin: corsOrigins.length ? corsOrigins : ['http://localhost:3000', 'http://localhost:4000'],
     credentials: true,
+  });
+
+  await app.register(rateLimit, {
+    max: Number(process.env.RATE_LIMIT_MAX) || 600, // requests
+    timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
+    allowList: ['127.0.0.1'], // Caddy/health checks on the local docker network
   });
 
   app.setErrorHandler((err: any, req, reply) => {
@@ -65,9 +75,8 @@ export async function buildServer(): Promise<FastifyInstance> {
   // Mount API v1 router
   await app.register(apiV1Routes, { prefix: '/api/v1' });
 
-  // Direct compatibility route for Delta Exchange signed requests relay
-  app.get('/api/delta-proxy', handleDeltaProxy);
-  app.post('/api/delta-proxy', handleDeltaProxy);
+  // Economic calendar relay — no prefix; frontend calls /api/cal (not /api/v1/cal)
+  await app.register(calRoutes);
 
   // Serve static frontend if built (for unified cloud deployment on Railway/Render)
   const possibleDistPaths = [

@@ -552,9 +552,12 @@ function flushLow(){if(!P.ready||SC.on)return;var now=Date.now(),wait=1e9;
 function start(j){lowActive++;var done=function(){lowActive--;var h=host[j.h];if(h)h.a--;st.call(W,flushLow,0);};
   F(j.u,j.o).then(function(r){done();j.res(r);},function(e){done();j.rej(e);});}
 P.lowQueue=function(){return {queued:LOW.length,active:lowActive,ready:P.ready};};
-if(F)W.fetch=function(input,init){var u=typeof input==='string'?input:(input&&input.url)||'';
-  if(!u||(init&&init.method&&init.method!=='GET')||!isLow(u))return F(input,init);
-  return new Promise(function(res,rej){var j={u:input,o:init,res:res,rej:rej,dead:false,p:prio(input),h:hostOf(input),at:Date.now()},sig=init&&init.signal;
+var GW_HOSTS={'api.india.delta.exchange':['/v2/products','/v2/tickers','/v2/history/candles','/v2/l2orderbook/','/v2/trades/'],'www.deribit.com':['/api/v2/public/'],'fapi.binance.com':['/fapi/','/futures/data/'],'api.binance.com':['/api/v3/'],'data-api.binance.vision':['/api/v3/'],'data.binance.vision':['/data/'],'www.okx.com':['/api/v5/public/','/api/v5/rubik/'],'cryptocurrency.cv':['/api/'],'api.llama.fi':['/hacks']};
+function gwRewrite(u){try{var p=new URL(u,location.href);var ps=GW_HOSTS[p.hostname];if(ps&&ps.some(function(x){return p.pathname.indexOf(x)===0;}))return '/api/v1/mkt?u='+encodeURIComponent(p.href);}catch(e){}return u;}
+if(F)W.fetch=function(input,init){var u0=typeof input==='string'?input:(input&&input.url)||'';
+  var rw=gwRewrite(u0); if(rw!==u0){input=rw;} var u=rw, uLow=rw!==u0?u0:rw; // slow-lane + priority classified on the ORIGINAL url (the rewritten /api/v1/mkt?u= is %2F-encoded)
+  if(!u||(init&&init.method&&init.method!=='GET')||!isLow(uLow))return F(input,init);
+  return new Promise(function(res,rej){var j={u:input,o:init,res:res,rej:rej,dead:false,p:prio(uLow),h:hostOf(input),at:Date.now()},sig=init&&init.signal;
     if(sig){if(sig.aborted){rej(new DOMException('Aborted','AbortError'));return;}
       sig.addEventListener('abort',function(){if(!j.dead&&LOW.indexOf(j)>=0){j.dead=true;P.lowAborted=(P.lowAborted||0)+1;rej(new DOMException('Aborted','AbortError'));}},{once:true});}
     LOW.push(j);flushLow();});};
@@ -18090,27 +18093,13 @@ async function paintOI(force){const S=W.__gexSeries;if(!S||!S.createPriceLine||O
   catch(x){}finally{OI.busy=false;}}
 
 /* ================= my trade from Delta (API key entered in My trade) ================= */
-// The key and secret stay on this device (localStorage v100_dkey). Requests are signed here (HMAC-SHA256, Web Crypto).
-// Delta is asked directly; if the browser blocks the cross-site call, the same signed request is relayed by the
-// desk's Vercel function api/delta-proxy (it only forwards; it never sees the secret).
+// Authenticated Delta account/P&L calls are DEFERRED until the desk has real login auth.
+// The browser holds NO key/secret and does NO signing (that moves to the backend /api/v1/delta/signed,
+// which stays dormant until auth exists). dget is a dormant stub so account panels render an
+// "unavailable" state rather than calling an unauthenticated endpoint. See OPERATIONS_HANDOFF.md.
 const DELTA='https://api.india.delta.exchange';
-const API={key:()=>LS.get('v100_dkey',null),on:()=>{const k=API.key();return !!(k&&k.key&&k.secret);},at:0,err:null,busy:false,last:null,route:LS.get('v100_droute','direct'),tried:0};
-function proxyUrl(){const c=LS.get('v100_dproxy',null);if(c)return c;if(location.protocol!=='file:')return '/api/delta-proxy';return 'https://truthful-courtesy-production-241d.up.railway.app/api/delta-proxy';}
-async function hmacHex(secret,msg){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);const s=await crypto.subtle.sign('HMAC',k,new TextEncoder().encode(msg));return [...new Uint8Array(s)].map(b=>b.toString(16).padStart(2,'0')).join('');}
-async function dget(path,query){const K=API.key();const q=query?'?'+query:'';
-  // v105.20: a signed request is tried by the route that last worked, then by the other one. Before, one failed direct call
-  // switched the desk to the proxy for good, and if the proxy was missing every later call failed ("cannot reach Delta").
-  const sign=async()=>{const ts=String(Math.floor(Date.now()/1000));return {ts,sig:await hmacHex(K.secret,'GET'+ts+path+q)};};
-  const tryDirect=async()=>{const {ts,sig}=await sign();return fetch(DELTA+path+q,{headers:{'api-key':K.key,timestamp:ts,signature:sig,Accept:'application/json'},cache:'no-store'});};
-  const tryProxy=async()=>{const {ts,sig}=await sign();const u=proxyUrl()+'?path='+encodeURIComponent(path)+'&query='+encodeURIComponent(query||'');return fetch(u,{headers:{'x-api-key':K.key,'x-ts':ts,'x-sig':sig,Accept:'application/json'},cache:'no-store'});};
-  const order=API.route==='proxy'?[['proxy',tryProxy],['direct',tryDirect]]:[['direct',tryDirect],['proxy',tryProxy]];
-  let r=null,lastErr=null;API.tries=[];
-  for(const [name,fn] of order){try{r=await fn();if(r.status===404&&name==='proxy'){API.tries.push(name+': not found');r=null;lastErr=new Error('proxy_missing');continue;}
-      if(API.route!==name){API.route=name;LS.set('v100_droute',name);}API.tries.push(name+': '+r.status);break;}
-    catch(e){API.tries.push(name+': blocked');lastErr=e;r=null;}}
-  if(!r)throw lastErr||new Error('Failed to fetch');
-  const j=await r.json().catch(()=>null);if(!r.ok||!j||j.success===false){const c=j&&j.error?(j.error.code||j.error.message||JSON.stringify(j.error)):'HTTP '+r.status;const er=new Error(String(c));er.detail=j&&j.error||null;er.status=r.status;throw er;}
-  dget.meta=j.meta||null;return j.result;}
+const API={key:()=>null,on:()=>false,at:0,err:null,busy:false,last:null,route:'disabled',tried:0};
+async function dget(path,query){const e=new Error('Account data disabled (server-side auth pending)');e.disabled=true;e.status=503;throw e;}
 function legIv(px,K,type,t,exp){const S=(()=>{try{const R=W.rvIndexBars&&W.rvIndexBars();if(R&&R.bars){let best=null;for(const b of R.bars.values())if(b&&b.t<=t&&(!best||b.t>best.t))best=b;if(best&&t-best.t<15*MIN)return best.c;}}catch(e){}return null;})();
   const st=settleOf(exp);if(!(S>0&&px>0&&st>t))return null;const T=(st-t)/(365*DAY);
   const nc=x=>{const a=1/(1+0.2316419*Math.abs(x)),d=0.3989423*Math.exp(-x*x/2),p=d*a*(0.3193815+a*(-0.3565638+a*(1.781478+a*(-1.821256+a*1.330274))));return x>=0?1-p:p;};
@@ -18139,8 +18128,7 @@ async function apiPoll(force){if(!API.on()||API.busy)return;const now=Date.now()
     API.err=/ip_not_whitelisted|whitelist/i.test(m)?'Delta wants this IP whitelisted for the key':/invalid_api_key|InvalidApiKey/i.test(m)?'API key not accepted':/signature/i.test(m)?'signature rejected (check secret / phone clock)':/proxy_missing/.test(m)?'Delta blocks the browser and the desk proxy is not on Vercel yet':/Failed to fetch|NetworkError|TypeError|Load failed/i.test(m)?'cannot reach Delta from this page (browser blocked, proxy unreachable)':m.slice(0,80);}
   finally{API.busy=false;}}
 function onConn(e){const b=e.target.closest('[data-v100]');if(!b)return;const a=b.dataset.v100;
-  if(a==='save'){const key=($('v100Key')||{}).value||'',secret=($('v100Sec')||{}).value||'';if(key.trim().length<6||secret.trim().length<6){const p=b.closest('section');if(p){const m=p.querySelector('p');if(m)m.innerHTML='<b class="neg">Paste both the API key and the secret.</b>';}return;}
-    LS.set('v100_dkey',{key:key.trim(),secret:secret.trim()});try{W.v99&&W.v99.closeForm&&W.v99.closeForm();}catch(x){}API.route='direct';LS.set('v100_droute','direct');API.err=null;API.at=0;API.last=null;apiPoll(true);try{W.v99&&W.v99.render();}catch(x){}}
+  if(a==='save'){const p=b.closest('section');if(p){const m=p.querySelector('p');if(m)m.innerHTML='<b>Account sync is paused.</b> Live Delta account / P&L is disabled until desk login is added (signing moved server-side). Nothing is stored in this browser.';}return;}
   else if(a==='off'){LS.del('v100_dkey');API.err=null;API.last=null;API.at=0;const cur=LS.get('v99_trade',null);if(cur&&cur.src==='api')LS.del('v99_trade');try{W.v99&&W.v99.render();}catch(x){}}
   else if(a==='check'){API.err=null;apiPoll(true);}
   else if(a==='toggleRoute'){API.route=API.route==='proxy'?'direct':'proxy';LS.set('v100_droute',API.route);API.err=null;apiPoll(true);try{W.v18&&W.v18.render&&W.v18.render();}catch(x){}}
