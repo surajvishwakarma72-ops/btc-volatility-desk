@@ -43,7 +43,7 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   await app.register(rateLimit, {
-    max: Number(process.env.RATE_LIMIT_MAX) || 600, // requests
+    max: Number(process.env.RATE_LIMIT_MAX) || 3000, // req/min — one desk page-load bursts ~145 gateway calls; generous for a single user, still a bot backstop
     timeWindow: process.env.RATE_LIMIT_WINDOW || '1 minute',
     allowList: ['127.0.0.1'], // Caddy/health checks on the local docker network
   });

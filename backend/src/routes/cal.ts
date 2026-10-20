@@ -22,6 +22,14 @@ export const calRoutes: FastifyPluginAsync = async (fastify) => {
     if (hit && now - hit.at < TTL) return reply.send(hit.data);
     try {
       const res = await fetch(FF[week], { headers: { 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' }, signal: AbortSignal.timeout(12_000) });
+      if (!res.ok) {
+        // Upstream feed unavailable (faireconomy's nextweek file currently 404s) — degrade to an
+        // empty calendar (200) so the UI shows "no events" instead of erroring. Serve stale if we have it.
+        if (hit) return reply.send(hit.data);
+        const empty: unknown[] = [];
+        cache.set(week, { at: now, data: empty });
+        return reply.send(empty);
+      }
       const data = await res.json();
       cache.set(week, { at: now, data });
       return reply.send(data);
