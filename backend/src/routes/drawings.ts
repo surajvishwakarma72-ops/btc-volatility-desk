@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import { db, chartDrawings } from '../db/index.js';
+import { drawingsQuery, idParam, drawingCreate, drawingUpdate } from '../schemas.js';
 
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -15,7 +16,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/drawings - List drawings
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { schema: { querystring: drawingsQuery } }, async (request, reply) => {
     const { symbol = 'BTCUSDT' } = request.query as { symbol?: string };
 
     const drawings = await db
@@ -31,14 +32,8 @@ export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/drawings - Save new drawing
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { schema: { body: drawingCreate } }, async (request, reply) => {
     const body = request.body as any;
-    if (!body || !body.points || !Array.isArray(body.points)) {
-      return reply.status(400).send({
-        success: false,
-        error: 'Missing required field: points array [{ time, price }]',
-      });
-    }
 
     const newDrawing = {
       id: crypto.randomUUID(),
@@ -60,7 +55,7 @@ export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PUT /api/v1/drawings/:id - Update drawing
-  fastify.put('/:id', async (request, reply) => {
+  fastify.put('/:id', { schema: { params: idParam, body: drawingUpdate } }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as any;
 
@@ -90,7 +85,7 @@ export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/v1/drawings/:id - Delete drawing
-  fastify.delete('/:id', async (request, reply) => {
+  fastify.delete('/:id', { schema: { params: idParam } }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const deleted = await db

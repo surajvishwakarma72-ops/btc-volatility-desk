@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 import { db, marketTimeseries, optionFlowBuckets, indicatorSnapshots } from '../db/index.js';
+import { candlesQuery, flowQuery, indicatorsQuery } from '../schemas.js';
 
 /**
  * Market Data & Historical Time-Series Routes
@@ -13,7 +14,7 @@ import { db, marketTimeseries, optionFlowBuckets, indicatorSnapshots } from '../
  */
 export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/market/candles - Historical OHLCV candles
-  fastify.get('/candles', async (request, reply) => {
+  fastify.get('/candles', { schema: { querystring: candlesQuery } }, async (request, reply) => {
     const {
       symbol = 'BTCUSDT',
       interval = '1m',
@@ -52,7 +53,7 @@ export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/market/flow - 15-minute option flow buckets
-  fastify.get('/flow', async (request, reply) => {
+  fastify.get('/flow', { schema: { querystring: flowQuery } }, async (request, reply) => {
     const {
       symbol = 'BTC',
       from,
@@ -84,7 +85,7 @@ export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/market/indicators - 5-minute indicator snapshots
-  fastify.get('/indicators', async (request, reply) => {
+  fastify.get('/indicators', { schema: { querystring: indicatorsQuery } }, async (request, reply) => {
     const {
       symbol = 'BTCUSDT',
       from,

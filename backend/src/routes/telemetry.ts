@@ -8,6 +8,7 @@ import {
   runAutomatedRecalibration,
   evaluateLockedRule,
 } from '../services/self-testing-audit.js';
+import { telemetrySession, telemetryCheckQuery } from '../schemas.js';
 
 export const telemetryRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/telemetry/boundaries - Single shared source of truth for boundaries
@@ -59,7 +60,7 @@ export const telemetryRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/telemetry/session - Log a live session and self-test verification
-  fastify.post('/session', async (request, reply) => {
+  fastify.post('/session', { schema: { body: telemetrySession } }, async (request, reply) => {
     try {
       const payload = request.body as any;
       if (!payload || !payload.sessionDate || !payload.uiState) {
@@ -103,7 +104,7 @@ export const telemetryRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/telemetry/check - Instant check of what the rule expects right now
-  fastify.get('/check', async (request) => {
+  fastify.get('/check', { schema: { querystring: telemetryCheckQuery } }, async (request) => {
     const { timeMs, speed } = request.query as { timeMs?: string; speed?: string };
     const t = timeMs ? Number(timeMs) : Date.now();
     const s = speed ? Number(speed) : 0.95;

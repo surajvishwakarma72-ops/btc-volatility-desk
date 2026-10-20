@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { db, nightlyReviews } from '../db/index.js';
+import { nightsQuery, dateParam, nightCreate } from '../schemas.js';
 
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -16,7 +17,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const nightRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/nights - List all reviews
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { schema: { querystring: nightsQuery } }, async (request, reply) => {
     const { verdict, outcome, limit = 100, offset = 0 } = request.query as {
       verdict?: string;
       outcome?: string;
@@ -89,7 +90,7 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/nights/:date - Get specific night by date (YYYY-MM-DD)
-  fastify.get('/:date', async (request, reply) => {
+  fastify.get('/:date', { schema: { params: dateParam } }, async (request, reply) => {
     const { date } = request.params as { date: string };
 
     const review = await db
@@ -109,14 +110,8 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/nights - Upsert a night review
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { schema: { body: nightCreate } }, async (request, reply) => {
     const body = request.body as any;
-    if (!body || !body.sessionDate || !body.verdict) {
-      return reply.status(400).send({
-        success: false,
-        error: 'Missing required parameters: sessionDate (YYYY-MM-DD) and verdict (SELL_FULL | SELL_HALF | NO_TRADE)',
-      });
-    }
 
     const reviewData = {
       userId: DEFAULT_USER_ID,
@@ -163,7 +158,7 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/v1/nights/:date - Delete a review
-  fastify.delete('/:date', async (request, reply) => {
+  fastify.delete('/:date', { schema: { params: dateParam } }, async (request, reply) => {
     const { date } = request.params as { date: string };
 
     const deleted = await db

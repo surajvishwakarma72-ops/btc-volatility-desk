@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, desc, and } from 'drizzle-orm';
 import { db, alertRules, alertLogs } from '../db/index.js';
+import { alertRuleCreate, idParam, alertsHistoryQuery, alertTest, registerDevice } from '../schemas.js';
 
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -30,14 +31,8 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/alerts/rules - Create rule
-  fastify.post('/rules', async (request, reply) => {
+  fastify.post('/rules', { schema: { body: alertRuleCreate } }, async (request, reply) => {
     const body = request.body as any;
-    if (!body || !body.ruleName || !body.ruleType || body.thresholdValue == null) {
-      return reply.status(400).send({
-        success: false,
-        error: 'Missing required fields: ruleName, ruleType, thresholdValue',
-      });
-    }
 
     const newRule = {
       id: crypto.randomUUID(),
@@ -62,7 +57,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/v1/alerts/rules/:id - Delete rule
-  fastify.delete('/rules/:id', async (request, reply) => {
+  fastify.delete('/rules/:id', { schema: { params: idParam } }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const deleted = await db
@@ -85,7 +80,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/alerts/history - List triggered logs and VolTurn signals
-  fastify.get('/history', async (request, reply) => {
+  fastify.get('/history', { schema: { querystring: alertsHistoryQuery } }, async (request, reply) => {
     const { channel, limit = 100, offset = 0 } = request.query as {
       channel?: string;
       limit?: number;
@@ -111,7 +106,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/alerts/test - Dispatch test notification
-  fastify.post('/test', async (request, reply) => {
+  fastify.post('/test', { schema: { body: alertTest } }, async (request, reply) => {
     const { alertService } = await import('../services/index.js');
     const body = (request.body as any) || {};
     const channel = body.channel || 'ntfy';
@@ -133,15 +128,9 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/alerts/register-device - Register or update mobile push device & sound preference
-  fastify.post('/register-device', async (request, reply) => {
+  fastify.post('/register-device', { schema: { body: registerDevice } }, async (request, reply) => {
     const { pushDevices } = await import('../db/index.js');
     const body = request.body as any;
-    if (!body || !body.token) {
-      return reply.status(400).send({
-        success: false,
-        error: 'Missing required field: token',
-      });
-    }
 
     const { token, platform = 'android', soundChoice = 'chime', enabled = true } = body;
 

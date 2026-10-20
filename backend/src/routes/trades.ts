@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, desc, and } from 'drizzle-orm';
 import { db, trades, tradeLegs } from '../db/index.js';
+import { listQuery, idParam, tradeCreate, tradePatch } from '../schemas.js';
 
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -17,7 +18,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/trades - List trades with optional status filter
-  fastify.get('/', async (request, reply) => {
+  fastify.get('/', { schema: { querystring: listQuery } }, async (request, reply) => {
     const { status, limit = 50, offset = 0 } = request.query as {
       status?: string;
       limit?: number;
@@ -73,7 +74,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/trades/:id - Get specific trade with its legs
-  fastify.get('/:id', async (request, reply) => {
+  fastify.get('/:id', { schema: { params: idParam } }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const tradeRes = await db
@@ -102,14 +103,8 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/trades - Record new trade
-  fastify.post('/', async (request, reply) => {
+  fastify.post('/', { schema: { body: tradeCreate } }, async (request, reply) => {
     const body = request.body as any;
-    if (!body || !body.callStrike || !body.putStrike || !body.expiryDate) {
-      return reply.status(400).send({
-        success: false,
-        error: 'Missing required trade parameters: callStrike, putStrike, expiryDate',
-      });
-    }
 
     const tradeId = crypto.randomUUID();
     const newTrade = {
@@ -162,7 +157,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PATCH /api/v1/trades/:id - Update or close a trade
-  fastify.patch('/:id', async (request, reply) => {
+  fastify.patch('/:id', { schema: { params: idParam, body: tradePatch } }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const body = request.body as any;
 
@@ -195,7 +190,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // DELETE /api/v1/trades/:id - Delete trade
-  fastify.delete('/:id', async (request, reply) => {
+  fastify.delete('/:id', { schema: { params: idParam } }, async (request, reply) => {
     const { id } = request.params as { id: string };
 
     const deleted = await db

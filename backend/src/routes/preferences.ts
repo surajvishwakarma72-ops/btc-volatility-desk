@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
 import { db, userPreferences } from '../db/index.js';
+import { preferencesUpdate } from '../schemas.js';
 
 const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -40,11 +41,8 @@ export const preferenceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PUT /api/v1/preferences - Save / update preferences
-  fastify.put('/', async (request, reply) => {
+  fastify.put('/', { schema: { body: preferencesUpdate } }, async (request, reply) => {
     const body = request.body as any;
-    if (!body) {
-      return reply.status(400).send({ success: false, error: 'Request body required' });
-    }
 
     const newPrefs = {
       id: crypto.randomUUID(),
