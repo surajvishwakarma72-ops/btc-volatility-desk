@@ -555,9 +555,9 @@ P.lowQueue=function(){return {queued:LOW.length,active:lowActive,ready:P.ready};
 var GW_HOSTS={'api.india.delta.exchange':['/v2/products','/v2/tickers','/v2/history/candles','/v2/l2orderbook/','/v2/trades/'],'www.deribit.com':['/api/v2/public/'],'fapi.binance.com':['/fapi/'],'api.binance.com':['/api/v3/'],'data-api.binance.vision':['/api/v3/'],'data.binance.vision':['/data/'],'www.okx.com':['/api/v5/public/'],'cryptocurrency.cv':['/api/'],'api.llama.fi':['/hacks']};
 function gwRewrite(u){try{var p=new URL(u,location.href);var ps=GW_HOSTS[p.hostname];if(ps&&ps.some(function(x){return p.pathname.indexOf(x)===0;}))return '/api/v1/mkt?u='+encodeURIComponent(p.href);}catch(e){}return u;}
 if(F)W.fetch=function(input,init){var u0=typeof input==='string'?input:(input&&input.url)||'';
-  var rw=gwRewrite(u0); if(rw!==u0){input=rw;} var u=rw;
-  if(!u||(init&&init.method&&init.method!=='GET')||!isLow(u))return F(input,init);
-  return new Promise(function(res,rej){var j={u:input,o:init,res:res,rej:rej,dead:false,p:prio(input),h:hostOf(input),at:Date.now()},sig=init&&init.signal;
+  var rw=gwRewrite(u0); if(rw!==u0){input=rw;} var u=rw, uLow=rw!==u0?u0:rw; // slow-lane + priority classified on the ORIGINAL url (the rewritten /api/v1/mkt?u= is %2F-encoded)
+  if(!u||(init&&init.method&&init.method!=='GET')||!isLow(uLow))return F(input,init);
+  return new Promise(function(res,rej){var j={u:input,o:init,res:res,rej:rej,dead:false,p:prio(uLow),h:hostOf(input),at:Date.now()},sig=init&&init.signal;
     if(sig){if(sig.aborted){rej(new DOMException('Aborted','AbortError'));return;}
       sig.addEventListener('abort',function(){if(!j.dead&&LOW.indexOf(j)>=0){j.dead=true;P.lowAborted=(P.lowAborted||0)+1;rej(new DOMException('Aborted','AbortError'));}},{once:true});}
     LOW.push(j);flushLow();});};
