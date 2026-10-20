@@ -1,0 +1,5 @@
+# These run/parse on the Linux VM — keep LF regardless of the dev's platform.
+*.sh                    text eol=lf
+Caddyfile               text eol=lf
+docker-compose*.yml     text eol=lf
+.env.prod.example       text eol=lf

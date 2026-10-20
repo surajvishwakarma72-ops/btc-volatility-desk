@@ -11,6 +11,8 @@ build/
 .env
 .env*
 *.env.txt
+# ...but DO commit example templates (names only, no secrets)
+!.env.prod.example
 
 # Large data exports
 *.json-export
