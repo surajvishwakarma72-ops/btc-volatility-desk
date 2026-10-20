@@ -8,7 +8,6 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { serializerCompiler, validatorCompiler, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 import { apiV1Routes } from './routes/index.js';
-import { handleDeltaProxy } from './routes/delta.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,10 +73,6 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Mount API v1 router
   await app.register(apiV1Routes, { prefix: '/api/v1' });
-
-  // Direct compatibility route for Delta Exchange signed requests relay
-  app.get('/api/delta-proxy', handleDeltaProxy);
-  app.post('/api/delta-proxy', handleDeltaProxy);
 
   // Serve static frontend if built (for unified cloud deployment on Railway/Render)
   const possibleDistPaths = [
