@@ -129,7 +129,7 @@ export class DeribitFlowWorker {
             rawFlow: { latestSample: tr },
           })
           .onConflictDoUpdate({
-            target: optionFlowBuckets.time,
+            target: [optionFlowBuckets.symbol, optionFlowBuckets.time],
             set: {
               callSellVol: sql`option_flow_buckets.call_sell_vol + ${callSell}`,
               callBuyVol: sql`option_flow_buckets.call_buy_vol + ${callBuy}`,

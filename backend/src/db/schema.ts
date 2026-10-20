@@ -321,7 +321,7 @@ export const indicatorSnapshots = pgTable(
 export const optionFlowBuckets = pgTable(
   'option_flow_buckets',
   {
-    time: timestamp('time', { withTimezone: true }).primaryKey(), // 15-minute bucket start timestamp ('t')
+    time: timestamp('time', { withTimezone: true }).notNull(), // 15-minute bucket start timestamp ('t')
     symbol: varchar('symbol', { length: 20 }).default('BTC').notNull(),
     callSellVol: numeric('call_sell_vol', { precision: 16, scale: 4 }).default('0').notNull(), // side[0]
     callBuyVol: numeric('call_buy_vol', { precision: 16, scale: 4 }).default('0').notNull(),   // side[1]
@@ -334,7 +334,10 @@ export const optionFlowBuckets = pgTable(
     tradeCount: integer('trade_count').default(0).notNull(), // 'n'
     rawFlow: jsonb('raw_flow'), // Raw bucket object for lossless fidelity
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-  }
+  },
+  (table) => [
+    primaryKey({ columns: [table.symbol, table.time] }),
+  ]
 );
 
 /**
