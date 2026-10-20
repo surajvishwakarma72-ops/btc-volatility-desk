@@ -375,7 +375,7 @@ export const sessionAuditLogs = pgTable('session_audit_logs', {
   speedVsIv: numeric('speed_vs_iv', { precision: 6, scale: 3 }),
   sizing: numeric('sizing', { precision: 4, scale: 2 }).default('0').notNull(), // 0.0, 0.5, 1.0
   realizedPnl: numeric('realized_pnl', { precision: 12, scale: 2 }),
-  outcome: varchar('outcome', { length: 20 }).default('SKIPPED').notNull(), // 'WIN' | 'STOP' | 'SKIPPED' | 'SCRATCH'
+  outcome: varchar('outcome', { length: 20 }).default('SKIPPED').notNull(), // 'WIN' | 'STOP' | 'SKIPPED' | 'SCRATCH' | 'PENDING'
   uiState: jsonb('ui_state').notNull(), // { calendarDay, clockWindow, speedBeacon, goSignal, statusWord }
   ruleState: jsonb('rule_state').notNull(), // { expectedCalendar, expectedWindow, expectedSpeed, expectedGo, expectedSizing }
   telemetryMatch: boolean('telemetry_match').default(true).notNull(), // true if UI perfectly matched rule

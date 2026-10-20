@@ -41,7 +41,7 @@ export interface SessionTelemetryInput {
   speedVsIv: number;
   sizing?: number;
   realizedPnl?: number;
-  outcome?: 'WIN' | 'STOP' | 'SKIPPED' | 'SCRATCH';
+  outcome?: 'WIN' | 'STOP' | 'SKIPPED' | 'SCRATCH' | 'PENDING';
   sessionStatus?: 'TRADED' | 'SKIPPED';
   uiState: UIStatePayload;
   meta?: any;
