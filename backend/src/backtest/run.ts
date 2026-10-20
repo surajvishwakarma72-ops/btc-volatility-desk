@@ -65,9 +65,12 @@ function main() {
   };
 
   fs.writeFileSync(path.join(OUT, 'rulebook.json'), JSON.stringify(rulebook, null, 2));
-  // Also emit the window-wrapped copy the live desk loads (mirrors shadow_backtest_dataset.js).
-  const fePath = path.resolve(__dirname, '../../../frontend/data/rulebook.js');
-  fs.writeFileSync(fePath, `window.__STRANGLE_RULEBOOK = ${JSON.stringify(rulebook, null, 2)};\n`);
+  // Also emit the window-wrapped copy the live desk loads. MUST live under
+  // frontend/public/ so `vite build` ships it to dist/data/ (served at /data/…);
+  // frontend/data/ is NOT copied into the production bundle.
+  const feDir = path.resolve(__dirname, '../../../frontend/public/data');
+  fs.mkdirSync(feDir, { recursive: true });
+  fs.writeFileSync(path.join(feDir, 'rulebook.js'), `window.__STRANGLE_RULEBOOK = ${JSON.stringify(rulebook, null, 2)};\n`);
 
   const tradeDays = weekdayRules.filter((d: any) => d.verdict.startsWith('TRADE')).map((d: any) => d.weekday);
   const skipDays = weekdayRules.filter((d: any) => d.verdict === 'SKIP').map((d: any) => d.weekday);
