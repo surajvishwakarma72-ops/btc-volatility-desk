@@ -47,8 +47,10 @@ export class AlertService {
       return false;
     }
 
-    const wantTelegram = channels.includes('telegram') || channels.includes('in_app');
-    const wantNtfy = channels.includes('ntfy') || channels.includes('in_app');
+    // 'in_app' routes to the push/FCM block only (always runs below); it must NOT
+    // trigger Telegram or ntfy. Those fire only when explicitly requested.
+    const wantTelegram = channels.includes('telegram');
+    const wantNtfy = channels.includes('ntfy');
     let status = 'SENT';
 
     if (wantTelegram) {

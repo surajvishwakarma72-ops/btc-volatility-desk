@@ -80,6 +80,7 @@ export const indicatorsQuery = flowQuery;
 // telemetry
 export const telemetrySession = z.object({
   sessionDate: z.string(),
+  speedVsIv: z.coerce.number(),
   uiState: z.object({}).passthrough(),
 }).passthrough();
 export const telemetryCheckQuery = z.object({
