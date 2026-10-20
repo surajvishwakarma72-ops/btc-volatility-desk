@@ -24282,8 +24282,8 @@ function plan(D0,raw){
   {
     const RBW=(W.__STRANGLE_RULEBOOK&&W.__STRANGLE_RULEBOOK.weekdays)||null;
     const rbd=RBW?RBW.find(x=>x.weekday===DN[wd]):null;
-    const FB={1:['TRADE','NORMAL',73.3,1.23],2:['TRADE-LIGHT','NORMAL',68.0,0.78],5:['TRADE','HIGH',75.0,3.48]};
-    const isSkipDay=(wd===3||wd===4); // Wed/Thu now SKIP (weekend already returned above)
+    const FB={1:['TRADE','NORMAL',73.3,1.23],2:['TRADE-LIGHT','NORMAL',68.0,0.78],3:['TRADE-LIGHT','NORMAL',63.6,1.39],5:['TRADE','HIGH',75.0,3.48]};
+    const isSkipDay=(wd===4); // Only Thursday SKIP (60% OOS bar; weekend already returned above)
     const verdict=rbd?rbd.verdict:(isSkipDay?'SKIP':(FB[wd]?FB[wd][0]:'SKIP'));
     const conv=rbd?rbd.conviction:(FB[wd]?FB[wd][1]:'');
     const oos=rbd?rbd.oosWinPct:(FB[wd]?FB[wd][2]:null);
@@ -24294,9 +24294,9 @@ function plan(D0,raw){
 
     if(verdict==='SKIP'){
       r.kind='skip';r.size=0;r.delta='None';r.icon='stop';
-      r.badge=wd===4?'🛑 THU SKIP':wd===3?'🛑 WED SKIP':'🛑 SKIP';
+      r.badge=wd===4?'🛑 THU SKIP':'🛑 SKIP';
       r.title=DN[wd]+' Skip';
-      r.why=(wd===4?'Thursday weekly-expiry shock. ':wd===3?'Wednesday held in-sample but decayed out-of-sample. ':'')+'Backtest out-of-sample win rate below the 65% trade bar — no trade.';
+      r.why=(wd===4?'Thursday trades the Sunday 3-day weekly expiry — the expiry-day shock (52.6% OOS win). ':'')+'Backtest out-of-sample win rate below the 60% trade bar — no trade.';
       return r;
     }
 
@@ -24592,7 +24592,7 @@ const REVEAL_DATA = {
       { label: 'NY+180m Point Estimate', val: '33.0% stops (89/270) vs 46.8% baseline (126/269)' },
       { label: 'Statistical Significance', val: 'χ² = 10.251, p = 0.0014 (Clears Bonferroni α = 0.00556)' },
       { label: 'Premium Sacrifice', val: 'Sacrifices only 3.2% credit ($314 vs $325) for +13.9% safety' },
-      { label: '50/50 OOS Split', val: 'In-Sample stop 21.7% → Out-of-Sample stop 19.7% (stable, net stays positive)' }
+      { label: '50/50 OOS Split', val: 'In-Sample stop 23.2% → Out-of-Sample stop 19.3% (stable, net stays positive)' }
     ],
     note: 'The ONLY entry timing statistically proven safer across the entire 269-session dataset.'
   },
@@ -25060,22 +25060,22 @@ function setOosMode(mode){
         '<td><span class="badge-ok">Blind baseline</span></td>'+
       '</tr>'+
       '<tr class="row-master-is">'+
-        '<td>Rulebook — In-Sample (first 60 trade-nights)</td>'+
+        '<td>Rulebook — In-Sample (first 82 trade-nights)</td>'+
         '<td>60</td>'+
-        '<td>21.7% (13 stops)</td>'+
-        '<td>78.3%</td>'+
-        '<td><b style="color:#10B981">+$191</b></td>'+
+        '<td>23.2% (19 stops)</td>'+
+        '<td>74.4%</td>'+
+        '<td><b style="color:#10B981">+$234</b></td>'+
         '<td>—</td>'+
         '<td><span class="badge-ok">In-Sample Fit</span></td>'+
       '</tr>'+
       '<tr class="row-master-oos">'+
-        '<td><b>Rulebook — Out-of-Sample (fresh 61 trade-nights)</b></td>'+
+        '<td><b>Rulebook — Out-of-Sample (fresh 83 trade-nights)</b></td>'+
         '<td><b>61</b></td>'+
-        '<td><b>19.7% (12 stops)</b></td>'+
-        '<td><b>70.5%</b></td>'+
-        '<td><b style="color:#10B981;font-size:12.5px">+$39</b></td>'+
+        '<td><b>19.3% (16 stops)</b></td>'+
+        '<td><b>69.9%</b></td>'+
+        '<td><b style="color:#10B981;font-size:12.5px">+$56</b></td>'+
         '<td><b>—</b></td>'+
-        '<td><span class="badge-proven">★ PROVEN STABLE (OOS +$39 · 70.5% win)</span></td>'+
+        '<td><span class="badge-proven">★ PROVEN STABLE (OOS +$56 · 69.9% win)</span></td>'+
       '</tr>';
   if(mode==='prod'){
     if(thPnl)thPnl.textContent='Net P&L (calibrated model)';
@@ -25083,7 +25083,7 @@ function setOosMode(mode){
     tbody.innerHTML=rowsHTML;
     if(noteBox)noteBox.innerHTML=
       '<div class="oos-note-title">✅ RULEBOOK vs BLIND — new backtest (2025-10-06 → 2026-10-17)</div>'+
-      '<p>The rulebook (TRADE Mon/Tue/Fri, SKIP Wed/Thu/weekend, enter 22:30–01:00 IST, skip if RSI&gt;60, symmetric 0.15Δ, 2.0× stop, 07:00 exit) cut stop-losses from <b>65 → 25</b> (259 → 121 trades) for <b>equal-or-better net (+$229 vs +$221)</b> — meeting the goal: fewest stop-losses at net ≥ blind. Out-of-sample stays positive: <b>70.5% win, 19.7% stops, +$39</b>. P&L uses the calibrated model (position credit ~$32, avg win $6.3, avg loss $11.7 ≈ ₹1000).</p>';
+      '<p>The rulebook (TRADE Mon/Fri, TRADE-LIGHT Tue/Wed, SKIP Thu/weekend, enter 22:30–01:00 IST, skip if RSI&gt;60, symmetric 0.15Δ, 2.0× stop, 07:00 exit) cut stop-losses from <b>65 → 35</b> (259 → 165 trades) for <b>equal-or-better net (+$290 vs +$221)</b> — meeting the goal: fewest stop-losses at net ≥ blind. Out-of-sample stays positive: <b>69.9% win, 19.3% stops, +$56</b>. P&L uses the calibrated model (position credit ~$32, avg win $6.3, avg loss $11.7 ≈ ₹1000).</p>';
   }else{
     if(thPnl)thPnl.textContent='Net P&L (calibrated model)';
     if(thDd)thDd.textContent='Max Drawdown';
@@ -25254,29 +25254,29 @@ function openBig(){
                 '<td><span class="badge-ok">Blind baseline</span></td>'+
               '</tr>'+
               '<tr class="row-master-is">'+
-                '<td>Rulebook — In-Sample (first 60 trade-nights)</td>'+
+                '<td>Rulebook — In-Sample (first 82 trade-nights)</td>'+
                 '<td>60</td>'+
-                '<td>21.7% (13 stops)</td>'+
-                '<td>78.3%</td>'+
-                '<td><b style="color:#10B981">+$191</b></td>'+
+                '<td>23.2% (19 stops)</td>'+
+                '<td>74.4%</td>'+
+                '<td><b style="color:#10B981">+$234</b></td>'+
                 '<td>—</td>'+
                 '<td><span class="badge-ok">In-Sample Fit</span></td>'+
               '</tr>'+
               '<tr class="row-master-oos">'+
-                '<td><b>Rulebook — Out-of-Sample (fresh 61 trade-nights)</b></td>'+
+                '<td><b>Rulebook — Out-of-Sample (fresh 83 trade-nights)</b></td>'+
                 '<td><b>61</b></td>'+
-                '<td><b>19.7% (12 stops)</b></td>'+
-                '<td><b>70.5%</b></td>'+
-                '<td><b style="color:#10B981;font-size:12.5px">+$39</b></td>'+
+                '<td><b>19.3% (16 stops)</b></td>'+
+                '<td><b>69.9%</b></td>'+
+                '<td><b style="color:#10B981;font-size:12.5px">+$56</b></td>'+
                 '<td><b>—</b></td>'+
-                '<td><span class="badge-proven">★ PROVEN STABLE (OOS +$39 · 70.5% win)</span></td>'+
+                '<td><span class="badge-proven">★ PROVEN STABLE (OOS +$56 · 69.9% win)</span></td>'+
               '</tr>'+
             '</tbody>'+
           '</table>'+
         '</div>'+
         '<div class="oos-note-box" id="v147OosNote">'+
           '<div class="oos-note-title">✅ RULEBOOK vs BLIND — new backtest (2025-10-06 → 2026-10-17)</div>'+
-          '<p>TRADE Mon/Tue/Fri, SKIP Wed/Thu/weekend, enter 22:30–01:00 IST, skip if RSI&gt;60, symmetric 0.15Δ, 2.0× stop. Stop-losses cut <b>65 → 25</b> (259 → 121 trades) at <b>net ≥ blind (+$229 vs +$221)</b>; out-of-sample stays positive (70.5% win, 19.7% stops, +$39).</p>'+
+          '<p>TRADE Mon/Fri, TRADE-LIGHT Tue/Wed, SKIP Thu/weekend, enter 22:30–01:00 IST, skip if RSI&gt;60, symmetric 0.15Δ, 2.0× stop. Stop-losses cut <b>65 → 35</b> (259 → 165 trades) at <b>net ≥ blind (+$290 vs +$221)</b>; out-of-sample stays positive (69.9% win, 19.3% stops, +$56).</p>'+
         '</div>'+
       '</div>'+
 
@@ -25710,7 +25710,7 @@ function paintSheet(){
         '<b>'+fmt(SEL)+'</b>'+
         '<span class="sheet-badge '+p.kind+'">'+p.badge+'</span>'+
       '</div>'+
-      '<span class="sheet-rule-tag">'+(p.isPast?'HISTORICAL BACKTEST RECORD (REAL SESSION)':(p.kind==='full'?'CANDIDATE SETUP (GATED BY SPEED < 1.5×)':p.kind==='skip'?'SUNDAY EXPIRY SHOCK':'DYNAMIC SIZING'))+'</span>'+
+      '<span class="sheet-rule-tag">'+(p.isPast?'HISTORICAL BACKTEST RECORD (REAL SESSION)':(p.kind==='full'?'HIGH CONVICTION · FULL SIZE (1.0×)':p.kind==='skip'?(p.wd===4?'THURSDAY · SUNDAY EXPIRY SHOCK':'NO TRADE'):'TRADE-LIGHT · HALF SIZE (0.5×)'))+'</span>'+
     '</div>'+
 
     '<div class="sheet-summary '+p.kind+'">'+

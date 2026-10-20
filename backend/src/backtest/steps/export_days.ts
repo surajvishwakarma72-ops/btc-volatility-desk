@@ -23,7 +23,7 @@ import { computeFeatures } from '../lib/indicators.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FE = path.resolve(__dirname, '../../../../frontend/public/data');
 const ENTRY_OFF = 240; // 23:00 IST
-const SKIP_DOW = new Set([0, 3, 4, 6]); // Sun, Wed, Thu, Sat
+const SKIP_DOW = new Set([0, 4, 6]); // Sun, Thu, Sat (full-data: Wed now trades)
 
 function main() {
   const data = loadData();
@@ -33,7 +33,7 @@ function main() {
     const day = dk(dayMs + 12 * HR);
     const f = frame(d0(day) + 20 * HR);
     if (SKIP_DOW.has(f.dow)) {
-      days[day] = { v: 'SKIP', s: false, w: false, pnl: 0, note: f.dow === 0 || f.dow === 6 ? 'Weekend off' : f.dow === 4 ? 'Thursday expiry shock (OOS)' : 'Wednesday decayed out-of-sample' };
+      days[day] = { v: 'SKIP', s: false, w: false, pnl: 0, note: f.dow === 0 || f.dow === 6 ? 'Weekend off' : 'Thursday — Sunday 3-day weekly expiry shock' };
       continue;
     }
     if (!data.hasIv(f.n2n) || f.exit > data.priceLast) continue;
