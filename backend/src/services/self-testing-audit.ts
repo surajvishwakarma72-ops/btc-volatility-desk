@@ -1,11 +1,5 @@
 import { db, sessionAuditLogs, recalibrationAudits } from '../db/index.js';
-import { desc, eq, sql } from 'drizzle-orm';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { computeRecalibration, type SessionRec } from '../lib/recalibration.js';
 
 export const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -174,7 +168,7 @@ export async function recordSessionTelemetry(input: SessionTelemetryInput) {
     speedVsIv: String(input.speedVsIv),
     sizing: String(input.sizing != null ? input.sizing : rule.expectedSizing),
     realizedPnl: input.realizedPnl != null ? String(input.realizedPnl) : null,
-    outcome: input.outcome || (rule.expectedGo === 'GO' ? 'WIN' : 'SKIPPED'),
+    outcome: input.outcome || (rule.expectedGo === 'GO' ? 'PENDING' : 'SKIPPED'),
     uiState: input.uiState,
     ruleState,
     telemetryMatch,
@@ -195,32 +189,9 @@ export async function recordSessionTelemetry(input: SessionTelemetryInput) {
  * Re-runs Bonferroni correction and 50/50 walk-forward OOS validation against the database.
  */
 export async function runAutomatedRecalibration() {
-  // Query all recorded session logs from DB
   const logs = await db.select().from(sessionAuditLogs).orderBy(sessionAuditLogs.sessionDate);
 
-  // If DB logs are less than 50, blend with historical archive to ensure statistical power
-  let sessions: Array<{
-    date: string;
-    dow: number;
-    speed: number;
-    isStop: boolean;
-    sizing: number;
-  }> = [];
-
-  // Try to load historical dataset for recalibration baseline
-  try {
-    const archivePath = path.resolve(__dirname, '../../dexbtusd_1year.json');
-    if (fs.existsSync(archivePath)) {
-      const raw = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
-      // Construct historical session records
-      // Or use stage1 logic
-    }
-  } catch (e) {
-    // Ignore error
-  }
-
-  // Parse DB logs into session records
-  const dbSessions = logs.map(l => ({
+  const sessions: SessionRec[] = logs.map((l) => ({
     date: l.sessionDate,
     dow: l.dayOfWeek,
     speed: Number(l.speedVsIv) || 1.0,
@@ -229,49 +200,39 @@ export async function runAutomatedRecalibration() {
     status: l.sessionStatus,
   }));
 
-  const totalSessions = Math.max(logs.length, 269);
-  const half = Math.floor(totalSessions / 2);
-
-  // Bonferroni Bar: alpha = 0.05 / 33 = 0.00152
-  const bonferroniAlpha = 0.001515;
-
-  // Compute metrics from DB + canonical stats
-  const tueWedLogs = logs.filter(l => l.dayOfWeek === 2 || l.dayOfWeek === 3);
-  const tueWedStopRate = tueWedLogs.length ? (tueWedLogs.filter(l => l.outcome === 'STOP').length / tueWedLogs.length) * 100 : 38.0;
-
-  const speedCalmLogs = logs.filter(l => Number(l.speedVsIv) < 1.50);
-  const speedStopRate = speedCalmLogs.length ? (speedCalmLogs.filter(l => l.outcome === 'STOP').length / speedCalmLogs.length) * 100 : 44.3;
-
-  const comboLogs = logs.filter(l => (l.dayOfWeek === 2 || l.dayOfWeek === 3) && Number(l.speedVsIv) < 1.50);
-  const comboStopRate = comboLogs.length ? (comboLogs.filter(l => l.outcome === 'STOP').length / comboLogs.length) * 100 : 32.6;
-  const comboPValue = 0.0012; // Clears Bonferroni
-
-  const oosLogs = logs.slice(half);
-  const oosStopRate = oosLogs.length ? (oosLogs.filter(l => l.outcome === 'STOP').length / oosLogs.length) * 100 : 28.4;
-  const oosStabilityVerdict = oosStopRate <= 35.0 ? 'STABLE' : 'DECAYING';
+  const result = computeRecalibration(sessions, {
+    minSample: 30,
+    bonferroniAlpha: 0.001515,
+    seeded: {
+      tueWedStopRate: 38.0,
+      speedStopRate: 44.3,
+      comboStopRate: 32.6,
+      comboPValue: 0.0012,
+      oosStopRate: 28.4,
+    },
+  });
 
   const auditSummary = {
-    totalSessionsAudited: totalSessions,
+    source: result.source,
     newSessionsLogged: logs.length,
-    telemetryMatches: logs.filter(l => l.telemetryMatch).length,
-    telemetryMismatches: logs.filter(l => !l.telemetryMatch).length,
-    status: 'ALL RULES CONFIRMED',
-    decayFlag: oosStabilityVerdict === 'DECAYING',
+    telemetryMatches: logs.filter((l) => l.telemetryMatch).length,
+    telemetryMismatches: logs.filter((l) => !l.telemetryMatch).length,
+    decayFlag: result.oosStabilityVerdict === 'DECAYING',
     timestamp: new Date().toISOString(),
   };
 
   const auditRecord = await db.insert(recalibrationAudits).values({
-    totalSessions,
-    inSampleSessions: half,
-    outOfSampleSessions: totalSessions - half,
-    bonferroniAlpha: String(bonferroniAlpha),
-    tueWedStopRate: String(tueWedStopRate),
-    speedStopRate: String(speedStopRate),
-    comboStopRate: String(comboStopRate),
-    comboPValue: String(comboPValue),
-    clearedBonferroni: comboPValue < bonferroniAlpha,
-    oosStopRate: String(oosStopRate),
-    oosStabilityVerdict,
+    totalSessions: result.totalSessions,
+    inSampleSessions: result.inSampleSessions,
+    outOfSampleSessions: result.outOfSampleSessions,
+    bonferroniAlpha: String(result.bonferroniAlpha),
+    tueWedStopRate: String(result.tueWedStopRate),
+    speedStopRate: String(result.speedStopRate),
+    comboStopRate: String(result.comboStopRate),
+    comboPValue: String(result.comboPValue),
+    clearedBonferroni: result.clearedBonferroni,
+    oosStopRate: String(result.oosStopRate),
+    oosStabilityVerdict: result.oosStabilityVerdict,
     auditSummary,
   }).returning();
 
