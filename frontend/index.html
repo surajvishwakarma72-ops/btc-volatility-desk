@@ -18098,8 +18098,30 @@ async function paintOI(force){const S=W.__gexSeries;if(!S||!S.createPriceLine||O
 // which stays dormant until auth exists). dget is a dormant stub so account panels render an
 // "unavailable" state rather than calling an unauthenticated endpoint. See OPERATIONS_HANDOFF.md.
 const DELTA='https://api.india.delta.exchange';
-const API={key:()=>null,on:()=>false,at:0,err:null,busy:false,last:null,route:'disabled',tried:0};
-async function dget(path,query){const e=new Error('Account data disabled (server-side auth pending)');e.disabled=true;e.status=503;throw e;}
+// Single-password login: exchange the desk password for a JWT (stored here), sent as a Bearer
+// token on server-signed Delta calls. The password itself never persists in the browser.
+const API={
+  tok:()=>LS.get('desk_jwt',null),
+  on:()=>!!LS.get('desk_jwt',null),
+  at:0,err:null,busy:false,last:null,route:'server',tried:0,
+  key:()=>null,
+};
+async function deskLogin(password){
+  const r=await fetch('/api/v1/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password})});
+  const j=await r.json().catch(()=>null);
+  if(!r.ok||!j||!j.token){const e=new Error(j&&j.error||('HTTP '+r.status));e.status=r.status;throw e;}
+  LS.set('desk_jwt',j.token); return true;
+}
+function deskLogout(){LS.del('desk_jwt');API.err=null;API.last=null;API.at=0;}
+async function dget(path,query){
+  const tok=API.tok(); if(!tok){const e=new Error('Not logged in');e.status=401;throw e;}
+  const u='/api/v1/delta/signed?path='+encodeURIComponent(path)+'&query='+encodeURIComponent(query||'');
+  const r=await fetch(u,{headers:{Accept:'application/json',Authorization:'Bearer '+tok},cache:'no-store'});
+  if(r.status===401){deskLogout();try{W.v99&&W.v99.render&&W.v99.render();}catch(x){}const e=new Error('Session expired — log in again');e.status=401;throw e;}
+  const j=await r.json().catch(()=>null);
+  if(!r.ok||!j||j.success===false){const c=j&&j.error?(j.error.code||j.error.message||JSON.stringify(j.error)):'HTTP '+r.status;const er=new Error(String(c));er.detail=j&&j.error||null;er.status=r.status;throw er;}
+  dget.meta=j.meta||null;return j.result;
+}
 function legIv(px,K,type,t,exp){const S=(()=>{try{const R=W.rvIndexBars&&W.rvIndexBars();if(R&&R.bars){let best=null;for(const b of R.bars.values())if(b&&b.t<=t&&(!best||b.t>best.t))best=b;if(best&&t-best.t<15*MIN)return best.c;}}catch(e){}return null;})();
   const st=settleOf(exp);if(!(S>0&&px>0&&st>t))return null;const T=(st-t)/(365*DAY);
   const nc=x=>{const a=1/(1+0.2316419*Math.abs(x)),d=0.3989423*Math.exp(-x*x/2),p=d*a*(0.3193815+a*(-0.3565638+a*(1.781478+a*(-1.821256+a*1.330274))));return x>=0?1-p:p;};
@@ -18128,8 +18150,13 @@ async function apiPoll(force){if(!API.on()||API.busy)return;const now=Date.now()
     API.err=/ip_not_whitelisted|whitelist/i.test(m)?'Delta wants this IP whitelisted for the key':/invalid_api_key|InvalidApiKey/i.test(m)?'API key not accepted':/signature/i.test(m)?'signature rejected (check secret / phone clock)':/proxy_missing/.test(m)?'Delta blocks the browser and the desk proxy is not on Vercel yet':/Failed to fetch|NetworkError|TypeError|Load failed/i.test(m)?'cannot reach Delta from this page (browser blocked, proxy unreachable)':m.slice(0,80);}
   finally{API.busy=false;}}
 function onConn(e){const b=e.target.closest('[data-v100]');if(!b)return;const a=b.dataset.v100;
-  if(a==='save'){const p=b.closest('section');if(p){const m=p.querySelector('p');if(m)m.innerHTML='<b>Account sync is paused.</b> Live Delta account / P&L is disabled until desk login is added (signing moved server-side). Nothing is stored in this browser.';}return;}
-  else if(a==='off'){LS.del('v100_dkey');API.err=null;API.last=null;API.at=0;const cur=LS.get('v99_trade',null);if(cur&&cur.src==='api')LS.del('v99_trade');try{W.v99&&W.v99.render();}catch(x){}}
+  if(a==='save'){const pw=((($('v100Key')||{}).value)||'').trim();const p=b.closest('section');const m=p&&p.querySelector('p');
+    if(pw.length<4){if(m)m.innerHTML='<b class="neg">Enter your desk password.</b>';return;}
+    if(m)m.textContent='Logging in…';
+    deskLogin(pw).then(()=>{try{W.v99&&W.v99.closeForm&&W.v99.closeForm();}catch(x){}API.err=null;API.at=0;API.last=null;apiPoll(true);try{W.v99&&W.v99.render();}catch(x){}})
+      .catch(e=>{if(m)m.innerHTML='<b class="neg">'+(e.status===401?'Wrong password.':(e.status===503?'Login not set up on the server yet.':'Login failed.'))+'</b>';});
+    return;}
+  else if(a==='off'){deskLogout();const cur=LS.get('v99_trade',null);if(cur&&cur.src==='api')LS.del('v99_trade');try{W.v99&&W.v99.render();}catch(x){}}
   else if(a==='check'){API.err=null;apiPoll(true);}
   else if(a==='toggleRoute'){API.route=API.route==='proxy'?'direct':'proxy';LS.set('v100_droute',API.route);API.err=null;apiPoll(true);try{W.v18&&W.v18.render&&W.v18.render();}catch(x){}}
   else if(a==='useProxy'){API.route='proxy';LS.set('v100_droute','proxy');API.err=null;apiPoll(true);try{W.v18&&W.v18.render&&W.v18.render();}catch(x){}}}
@@ -20125,15 +20152,14 @@ D.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data
  addEventListener('online',()=>setTimeout(recheck,1500));D.addEventListener('visibilitychange',()=>{if(!D.hidden)setTimeout(recheck,800);});}
 function keyCard(){const A=W.v100&&W.v100.api;if(!A)return '';const on=A.on(),k=(()=>{try{return A.key()||{};}catch(e){return {};}})(),S=strangleNow();
   if(!on)return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Connect Delta (read-only)</h3></div>
-    <p>The desk only reads your positions and fills. It cannot place orders or withdraw. The key stays on this device. On Delta India: Account → API keys → tick only <b>Read</b>.</p>
-    <label class="v18f">API key<input id="v100Key" type="text" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
-    <label class="v18f">API secret<input id="v100Sec" type="password" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
-    <div class="v18btns"><button type="button" class="v18btn pri" data-v100="save">Test &amp; save</button></div></section>`;
+    <p>Log in to view your live Delta positions &amp; P&amp;L. The desk only reads your positions and fills — it cannot place orders or withdraw. Your password is not stored in this browser.</p>
+    <label class="v18f">Desk password<input id="v100Key" type="password" autocomplete="current-password" spellcheck="false" autocapitalize="off" placeholder="Desk password"></label>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-v100="save">Unlock</button></div></section>`;
   const st=A.err?`<span class="v118st r">✕ ${esc(A.err)}</span>`:A.at?`<span class="v118st g">✓ Connected · read only · synced ${hm(A.at)}</span>`:'<span class="v118st a">Connecting…</span>';
   const pos=A.err?'':S?`<span class="pos">✓ Open position: ${esc(day(settle(S.exp)))} strangle · ${S.legs.map(l=>(l.type==='P'?'put ':'call ')+Math.round(l.K)).join(' / ')}</span>`:A.at?'No short strangle open on Delta right now. It is picked up within 30 s of your first fill.':'';
   return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Connect Delta (read-only)</h3><span class="r">key ${esc(String(k.key||'').slice(0,4))}…</span></div>
     <p>${st}</p>${pos?`<p>${pos}</p>`:''}${A.err&&/whitelist/i.test(A.err)?wlBox(A):A.err?`<p>Tried: ${esc((A.tries||[]).join(' · ')||'—')}</p><p>Delta often blocks signed requests sent straight from a browser page (and from a file opened on the phone). The desk then uses its relay on Vercel, <b>api/delta-proxy.js</b>. Add that file and <b>vercel.json</b> to the GitHub repo once, let Vercel deploy, then press Check now.</p>`:A.at?`<p class="s">Route: ${esc(A.route==='proxy'?'via the Vercel relay':'direct to Delta')}</p>`:''}
-    <div class="v18btns"><button type="button" class="v18btn" data-v100="check">Check now</button><button type="button" class="v18btn" data-v100="off">Remove key</button></div></section>`;}
+    <div class="v18btns"><button type="button" class="v18btn" data-v100="check">Check now</button><button type="button" class="v18btn" data-v100="off">Log out</button></div></section>`;}
 function onSet(e){const b=e.target.closest('[data-v18]');if(!b)return;const a=b.dataset.v18,stamp=new Date().toISOString().slice(0,10);
   if(a==='csv'){const x=csv();download(`desk-blocks-${stamp}.csv`,x.blocks);setTimeout(()=>download(`desk-trades-${stamp}.csv`,x.trades),400);}
   else if(a==='json')download(`desk-trade-log-${stamp}.json`,JSON.stringify(LAB),'application/json');
