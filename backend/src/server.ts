@@ -95,6 +95,22 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // 24/7 Background Market Ingestion & Alert Workers
   app.addHook('onReady', async () => {
+    // Bridge: ensure the default desk user exists so writes don't FK-fail on a
+    // fresh DB. Phase B replaces DEFAULT_USER_ID with the authenticated user.
+    const { db, users } = await import('./db/index.js');
+    try {
+      await db.insert(users).values({
+        id: '00000000-0000-0000-0000-000000000001',
+        email: 'desk@local',
+        passwordHash: '!',
+        displayName: 'Desk',
+        role: 'trader',
+      }).onConflictDoNothing();
+      app.log.info('Default desk user ensured.');
+    } catch (err) {
+      app.log.error({ err }, 'Failed to seed default user');
+    }
+
     const { workerManager } = await import('./services/index.js');
     workerManager.startAll();
   });
