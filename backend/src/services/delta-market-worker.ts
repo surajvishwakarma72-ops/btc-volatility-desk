@@ -13,6 +13,7 @@ export class DeltaMarketWorker {
   public currentOi: number | null = null;
   public currentFundingRate: number | null = null;
   public lastTickTime: Date | null = null;
+  private lastAlertCheck = 0;
   public status: 'CONNECTED' | 'DISCONNECTED' | 'RECONNECTING' = 'DISCONNECTED';
 
   start() {
@@ -79,9 +80,11 @@ export class DeltaMarketWorker {
 
             // Spot barrier / speed alert checks
             if (this.currentSpotPrice) {
-              await alertService.checkMetrics({
-                spotPrice: this.currentSpotPrice,
-              });
+              const now = Date.now();
+              if (now - this.lastAlertCheck >= 1000) {
+                this.lastAlertCheck = now;
+                await alertService.checkMetrics({ spotPrice: this.currentSpotPrice });
+              }
             }
           }
         } catch (err: any) {
