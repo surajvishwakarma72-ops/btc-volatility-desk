@@ -1,11 +1,15 @@
-import { db, optionFlowBuckets, marketTimeseries } from '../db/index.js';
+import { db, optionFlowBuckets } from '../db/index.js';
 import { sql } from 'drizzle-orm';
+import { alertService } from './alert-service.js';
+import { filterNewTrades, computeIvChangePct, type SeqTrade } from '../lib/flow.js';
 
 export class DeribitFlowWorker {
   private isRunning: boolean = false;
   private pollInterval: NodeJS.Timeout | null = null;
   public currentDvol: number | null = null;
   public lastPollTime: Date | null = null;
+  private lastTradeSeq: number | null = null;
+  private prevDvol: number | null = null;
   public status: 'IDLE' | 'POLLING' | 'ERROR' = 'IDLE';
 
   start(intervalMs = 60_000) {
@@ -58,6 +62,11 @@ export class DeribitFlowWorker {
         const dvolValue = parseFloat(latest[4]);
         if (Number.isFinite(dvolValue)) {
           this.currentDvol = dvolValue;
+          const ivChangePct = computeIvChangePct(this.prevDvol, dvolValue);
+          this.prevDvol = dvolValue;
+          if (ivChangePct != null) {
+            await alertService.checkMetrics({ atmIv: dvolValue, ivChangePct });
+          }
         }
       }
     } catch (err: any) {
@@ -78,10 +87,14 @@ export class DeribitFlowWorker {
       const trades = json?.result?.trades;
       if (!Array.isArray(trades) || trades.length === 0) return;
 
+      const { fresh, maxSeq } = filterNewTrades(trades as SeqTrade[], this.lastTradeSeq);
+      this.lastTradeSeq = maxSeq;
+      if (fresh.length === 0) return;
+
       // Group trades into 15-minute floor bucket
       const bucketDurationMs = 15 * 60 * 1000;
 
-      for (const tr of trades) {
+      for (const tr of fresh as any[]) {
         const tradeTime = tr.timestamp;
         const bucketTime = new Date(Math.floor(tradeTime / bucketDurationMs) * bucketDurationMs);
         const amount = parseFloat(tr.amount || '0') || 0;
