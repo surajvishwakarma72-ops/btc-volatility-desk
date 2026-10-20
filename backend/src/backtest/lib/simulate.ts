@@ -21,6 +21,7 @@ export interface SimConfig {
   reachPct: number; // secondary "was 12% reachable" probe (0.12)
   feePerLegUsd: number; // round-trip fee+slippage buffer per leg
   stopBufferRatio: number; // silence proxy: never came within this ratio of 2x
+  stopMult: number; // per-leg stop multiple of entry premium (2.0 = your live rule)
 }
 
 export const DEFAULT_SIM: SimConfig = {
@@ -32,6 +33,7 @@ export const DEFAULT_SIM: SimConfig = {
   reachPct: 0.12,
   feePerLegUsd: 1.75, // calibrated: avg SL ≈ ₹1000 (your live ₹1000-1200 band)
   stopBufferRatio: 1.6,
+  stopMult: 2.0,
 };
 
 export type Outcome = 'TARGET' | 'TIME-WIN' | 'TIME-LOSS' | 'SL-CALL' | 'SL-PUT' | 'NO-DATA';
@@ -60,6 +62,7 @@ export interface SimResult {
   mfeUsd: number;
   btcMovePct: number;
   silence: boolean;
+  maxMarkRatio: number; // worst intra-hold leg mark / entry premium
 }
 
 function noData(entryMs: number): SimResult {
@@ -67,7 +70,7 @@ function noData(entryMs: number): SimResult {
     ok: false, outcome: 'NO-DATA', entryMs, exitMs: entryMs, spot0: 0, iv0: 0,
     Kc: 0, Kp: 0, c0: 0, p0: 0, credit: 0, deltaCActual: 0, deltaPActual: 0,
     stopped: false, hurtLeg: 'NONE', pnlUsd: 0, pnlPctCredit: 0, pnlPctMargin: 0,
-    reachable12: false, maeUsd: 0, mfeUsd: 0, btcMovePct: 0, silence: false,
+    reachable12: false, maeUsd: 0, mfeUsd: 0, btcMovePct: 0, silence: false, maxMarkRatio: 0,
   };
 }
 
@@ -126,16 +129,16 @@ export function simulateStrangle(
     if (netWorst < maeUsd) maeUsd = netWorst;
 
     // 1) Stop-loss (risk first) on intrabar extremes.
-    if (callHigh >= 2 * c0) {
+    if (callHigh >= cfg.stopMult * c0) {
       stopped = true; hurtLeg = 'CALL'; outcome = 'SL-CALL'; exitMs = t;
       const putMark = bs(b.c, Kp, T, iv, 'p');
-      pnlUsd = (credit - (2 * c0 + putMark)) * cfg.contractBTC - fee;
+      pnlUsd = (credit - (cfg.stopMult * c0 + putMark)) * cfg.contractBTC - fee;
       settled = true; break;
     }
-    if (putLow >= 2 * p0) {
+    if (putLow >= cfg.stopMult * p0) {
       stopped = true; hurtLeg = 'PUT'; outcome = 'SL-PUT'; exitMs = t;
       const callMark = bs(b.c, Kc, T, iv, 'c');
-      pnlUsd = (credit - (callMark + 2 * p0)) * cfg.contractBTC - fee;
+      pnlUsd = (credit - (callMark + cfg.stopMult * p0)) * cfg.contractBTC - fee;
       settled = true; break;
     }
 
@@ -191,5 +194,6 @@ export function simulateStrangle(
     mfeUsd,
     btcMovePct,
     silence,
+    maxMarkRatio,
   };
 }

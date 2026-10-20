@@ -36,12 +36,36 @@ export class BacktestData {
   private c15: Map<number, Bar>;
   private ivCurves: Record<string, [number, number][]>;
   private ivSeriesByExpiry = new Map<string, [number, number][]>();
+  private dvolSeries: [number, number][] = [];
 
   constructor() {
     this.bars1m = readCandles('1m');
     this.bars15m = readCandles('15m');
     this.c15 = new Map(this.bars15m.map((b) => [b.t, b]));
     this.ivCurves = JSON.parse(fs.readFileSync(path.join(CACHE, 'iv-curves.json'), 'utf-8'));
+    const dvolPath = path.join(CACHE, 'btc-dvol-1h.json');
+    if (fs.existsSync(dvolPath)) {
+      const raw = JSON.parse(fs.readFileSync(dvolPath, 'utf-8')) as number[][];
+      this.dvolSeries = raw.map((r) => [r[0] * 1000, r[1]] as [number, number]);
+    }
+  }
+
+  private sliceBars(arr: Bar[], fromMs: number, toMs: number): Bar[] {
+    let lo = 0, hi = arr.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m].t < fromMs) lo = m + 1; else hi = m; }
+    const out: Bar[] = [];
+    for (let i = lo; i < arr.length && arr[i].t <= toMs; i++) out.push(arr[i]);
+    return out;
+  }
+
+  /** 15m bars with open time in [fromMs, toMs]. */
+  bars15mBetween(fromMs: number, toMs: number): Bar[] {
+    return this.sliceBars(this.bars15m, fromMs, toMs);
+  }
+
+  /** Forward-filled DVOL (%) at time tMs; null if before first sample / unavailable. */
+  dvolAt(tMs: number): number | null {
+    return at(this.dvolSeries, tMs);
   }
 
   /** Spot (15m close) exactly at a 15m-grid entry time (ms); null if no candle. */
