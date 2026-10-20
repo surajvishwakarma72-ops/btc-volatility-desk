@@ -134,7 +134,9 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
     const ip = await getServerOutboundIp();
     try {
       const start = Date.now();
-      const res = await fetch(`${DELTA_BASE}/v2/time`, {
+      // /v2/settings is a lightweight public endpoint (Delta India has no /v2/time — that 404s).
+      const res = await fetch(`${DELTA_BASE}/v2/settings`, {
+        headers: { Accept: 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
         signal: AbortSignal.timeout(5000),
       });
       const latencyMs = Date.now() - start;
@@ -145,7 +147,7 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
         serverIp: ip,
         deltaReachable: res.ok,
         latencyMs,
-        deltaServerTime: json?.result?.epoch,
+        deltaServerTime: json?.result?.server_time ?? json?.result?.epoch,
       });
     } catch (err: any) {
       return reply.status(503).send({
