@@ -109,7 +109,8 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Server-side signed relay for authenticated Delta calls (key+secret from env, never the browser).
-  fastify.get('/signed', async (request, reply) => {
+  // Guarded: requires a valid desk JWT (login) — without it, 401 (no account data to the public URL).
+  fastify.get('/signed', { preHandler: (fastify as any).authenticate }, async (request, reply) => {
     const qp = (request.query || {}) as { path?: string; query?: string };
     const path = qp.path;
     const query = qp.query || '';
