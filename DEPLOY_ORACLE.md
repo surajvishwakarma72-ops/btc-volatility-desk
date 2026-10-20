@@ -93,18 +93,46 @@ Placeholders: `<VM_IP>`, `<name>.duckdns.org`.
    chmod 600 .env .env.prod
    ```
 
-8. **Launch**
+8. **Launch** — pick ONE path:
+
+   **Option A — build on the VM** (`docker-compose.prod.yml`):
    ```bash
    docker compose -f docker-compose.prod.yml up -d --build > ~/deploy.log 2>&1; tail ~/deploy.log
    docker compose -f docker-compose.prod.yml ps        # app + caddy should be Up
    docker compose -f docker-compose.prod.yml logs -f app
    ```
    First build (`tsc && vite build` for the ~27k-line `index.html` + the backend) takes a few
-   minutes on the 1 GB box — it leans on swap. Caddy fetches the TLS cert on the first HTTPS
-   request (~30 s).
+   minutes on the 1 GB box — it leans on swap. Caddy fetches the TLS cert on first HTTPS (~30 s).
+
+   **Option B — pull a prebuilt image from GHCR** (`docker-compose.ghcr.yml`, recommended on the
+   1 GB box — no compiler on the VM, deploys in seconds). See
+   [GHCR image in CI](#ghcr) for the one-time registry-auth setup, then:
+   ```bash
+   docker compose -f docker-compose.ghcr.yml pull
+   docker compose -f docker-compose.ghcr.yml up -d
+   docker compose -f docker-compose.ghcr.yml ps
+   ```
 
 9. **Verify** — `curl https://<name>.duckdns.org/health` → `{"status":"ok",...}`. Open the site;
    confirm the WebSocket connects (DevTools → Network → WS) and the rulebook/backtest data loads.
+
+<a name="ghcr"></a>
+### GHCR image in CI (one-time setup for Option B)
+
+The `.github/workflows/docker-image.yml` workflow builds the image on every push to `main` (and on
+manual *Run workflow*) and pushes it to **`ghcr.io/surajvishwakarma72-ops/btc-volatility-desk`**.
+Uses the built-in `GITHUB_TOKEN` — no secrets to configure.
+
+For the VM to `pull` it, do ONE of:
+- **Make the package public** (simplest): GitHub → your profile → Packages → `btc-volatility-desk`
+  → Package settings → Change visibility → Public. The VM then pulls with no login.
+- **Authenticate the VM** (keeps it private): create a classic PAT scoped `read:packages`, then on
+  the VM: `echo <PAT> | docker login ghcr.io -u surajvishwakarma72-ops --password-stdin`.
+
+Redeploy after a merge to `main`: wait for the workflow to finish, then on the VM
+`docker compose -f docker-compose.ghcr.yml pull && docker compose -f docker-compose.ghcr.yml up -d`.
+(The E2.1.Micro is x86_64; if you move to an Ampere A1 box, flip the workflow's `platforms:` to
+include `linux/arm64` so a matching image exists.)
 
 ---
 

@@ -1,0 +1,41 @@
+# Production stack that PULLS the prebuilt image from GHCR instead of building on the VM.
+# Recommended on the 1 GB box — no compiler/vite/npm on the VM, deploys in seconds.
+#
+# Prereq: the "Build & push image to GHCR" workflow has run at least once, and the VM can
+# pull the package (either make the GHCR package public, or `docker login ghcr.io` on the VM
+# with a PAT scoped read:packages — see DEPLOY_ORACLE.md "Option B").
+#
+#   docker compose -f docker-compose.ghcr.yml pull
+#   docker compose -f docker-compose.ghcr.yml up -d
+
+services:
+  app:
+    image: ghcr.io/surajvishwakarma72-ops/btc-volatility-desk:latest
+    pull_policy: always
+    env_file: ./.env.prod
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "4000"
+      CORS_ORIGINS: https://${DOMAIN:?set DOMAIN in ./.env}
+    mem_limit: 512m
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in ./.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  caddydata:
+  caddyconfig:
