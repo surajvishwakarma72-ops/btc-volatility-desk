@@ -19790,11 +19790,11 @@ function payoffSvg(legs,S,T,cr,stops){const ivA=legs.reduce((a,l)=>a+l.iv,0)/leg
   g+=`<line x1="${X(S).toFixed(1)}" x2="${X(S).toFixed(1)}" y1="4" y2="${H-18}" stroke="var(--text)" stroke-width="1.4"/><text x="${(X(S)+4).toFixed(1)}" y="14" font-size="10.5" fill="var(--text)">BTC ${kf(S)}</text>`;
   g+=`<text x="10" y="${(Y(0)-4).toFixed(1)}" font-size="10" fill="var(--faint)">$0</text></svg>`;
   return {svg:g,be,em};}
-function legsTable(s,c,sold){const T=s.T,S=s.S;const rows=s.legs.slice().sort((a,b)=>a.type<b.type?1:-1).map(l=>{const G=greeks(S,l.K,T,l.iv/100,l.type==='C'),q=l.n*l.cv,pl=fin(l.entry)?(l.entry-l.mark)*q:null,plOffer=fin(l.entry)&&fin(l.ask)?(l.entry-l.ask)*q:null;
+function legsTable(s,c,sold){const T=s.T,S=s.S;const rows=s.legs.slice().sort((a,b)=>a.type<b.type?1:-1).map(l=>{const G=greeks(S,l.K,T,l.iv/100,l.type==='C'),q=l.n*l.cv,plOffer=fin(l.entry)&&fin(l.ask)?(l.entry-l.ask)*q:null,pl=plOffer!=null?plOffer:(fin(l.entry)?(l.entry-l.mark)*q:null);
     const st=stopLevel(l,S,T),d=st?(st/S-1):null,iv0=sold[l.type];
     return `<div class="v28lr"><div class="a"><b>${l.type==='P'?'Put':'Call'} ${kf(l.K)}</b><i>${l.n} lot${l.n===1?'':'s'} · ${(Math.abs(l.K/S-1)*100).toFixed(1)}% ${l.type==='P'?'below':'above'} BTC</i></div>
-      <div><small>Sold → now</small><b>${px(l.entry)} → ${px(l.mark)}</b>${fin(l.ask)?`<i style="font-size:9.5px;color:var(--muted);display:block">offer ${px(l.ask)}</i>`:''}</div><div><small>IV sold → now</small><b>${iv0!=null?iv0.toFixed(1):'—'} → ${l.iv.toFixed(1)}</b></div>
-      <div><small>Delta</small><b>${G?(l.type==='C'?'+':'−')+Math.abs(G.delta).toFixed(2):'—'}</b></div><div><small>P&amp;L</small><b class="${pl>=0?'pos':'neg'}">${usd(pl,true)}</b>${plOffer!=null?`<i class="${plOffer>=0?'pos':'neg'}" style="font-size:10px;display:block">Offer: ${usd(plOffer,true)}</i>`:''}</div>
+      <div><small>Sold → Delta</small><b>${px(l.entry)} → ${px(fin(l.ask)?l.ask:l.mark)}</b>${fin(l.ask)?`<i style="font-size:9.5px;color:var(--muted);display:block">offer</i>`:''}</div><div><small>IV sold → now</small><b>${iv0!=null?iv0.toFixed(1):'—'} → ${l.iv.toFixed(1)}</b></div>
+      <div><small>Delta</small><b>${G?(l.type==='C'?'+':'−')+Math.abs(G.delta).toFixed(2):'—'}</b></div><div><small>P&amp;L</small><b class="${pl>=0?'pos':'neg'}">${usd(pl,true)}</b></div>
       <div><small>Leg stop 2×</small><b>${fin(l.entry)?px(2*l.entry):'—'}</b><i class="${d!=null&&Math.abs(d)<0.015?'neg':''}">${st?'BTC '+kf(st)+' · '+(d>=0?'+':'−')+Math.abs(d*100).toFixed(2)+'%':''}</i></div></div>`;}).join('');
   return `<div class="v28legs">${rows}</div>`;}
 function greekLine(g,S,rv6,label){const thH=g.thetaH;const hrs=v=>thH>0&&fin(v)?(Math.abs(v)/thH).toFixed(1)+' h of theta':'';
@@ -19917,13 +19917,15 @@ function tradeCard(){const c=LAB.cur;const s=c&&c.last;if(!c||!s)return '';
     (acts.length?`<div class="v18warn">Your adjustments: ${acts.map(a=>`${hm(a.t)} ${a.type==='P'?'put':'call'} ${a.from}→${a.to}`).join(' · ')}</div>`:'');
   const tr=tradeRec(),sold=soldIv(tr),xa=(tr&&tr.exitAt)||c.exitAt,rv6=rvNow(6),g=book(s.legs,s.S,s.T);
   const totOffer=(s.legs&&s.legs.every(l=>fin(l.entry)&&fin(l.ask)))?s.legs.reduce((acc,l)=>acc+(l.entry-l.ask)*l.n*l.cv,0):null;
+  const curPnl=totOffer!=null?totOffer:tot;
+  const curUsed=cr>0?Math.max(0,-curPnl)/cr:null;
   const stops=s.legs.map(l=>({type:l.type,x:stopLevel(l,s.S,s.T)})),PO=payoffSvg(s.legs,s.S,s.T,cr,stops);
   const near=stops.filter(x=>fin(x.x)).map(x=>({...x,d:Math.abs(x.x/s.S-1)})).sort((a,b)=>a.d-b.d)[0];
   const sig6=fin(rv6)?rv6/100*Math.sqrt(6/8760):null;
   const dt=t=>t?day(t)+' '+hm(t):'—';
   return `<div class="v18c v18">${unconfHtml()}<div class="v18h"><h3>My position</h3><span class="r">${esc(head)}</span></div>
     <div class="v28kp"><div><small>Entry</small><b>${dt(c.openedAt)}</b></div><div><small>Planned exit</small><b>${dt(xa)}</b></div><div><small>Credit</small><b>${usd(cr)}</b><i>${px(s.legs.reduce((a,l)=>a+(l.entry||0),0))} per BTC</i></div>
-      <div><small>Live P&amp;L</small><b class="${tot>=0?'pos':'neg'}">${usd(tot,true)}</b><i>${totOffer!=null?`Delta Offer: ${usd(totOffer,true)}`:'before fees'}</i></div><div><small>Strangle stop (premium ×2)</small><b class="${used!=null&&used>0.5?'neg':used>0?'am':''}">${cr>0?usd(-cr):'—'}</b><i>${used!=null?Math.round(used*100)+'% used':'—'}</i></div></div>
+      <div><small>Live P&amp;L</small><b class="${curPnl>=0?'pos':'neg'}">${usd(curPnl,true)}</b><i>Delta P&amp;L</i></div><div><small>Strangle stop (premium ×2)</small><b class="${curUsed!=null&&curUsed>0.5?'neg':curUsed>0?'am':''}">${cr>0?usd(-cr):'—'}</b><i>${curUsed!=null?Math.round(curUsed*100)+'% used':'—'}</i></div></div>
     ${legsTable(s,c,sold)}
     ${greekLine(g,s.S,rv6)}
     ${PO.svg}<div class="v28leg"><span><i style="background:#5B9BD5"></i>P&amp;L now (live IV)</span><span><i style="background:var(--amber,#E3AE45)"></i>at expiry</span><span><i style="background:var(--neg);opacity:.35"></i>past a leg stop</span></div>
@@ -19990,25 +19992,26 @@ function place(){const el=FP.el;if(!el||FP.pip)return;const p=FP.pos;el.style.le
   if(phone()){el.style.right='10px';if(p&&fin(p.py))el.style.top=Math.max(60,Math.min(innerHeight-el.offsetHeight-8,p.py*innerHeight))+'px';else el.style.bottom='calc(var(--tab-h,62px) + env(safe-area-inset-bottom) + 12px)';}
   else if(p&&fin(p.x)){el.style.left=Math.max(4,Math.min(innerWidth-el.offsetWidth-4,p.x*innerWidth))+'px';el.style.top=Math.max(60,Math.min(innerHeight-el.offsetHeight-4,p.y*innerHeight))+'px';}
   else{el.style.right='18px';el.style.bottom='18px';}}
-function floatHtml(pill){const c=LAB.cur,s=c&&c.last;const tot=(c.pre||0)+c.sum.total,cr=c.credit||0,used=cr>0?Math.max(0,-tot)/cr:null;
+function floatHtml(pill){const c=LAB.cur,s=c&&c.last;const totRaw=(c.pre||0)+c.sum.total,cr=c.credit||0;
   const totOffer=(s&&s.legs&&s.legs.every(l=>fin(l.entry)&&fin(l.ask)))?s.legs.reduce((acc,l)=>acc+(l.entry-l.ask)*l.n*l.cv,0):null;
+  const tot=totOffer!=null?totOffer:totRaw,used=cr>0?Math.max(0,-tot)/cr:null;
   const P=c.sum,parts=[['Time',P.time],['Delta',P.delta!=null?P.delta:P.price],['Gamma',P.gamma||0],['IV',P.iv],['Other',P.other]];const worst=parts.slice().sort((a,b)=>a[1]-b[1])[0];
   const w=UI.live&&UI.live[0];const p=s.legs.find(l=>l.type==='P'),q=s.legs.find(l=>l.type==='C');
   const head=`${day(settle(c.exp))} · ${p?Math.round(p.K/100)/10+'K P':''}${p&&q?' / ':''}${q?Math.round(q.K/100)/10+'K C':''}`;
   const usedTxt=used!=null?Math.round(used*100)+'%':'—';
-  const legRows=s.legs.slice().sort((a,b)=>a.type<b.type?1:-1).map(l=>{const pl=fin(l.entry)?(l.entry-l.mark)*l.n*l.cv:null,plOffer=fin(l.entry)&&fin(l.ask)?(l.entry-l.ask)*l.n*l.cv:null,st=stopLevel(l,s.S,s.T),dd=st?Math.abs(st/s.S-1):null;return `<div class="frow"><span>${l.type==='P'?'Put':'Call'} ${(l.K/1000).toFixed(1)}K</span><b class="${pl>=0?'pos':'neg'}">${usd(pl,true)}${plOffer!=null?` <small style="font-weight:normal;opacity:0.85">(${usd(plOffer,true)} offer)</small>`:''}${dd!=null?' · stop '+(dd*100).toFixed(1)+'%':''}</b></div>`;}).join('');
+  const legRows=s.legs.slice().sort((a,b)=>a.type<b.type?1:-1).map(l=>{const plOffer=fin(l.entry)&&fin(l.ask)?(l.entry-l.ask)*l.n*l.cv:null,pl=plOffer!=null?plOffer:(fin(l.entry)?(l.entry-l.mark)*l.n*l.cv:null),st=stopLevel(l,s.S,s.T),dd=st?Math.abs(st/s.S-1):null;return `<div class="frow"><span>${l.type==='P'?'Put':'Call'} ${(l.K/1000).toFixed(1)}K</span><b class="${pl>=0?'pos':'neg'}">${usd(pl,true)}${dd!=null?' · stop '+(dd*100).toFixed(1)+'%':''}</b></div>`;}).join('');
   const rows=legRows+'<div class="fsep"></div>'+parts.map(([n,v])=>`<div class="frow"><span>${n}</span><b class="${v>=0?'pos':'neg'}">${usd(v,true)}</b></div>`).join('')+(Math.abs(c.pre||0)>=0.5?`<div class="frow"><span>Before watching</span><b class="${c.pre>=0?'pos':'neg'}">${usd(c.pre,true)}</b></div>`:'');
   if(UI.unconf&&pill&&!FP.open)return `<i style="width:7px;height:7px;border-radius:50%;background:var(--amber,#E3AE45);flex:none"></i><b style="color:var(--muted)">${usd(tot,true)}</b><span class="am">not confirmed · tap</span>`;
-  if(pill&&!FP.open)return `<i style="width:7px;height:7px;border-radius:50%;background:var(--pos);flex:none"></i><b class="${tot>=0?'pos':'neg'}">${usd(tot,true)}</b>${totOffer!=null?`<span class="${totOffer>=0?'pos':'neg'}" style="font-size:11px">Offer ${usd(totOffer,true)}</span>`:''}<span>${usedTxt} of stop</span>${(()=>{const k=legSkew(s);return k&&k.r>=2?`<span class="${k.r>=3?'neg':'am'}">${k.hi[0]} ${k.r.toFixed(1)}×</span>`:'';})()}${worst&&worst[1]<0?`<span class="neg">${worst[0]} ${usd(worst[1])}</span>`:''}${w?'<span class="am">⚠</span>':''}`;
+  if(pill&&!FP.open)return `<i style="width:7px;height:7px;border-radius:50%;background:var(--pos);flex:none"></i><b class="${tot>=0?'pos':'neg'}">${usd(tot,true)}</b><span>${usedTxt} of stop</span>${(()=>{const k=legSkew(s);return k&&k.r>=2?`<span class="${k.r>=3?'neg':'am'}">${k.hi[0]} ${k.r.toFixed(1)}×</span>`:'';})()}${worst&&worst[1]<0?`<span class="neg">${worst[0]} ${usd(worst[1])}</span>`:''}${w?'<span class="am">⚠</span>':''}`;
   const canPop=!pill&&'documentPictureInPicture' in W&&!FP.pip;
   return `${unconfHtml()}<div class="fh"><i${UI.unconf?' style="background:var(--amber,#E3AE45)"':''}></i><span>${UI.unconf?'LAST SEEN':'LIVE'} P&amp;L · ${esc(head)}</span>${pill?'':`<button type="button" data-fp="mini" title="${FP.mini?'Show the causes':'Only the total'}">${FP.mini?'+':'–'}</button>`}${canPop?'<button type="button" data-fp="pop" title="Pop out: a small window that stays on top of other apps">⧉</button>':''}</div>
-    <div class="fbig"><b class="${tot>=0?'pos':'neg'}">${usd(tot,true)}</b><div><small>Mark P&amp;L · stop ${cr>0?usd(-cr):'—'}</small><em class="${used!=null&&used>0.5?'neg':used>0?'am':''}">${usedTxt} used</em>${totOffer!=null?`<span style="font-size:11px;display:block;margin-top:2px" class="${totOffer>=0?'pos':'neg'}">Delta Offer: <b>${usd(totOffer,true)}</b></span>`:''}</div></div>
+    <div class="fbig"><b class="${tot>=0?'pos':'neg'}">${usd(tot,true)}</b><div><small>Delta P&amp;L · stop ${cr>0?usd(-cr):'—'}</small><em class="${used!=null&&used>0.5?'neg':used>0?'am':''}">${usedTxt} used</em></div></div>
     <div class="fbar"><u style="width:${used!=null?Math.min(100,used*100):0}%;${used>0.5?'background:var(--neg)':''}"></u></div>${skewBar(s)}${rows}
     ${w?`<div class="fw">⚠ ${esc(w.x)}</div>`:''}`;}
 function floatRender(){const c=LAB.cur,on=!!(c&&c.last);const el=floatEl();
   if(!on){el.hidden=true;if(FP.pip)try{FP.pip.close();}catch(e){}return;}
   const pill=phone()&&!FP.pip;el.className=(pill?'fpp':'fpd')+(pill&&FP.open?' open':'')+(!pill&&FP.mini?' mini':'');
-  const tot=(c.pre||0)+c.sum.total,cr=c.credit||0;if(cr>0&&-tot/cr>0.5)el.classList.add('hot');
+  const totRaw=(c.pre||0)+c.sum.total,cr=c.credit||0;const tot=(c.last&&c.last.legs&&c.last.legs.every(l=>fin(l.entry)&&fin(l.ask)))?c.last.legs.reduce((acc,l)=>acc+(l.entry-l.ask)*l.n*l.cv,0):totRaw;if(cr>0&&-tot/cr>0.5)el.classList.add('hot');
   const nw=c.warns.length;if(nw>FP.warnN&&FP.warnN){el.classList.remove('flash');void el.offsetWidth;el.classList.add('flash');}FP.warnN=nw;
   const h=floatHtml(pill);if(h!==FP.html){FP.html=h;el.innerHTML=h;}el.hidden=false;place();}
 async function popOut(){if(!('documentPictureInPicture' in W)||FP.pip)return;try{
