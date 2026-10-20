@@ -1,15 +1,25 @@
-import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyPluginAsync } from 'fastify';
+import crypto from 'node:crypto';
 
 /**
- * Delta Exchange India Authenticated Gateway & Relay
- * 
+ * Delta Exchange India Authenticated Gateway
+ *
  * Provides:
- * - GET/POST /api/v1/delta/proxy       Relay HMAC-signed requests to api.india.delta.exchange from the server's static IP
- * - GET      /api/v1/delta/ip          Retrieve the server's public outbound IP for easy whitelisting on Delta
- * - GET      /api/v1/delta/status      Verify gateway health and reachability to Delta
+ * - GET /api/v1/delta/signed   Server-side HMAC-signed relay (key+secret from env, never the browser)
+ * - GET /api/v1/delta/ip       Retrieve the server's public outbound IP for easy whitelisting on Delta
+ * - GET /api/v1/delta/status   Verify gateway health and reachability to Delta
  */
 
 const DELTA_BASE = 'https://api.india.delta.exchange';
+
+/**
+ * Sign a Delta Exchange API request using the server-held secret.
+ * message = method + timestamp + path + queryString
+ * queryString is the '?'-prefixed query string, or empty string.
+ */
+export function signDelta(secret: string, method: string, ts: string, path: string, query: string): string {
+  return crypto.createHmac('sha256', secret).update(method + ts + path + query).digest('hex');
+}
 
 let cachedServerIp: string | null = null;
 let lastIpCheck = 0;
@@ -57,68 +67,7 @@ export async function getServerOutboundIp(): Promise<string | null> {
   return cachedServerIp;
 }
 
-/**
- * Core Proxy Handler for Delta Exchange signed requests
- */
-export async function handleDeltaProxy(request: FastifyRequest, reply: FastifyReply) {
-  const query = (request.query || {}) as Record<string, string | undefined>;
-  const body = (request.body || {}) as Record<string, any>;
-
-  const path = query.path || body.path;
-  const queryString = query.query || body.query || '';
-
-  if (!path || typeof path !== 'string' || !path.startsWith('/v2/')) {
-    return reply.status(400).send({
-      success: false,
-      error: 'Invalid or missing target path. Path must start with /v2/',
-    });
-  }
-
-  // Support both standard and x-prefixed authentication headers
-  const apiKey = (request.headers['x-api-key'] || request.headers['api-key']) as string | undefined;
-  const timestamp = (request.headers['x-ts'] || request.headers['timestamp']) as string | undefined;
-  const signature = (request.headers['x-sig'] || request.headers['signature']) as string | undefined;
-
-  if (!apiKey || !timestamp || !signature) {
-    return reply.status(400).send({
-      success: false,
-      error: 'Missing required authentication headers (api-key, timestamp, signature)',
-    });
-  }
-
-  const cleanQuery = queryString ? (queryString.startsWith('?') ? queryString : '?' + queryString) : '';
-  const targetUrl = `${DELTA_BASE}${path}${cleanQuery}`;
-
-  try {
-    const upstreamRes = await fetch(targetUrl, {
-      method: request.method === 'POST' ? 'POST' : 'GET',
-      headers: {
-        'api-key': apiKey,
-        'timestamp': String(timestamp),
-        'signature': signature,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'User-Agent': 'BTC-Volatility-Desk-Backend/1.0',
-      },
-      body: request.method === 'POST' && body.payload ? JSON.stringify(body.payload) : undefined,
-      signal: AbortSignal.timeout(12000),
-    });
-
-    const data = await upstreamRes.json().catch(() => null);
-    return reply.status(upstreamRes.status).send(data ?? { success: false, error: 'Empty upstream response from Delta' });
-  } catch (err: any) {
-    return reply.status(502).send({
-      success: false,
-      error: `Failed to reach Delta Exchange: ${err?.message || 'Gateway Timeout'}`,
-    });
-  }
-}
-
 export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
-  // Proxy GET & POST
-  fastify.get('/proxy', handleDeltaProxy);
-  fastify.post('/proxy', handleDeltaProxy);
-
   // Return server public IP for whitelisting on Delta
   fastify.get('/ip', async (_request, reply) => {
     const ip = await getServerOutboundIp();
@@ -134,7 +83,9 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
     const ip = await getServerOutboundIp();
     try {
       const start = Date.now();
-      const res = await fetch(`${DELTA_BASE}/v2/time`, {
+      // /v2/settings is a lightweight public endpoint (Delta India has no /v2/time — that 404s).
+      const res = await fetch(`${DELTA_BASE}/v2/settings`, {
+        headers: { Accept: 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
         signal: AbortSignal.timeout(5000),
       });
       const latencyMs = Date.now() - start;
@@ -145,7 +96,7 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
         serverIp: ip,
         deltaReachable: res.ok,
         latencyMs,
-        deltaServerTime: json?.result?.epoch,
+        deltaServerTime: json?.result?.server_time ?? json?.result?.epoch,
       });
     } catch (err: any) {
       return reply.status(503).send({
@@ -154,6 +105,34 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
         deltaReachable: false,
         error: err?.message || 'Failed to ping Delta Exchange',
       });
+    }
+  });
+
+  // Server-side signed relay for authenticated Delta calls (key+secret from env, never the browser).
+  fastify.get('/signed', async (request, reply) => {
+    const qp = (request.query || {}) as { path?: string; query?: string };
+    const path = qp.path;
+    const query = qp.query || '';
+    if (!path || !path.startsWith('/v2/')) {
+      return reply.status(400).send({ success: false, error: 'path must start with /v2/' });
+    }
+    const key = process.env.DELTA_API_KEY;
+    const secret = process.env.DELTA_API_SECRET;
+    if (!key || !secret) {
+      return reply.status(503).send({ success: false, error: 'Delta credentials not configured on server' });
+    }
+    const ts = String(Math.floor(Date.now() / 1000));
+    const q = query ? '?' + query.replace(/^\?/, '') : ''; // normalise to exactly one leading '?' (mirrors the desk's original signing scheme)
+    const sig = signDelta(secret, 'GET', ts, path, q);
+    try {
+      const upstream = await fetch(`${DELTA_BASE}${path}${q}`, {
+        headers: { 'api-key': key, timestamp: ts, signature: sig, Accept: 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
+        signal: AbortSignal.timeout(12_000),
+      });
+      const data = await upstream.json().catch(() => null);
+      return reply.status(upstream.status).send(data ?? { success: false, error: 'Empty upstream response' });
+    } catch (err: any) {
+      return reply.status(502).send({ success: false, error: `Failed to reach Delta: ${err?.message || 'timeout'}` });
     }
   });
 };
