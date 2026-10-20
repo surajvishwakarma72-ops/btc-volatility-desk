@@ -31,17 +31,47 @@ export const marketGatewayRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     try {
-      const upstream = await fetch(u, {
-        headers: { Accept: 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
-        signal: AbortSignal.timeout(12_000),
-      });
-      const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+      // Follow redirects MANUALLY, re-validating each hop against the allowlist so an
+      // allowlisted host cannot 3xx us to an internal/metadata URL (SSRF-via-redirect).
+      let target = u;
+      let upstream: Awaited<ReturnType<typeof fetch>> | null = null;
+      for (let hop = 0; hop < 4; hop++) {
+        if (!isAllowed(target)) {
+          return reply.status(403).send({ success: false, error: 'Redirect target not in allowlist' });
+        }
+        upstream = await fetch(target, {
+          redirect: 'manual',
+          headers: { Accept: 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
+          signal: AbortSignal.timeout(12_000),
+        });
+        if (upstream.status >= 300 && upstream.status < 400) {
+          const loc = upstream.headers.get('location');
+          if (!loc) break;
+          target = new URL(loc, target).toString();
+          continue;
+        }
+        break;
+      }
+      if (!upstream) return reply.status(502).send({ success: false, error: 'No upstream response' });
+
+      // Serve only a safe content-type set from our own origin; coerce anything else to
+      // octet-stream and forbid MIME sniffing so a hostile upstream cannot XSS us.
+      const SAFE = new Set(['application/json', 'text/csv', 'application/octet-stream', 'application/zip']);
+      const rawCt = (upstream.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      const contentType = SAFE.has(rawCt) ? rawCt : 'application/octet-stream';
       const body = Buffer.from(await upstream.arrayBuffer());
-      cache.set(u, { at: now, status: upstream.status, contentType, body });
-      if (cache.size > 500) { const first = cache.keys().next().value; if (first) cache.delete(first); }
+      // Only cache successful responses — caching a 429/503 would poison the TTL window.
+      if (upstream.ok) {
+        cache.set(u, { at: Date.now(), status: upstream.status, contentType, body });
+        if (cache.size > 500) {
+          const first = cache.keys().next().value;
+          if (first) cache.delete(first);
+        }
+      }
+      reply.header('X-Content-Type-Options', 'nosniff');
       return reply.status(upstream.status).type(contentType).send(body);
     } catch (err: any) {
-      if (hit) return reply.status(hit.status).type(hit.contentType).send(hit.body); // serve stale on upstream failure
+      if (hit) { reply.header('X-Content-Type-Options', 'nosniff'); return reply.status(hit.status).type(hit.contentType).send(hit.body); }
       return reply.status(502).send({ success: false, error: `Upstream fetch failed: ${err?.message || 'timeout'}` });
     }
   });
