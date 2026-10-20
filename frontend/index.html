@@ -470,6 +470,7 @@
 <head>
 <script src="data/shadow_backtest_dataset.js"></script>
 <script src="data/rulebook.js"></script>
+<script src="data/backtest_days.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script id="v105_17Early">/* v105.17 · smooth + fast start (runs before every other script).
@@ -24252,9 +24253,10 @@ function plan(D0,raw){
   const F=FR(D0+18*HR);
   r.open=F?F.open:D0+20*HR;
   
-  // Proven Stage 2 Entry Point: NY+180 min (22:30–23:30 IST)
+  // New backtest late-entry window: 22:30–01:00 IST (Fri to 01:30). Late entry is the
+  // single biggest stop-loss reducer (SL 50–75% at 19:00 -> 10–25% by 23:00+).
   r.entS=D0+22.5*HR; // 22:30 IST
-  r.entE=D0+23.5*HR; // 23:30 IST
+  r.entE=D0+(wd===5?25.5:25)*HR; // 01:00 IST (Fri 01:30)
   r.exp=D0+3*DAY;    // Next expiry
   
   // Proven Stage 3 Morning Exit: 04:00–07:00 IST next morning
@@ -24272,6 +24274,49 @@ function plan(D0,raw){
   
   r.ev=EV[key];
   if(r.ev&&r.ev.skip){r.kind='skip';r.title='Skip — Event Night';r.why=r.ev.t;r.size=0;r.badge='🛑 SKIP';return r;}
+
+  // ===== New backtest rulebook (supersedes the legacy BT_269 grounding + calendar prior below) =====
+  // Single source of truth: window.__STRANGLE_RULEBOOK (weekday verdict/conviction/OOS) and
+  // window.__STRANGLE_BT_DAYS (per-day simulated outcome). Returns for every weekday, so the
+  // old BT_269/calendar code beneath is intentionally left as an inert fallback.
+  {
+    const RBW=(W.__STRANGLE_RULEBOOK&&W.__STRANGLE_RULEBOOK.weekdays)||null;
+    const rbd=RBW?RBW.find(x=>x.weekday===DN[wd]):null;
+    const FB={1:['TRADE','NORMAL',73.3,1.23],2:['TRADE-LIGHT','NORMAL',68.0,0.78],5:['TRADE','HIGH',75.0,3.48]};
+    const isSkipDay=(wd===3||wd===4); // Wed/Thu now SKIP (weekend already returned above)
+    const verdict=rbd?rbd.verdict:(isSkipDay?'SKIP':(FB[wd]?FB[wd][0]:'SKIP'));
+    const conv=rbd?rbd.conviction:(FB[wd]?FB[wd][1]:'');
+    const oos=rbd?rbd.oosWinPct:(FB[wd]?FB[wd][2]:null);
+    const exp=rbd?rbd.expectancyUsd:(FB[wd]?FB[wd][3]:null);
+    const high=conv==='HIGH';
+    r.rb={verdict,conviction:conv,oos,exp};
+    const bd=(W.__STRANGLE_BT_DAYS&&W.__STRANGLE_BT_DAYS[key])||null;
+
+    if(verdict==='SKIP'){
+      r.kind='skip';r.size=0;r.delta='None';r.icon='stop';
+      r.badge=wd===4?'🛑 THU SKIP':wd===3?'🛑 WED SKIP':'🛑 SKIP';
+      r.title=DN[wd]+' Skip';
+      r.why=(wd===4?'Thursday weekly-expiry shock. ':wd===3?'Wednesday held in-sample but decayed out-of-sample. ':'')+'Backtest out-of-sample win rate below the 65% trade bar — no trade.';
+      return r;
+    }
+
+    r.size=high?1.0:0.5;r.delta='0.15Δ both legs';r.conv=conv;r.oos=oos;r.exp=exp;
+
+    if(bd){ // past night with a simulated result
+      r.isPast=true;r.histPnl=bd.pnl;
+      if(bd.v==='SKIP'){r.kind='skip';r.size=0;r.delta='None';r.icon='stop';r.badge='⊘ RSI SKIP';r.title=DN[wd]+' Skipped — '+bd.note;r.why='Overbought veto: '+bd.note+'. The RSI>60 filter stood this night down.';return r;}
+      if(bd.s){r.kind='stopped';r.icon='stop';r.badge='✗ STOPPED (2.0×)';r.title=DN[wd]+' Stopped Out';r.why='Backtest: hit the 2.0× per-leg stop ('+bd.pnl+'% of margin). The ~20% residual stop rate after late entry + RSI filter is structural.';return r;}
+      if(bd.w){r.kind='win';r.icon=high?'shield':'half-shield';r.badge='✓ WIN (+'+bd.pnl+'%)';r.title=DN[wd]+' Win (+'+bd.pnl+'% of margin)';r.why='Backtest: '+bd.note+'. '+DN[wd]+' '+verdict+(conv?' · '+conv:'')+(oos!=null?' · OOS win '+oos+'%':'')+'.';return r;}
+      r.kind=high?'full':'half';r.icon=high?'shield':'half-shield';r.badge=(bd.pnl>=0?'≈ FLAT':'· small loss')+' ('+bd.pnl+'%)';r.title=DN[wd]+' Time Exit ('+bd.pnl+'%)';r.why='Backtest time-exit at 07:00 IST, '+bd.pnl+'% of margin.';return r;
+    }
+
+    // Today / forward: pending trade with the rulebook recommendation.
+    r.kind=high?'full':'half';r.icon=high?'shield':'half-shield';
+    r.badge=high?('★ '+DN[wd]+' HIGH (1.0×)'):('🛡️ '+DN[wd]+(verdict==='TRADE-LIGHT'?' LIGHT (0.5×)':' TRADE (0.5×)'));
+    r.title=DN[wd]+' '+verdict+(conv&&conv!=='—'?' · '+conv:'')+(oos!=null?' · OOS win '+oos+'%':'');
+    r.why='Backtest: '+verdict+', conviction '+conv+(oos!=null?', OOS win '+oos+'%':'')+(exp!=null?', exp $'+exp+'/trade':'')+'. Enter 22:30–01:00 IST'+(wd===5?' (Fri to 01:30)':'')+'; SKIP if RSI(14)>60 at entry; symmetric 0.15Δ, 2.0× stop, exit 07:00 IST.';
+    return r;
+  }
 
   // Historical Backtested Performance Grounding (269 nights dataset)
   const todayFr=FR(Date.now());
@@ -25657,14 +25702,14 @@ function paintCal(){
                   p.kind==='stopped'?SVG_ICONS.stop('#EF4444',16):
                   p.kind==='skip'?SVG_ICONS.stop(p.badge.includes('SPEED')?'#F59E0B':'#EF4444',16):'';
 
-    let sizingText=p.size>0?(p.isPast?(p.kind==='win'?'50% TP Reached · '+p.size+'×':'2.0× Stop Hit · '+p.size+'×'):p.size+'× If Speed < 1.5×'):'Skip Night';
+    let sizingText=p.size>0?(p.isPast?(p.kind==='win'?'Win · '+p.size+'×':p.kind==='stopped'?'2.0× Stop Hit · '+p.size+'×':'Time exit · '+p.size+'×'):p.size+'× · enter 22:30–01:00 IST'):'Skip Night';
     let resultText='';
     if(p.isPast){
       if(p.kind==='win') resultText='<div class="cc-result res-ok">✓ Won (+'+p.histPnl+'%)</div>';
       else if(p.kind==='stopped') resultText='<div class="cc-result res-bad">✗ Stopped (2.0×)</div>';
-      else if(p.kind==='skip') resultText='<div class="cc-result" style="color:#F59E0B">Speed: '+p.histSpeed+'×</div>';
+      else if(p.kind==='skip') resultText='<div class="cc-result" style="color:#F59E0B">'+(p.badge||'Skip')+'</div>';
     }else{
-      resultText='<div class="cc-result" style="color:var(--focus,#38BDF8)">Pending 22:30 IST</div>';
+      resultText='<div class="cc-result" style="color:var(--focus,#38BDF8)">Pending · 22:30–01:00 IST</div>';
     }
 
     h+='<button type="button" class="cal-cell '+p.kind+' '+(isSel?'selected':'')+' '+(isToday?'today':'')+'" data-a="day" data-d="'+D0+'" aria-label="'+fmt(D0)+': '+p.title+'">'+
