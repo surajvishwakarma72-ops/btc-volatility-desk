@@ -65,6 +65,9 @@ function main() {
   };
 
   fs.writeFileSync(path.join(OUT, 'rulebook.json'), JSON.stringify(rulebook, null, 2));
+  // Also emit the window-wrapped copy the live desk loads (mirrors shadow_backtest_dataset.js).
+  const fePath = path.resolve(__dirname, '../../../frontend/data/rulebook.js');
+  fs.writeFileSync(fePath, `window.__STRANGLE_RULEBOOK = ${JSON.stringify(rulebook, null, 2)};\n`);
 
   const tradeDays = weekdayRules.filter((d: any) => d.verdict.startsWith('TRADE')).map((d: any) => d.weekday);
   const skipDays = weekdayRules.filter((d: any) => d.verdict === 'SKIP').map((d: any) => d.weekday);
