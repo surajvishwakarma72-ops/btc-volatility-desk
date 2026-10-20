@@ -16,7 +16,7 @@ export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/candles', async (request, reply) => {
     const {
       symbol = 'BTCUSDT',
-      interval = '1d',
+      interval = '1m',
       from,
       to,
       limit = 500,
