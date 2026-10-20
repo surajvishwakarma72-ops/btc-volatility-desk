@@ -43,12 +43,16 @@ function bs(S: number, K: number, T: number, ivPct: number, type: 'c' | 'p'): nu
 function strike(S: number, T: number, ivPct: number, deltaTarget: number, type: 'c' | 'p'): number {
   const v = ivPct / 100;
   const sT = Math.sqrt(T);
+  // FIX: delta->strike was inverted (call used ppf(1-δ), put used ppf(δ)), which
+  // placed a "15Δ call" strike BELOW spot (≈75Δ ITM) and inflated credit ~17x.
+  // Correct mapping (matches the proven Volatility Desk strike()): call = ppf(δ),
+  // put = ppf(1-δ), so 15Δ strikes sit OTM on the correct side of spot.
   if (type === 'c') {
-    const d1 = ppf(1 - deltaTarget);
+    const d1 = ppf(deltaTarget);
     const K = S * Math.exp(-d1 * v * sT + 0.5 * v * v * T);
     return Math.round(K / 500) * 500;
   } else {
-    const d1 = ppf(deltaTarget);
+    const d1 = ppf(1 - deltaTarget);
     const K = S * Math.exp(-d1 * v * sT + 0.5 * v * v * T);
     return Math.round(K / 500) * 500;
   }
@@ -357,8 +361,11 @@ async function buildShadowData() {
     sessions
   };
 
-  fs.writeFileSync('frontend/data/shadow_backtest_dataset.json', JSON.stringify(output, null, 2));
-  console.log(`Saved ${sessions.length} sessions to frontend/data/shadow_backtest_dataset.json!`);
+  const outJson = JSON.stringify(output, null, 2);
+  fs.writeFileSync('frontend/data/shadow_backtest_dataset.json', outJson);
+  // The dashboard loads the .js wrapper — keep both in sync so the fix reaches the UI.
+  fs.writeFileSync('frontend/data/shadow_backtest_dataset.js', `window.__SHADOW_BACKTEST_DATA = ${outJson};\n`);
+  console.log(`Saved ${sessions.length} sessions to frontend/data/shadow_backtest_dataset.{json,js}!`);
   console.log(`Baseline: ${aggregates.baseline.trades} trades, ${aggregates.baseline.winRate} win, $${aggregates.baseline.pnl}`);
   console.log(`Master Dual-Engine: ${aggregates.master.trades} trades, ${aggregates.master.winRate} win, $${aggregates.master.pnl}`);
   console.log(`Saved Stopped Trades: ${aggregates.savedLossCount} sessions avoided 2.0x SL.`);

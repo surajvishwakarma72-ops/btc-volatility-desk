@@ -1,0 +1,44 @@
+{
+  "rows": [
+    {
+      "dow": "Mon",
+      "n": 36,
+      "winRate": 75,
+      "expectancy": 1.23,
+      "medHrsToTarget": 5.5,
+      "conviction": "NORMAL"
+    },
+    {
+      "dow": "Tue",
+      "n": 41,
+      "winRate": 65.9,
+      "expectancy": 0.78,
+      "medHrsToTarget": 4.4,
+      "conviction": "NORMAL"
+    },
+    {
+      "dow": "Wed",
+      "n": 44,
+      "winRate": 65.9,
+      "expectancy": 1.39,
+      "medHrsToTarget": 5.5,
+      "conviction": "NORMAL"
+    },
+    {
+      "dow": "Thu",
+      "n": 39,
+      "winRate": 64.1,
+      "expectancy": 2.64,
+      "medHrsToTarget": 5.5,
+      "conviction": "NORMAL"
+    },
+    {
+      "dow": "Fri",
+      "n": 44,
+      "winRate": 81.8,
+      "expectancy": 3.48,
+      "medHrsToTarget": 3.5,
+      "conviction": "HIGH"
+    }
+  ]
+}

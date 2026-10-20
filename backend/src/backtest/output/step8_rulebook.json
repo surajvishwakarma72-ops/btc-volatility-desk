@@ -1,0 +1,135 @@
+{
+  "perDay": [
+    {
+      "dow": "Mon",
+      "n": 36,
+      "winRate": 75,
+      "isWin": 76.2,
+      "oosWin": 73.3,
+      "expectancy": 1.23,
+      "verdict": "TRADE",
+      "fragile": false
+    },
+    {
+      "dow": "Tue",
+      "n": 41,
+      "winRate": 65.9,
+      "isWin": 62.5,
+      "oosWin": 68,
+      "expectancy": 0.78,
+      "verdict": "TRADE-LIGHT",
+      "fragile": true
+    },
+    {
+      "dow": "Wed",
+      "n": 44,
+      "winRate": 65.9,
+      "isWin": 68.2,
+      "oosWin": 63.6,
+      "expectancy": 1.39,
+      "verdict": "SKIP",
+      "fragile": true
+    },
+    {
+      "dow": "Thu",
+      "n": 39,
+      "winRate": 64.1,
+      "isWin": 75,
+      "oosWin": 52.6,
+      "expectancy": 2.64,
+      "verdict": "SKIP",
+      "fragile": false
+    },
+    {
+      "dow": "Fri",
+      "n": 44,
+      "winRate": 81.8,
+      "isWin": 90,
+      "oosWin": 75,
+      "expectancy": 3.48,
+      "verdict": "TRADE",
+      "fragile": false
+    }
+  ],
+  "months": [
+    {
+      "m": "2026-01",
+      "n": 17,
+      "slRate": 41,
+      "exp": 0.33
+    },
+    {
+      "m": "2026-04",
+      "n": 18,
+      "slRate": 39,
+      "exp": -0.82
+    },
+    {
+      "m": "2026-03",
+      "n": 18,
+      "slRate": 22,
+      "exp": 1.9
+    },
+    {
+      "m": "2026-06",
+      "n": 19,
+      "slRate": 21,
+      "exp": 0.31
+    },
+    {
+      "m": "2026-10",
+      "n": 10,
+      "slRate": 20,
+      "exp": -0.41
+    },
+    {
+      "m": "2026-07",
+      "n": 16,
+      "slRate": 19,
+      "exp": -0.65
+    },
+    {
+      "m": "2025-12",
+      "n": 17,
+      "slRate": 18,
+      "exp": 3.17
+    },
+    {
+      "m": "2026-09",
+      "n": 17,
+      "slRate": 18,
+      "exp": 2.15
+    },
+    {
+      "m": "2025-10",
+      "n": 12,
+      "slRate": 17,
+      "exp": 4.84
+    },
+    {
+      "m": "2025-11",
+      "n": 14,
+      "slRate": 14,
+      "exp": 3.55
+    },
+    {
+      "m": "2026-05",
+      "n": 16,
+      "slRate": 13,
+      "exp": 2.87
+    },
+    {
+      "m": "2026-08",
+      "n": 15,
+      "slRate": 13,
+      "exp": -0.02
+    },
+    {
+      "m": "2026-02",
+      "n": 15,
+      "slRate": 7,
+      "exp": 8.85
+    }
+  ],
+  "splitDay": "2026-04-13"
+}

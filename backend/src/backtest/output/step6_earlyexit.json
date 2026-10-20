@@ -1,0 +1,30 @@
+{
+  "rows": [
+    {
+      "stopMult": 2,
+      "n": 204,
+      "sl": 42,
+      "slRate": 20.6,
+      "avgLoss": -11.73,
+      "net": 393
+    },
+    {
+      "stopMult": 1.75,
+      "n": 204,
+      "sl": 63,
+      "slRate": 30.9,
+      "avgLoss": -8.22,
+      "net": 302
+    },
+    {
+      "stopMult": 1.5,
+      "n": 204,
+      "sl": 101,
+      "slRate": 49.5,
+      "avgLoss": -5.06,
+      "net": 164
+    }
+  ],
+  "winnersPast15": 46,
+  "winners": 144
+}

@@ -9,7 +9,10 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bt:fetch": "tsx src/backtest/data/fetch-binance.ts 15m && tsx src/backtest/data/fetch-binance.ts 1m && tsx src/backtest/data/fetch-deribit-dvol.ts",
+    "bt:extract": "node --max-old-space-size=8192 ./node_modules/.bin/tsx src/backtest/data/extract-archive.ts",
+    "bt": "tsx src/backtest/steps/step1_baseline.ts && tsx src/backtest/steps/step2_ivcrush.ts && tsx src/backtest/steps/step3_sl_anatomy.ts && tsx src/backtest/steps/step4_vetoes.ts && tsx src/backtest/steps/step5_legsizing.ts && tsx src/backtest/steps/step6_earlyexit.ts && tsx src/backtest/steps/step7_bestday.ts && tsx src/backtest/steps/step8_rulebook.ts && tsx src/backtest/run.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",

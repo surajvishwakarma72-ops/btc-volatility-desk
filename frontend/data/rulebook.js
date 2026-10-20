@@ -1,0 +1,211 @@
+window.__STRANGLE_RULEBOOK = {
+  "generatedFrom": "2025-10-06..2026-10-17 (327 nights, Binance 15m/1m + archive IV, BS-repriced)",
+  "dataCaveats": [
+    "Legs BS-repriced from ATM IV (no historical option prices/bid-ask).",
+    "bid-ask>1.5% reject is live-only (not modeled).",
+    "News blackout: no event calendar in data — high-SL months used as a proxy.",
+    "vol-of-vol/skew/GEX/flow are sparse/low-fidelity and did not survive OOS."
+  ],
+  "global": {
+    "entry_window": "Enter LATE, 22:30–01:00 IST (Fri to 01:30). Timing is the #1 stop-loss lever: SL falls from 50–75% at 19:00 to 10–25% by 23:00.",
+    "iv_conditions": [
+      "IV>=35 filter did NOT reduce SLs (net-negative) — dropped.",
+      "Edge (IV-RV24) is structurally negative in BTC (~-7): the textbook IV>RV rule is dead."
+    ],
+    "silence_conditions": [
+      "Primary \"silence\" = the clock (late entry). Entry-time indicators barely separate SL vs non-SL nights (Step 3: all |d|<=0.24)."
+    ],
+    "veto_conditions": [
+      "SKIP if rsi15 > 60 at entry — the ONLY entry veto that clears the 34.9% SL-precision breakeven and holds out-of-sample (SLs 65→42, net $221→$393)."
+    ],
+    "delay_rules": [
+      "None — for rsi15>60 nights, SKIP beats DELAY (delaying to 01:00 still nets negative)."
+    ],
+    "leg_sizing": "Symmetric 0.15Δ both legs. Asymmetric / further-OTM INCREASES stop-losses (cheaper legs double faster) — do not skew.",
+    "early_exit_rules": [
+      "None — the 2.0× per-leg stop is optimal; 1.5×/1.75× stops cut too many near-miss winners (net $393→$164)."
+    ],
+    "news_blackout": [
+      "Data-limited (no calendar). Proxy: highest-SL months were 2026-01 (SL 41%), 2026-04 (SL 39%)."
+    ],
+    "week_of_month": "Week 1 is weakest (win 63.6%, exp $0.51); weeks 2–4 stronger (~71–75%).",
+    "position": "100 lots, net credit ~$30–35, margin ~$87, target net ≥10% margin (~$8.7), hard exit 07:00 IST."
+  },
+  "weekdays": [
+    {
+      "weekday": "Mon",
+      "verdict": "TRADE",
+      "oosWinPct": 73.3,
+      "expectancyUsd": 1.23,
+      "sampleSize": 36,
+      "fragile": false,
+      "conviction": "NORMAL",
+      "earliest_entry": "22:30 IST",
+      "latest_entry": "01:00 IST"
+    },
+    {
+      "weekday": "Tue",
+      "verdict": "TRADE-LIGHT",
+      "oosWinPct": 68,
+      "expectancyUsd": 0.78,
+      "sampleSize": 41,
+      "fragile": true,
+      "conviction": "NORMAL",
+      "earliest_entry": "22:30 IST",
+      "latest_entry": "01:00 IST"
+    },
+    {
+      "weekday": "Wed",
+      "verdict": "SKIP",
+      "oosWinPct": 63.6,
+      "expectancyUsd": 1.39,
+      "sampleSize": 44,
+      "fragile": true,
+      "conviction": "NORMAL",
+      "earliest_entry": "22:30 IST",
+      "latest_entry": "01:00 IST"
+    },
+    {
+      "weekday": "Thu",
+      "verdict": "SKIP",
+      "oosWinPct": 52.6,
+      "expectancyUsd": 2.64,
+      "sampleSize": 39,
+      "fragile": false,
+      "conviction": "NORMAL",
+      "earliest_entry": "22:30 IST",
+      "latest_entry": "01:00 IST"
+    },
+    {
+      "weekday": "Fri",
+      "verdict": "TRADE",
+      "oosWinPct": 75,
+      "expectancyUsd": 3.48,
+      "sampleSize": 44,
+      "fragile": false,
+      "conviction": "HIGH",
+      "earliest_entry": "22:30 IST",
+      "latest_entry": "01:30 IST"
+    }
+  ],
+  "evidence": {
+    "blindBaselineBestPerWeekday": {
+      "Sun": {
+        "bestByExpectancy": {
+          "entryIST": "21:00",
+          "avgPnlUsd": -5.43,
+          "slRate": 52.5,
+          "winRate": 27.5,
+          "n": 40
+        },
+        "leastStopLoss": {
+          "entryIST": "23:30",
+          "slRate": 50,
+          "avgPnlUsd": -5.48,
+          "n": 40
+        }
+      },
+      "Mon": {
+        "bestByExpectancy": {
+          "entryIST": "22:00",
+          "avgPnlUsd": 0.77,
+          "slRate": 27.7,
+          "winRate": 63.8,
+          "n": 47
+        },
+        "leastStopLoss": {
+          "entryIST": "22:45",
+          "slRate": 23.4,
+          "avgPnlUsd": -0.19,
+          "n": 47
+        }
+      },
+      "Tue": {
+        "bestByExpectancy": {
+          "entryIST": "21:00",
+          "avgPnlUsd": 0.93,
+          "slRate": 24.1,
+          "winRate": 64.8,
+          "n": 54
+        },
+        "leastStopLoss": {
+          "entryIST": "01:30",
+          "slRate": 16.7,
+          "avgPnlUsd": -0.89,
+          "n": 54
+        }
+      },
+      "Wed": {
+        "bestByExpectancy": {
+          "entryIST": "20:45",
+          "avgPnlUsd": 1.87,
+          "slRate": 31.1,
+          "winRate": 64.4,
+          "n": 45
+        },
+        "leastStopLoss": {
+          "entryIST": "01:15",
+          "slRate": 13.3,
+          "avgPnlUsd": 0.04,
+          "n": 45
+        }
+      },
+      "Thu": {
+        "bestByExpectancy": {
+          "entryIST": "23:15",
+          "avgPnlUsd": 2.1,
+          "slRate": 20,
+          "winRate": 62.2,
+          "n": 45
+        },
+        "leastStopLoss": {
+          "entryIST": "01:30",
+          "slRate": 13.3,
+          "avgPnlUsd": -0.34,
+          "n": 45
+        }
+      },
+      "Fri": {
+        "bestByExpectancy": {
+          "entryIST": "23:00",
+          "avgPnlUsd": 3.14,
+          "slRate": 21.3,
+          "winRate": 78.7,
+          "n": 47
+        },
+        "leastStopLoss": {
+          "entryIST": "01:00",
+          "slRate": 10.6,
+          "avgPnlUsd": 2.19,
+          "n": 47
+        }
+      },
+      "Sat": {
+        "bestByExpectancy": {
+          "entryIST": "23:45",
+          "avgPnlUsd": -2.91,
+          "slRate": 14.3,
+          "winRate": 30.6,
+          "n": 49
+        },
+        "leastStopLoss": {
+          "entryIST": "23:15",
+          "slRate": 12.2,
+          "avgPnlUsd": -3.08,
+          "n": 49
+        }
+      }
+    },
+    "ivCrushCensus": {
+      "crush": 178,
+      "rebound": 29,
+      "noEvent": 63
+    },
+    "scorecardKept": [
+      "rsi15"
+    ],
+    "vetoKept": [
+      "rsi15 > 60"
+    ]
+  }
+};
