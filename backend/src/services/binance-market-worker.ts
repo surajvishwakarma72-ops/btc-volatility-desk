@@ -1,12 +1,14 @@
 import WebSocket from 'ws';
 import { db, marketTimeseries } from '../db/index.js';
 import { alertService } from './alert-service.js';
+import { garmanKlassRv, computeVelocityPct, type Bar } from '../lib/volatility.js';
 
 export class BinanceMarketWorker {
   private ws: WebSocket | null = null;
   private isRunning: boolean = false;
   private reconnectTimeout: NodeJS.Timeout | null = null;
-  private recentBars: { open: number; high: number; low: number; close: number }[] = [];
+  private recentBars: Bar[] = [];
+  private recentCloses: number[] = [];
 
   public currentSpotPrice: number | null = null;
   public lastKlineTime: Date | null = null;
@@ -64,13 +66,15 @@ export class BinanceMarketWorker {
               const close = currentClose;
               const volume = parseFloat(k.v);
 
-              // Maintain 30-bar rolling window for Parkinson / Garman-Klass RV calculation
-              this.recentBars.push({ open, high, low, close });
+              const bar: Bar = { open, high, low, close };
+              this.recentBars.push(bar);
               if (this.recentBars.length > 30) this.recentBars.shift();
+              this.recentCloses.push(close);
+              if (this.recentCloses.length > 10) this.recentCloses.shift();
 
-              const rvAnnualized = this.calculateGarmanKlassRv(this.recentBars);
+              const rvAnnualized = garmanKlassRv(this.recentBars);
+              const velocity = computeVelocityPct(this.recentCloses, 3);
 
-              // Persist bar to market_timeseries
               await db
                 .insert(marketTimeseries)
                 .values({
@@ -86,10 +90,10 @@ export class BinanceMarketWorker {
                 })
                 .onConflictDoNothing();
 
-              // Trigger alert check
               await alertService.checkMetrics({
                 spotPrice: currentClose,
                 realizedVol: rvAnnualized,
+                speed: velocity,
               });
             }
           }
@@ -117,25 +121,6 @@ export class BinanceMarketWorker {
     }
   }
 
-  /**
-   * Calculates Garman-Klass Realized Volatility annualized percentage
-   */
-  private calculateGarmanKlassRv(bars: { open: number; high: number; low: number; close: number }[]): number {
-    if (bars.length < 5) return 0;
-    let sum = 0;
-    for (const b of bars) {
-      const u = Math.log(b.high / b.open);
-      const d = Math.log(b.low / b.open);
-      const c = Math.log(b.close / b.open);
-      // Garman-Klass formula: 0.5 * (ln(H/L))^2 - (2*ln(2) - 1) * (ln(C/O))^2
-      const hl = Math.log(b.high / b.low);
-      sum += 0.5 * hl * hl - (2 * Math.LN2 - 1) * c * c;
-    }
-    const variance = sum / bars.length;
-    // Annualize 1-minute bars: sqrt(variance * 525,600 minutes/year) * 100
-    const annualized = Math.sqrt(variance * 525600) * 100;
-    return Number.isFinite(annualized) ? annualized : 0;
-  }
 }
 
 export const binanceWorker = new BinanceMarketWorker();
