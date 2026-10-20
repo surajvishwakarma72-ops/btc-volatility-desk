@@ -24,6 +24,9 @@ export async function buildServer(): Promise<FastifyInstance> {
       level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
     },
     bodyLimit: 1_048_576,
+    // Behind Caddy (the only thing that can reach app:4000), trust X-Forwarded-For so
+    // req.ip is the real client — makes per-client rate-limiting + the allowList work.
+    trustProxy: true,
   });
 
   app.setValidatorCompiler(validatorCompiler);
