@@ -1,0 +1,3 @@
+# Cached historical market data fetched from Binance/Deribit — regenerate via the
+# fetch-*.ts scripts; do not commit (large, reproducible).
+*.json
