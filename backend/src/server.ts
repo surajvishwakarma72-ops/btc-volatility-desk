@@ -51,6 +51,10 @@ export async function buildServer(): Promise<FastifyInstance> {
     allowList: ['127.0.0.1'], // Caddy/health checks on the local docker network
   });
 
+  // Fail fast in production rather than silently signing JWTs with a public dev secret.
+  if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET must be set in production');
+  }
   await app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-insecure-change-me' });
   app.decorate('authenticate', async function (request: any, reply: any) {
     try { await request.jwtVerify(); }
