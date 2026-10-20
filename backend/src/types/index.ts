@@ -1,12 +1,9 @@
 /**
- * Core Domain TypeScript Type Definitions Stub
- * 
- * Future Types:
- * - Trade, TradeEntryInput, TradeCloseInput, StranglePosition
- * - NightlyReview, NightReviewInput, DayStatistics
- * - ChartDrawing, Point, LineStyle
- * - UserPreferences, FxIndicatorSettings
- * - AlertRule, AlertPayload, PushNotificationTarget
+ * Core Domain TypeScript Type Definitions.
+ *
+ * Domain types are introduced alongside the features that need them (route Zod
+ * schemas in `src/schemas.ts`, Drizzle row types inferred from `src/db/schema.ts`).
+ * Shared cross-cutting types live here; `BaseEntity` is the common id/timestamp shape.
  */
 
 export interface BaseEntity {
