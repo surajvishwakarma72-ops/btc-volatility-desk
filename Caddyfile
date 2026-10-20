@@ -1,0 +1,7 @@
+# One site, one backend. Fastify already serves the API, the WebSocket (/ws) and the
+# static SPA on :4000, so a single reverse_proxy covers everything — Caddy upgrades
+# WebSocket connections transparently. Caddy auto-issues/renews the TLS cert for $DOMAIN.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:4000
+}
