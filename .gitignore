@@ -25,3 +25,6 @@ Thumbs.db
 .idea/
 .vscode/
 
+
+# 5-year backtest price/vol caches (regenerable via backend/scripts/*.mjs)
+backend/scripts/*.json
