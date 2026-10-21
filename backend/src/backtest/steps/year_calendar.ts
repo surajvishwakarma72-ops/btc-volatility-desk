@@ -85,7 +85,7 @@ function main() {
       fix = hadTurn ? 'enter ~30–60m later next time — let the London-close move exhaust before selling' : 'wait for a clear IV turn; do not sell into the window open';
     } else if (sim.pnlPctMargin > 0) {
       nWin++;
-      out = sim.outcome === 'target' ? 'TARGET' : 'TIME-WIN';
+      out = sim.outcome === 'TARGET' ? 'TARGET' : 'TIME-WIN';
       why = out === 'TARGET' ? 'hit 12% target — crush paid in full' : 'held to 07:00 in profit — crush decayed overnight';
     } else {
       out = 'TIME-FLAT'; why = 'held to 07:00 near scratch';
