@@ -138,6 +138,36 @@ function main() {
   cons.forEach((r, i) => console.log(
     `  ${String(i + 1).padStart(2)}.  ${(r.ind.fx + ' ' + r.ind.name).padEnd(28)} ${(r.favDir + ' (med ' + f1(r.med) + ')').padEnd(15)} ${f1(r.win).padStart(5)}  ${f1(r.sv).padStart(5)}  ${((r.pnl >= 0 ? '+' : '') + f1(r.pnl)).padStart(6)}  ${f1(r.score).padStart(5)}`));
 
+  // BEST MODIFICATION — engineered gates: stack top performers + use the IV 45-60 band (not a median split).
+  const medOf = (g: (F: Features) => number) => median(trades.map((t) => g(t.feat)));
+  const mEdge = medOf((F) => F.edge), mVel = medOf((F) => F.velPct), mRng = medOf((F) => F.range24), mTerm = medOf((F) => F.termSpread), mAdx = medOf((F) => F.adx15);
+  const FILT: Record<string, (F: Features) => boolean> = {
+    'edge↑': (F) => F.edge >= mEdge,
+    'vel↓': (F) => F.velPct <= mVel,
+    'rng↓': (F) => F.range24 <= mRng,
+    'term↓': (F) => F.termSpread <= mTerm,
+    'adx↑': (F) => F.adx15 >= mAdx,
+    'IV45-60': (F) => F.iv >= 45 && F.iv < 60,
+    'calm': (F) => F.speed < 1.5,
+  };
+  const combos: string[][] = [
+    ['edge↑'], ['vel↓'], ['IV45-60'], ['adx↑'], ['term↓'],
+    ['edge↑', 'vel↓'], ['edge↑', 'IV45-60'], ['vel↓', 'IV45-60'], ['edge↑', 'adx↑'],
+    ['edge↑', 'vel↓', 'rng↓'], ['edge↑', 'vel↓', 'IV45-60'], ['edge↑', 'adx↑', 'vel↓'],
+    ['edge↑', 'vel↓', 'rng↓', 'term↓'], ['IV45-60', 'edge↑', 'vel↓', 'rng↓'],
+  ];
+  const rows = combos.map((c) => {
+    const sub = trades.filter((t) => c.every((name) => FILT[name](t.feat)));
+    return { gate: c.join(' + '), n: sub.length, win: pct(sub.filter((t) => t.win).length, sub.length), sv: pct(sub.filter((t) => !t.stopped).length, sub.length), pnl: mean(sub.map((t) => t.pnl)) };
+  }).filter((r) => r.n >= 12).sort((a, b) => b.pnl - a.pnl);
+  console.log('\n' + '='.repeat(94));
+  console.log('BEST MODIFICATION — engineered entry gates vs base (ranked by avg PnL%; n≥12 to limit overfit):');
+  console.log('  rank  gate                                  n    Win%  Surv%  avgPnL%   vs base PnL');
+  console.log(`  --.  BASE (all IV-turn entries)            ${String(trades.length).padStart(3)}  ${f1(baseWin).padStart(5)}  ${f1(baseSurv).padStart(5)}  ${('+' + f1(mean(trades.map((t) => t.pnl)))).padStart(6)}`);
+  const basePnl = mean(trades.map((t) => t.pnl));
+  rows.forEach((r, i) => console.log(
+    `  ${String(i + 1).padStart(2)}.  ${r.gate.padEnd(36)} ${String(r.n).padStart(3)}  ${f1(r.win).padStart(5)}  ${f1(r.sv).padStart(5)}  ${('+' + f1(r.pnl)).padStart(6)}   ${((r.pnl - basePnl >= 0 ? '+' : '') + f1(r.pnl - basePnl)).padStart(5)}pp`));
+
   console.log('\nNOT BACKTESTABLE here (no archived year of data) — rank live instead:');
   console.log('  gex (dealer gamma) · skew (25Δ) · fund (funding+OI history) · liq (OKX liquidations) ·');
   console.log('  dfl (Deribit option flow) · fp (footprint) · lhm (liq heatmap) · fut (OI positioning) ·');
