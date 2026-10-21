@@ -24329,6 +24329,15 @@ function plan(D0,raw){
       r.kind='full';r.icon='shield';r.badge=(bd.pnl>=0?'≈ FLAT':'· small loss')+' ('+bd.pnl+'%)';r.title=DN[wd]+' Time Exit ('+bd.pnl+'%)';r.why='GO trade, time-exit at 07:00 IST, '+bd.pnl+'% of margin.';return r;
     }
 
+    // A PAST weekday with no backtest record = before the data window (BTC IV history starts 2021) → clear "no data".
+    const _todayD0=Math.floor((Date.now()+IST)/DAY)*DAY-IST;
+    if(D0<_todayD0){
+      r.kind='nodata';r.icon='';r.size=0;r.delta='None';r.isPast=true;
+      r.badge='— no data';r.title=DN[wd]+' · no backtest data';
+      r.why='Before the backtest window — BTC implied-vol (DVOL) history only starts 2021. No modelled result for this date.';
+      return r;
+    }
+
     // Today / forward: show THIS weekday's own 5-year backtest profile, so each day is visually distinct.
     r.kind='pending';r.icon='bullseye';r.size=0;r.delta='0.15Δ both legs';
     const WKp=(W.__STRANGLE_WEEKDAY&&W.__STRANGLE_WEEKDAY[DN[wd]])||null;
@@ -25740,9 +25749,11 @@ function paintCal(){
                   p.kind==='wait'?SVG_ICONS.off('#64748B',16):
                   p.kind==='pending'?SVG_ICONS.bullseye(dngCol(p.wkDanger),16):'';
 
-    let sizingText=p.kind==='off'?'Weekend · off':p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?('enter '+(p.wkEntry||'01:30')+' IST'):(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
+    let sizingText=p.kind==='nodata'?'no data':p.kind==='off'?'Weekend · off':p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?('enter '+(p.wkEntry||'01:30')+' IST'):(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
     let resultText='';
-    if(p.isPast){
+    if(p.kind==='nodata'){
+      resultText='<div class="cc-result" style="color:#4a5568">— pre-2021</div>';
+    }else if(p.isPast){
       if(p.kind==='win') resultText='<div class="cc-result res-ok">✓ Won (+'+p.histPnl+'%)</div>';
       else if(p.kind==='stopped') resultText='<div class="cc-result res-bad">✗ Stopped (2.0×)</div>';
       else if(p.kind==='wait') resultText='<div class="cc-result" style="color:#94A3B8">⏸ WAIT · passed</div>';
@@ -25751,7 +25762,7 @@ function paintCal(){
     }else{
       resultText='<div class="cc-result" style="color:'+dngCol(p.wkDanger)+'">'+(p.wkDanger!=null?p.wkDanger+'% danger':'gate decides')+(p.wkLeg?' · '+p.wkLeg:'')+'</div>';
     }
-    const cellStyle=(p.kind==='pending')?' style="border-left:3px solid '+dngCol(p.wkDanger)+'"':'';
+    const cellStyle=(p.kind==='pending')?' style="border-left:3px solid '+dngCol(p.wkDanger)+'"':(p.kind==='nodata')?' style="opacity:.42"':'';
 
     h+='<button type="button" class="cal-cell '+p.kind+' '+(isSel?'selected':'')+' '+(isToday?'today':'')+'"'+cellStyle+' data-a="day" data-d="'+D0+'" aria-label="'+fmt(D0)+': '+p.title+'">'+
       '<div class="cc-top">'+
