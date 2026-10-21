@@ -62,12 +62,14 @@ export const RULES = {
     { id: 'term', name: 'Term spread', favour: 'watch (direction under review)', weight: 1 },
   ],
 
-  // Session-event markers for the clock/journey (IST hours from local midnight). Volatility study refines these.
+  // Session-event markers for the clock/journey (IST hours from local midnight).
+  // Risk levels set by the session_events.ts realised-vol study (1-year): London close is the WILD one
+  // (avg 51% RV, peaks Thu/Fri ~62%) and it sits right on your entry — the overnight hold is CALMER.
   events: [
-    { id: 'asiaOpen', name: 'Asia open', ist: 5.5, risk: 'low' },
-    { id: 'londonClose', name: 'London close', ist: 21.5, risk: 'med' },
-    { id: 'cmeSettle', name: 'CME settle', ist: 25.5, risk: 'high', note: 'price-run risk inside the hold' },
-    { id: 'nyClose', name: 'New York close', ist: 25.5, risk: 'high', note: 'biggest overnight move risk — do not open a fresh position into it' },
+    { id: 'londonClose', name: 'London close', ist: 21.5, risk: 'high', rvAvg: 51.3, note: "the night's wildest moment (peaks Thu/Fri) — do NOT sell into it; wait for it to exhaust (the IV turn)" },
+    { id: 'cmeSettle', name: 'CME settle', ist: 25.5, risk: 'med', rvAvg: 37.0, note: 'inside the hold, but vol is already calming — hold, never add' },
+    { id: 'nyClose', name: 'New York close', ist: 25.5, risk: 'med', rvAvg: 37.0, note: 'inside the hold; calmer than entry — stay in profit, never add' },
+    { id: 'asiaOpen', name: 'Asia open', ist: 5.5, risk: 'low', rvAvg: 35.9, note: 'near your 07:00 exit; only Monday spikes (~54%)' },
   ],
 
   // Only-if-urgent skips. Nothing else is ever skipped.
