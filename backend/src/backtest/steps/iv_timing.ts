@@ -222,7 +222,7 @@ function nyHeatmapExtra(cfg: SimConfig) {
 /** Outcome bucketed by entry ATM-IV level (absolute %) and by IV percentile. NY IV-turn entry, weekdays. */
 function ivLevelAnalysis(cfg: SimConfig) {
   const data = loadData();
-  interface T { iv0: number; pnl: number; stopped: boolean; label: 'CRUSH' | 'REBOUND' | 'NO-EVENT'; }
+  interface T { iv0: number; dow: number; day: string; pnl: number; stopped: boolean; label: 'CRUSH' | 'REBOUND' | 'NO-EVENT'; }
   const trades: T[] = [];
   const [nySh, nyEh] = SESSIONS.NY;
   for (let dayMs = d0(FIRST); dayMs <= d0(LAST); dayMs += DAY) {
@@ -238,7 +238,7 @@ function ivLevelAnalysis(cfg: SimConfig) {
     const sim = simulateStrangle(data, f, entryT, cfg);
     if (!sim.ok) continue;
     const hold = classifyCrush(data.ivWindow(f.n2n, entryT, f.exit), entryT, entryT + 30 * MIN, f.exit);
-    trades.push({ iv0: sim.iv0, pnl: sim.pnlPctMargin, stopped: sim.stopped, label: hold.label === 'NO-EVENT' ? (sim.stopped ? 'REBOUND' : 'CRUSH') : hold.label });
+    trades.push({ iv0: sim.iv0, dow: f.dow, day, pnl: sim.pnlPctMargin, stopped: sim.stopped, label: hold.label === 'NO-EVENT' ? (sim.stopped ? 'REBOUND' : 'CRUSH') : hold.label });
   }
 
   const summ2 = (xs: T[]) => ({
@@ -255,14 +255,19 @@ function ivLevelAnalysis(cfg: SimConfig) {
   const head = '  bucket          n   avgIV  Stop%  Win%  Kept%  Bncd%  avgSL%  avgPnL%';
 
   console.log(`\n7) BY ENTRY ATM-IV LEVEL (NY IV-turn entry, weekday nights, n=${trades.length}):`);
-  console.log('  7a) Absolute ATM IV % at entry:');
+  // Entry-IV extremes (lowest & highest IV available at entry) + per-weekday spread.
+  const byIv = [...trades].sort((a, b) => a.iv0 - b.iv0);
+  const lo = byIv[0], hi = byIv[byIv.length - 1];
+  console.log(`  Entry IV range: LOW ${f1(lo.iv0)}% (${lo.day}, ${DOW[lo.dow]})  →  HIGH ${f1(hi.iv0)}% (${hi.day}, ${DOW[hi.dow]})`);
+  console.log('  Entry IV by weekday (min / avg / max):');
+  for (let d = 1; d <= 5; d++) {
+    const xs = trades.filter((t) => t.dow === d).map((t) => t.iv0);
+    if (xs.length) console.log(`     ${DOW[d]}: min ${f1(Math.min(...xs))}  avg ${f1(mean(xs))}  max ${f1(Math.max(...xs))}  (n=${xs.length})`);
+  }
+  console.log('\n  7a) Each 5-pt ATM-IV band across the FULL observed range (lowest → highest at entry):');
   console.log(head);
-  const abs: [string, (iv: number) => boolean][] = [
-    ['<40', (iv) => iv < 40], ['40-45', (iv) => iv >= 40 && iv < 45], ['45-50', (iv) => iv >= 45 && iv < 50],
-    ['50-55', (iv) => iv >= 50 && iv < 55], ['55-60', (iv) => iv >= 55 && iv < 60], ['60-65', (iv) => iv >= 60 && iv < 65],
-    ['65-70', (iv) => iv >= 65 && iv < 70], ['>=70', (iv) => iv >= 70],
-  ];
-  for (const [lab, test] of abs) { const xs = trades.filter((t) => test(t.iv0)); if (xs.length) printRow(lab, summ2(xs)); }
+  const floor = Math.floor(lo.iv0 / 5) * 5, ceil = Math.ceil(hi.iv0 / 5) * 5;
+  for (let b = floor; b < ceil; b += 5) { const xs = trades.filter((t) => t.iv0 >= b && t.iv0 < b + 5); if (xs.length) printRow(`${b}-${b + 5}`, summ2(xs)); }
 
   console.log('\n  7b) ATM IV percentile at entry (rank of entry IV within the year of entries):');
   console.log(head);
