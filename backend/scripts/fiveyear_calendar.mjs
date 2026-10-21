@@ -18,8 +18,17 @@ const ANN=Math.sqrt(24*365);
 const stopMult=(iv)=>(iv>=35&&iv<45?3:2);
 const REAL_FROM='2025-10-06',REAL_TO='2026-10-17'; // the real-IV span stays authoritative
 
-function main(){
-  const prices=JSON.parse(fs.readFileSync(P('./btc-1h-5y.json'),'utf8'));const byT=new Map();for(const b of prices)byT.set(b[0],b);
+async function fetchPriceFull(){
+  const CACHE=P('./btc-1h-full.json');
+  if(fs.existsSync(CACHE)){const c=JSON.parse(fs.readFileSync(CACHE,'utf8'));if(c.length>48000)return c;}
+  const end=Date.now();let t=1616198400000;const out=[]; // from 2021-03-20 (covers DVOL start 2021-03-24)
+  while(t<end){const u=`https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=${t}&limit=1000`;const r=await fetch(u);const a=await r.json();if(!Array.isArray(a)||!a.length)break;
+    for(const k of a)out.push([k[0],+k[2],+k[3],+k[4]]);t=a[a.length-1][0]+HOUR;if(a.length<1000)break;await new Promise(s=>setTimeout(s,110));}
+  fs.writeFileSync(CACHE,JSON.stringify(out));console.log(`[price-full] ${out.length} bars ${new Date(out[0][0]).toISOString().slice(0,10)} → ${new Date(out[out.length-1][0]).toISOString().slice(0,10)}`);return out;
+}
+
+async function main(){
+  const prices=await fetchPriceFull();const byT=new Map();for(const b of prices)byT.set(b[0],b);
   const dvol=JSON.parse(fs.readFileSync(P('./btc-dvol-5y.json'),'utf8'));const dv=new Map();for(const[ts,v]of dvol)dv.set(dkey(ts),v);
   const T0=3/365;const out={};let go=0,wait=0;
   const first=prices[0][0],last=prices[prices.length-1][0];
