@@ -21542,6 +21542,12 @@ const LIST=[['spd','Speed vs IV','RV ÷ IV bars · 1× and 1.5× lines','btc'],[
 const IND={spd:()=>$('cvLane'),edge:()=>$('v105EdgeBox'),rng:()=>$('v105RangeBox'),adx:()=>$('paAdxBox'),term:()=>$('v137Term'),skew:()=>$('v137Skew'),fund:()=>$('v137Fund'),ready:()=>$('v138Ready'),iv:()=>$('v138Iv'),rv:()=>$('v138Rv'),vov:()=>$('v138Vov'),dv:()=>$('v138Dv'),ton:()=>$('v142Ton'),gng:()=>$('v142Gng'),pwin:()=>$('v142Pwin'),rsi:()=>$('v142Rsi'),dfl:()=>$('v142Dfl'),grk:()=>$('v142Grk'),spr:()=>$('v142Spr'),tip:()=>$('v142Tip'),day:()=>$('v145Day'),crush:()=>$('v145Crush'),fut:()=>$('v146Fut')};   // v137: new lanes · v142 sections
 const DEF={spd:true,edge:false,rng:false,adx:false,iv:true,rv:false,vov:false,dv:false,ton:true,gex:false,sig:true,pat:true,cdl:false,term:true,skew:false,fund:false,liq:false,ready:true,strk:true,legs:true,ses:true,gng:false,pwin:false,rsi:false,dfl:false,grk:false,spr:false,fp:false,vwap:false,avp:false,lhm:false,tip:false,day:true,crush:false,fut:true};   // v133: a clean first screen; tick more in the menu
 let on=Object.assign({},DEF,LSg('v133_ind',{}));
+// Entry / Hold / Exit phase presets — one click deploys that phase's whole indicator set (backtest-graded).
+const PHASE={
+  entry:['spd','vov','rng','rv','dv','edge','iv','ton','term','crush','sig','gng','vwap','avp','day','ses','ready'],  // verify & time the sell
+  hold:['legs','strk','grk','rsi','liq','lhm','iv','crush','pwin','ready'],                                           // manage the open position
+  exit:['ready','ton','sig','legs','tip','day','iv','crush']                                                         // when / how to close
+};
 function save(){LSs('v133_ind',on);}
 function refit(){try{W.paRefit&&W.paRefit();}catch(e){}setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(e){}},60);setTimeout(()=>{try{W.v128&&W.v128.refit&&W.v128.refit();}catch(e){}},700);}
 /* ---------- the menu ---------- */
@@ -21577,9 +21583,9 @@ function button(){const top=$('gTop');if(!top||$('v132IndBtn'))return;const r=to
 function count(){const n=Object.values(on).filter(Boolean).length;const s=D.querySelector('#v132IndBtn .v132n');if(s)s.textContent=n;}
 function openMenu(){let m=$('v132Ind');if(m){m.hidden=!m.hidden;if(!m.hidden){paint();const q=m.querySelector('input[type=search]');if(q)q.focus();}return;}
   m=D.createElement('div');m.id='v132Ind';m.setAttribute('role','dialog');m.setAttribute('aria-label','Indicators');
-  m.innerHTML='<div class="h"><b>Indicators</b><button type="button" class="x" aria-label="Close">✕</button></div><label class="s"><span aria-hidden="true">⌕</span><input type="search" placeholder="Search" aria-label="Search indicators"></label><div class="lb">Indicators</div><div class="ls" role="list"></div><div class="f"><button type="button" data-a="all">Show all</button><button type="button" data-a="def">Default set</button></div>';
+  m.innerHTML='<div class="h"><b>Indicators</b><button type="button" class="x" aria-label="Close">✕</button></div><label class="s"><span aria-hidden="true">⌕</span><input type="search" placeholder="Search" aria-label="Search indicators"></label><div class="lb">Deploy a phase set</div><div class="f phf"><button type="button" data-a="entry" style="color:#2ec45f;border-color:#2b5540;font-weight:800">▶ Entry</button><button type="button" data-a="hold" style="color:#4ea8ff;border-color:#294863;font-weight:800">⏸ Hold</button><button type="button" data-a="exit" style="color:#ff6b6b;border-color:#5a2a32;font-weight:800">⏹ Exit</button></div><div class="lb">Indicators</div><div class="ls" role="list"></div><div class="f"><button type="button" data-a="all">Show all</button><button type="button" data-a="def">Default set</button></div>';
   D.body.appendChild(m);
-  m.addEventListener('click',e=>{e.stopPropagation();if(e.target.closest('.x')){m.hidden=true;return;}const a=e.target.closest('[data-a]');if(a){if(a.dataset.a==='all')for(const [k] of LIST)on[k]=true;else on=Object.assign({},DEF);save();apply(true);paint();return;}
+  m.addEventListener('click',e=>{e.stopPropagation();if(e.target.closest('.x')){m.hidden=true;return;}const a=e.target.closest('[data-a]');if(a){const act=a.dataset.a;if(act==='all')for(const [k] of LIST)on[k]=true;else if(PHASE[act]){on={};for(const k of PHASE[act])on[k]=true;}else on=Object.assign({},DEF);save();apply(true);paint();return;}
     const it=e.target.closest('[data-k]');if(it){const k=it.dataset.k;on[k]=!on[k];if(!Object.values(on).some(Boolean))on[k]=true;save();apply(true);paint();}});
   m.querySelector('input').addEventListener('input',paint);
   D.addEventListener('click',e=>{if(m.hidden||!e.isTrusted)return;const P=e.composedPath?e.composedPath():[];if(P.some(n=>n===m||(n&&n.id==='v132IndBtn')))return;if(e.target.isConnected&&e.target.closest('#v132Ind,#v132IndBtn'))return;m.hidden=true;});   // v140: a tick re-paints the list (target detached) — no longer closes the menu
