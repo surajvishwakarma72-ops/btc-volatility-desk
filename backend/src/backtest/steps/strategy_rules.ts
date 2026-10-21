@@ -95,7 +95,7 @@ function main() {
   console.log('='.repeat(92));
   for (const dow of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as Dow[]) console.log('  ' + planNight(dow));
   console.log('\n  IV read (advisory size/confidence, NOT skip):');
-  for (const b of RULES.ivBands) console.log(`     ${String(b.lo).padStart(2)}–${b.hi === 999 ? '∞' : String(b.hi).padEnd(2)} ${b.label.padEnd(10)} [${b.tone}] ${b.note}${b.emergencySkip ? '  ← the only sit-out' : ''}`);
+  for (const b of RULES.ivBands) console.log(`     ${String(b.lo).padStart(2)}–${b.hi === 999 ? '∞' : String(b.hi).padEnd(2)} ${b.label.padEnd(10)} [${b.tone}] ${b.note}${(b as any).emergencySkip ? '  ← the only sit-out' : ''}`);
   console.log('\n  Session events to respect on timing (don\'t open fresh into the high-risk ones):');
   const hm = (h: number) => `${String(Math.floor(h) % 24).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
   for (const e of RULES.events) console.log(`     ${e.name.padEnd(14)} ~${hm(e.ist)} IST  [${e.risk}]${(e as any).note ? ' — ' + (e as any).note : ''}`);
