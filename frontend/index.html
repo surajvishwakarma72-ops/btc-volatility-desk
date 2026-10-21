@@ -471,6 +471,7 @@
 <script src="data/shadow_backtest_dataset.js"></script>
 <script src="data/rulebook.js"></script>
 <script src="data/backtest_days.js"></script>
+<script src="data/weekday_patterns.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <script id="v105_17Early">/* v105.17 · smooth + fast start (runs before every other script).
@@ -24678,8 +24679,10 @@ function status(now){
   // Live GATE — conditions-based, built to AVOID the stop. GO only when every condition aligns.
   const ser=series(F.n2n), ivNow=ser?at(ser,now):null;
   const clz=closes(now-26*HR,now), rv24=(clz?rvOver(clz,now,24*60):null);
-  const bandOk=(ivNow!=null)&&!(ivNow>=35&&ivNow<45)&&ivNow<65; // out of 35–45 dead-zone & not panic
+  const bandOk=(ivNow!=null)&&ivNow<65; // only an IV≥65 panic is out; 35–45 now trades (at a 3× stop)
   const edgeOk=(ivNow!=null&&rv24!=null)?(ivNow>=rv24):true;     // edge-rich: IV richer than realised
+  const stopX=(ivNow!=null&&ivNow>=35&&ivNow<45)?'3×':'2×';     // band-adaptive stop
+  const wkPat=(window.__STRANGLE_WEEKDAY&&window.__STRANGLE_WEEKDAY[DN[p.wd]])||null;
   const calendarOk=isWeekday;
   const dualGo=calendarOk&&speedOk&&bandOk&&edgeOk; // the full stop-avoiding gate
   
@@ -24692,7 +24695,7 @@ function status(now){
   const isExitWindow = istMins >= window.PROVEN_BOUNDARIES.EXIT_START_MINS && istMins <= window.PROVEN_BOUNDARIES.EXIT_END_MINS;
   const isTrapWindow = istMins >= window.PROVEN_BOUNDARIES.TRAP_MINS_START && istMins <= window.PROVEN_BOUNDARIES.TRAP_MINS_END;
 
-  const st={p,F,R,speedVal,speedOk,calendarOk,dualGo,curHour,istMins,inProvenEntryWindow,isSetupWindow,isExitWindow,isTrapWindow};
+  const st={p,F,R,speedVal,speedOk,calendarOk,dualGo,curHour,istMins,inProvenEntryWindow,isSetupWindow,isExitWindow,isTrapWindow,ivNow,stopX,wkPat,edgeOk,bandOk};
 
   // 1. Holding Open Strangle Position
   if(R&&R.pos&&!R.stale){
@@ -24710,8 +24713,8 @@ function status(now){
     return Object.assign(st,{
       cls: 'full',
       word: 'GO',
-      d1: 'GATE OPEN · SELL 100 lots'+(isPremium?' · ★ PREMIUM':''),
-      d2: DN[p.wd]+' · IV '+(ivNow!=null?ivNow.toFixed(0)+'% ':'')+'out of dead-zone · edge-rich · calm '+speedVal.toFixed(2)+'×',
+      d1: 'GATE OPEN · SELL 100 lots · stop '+stopX+(isPremium?' · ★ PREMIUM':''),
+      d2: 'IV '+(ivNow!=null?ivNow.toFixed(0)+'% ':'')+'· edge-rich · calm '+speedVal.toFixed(2)+'×'+(wkPat?(' · watch the '+wkPat.hurtLeg+' side'):''),
       icon: 'shield'
     });
   }
@@ -24729,10 +24732,6 @@ function status(now){
     whyD1 = 'WAIT — IV panic ('+ivNow.toFixed(0)+'% ≥ 65)';
     whyD2 = 'Real fear · stand down until IV cools';
     stopIcon = 'beacon_red';
-  } else if(ivNow!=null && ivNow>=35 && ivNow<45){
-    whyD1 = 'WAIT — IV in the 35–45 dead-zone ('+ivNow.toFixed(0)+'%)';
-    whyD2 = 'Stops cluster here · the gate passes this night';
-    stopIcon = 'stop';
   } else if(!edgeOk){
     whyD1 = 'WAIT — edge thin (IV not rich vs realised)';
     whyD2 = 'Not being paid enough to sell · pass, keep capital';
@@ -24964,6 +24963,19 @@ function paintMini(){
   const f=face(false);
   if(m.__k!==f.svg){m.innerHTML=f.svg;m.__k=f.svg;}
   m.setAttribute('aria-label','Trade clock: '+f.st.word+', '+f.st.d1);
+  // Live info caption under the on-chart clock — so it actually tells you something at a glance.
+  let cap=$('v147MiniCap');
+  if(!cap && m.parentElement){cap=D.createElement('div');cap.id='v147MiniCap';m.parentElement.appendChild(cap);cap.addEventListener('click',function(e){e.stopPropagation();try{openBig();}catch(x){}});}
+  if(cap){
+    cap.hidden=!PREF.mini;
+    const st=f.st,w=st.word||'';
+    const tone=(w==='GO')?'#10B981':(w.indexOf('EXIT')>=0||w.indexOf('HOLD')>=0)?'#3B82F6':(w==='LOADING')?'#94A3B8':'#EF4444';
+    const iv=(st.ivNow!=null)?('IV '+st.ivNow.toFixed(0)+'%'):'';
+    const extra=(w==='GO')?('stop '+(st.stopX||'2×')+(st.wkPat?(' · watch '+st.wkPat.hurtLeg):'')):'';
+    cap.innerHTML='<div class="mc-w" style="color:'+tone+'">'+w+'</div>'+
+      '<div class="mc-s">'+[iv,extra].filter(Boolean).join(' · ')+'</div>'+
+      '<div class="mc-d">'+(st.d1||'')+'</div>';
+  }
 }
 
 /* ---------- Telemetry Client Logger & Self-Test Verifier ---------- */
@@ -25641,7 +25653,7 @@ function paintTop(st){
           '<b>1. CALENDAR DAY EDGE</b>'+
         '</div>'+
         '<div class="dc-value">'+st.p.title+'</div>'+
-        '<div class="dc-desc">'+(isCalOk?'Weekday — the gate decides GO / WAIT':'Weekend — desk off')+'</div>'+
+        '<div class="dc-desc">'+(isCalOk?(st.wkPat?st.wkPat.note:'Weekday — the gate decides GO / WAIT'):'Weekend — desk off')+'</div>'+
       '</div>'+
 
       '<div class="dual-card '+(isSpeedOk?'status-green':'status-red')+'" data-reveal="speed_beacon" style="cursor:pointer">'+
@@ -25786,6 +25798,10 @@ css.textContent=`
 #v147Mini{position:absolute;top:42px;left:8px;z-index:6;width:clamp(122px,14vw,166px);aspect-ratio:1;padding:0;border:0;background:none;cursor:pointer;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35));transition:transform .15s ease}
 #v147Mini:hover{transform:scale(1.04)}
 #v147Mini svg{width:100%;height:100%;display:block}
+#v147MiniCap{position:absolute;top:calc(48px + clamp(122px,14vw,166px));left:8px;z-index:6;width:clamp(150px,17vw,200px);box-sizing:border-box;background:rgba(8,12,18,.82);border:1px solid #1f2f3e;border-radius:9px;padding:6px 8px;cursor:pointer;backdrop-filter:blur(4px);font-family:system-ui,sans-serif}
+#v147MiniCap .mc-w{font-size:13px;font-weight:900;letter-spacing:.02em}
+#v147MiniCap .mc-s{font-size:10.5px;font-weight:700;color:#cbd5e1;margin-top:1px}
+#v147MiniCap .mc-d{font-size:9.5px;color:#8c9bb0;margin-top:2px;line-height:1.2}
 
 #v147Big{position:fixed;inset:0;z-index:1350;background:rgba(10,16,22,.97);display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;overflow-x:hidden;padding:max(12px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 28px max(8px,env(safe-area-inset-left));box-sizing:border-box;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;transform:translateZ(0)}
 @media (min-width:769px){#v147Big{background:rgba(0,0,0,.65);backdrop-filter:blur(6px)}}
