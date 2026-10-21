@@ -118,6 +118,61 @@ function row(firstCol: string, s: Summ, tag = '') {
   );
 }
 
+/** Weekday × fixed-entry-time heatmap for the NY session, to find the best clock time to sell. */
+function nyHeatmap(cfg: SimConfig) {
+  const data = loadData();
+  const OFFS = [0, 1, 2, 3, 4, 5, 6]; // hours from NY open (≈19:00 IST EDT)
+  const label = (o: number) => String((19 + o) % 24).padStart(2, '0') + ':00';
+  const pnl: Record<number, Record<number, number[]>> = {};
+  const stop: Record<number, Record<number, number>> = {};
+  const win: Record<number, Record<number, number>> = {};
+  for (let d = 1; d <= 5; d++) { pnl[d] = {}; stop[d] = {}; win[d] = {}; for (const o of OFFS) { pnl[d][o] = []; stop[d][o] = 0; win[d][o] = 0; } }
+
+  for (let dayMs = d0(FIRST); dayMs <= d0(LAST); dayMs += DAY) {
+    const day = dk(dayMs + 12 * HR);
+    const f = frame(d0(day) + 20 * HR);
+    if (f.dow < 1 || f.dow > 5) continue;
+    if (!data.hasIv(f.n2n) || f.exit > data.priceLast) continue;
+    for (const o of OFFS) {
+      const entryT = f.open + o * HR;
+      if (entryT >= f.exit || data.ivAt(f.n2n, entryT) == null) continue;
+      const sim = simulateStrangle(data, f, entryT, cfg);
+      if (!sim.ok) continue;
+      pnl[f.dow][o].push(sim.pnlPctMargin);
+      if (sim.stopped) stop[f.dow][o]++;
+      if (sim.pnlPctMargin > 0) win[f.dow][o]++;
+    }
+  }
+
+  const colhead = '  weekday ' + OFFS.map((o) => label(o).padStart(8)).join('');
+  console.log('\n6) NY BEST-ENTRY HEATMAP — sell at a fixed IST time each night, hold to 07:00 (avg PnL % of margin; * = best time that day):');
+  console.log('   (columns = entry clock time IST, NY-open basis; hold is always to the 07:00 exit)');
+  console.log(colhead);
+  for (let d = 1; d <= 5; d++) {
+    const avgs = OFFS.map((o) => mean(pnl[d][o]));
+    const best = Math.max(...avgs);
+    const cells = OFFS.map((o, i) => { const v = avgs[i]; const s = (i === avgs.indexOf(best) ? '*' : '') + (v >= 0 ? '+' : '') + f1(v); return s.padStart(8); });
+    console.log('  ' + DOW[d].padEnd(7) + ' ' + cells.join(''));
+  }
+  console.log('\n   Win% by entry time:');
+  console.log(colhead);
+  for (let d = 1; d <= 5; d++) {
+    const cells = OFFS.map((o) => f1(pct(win[d][o], pnl[d][o].length)).padStart(8));
+    console.log('  ' + DOW[d].padEnd(7) + ' ' + cells.join(''));
+  }
+  console.log('\n   Stop% by entry time:');
+  console.log(colhead);
+  for (let d = 1; d <= 5; d++) {
+    const cells = OFFS.map((o) => f1(pct(stop[d][o], pnl[d][o].length)).padStart(8));
+    console.log('  ' + DOW[d].padEnd(7) + ' ' + cells.join(''));
+  }
+  console.log('\n   → Best NY entry per weekday (max avg PnL%):');
+  for (let d = 1; d <= 5; d++) {
+    const r = OFFS.map((o) => ({ o, v: mean(pnl[d][o]), n: pnl[d][o].length, st: pct(stop[d][o], pnl[d][o].length), w: pct(win[d][o], pnl[d][o].length) })).sort((a, b) => b.v - a.v)[0];
+    console.log(`     ${DOW[d]}: ${label(r.o)} IST → avgPnL ${(r.v >= 0 ? '+' : '') + f1(r.v)}%, win ${f1(r.w)}%, stop ${f1(r.st)}% (n=${r.n})`);
+  }
+}
+
 function main() {
   const recs = run(DEFAULT_SIM); // base: 0.15Δ symmetric
   const bySess = (s: string) => recs.filter((r) => r.session === s);
@@ -155,6 +210,8 @@ function main() {
     const st = r.filter((x) => x.stopped);
     console.log(`  ${dl.toFixed(3)}  ${String(r.length).padStart(3)}  ${f1(pct(st.length, r.length)).padStart(5)}  ${f1(pct(r.filter((x) => x.pnlPctMargin > 0).length, r.length)).padStart(5)}  ${f1(mean(r.map((x) => x.pnlPctMargin))).padStart(7)}  ${f1(mean(st.map((x) => x.pnlPctMargin))).padStart(6)}`);
   }
+
+  nyHeatmap(DEFAULT_SIM);
 
   // Plain-language takeaways.
   console.log('\n' + '='.repeat(100));
