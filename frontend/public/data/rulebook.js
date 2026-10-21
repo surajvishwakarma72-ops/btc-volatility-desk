@@ -7,29 +7,29 @@ window.__STRANGLE_RULEBOOK = {
     "vol-of-vol/skew/GEX/flow are sparse/low-fidelity and did not survive OOS."
   ],
   "global": {
-    "entry_window": "Enter LATE, 22:30–01:00 IST (Fri to 01:30). Timing is the #1 stop-loss lever: SL falls from 50–75% at 19:00 to 10–25% by 23:00.",
+    "entry_window": "Sell the IV turn, 22:30–23:30 IST (Friday ~23:00). NEVER sell into the 21:30 London-close spike — wait for it to exhaust. Late entry is the #1 stop-loss lever.",
     "iv_conditions": [
-      "IV>=35 filter did NOT reduce SLs (net-negative) — dropped.",
-      "Edge (IV-RV24) is structurally negative in BTC (~-7): the textbook IV>RV rule is dead."
+      "Trade every IV band 25–60. 45–60 is the richest 'sweet' zone; 35–45 is the lowest-edge dead-zone but still traded full size.",
+      "The ONLY sit-out is IV >= 65% (panic)."
     ],
     "silence_conditions": [
-      "Primary \"silence\" = the clock (late entry). Entry-time indicators barely separate SL vs non-SL nights (Step 3: all |d|<=0.24)."
+      "Primary \"silence\" = the clock (late entry, after the London-close move exhausts)."
     ],
     "veto_conditions": [
-      "SKIP if rsi15 > 60 at entry — the ONLY entry veto that clears the 34.9% SL-precision breakeven and holds out-of-sample (SLs 65→42, net $221→$393)."
+      "NONE. No RSI veto, no skipping. Trade every weekday, full 100 lots. Only emergency sit-out: IV >= 65% panic or a red high-impact event."
     ],
     "delay_rules": [
-      "None — for rsi15>60 nights, SKIP beats DELAY (delaying to 01:00 still nets negative)."
+      "Reduce stops by TIMING (enter after the London-close spike / on the IV turn), never by skipping a night or widening the stop."
     ],
-    "leg_sizing": "Symmetric 0.15Δ both legs. Asymmetric / further-OTM INCREASES stop-losses (cheaper legs double faster) — do not skew.",
+    "leg_sizing": "Symmetric 0.15Δ both legs, full 100 lots every weekday. No half-size, no asymmetric skew.",
     "early_exit_rules": [
-      "None — the 2.0× per-leg stop is optimal; 1.5×/1.75× stops cut too many near-miss winners (net $393→$164)."
+      "Strict 2.0× per-leg stop — never wider. 12% profit target or hard 07:00 IST exit."
     ],
     "news_blackout": [
-      "Data-limited (no calendar). Proxy: highest-SL months were 2026-01 (SL 41%), 2026-04 (SL 39%)."
+      "Data-limited (no calendar). Respect February (wildest month) and Week-1 (wildest week) — still trade, just wait for the turn."
     ],
-    "week_of_month": "Week 1 is weakest (win 63.6%, exp $0.51); weeks 2–4 stronger (~71–75%).",
-    "position": "100 lots, net credit ~$30–35, margin ~$87, target net ≥10% margin (~$8.7), hard exit 07:00 IST."
+    "week_of_month": "Week 1 is the most volatile (London close ~57% RV); weeks 4–5 calmest. Trade all — the only lever is entry timing.",
+    "position": "100 lots, 0.15Δ N2N strangle, margin ~$87, target net >=12% margin (~$10.4), strict 2× stop, hard exit 07:00 IST."
   },
   "weekdays": [
     {
@@ -45,31 +45,31 @@ window.__STRANGLE_RULEBOOK = {
     },
     {
       "weekday": "Tue",
-      "verdict": "TRADE-LIGHT",
+      "verdict": "TRADE",
       "oosWinPct": 68,
       "expectancyUsd": 0.78,
       "sampleSize": 41,
-      "fragile": true,
+      "fragile": false,
       "conviction": "NORMAL",
       "earliest_entry": "22:30 IST",
       "latest_entry": "01:00 IST"
     },
     {
       "weekday": "Wed",
-      "verdict": "TRADE-LIGHT",
+      "verdict": "TRADE",
       "oosWinPct": 63.6,
       "expectancyUsd": 1.39,
       "sampleSize": 44,
-      "fragile": true,
+      "fragile": false,
       "conviction": "NORMAL",
       "earliest_entry": "22:30 IST",
       "latest_entry": "01:00 IST"
     },
     {
       "weekday": "Thu",
-      "verdict": "SKIP",
-      "oosWinPct": 52.6,
-      "expectancyUsd": 2.64,
+      "verdict": "TRADE",
+      "oosWinPct": 61.6,
+      "expectancyUsd": 1.5,
       "sampleSize": 39,
       "fragile": false,
       "conviction": "NORMAL",

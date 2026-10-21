@@ -43,6 +43,7 @@ function turnEntry(data: any, n2n: string, peakT: number, endMs: number, turnPts
 function main() {
   const data = loadData();
   const days: Record<string, any> = {};
+  const btDays: Record<string, any> = {}; // v147 shape: {v,s,w,pnl,note} — feeds window.__STRANGLE_BT_DAYS
   let nTrade = 0, nStop = 0, nWin = 0, pnlSum = 0;
 
   for (let dayMs = d0(FIRST); dayMs <= d0(LAST); dayMs += DAY) {
@@ -96,6 +97,7 @@ function main() {
       entry: istHM(entryT, f.D0), exit: istHM(f.exit, f.D0), lots,
       out, pnl: +sim.pnlPctMargin.toFixed(1), move: +sim.btcMovePct.toFixed(1), why, ...(fix ? { fix } : {}),
     };
+    btDays[dayKey] = { v: 'TRADE', s: sim.stopped, w: out === 'TARGET' || out === 'TIME-WIN', pnl: +sim.pnlPctMargin.toFixed(1), note: out };
   }
 
   const summary = {
@@ -108,6 +110,7 @@ function main() {
   const feDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../frontend/public/data');
   fs.mkdirSync(feDir, { recursive: true });
   fs.writeFileSync(path.join(feDir, 'strangle_calendar.js'), `window.__STRANGLE_CAL = ${JSON.stringify(payload)};\n`);
+  fs.writeFileSync(path.join(feDir, 'backtest_days.js'), `window.__STRANGLE_BT_DAYS = ${JSON.stringify(btDays)};\n`);
 
   console.log('='.repeat(92));
   console.log('YEAR CALENDAR — strict 2×, trade every weekday, no skips (panic band aside):');
