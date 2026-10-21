@@ -25641,7 +25641,7 @@ function paintTop(st){
           '<b>1. CALENDAR DAY EDGE</b>'+
         '</div>'+
         '<div class="dc-value">'+st.p.title+'</div>'+
-        '<div class="dc-desc">'+(isCalOk?'Weekday — trade full size (100 lots)':'Weekend — desk off')+'</div>'+
+        '<div class="dc-desc">'+(isCalOk?'Weekday — the gate decides GO / WAIT':'Weekend — desk off')+'</div>'+
       '</div>'+
 
       '<div class="dual-card '+(isSpeedOk?'status-green':'status-red')+'" data-reveal="speed_beacon" style="cursor:pointer">'+
@@ -25699,14 +25699,14 @@ function paintCal(){
                   p.kind==='wait'?SVG_ICONS.off('#64748B',16):
                   p.kind==='pending'?SVG_ICONS.bullseye('#38BDF8',16):'';
 
-    let sizingText=p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?'Gate decides · 22:30 IST':(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
+    let sizingText=p.kind==='off'?'Weekend · off':p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?'Gate decides · 22:30 IST':(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
     let resultText='';
     if(p.isPast){
       if(p.kind==='win') resultText='<div class="cc-result res-ok">✓ Won (+'+p.histPnl+'%)</div>';
       else if(p.kind==='stopped') resultText='<div class="cc-result res-bad">✗ Stopped (2.0×)</div>';
       else if(p.kind==='wait') resultText='<div class="cc-result" style="color:#94A3B8">⏸ WAIT · passed</div>';
     }else{
-      resultText='<div class="cc-result" style="color:var(--focus,#38BDF8)">Gate decides · 22:30 IST</div>';
+      resultText = p.kind==='off' ? '<div class="cc-result" style="color:#64748B">Desk off</div>' : '<div class="cc-result" style="color:var(--focus,#38BDF8)">Gate decides · 22:30 IST</div>';
     }
 
     h+='<button type="button" class="cal-cell '+p.kind+' '+(isSel?'selected':'')+' '+(isToday?'today':'')+'" data-a="day" data-d="'+D0+'" aria-label="'+fmt(D0)+': '+p.title+'">'+
