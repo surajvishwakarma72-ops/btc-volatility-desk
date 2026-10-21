@@ -24316,19 +24316,19 @@ function plan(D0,raw){
 
     r.size=high?1.0:0.5;r.delta='0.15Δ both legs';r.conv=conv;r.oos=oos;r.exp=exp;
 
-    if(bd){ // past night with a simulated result
+    if(bd){ // past night — real backtest outcome
       r.isPast=true;r.histPnl=bd.pnl;
-      if(bd.v==='SKIP'){r.kind='skip';r.size=0;r.delta='None';r.icon='stop';r.badge='⊘ RSI SKIP';r.title=DN[wd]+' Skipped — '+bd.note;r.why='Overbought veto: '+bd.note+'. The RSI>60 filter stood this night down.';return r;}
-      if(bd.s){r.kind='stopped';r.icon='stop';r.badge='✗ STOPPED (2.0×)';r.title=DN[wd]+' Stopped Out';r.why='Backtest: hit the 2.0× per-leg stop ('+bd.pnl+'% of margin). The ~20% residual stop rate after late entry + RSI filter is structural.';return r;}
-      if(bd.w){r.kind='win';r.icon=high?'shield':'half-shield';r.badge='✓ WIN (+'+bd.pnl+'%)';r.title=DN[wd]+' Win (+'+bd.pnl+'% of margin)';r.why='Backtest: '+bd.note+'. '+DN[wd]+' '+verdict+(conv?' · '+conv:'')+(oos!=null?' · OOS win '+oos+'%':'')+'.';return r;}
-      r.kind=high?'full':'half';r.icon=high?'shield':'half-shield';r.badge=(bd.pnl>=0?'≈ FLAT':'· small loss')+' ('+bd.pnl+'%)';r.title=DN[wd]+' Time Exit ('+bd.pnl+'%)';r.why='Backtest time-exit at 07:00 IST, '+bd.pnl+'% of margin.';return r;
+      if(bd.v==='WAIT'){r.kind='wait';r.size=0;r.delta='None';r.icon='off';r.badge='⏸ WAIT';r.title=DN[wd]+' · WAIT (no trade)';r.why='The gate said WAIT: '+(bd.note||'conditions not aligned')+'. Not every night is a trade — passing it is how you avoid the stop.';return r;}
+      if(bd.s){r.kind='stopped';r.icon='stop';r.badge='✗ STOPPED (2.0×)';r.title=DN[wd]+' Stopped Out';r.why='A GO trade that still hit the 2× stop ('+bd.pnl+'% of margin) — the residual ~25% even after the gate. Enter a touch later next time.';return r;}
+      if(bd.w){r.kind='win';r.icon='shield';r.badge='✓ WIN (+'+bd.pnl+'%)';r.title=DN[wd]+' Win (+'+bd.pnl+'% of margin)';r.why='Gate said GO and it paid: '+bd.note+'.';return r;}
+      r.kind='full';r.icon='shield';r.badge=(bd.pnl>=0?'≈ FLAT':'· small loss')+' ('+bd.pnl+'%)';r.title=DN[wd]+' Time Exit ('+bd.pnl+'%)';r.why='GO trade, time-exit at 07:00 IST, '+bd.pnl+'% of margin.';return r;
     }
 
-    // Today / forward: pending trade with the rulebook recommendation.
-    r.kind='full';r.icon='shield';
-    r.badge=(wd===5?'★ FRI PREMIUM · 100 lots':'✓ '+DN[wd]+' · 100 lots');
-    r.title=DN[wd]+' · SELL FULL (100 lots)'+(wd===5?' · PREMIUM':'')+(oos!=null?' · OOS win '+oos+'%':'');
-    r.why='Trade every weekday — full 100 lots. Sell the IV turn ~'+(wd===5?'23:00 IST (Friday is your premium night)':'22:30 IST')+': 0.15Δ N2N strangle, strict 2× stop, 12% target or 07:00 IST exit. No skipping — only sit out if IV ≥ 65% (panic).'+(oos!=null?' Backtest OOS win '+oos+'%'+(exp!=null?', exp $'+exp+'/trade':'')+'.':'');
+    // Today / forward: conditions-based — the GATE decides live tonight (NOT auto-trade every day).
+    r.kind='pending';r.icon='bullseye';r.size=0;r.delta='0.15Δ both legs';
+    r.badge='◷ GATE DECIDES';
+    r.title=DN[wd]+' · GO only if tonight’s gate aligns';
+    r.why='Conditions-based, built to avoid the stop: tonight is a GO (sell 100 lots) ONLY on the IV turn, with IV out of the 35–45 dead-zone & below 65, and edge-rich. Otherwise WAIT. Watch the clock from 22:30 IST'+(wd===5?' (Fri ~23:00, premium)':'')+'.';
     return r;
   }
 
@@ -24501,74 +24501,74 @@ const SVG_ICONS = {
 /* ---------- Tap-to-Reveal Statistical Proofs (Derived strictly from PRODUCTION_STRATEGY_REFERENCE_STAGE1_7.md) ---------- */
 const REVEAL_DATA = {
   mon: {
-    title: 'MONDAY · FULL SIZE',
-    icon: SVG_ICONS.shield('#10B981', 38),
-    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
-    status: 'TRADE EVERY WEEKDAY · OOS win 73.3%',
-    badgeClass: 'proven',
+    title: 'MONDAY · GATE DECIDES',
+    icon: SVG_ICONS.bullseye('#38BDF8', 38),
+    sizing: 'GO only when the gate aligns · 100 lots · 0.15Δ',
+    status: 'CONDITIONS-BASED · gated stop 41% (Monday is the weak day)',
+    badgeClass: 'empirical',
     stats: [
-      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
-      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST (after the London-close move exhausts)' },
-      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
-      { label: 'Skip?', val: 'No — only sit out if IV ≥ 65% (panic)' }
+      { label: 'GO when', val: 'IV turn + IV out of 35–45 dead-zone & <65 + edge-rich' },
+      { label: 'Backtest (GO nights only)', val: '17 trades · 41.2% stop · 58.8% win' },
+      { label: 'Otherwise', val: 'WAIT — pass the night, protect capital' },
+      { label: 'On GO', val: '100 lots, strict 2× stop, 12% target or 07:00 IST exit' }
     ],
-    note: 'Trade Monday full size. Reduce stops by entry timing, never by half-sizing.'
+    note: 'Monday is the weakest day even gated — be strict, take only the clean setup.'
   },
   tue: {
-    title: 'TUESDAY · FULL SIZE',
-    icon: SVG_ICONS.shield('#10B981', 38),
-    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
-    status: 'TRADE EVERY WEEKDAY · OOS win 68%',
+    title: 'TUESDAY · GATE DECIDES',
+    icon: SVG_ICONS.bullseye('#38BDF8', 38),
+    sizing: 'GO only when the gate aligns · 100 lots · 0.15Δ',
+    status: 'CONDITIONS-BASED · gated stop 21% / win 79%',
     badgeClass: 'proven',
     stats: [
-      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
-      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST' },
-      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
-      { label: 'Speed', val: 'If price is still fast, wait for it to calm — then sell full size (no skip)' }
+      { label: 'GO when', val: 'IV turn + IV out of 35–45 dead-zone & <65 + edge-rich' },
+      { label: 'Backtest (GO nights only)', val: '19 trades · 21.1% stop · 78.9% win' },
+      { label: 'Otherwise', val: 'WAIT — pass the night, protect capital' },
+      { label: 'On GO', val: '100 lots, strict 2× stop, 12% target or 07:00 IST exit' }
     ],
-    note: 'Trade Tuesday full size. Speed is a timing cue to wait, not a reason to skip the night.'
+    note: 'One of the cleaner days when the gate opens — but still only on the gate.'
   },
   wed: {
-    title: 'WEDNESDAY · FULL SIZE',
-    icon: SVG_ICONS.shield('#10B981', 38),
-    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
-    status: 'TRADE EVERY WEEKDAY · OOS win 63.6%',
+    title: 'WEDNESDAY · GATE DECIDES',
+    icon: SVG_ICONS.bullseye('#38BDF8', 38),
+    sizing: 'GO only when the gate aligns · 100 lots · 0.15Δ',
+    status: 'CONDITIONS-BASED · gated stop 23% / win 77%',
     badgeClass: 'proven',
     stats: [
-      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
-      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST' },
-      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
-      { label: 'Speed', val: 'If price is still fast, wait for it to calm — then sell full size (no skip)' }
+      { label: 'GO when', val: 'IV turn + IV out of 35–45 dead-zone & <65 + edge-rich' },
+      { label: 'Backtest (GO nights only)', val: '13 trades · 23.1% stop · 76.9% win' },
+      { label: 'Otherwise', val: 'WAIT — pass the night, protect capital' },
+      { label: 'On GO', val: '100 lots, strict 2× stop, 12% target or 07:00 IST exit' }
     ],
-    note: 'Trade Wednesday full size. Speed is a timing cue to wait, not a reason to skip the night.'
+    note: 'Solid when the gate opens — never force it on a dead-zone or thin-edge night.'
   },
   thu: {
-    title: 'THURSDAY · FULL SIZE',
-    icon: SVG_ICONS.shield('#10B981', 38),
-    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
-    status: 'TRADE EVERY WEEKDAY · OOS win 61.6%',
+    title: 'THURSDAY · GATE DECIDES',
+    icon: SVG_ICONS.bullseye('#38BDF8', 38),
+    sizing: 'GO only when the gate aligns · 100 lots · 0.15Δ',
+    status: 'CONDITIONS-BASED · gated stop 0% / win 100% (small sample)',
     badgeClass: 'proven',
     stats: [
-      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
-      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST' },
-      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
-      { label: 'Old rule removed', val: 'The old "Thursday skip" is gone — Thursday trades full size' }
+      { label: 'GO when', val: 'IV turn + IV out of 35–45 dead-zone & <65 + edge-rich' },
+      { label: 'Backtest (GO nights only)', val: '6 trades · 0% stop · 100% win' },
+      { label: 'Otherwise', val: 'WAIT — pass the night (gate opens rarely on Thu)' },
+      { label: 'On GO', val: '100 lots, strict 2× stop, 12% target or 07:00 IST exit' }
     ],
-    note: 'Thursday trades full size like any weekday. No skip.'
+    note: 'The old "Thursday skip" is gone — but the gate only opens on a clean setup (6 of 35 nights).'
   },
   fri: {
-    title: 'FRIDAY · PREMIUM NIGHT · FULL SIZE',
-    icon: SVG_ICONS.shield('#10B981', 38),
-    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ · PREMIUM',
-    status: 'PREMIUM NIGHT · OOS win 75%',
+    title: 'FRIDAY · PREMIUM · GATE DECIDES',
+    icon: SVG_ICONS.bullseye('#F59E0B', 38),
+    sizing: 'GO only when the gate aligns · 100 lots · 0.15Δ · PREMIUM',
+    status: 'CONDITIONS-BASED · gated stop 20% / win 80%',
     badgeClass: 'proven',
     stats: [
-      { label: 'Position', val: 'Full 100 lots — Friday is your premium night (biggest weekend crush)' },
-      { label: 'Entry', val: 'Sell the IV turn ~23:00 IST (let the US move exhaust first)' },
-      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
-      { label: 'Never half-size', val: 'Friday is premium — full size; timing is the stop lever, not size' }
+      { label: 'GO when', val: 'IV turn + IV out of 35–45 dead-zone & <65 + edge-rich (enter ~23:00)' },
+      { label: 'Backtest (GO nights only)', val: '10 trades · 20% stop · 80% win' },
+      { label: 'Otherwise', val: 'WAIT — even on the premium night, only on the gate' },
+      { label: 'On GO', val: '100 lots, strict 2× stop, 12% target or 07:00 IST exit' }
     ],
-    note: 'Friday is the premium weekend-crush night. Full size, later entry (~23:00).'
+    note: 'Friday is the premium weekend-crush night — but you still only GO when the gate opens.'
   },
   sat: {
     title: 'SATURDAY · DESK INACTIVE',
@@ -24675,8 +24675,13 @@ function status(now){
   const isWeekday=p.wd>=1&&p.wd<=5;
   const isPremium=p.wd===5; // Friday = premium night
   const isWeekend=p.wd===0||p.wd===6;
-  const calendarOk=isWeekday; // every weekday trades — full 100 lots
-  const dualGo=calendarOk&&speedOk;
+  // Live GATE — conditions-based, built to AVOID the stop. GO only when every condition aligns.
+  const ser=series(F.n2n), ivNow=ser?at(ser,now):null;
+  const clz=closes(now-26*HR,now), rv24=(clz?rvOver(clz,now,24*60):null);
+  const bandOk=(ivNow!=null)&&!(ivNow>=35&&ivNow<45)&&ivNow<65; // out of 35–45 dead-zone & not panic
+  const edgeOk=(ivNow!=null&&rv24!=null)?(ivNow>=rv24):true;     // edge-rich: IV richer than realised
+  const calendarOk=isWeekday;
+  const dualGo=calendarOk&&speedOk&&bandOk&&edgeOk; // the full stop-avoiding gate
   
   const dNow=ist(now);
   const istMins=dNow.getUTCHours()*60+dNow.getUTCMinutes();
@@ -24705,28 +24710,40 @@ function status(now){
     return Object.assign(st,{
       cls: 'full',
       word: 'GO',
-      d1: '100 lots · FULL SIZE'+(isPremium?' · ★ PREMIUM':''),
-      d2: DN[p.wd]+' · sell the IV turn · Speed '+speedVal.toFixed(2)+'× (calm) · 22:30–23:30 IST',
+      d1: 'GATE OPEN · SELL 100 lots'+(isPremium?' · ★ PREMIUM':''),
+      d2: DN[p.wd]+' · IV '+(ivNow!=null?ivNow.toFixed(0)+'% ':'')+'out of dead-zone · edge-rich · calm '+speedVal.toFixed(2)+'×',
       icon: 'shield'
     });
   }
 
   // 3. Otherwise: NOT NOW (Unambiguous stop / waiting state)
   let whyD1 = 'Wait — before the entry window (22:30–23:30 IST)';
-  let whyD2 = 'Full size is coming; wait for the IV turn in the window';
+  let whyD2 = 'Watch for the IV turn; GO only if the gate aligns';
   let stopIcon = 'stop';
 
   if(isWeekend){
     whyD1 = 'Weekend: Options Cycle Closed';
     whyD2 = 'Next trade: Monday 22:30 IST';
     stopIcon = 'off';
+  } else if(ivNow!=null && ivNow>=65){
+    whyD1 = 'WAIT — IV panic ('+ivNow.toFixed(0)+'% ≥ 65)';
+    whyD2 = 'Real fear · stand down until IV cools';
+    stopIcon = 'beacon_red';
+  } else if(ivNow!=null && ivNow>=35 && ivNow<45){
+    whyD1 = 'WAIT — IV in the 35–45 dead-zone ('+ivNow.toFixed(0)+'%)';
+    whyD2 = 'Stops cluster here · the gate passes this night';
+    stopIcon = 'stop';
+  } else if(!edgeOk){
+    whyD1 = 'WAIT — edge thin (IV not rich vs realised)';
+    whyD2 = 'Not being paid enough to sell · pass, keep capital';
+    stopIcon = 'stop';
   } else if(!speedOk){
-    whyD1 = 'Wait — price still fast ('+speedVal.toFixed(2)+'× ≥ 1.50×)';
-    whyD2 = 'Let the London-close move exhaust, then sell the IV turn · full size';
+    whyD1 = 'WAIT — price still fast ('+speedVal.toFixed(2)+'× ≥ 1.50×)';
+    whyD2 = 'Let the move exhaust, then sell the IV turn';
     stopIcon = 'beacon_red';
   } else if(isSetupWindow){
     whyD1 = 'Amber Setup Watch (21:30–22:30 IST)';
-    whyD2 = 'IV peaking · wait for the turn, then sell full size at 22:30';
+    whyD2 = 'IV peaking · wait for the turn, then the gate opens at 22:30';
     stopIcon = 'bullseye';
   } else if(istMins > window.PROVEN_BOUNDARIES.ENTRY_END_MINS){
     whyD1 = 'Entry Window Closed (>23:30 IST)';
@@ -25562,14 +25579,14 @@ function paintDayIcons(st){
   const curDw=st&&st.p?st.p.wd:ist(Date.now()).getUTCDay();
 
   // Child-Simple 7-Day Icon Strip: Zero numbers, Zero words by default!
-  // Mon–Fri: Glowing full-size shield (trade every weekday, full 100 lots)
-  // Fri: full shield + premium ★; Sat/Sun: Neutral off disc
+  // Mon–Fri: ELIGIBLE (bullseye) — the gate decides GO/WAIT each night; not an auto-trade.
+  // Sat/Sun: Neutral off disc.
   const days=[
-    { dw: 1, key: 'mon', title: 'Monday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
-    { dw: 2, key: 'tue', title: 'Tuesday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
-    { dw: 3, key: 'wed', title: 'Wednesday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
-    { dw: 4, key: 'thu', title: 'Thursday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
-    { dw: 5, key: 'fri', title: 'Friday (premium)', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
+    { dw: 1, key: 'mon', title: 'Monday (gate decides)', icon: SVG_ICONS.bullseye('#38BDF8', 32), cls: 'watch' },
+    { dw: 2, key: 'tue', title: 'Tuesday (gate decides)', icon: SVG_ICONS.bullseye('#38BDF8', 32), cls: 'watch' },
+    { dw: 3, key: 'wed', title: 'Wednesday (gate decides)', icon: SVG_ICONS.bullseye('#38BDF8', 32), cls: 'watch' },
+    { dw: 4, key: 'thu', title: 'Thursday (gate decides)', icon: SVG_ICONS.bullseye('#38BDF8', 32), cls: 'watch' },
+    { dw: 5, key: 'fri', title: 'Friday (premium · gate decides)', icon: SVG_ICONS.bullseye('#F59E0B', 32), cls: 'watch' },
     { dw: 6, key: 'sat', title: 'Saturday', icon: SVG_ICONS.off('#475569', 28), cls: 'off' },
     { dw: 0, key: 'sun', title: 'Sunday', icon: SVG_ICONS.off('#475569', 28), cls: 'off' }
   ];
@@ -25678,18 +25695,18 @@ function paintCal(){
     
     // Day Icon
     const dayIcon=p.kind==='win'||p.kind==='full'?SVG_ICONS.shield('#10B981',16):
-                  p.kind==='half'?SVG_ICONS.halfShield('#F59E0B',16):
                   p.kind==='stopped'?SVG_ICONS.stop('#EF4444',16):
-                  p.kind==='skip'?SVG_ICONS.stop(p.badge.includes('SPEED')?'#F59E0B':'#EF4444',16):'';
+                  p.kind==='wait'?SVG_ICONS.off('#64748B',16):
+                  p.kind==='pending'?SVG_ICONS.bullseye('#38BDF8',16):'';
 
-    let sizingText=p.size>0?(p.isPast?(p.kind==='win'?'Win · '+p.size+'×':p.kind==='stopped'?'2.0× Stop Hit · '+p.size+'×':'Time exit · '+p.size+'×'):p.size+'× · enter 22:30–01:00 IST'):'Skip Night';
+    let sizingText=p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?'Gate decides · 22:30 IST':(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
     let resultText='';
     if(p.isPast){
       if(p.kind==='win') resultText='<div class="cc-result res-ok">✓ Won (+'+p.histPnl+'%)</div>';
       else if(p.kind==='stopped') resultText='<div class="cc-result res-bad">✗ Stopped (2.0×)</div>';
-      else if(p.kind==='skip') resultText='<div class="cc-result" style="color:#F59E0B">'+(p.badge||'Skip')+'</div>';
+      else if(p.kind==='wait') resultText='<div class="cc-result" style="color:#94A3B8">⏸ WAIT · passed</div>';
     }else{
-      resultText='<div class="cc-result" style="color:var(--focus,#38BDF8)">Pending · 22:30–01:00 IST</div>';
+      resultText='<div class="cc-result" style="color:var(--focus,#38BDF8)">Gate decides · 22:30 IST</div>';
     }
 
     h+='<button type="button" class="cal-cell '+p.kind+' '+(isSel?'selected':'')+' '+(isToday?'today':'')+'" data-a="day" data-d="'+D0+'" aria-label="'+fmt(D0)+': '+p.title+'">'+
@@ -25716,13 +25733,14 @@ function paintSheet(){
         '<b>'+fmt(SEL)+'</b>'+
         '<span class="sheet-badge '+p.kind+'">'+p.badge+'</span>'+
       '</div>'+
-      '<span class="sheet-rule-tag">'+(p.isPast?'HISTORICAL BACKTEST RECORD (REAL SESSION)':(p.kind==='off'?'WEEKEND · NO TRADE':'FULL SIZE · 100 lots (1.0×)'+(p.wd===5?' · PREMIUM':'')))+'</span>'+
+      '<span class="sheet-rule-tag">'+(p.kind==='wait'?'WAIT · NO TRADE (gate passed this night)':p.isPast?'HISTORICAL BACKTEST RECORD (REAL SESSION)':p.kind==='off'?'WEEKEND · NO TRADE':p.kind==='pending'?'GATE DECIDES TONIGHT · GO only if conditions align':'GO · 100 lots')+'</span>'+
     '</div>'+
 
     '<div class="sheet-summary '+p.kind+'">'+
       '<div class="ss-icon">'+
-        (p.kind==='full'?SVG_ICONS.shield('#10B981',36):
-         p.kind==='half'?SVG_ICONS.halfShield('#F59E0B',36):
+        (p.kind==='full'||p.kind==='win'?SVG_ICONS.shield('#10B981',36):
+         p.kind==='wait'?SVG_ICONS.off('#64748B',36):
+         p.kind==='pending'?SVG_ICONS.bullseye('#38BDF8',36):
          SVG_ICONS.stop('#EF4444',36))+
       '</div>'+
       '<div class="ss-body">'+
