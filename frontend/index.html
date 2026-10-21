@@ -22459,7 +22459,7 @@ body.v138 #paneG .v138-grip:hover::after{opacity:.9}
 #v138Ev .e>span{position:absolute;bottom:4px;left:3px;font:700 10px/1 var(--font);color:#C98F1A;background:color-mix(in srgb,var(--chart-bg,var(--panel)) 85%,transparent);padding:2px 4px;border-radius:4px;white-space:nowrap}
 #v138Band{position:absolute;z-index:2;pointer-events:none;background:linear-gradient(90deg,rgba(76,155,232,.0),rgba(76,155,232,.10));border-top:1px dashed rgba(76,155,232,.6);border-bottom:1px dashed rgba(76,155,232,.6)}
 #v138Band>span{position:absolute;right:4px;top:3px;font:600 10px/1 var(--font);color:#4C9BE8}
-.v138-presets{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px solid var(--line)}
+.v138-presets{display:none!important}   /* v149: old LAYOUT row removed — the "Deploy a phase set" row replaces it */
 .v138-presets button{font:600 12px var(--font);padding:5px 10px;border-radius:999px;border:1px solid var(--line2,var(--line));background:var(--panel);color:var(--text);cursor:pointer}
 .v138-presets button:hover{border-color:#2F7CC0;color:#2F7CC0}
 .v138-presets span{font:600 11px var(--font);letter-spacing:.06em;color:var(--muted);align-self:center;margin-right:2px}
@@ -24328,11 +24328,18 @@ function plan(D0,raw){
       r.kind='full';r.icon='shield';r.badge=(bd.pnl>=0?'≈ FLAT':'· small loss')+' ('+bd.pnl+'%)';r.title=DN[wd]+' Time Exit ('+bd.pnl+'%)';r.why='GO trade, time-exit at 07:00 IST, '+bd.pnl+'% of margin.';return r;
     }
 
-    // Today / forward: conditions-based — the GATE decides live tonight (NOT auto-trade every day).
+    // Today / forward: show THIS weekday's own 5-year backtest profile, so each day is visually distinct.
     r.kind='pending';r.icon='bullseye';r.size=0;r.delta='0.15Δ both legs';
-    r.badge='◷ GATE DECIDES';
-    r.title=DN[wd]+' · GO only if tonight’s gate aligns';
-    r.why='Conditions-based, built to avoid the stop: tonight is a GO (sell 100 lots) ONLY on the IV turn, with IV out of the 35–45 dead-zone & below 65, and edge-rich. Otherwise WAIT. Watch the clock from 22:30 IST'+(wd===5?' (Fri ~23:00, premium)':'')+'.';
+    const WKp=(W.__STRANGLE_WEEKDAY&&W.__STRANGLE_WEEKDAY[DN[wd]])||null;
+    const FYp=(W.__STRANGLE_FIVEYEAR&&W.__STRANGLE_FIVEYEAR.weekday&&W.__STRANGLE_FIVEYEAR.weekday[DN[wd]])||null;
+    const ETp=(W.__STRANGLE_ENTRYTIME&&W.__STRANGLE_ENTRYTIME[DN[wd]])||null;
+    r.wkDanger=FYp?FYp.danger3:null;          // 5-yr % of nights that moved >3% (the stop zone)
+    r.wkEntry=(ETp&&ETp.best)?ETp.best:(wd===5?'00:30':'01:30');
+    r.wkLeg=WKp?WKp.hurtLeg:null;
+    r.wkStop=WKp?WKp.stop:null;
+    r.badge=(wd===5?'★ FRI':DN[wd])+' · '+r.wkEntry+' IST';
+    r.title=DN[wd]+(r.wkDanger!=null?' · 5-yr '+r.wkDanger+'% danger':'')+(r.wkStop!=null?' · '+r.wkStop+'% stop':'');
+    r.why='Gate decides live tonight. '+DN[wd]+' 5-yr profile: sweet-spot entry ~'+r.wkEntry+' IST'+(r.wkDanger!=null?', '+r.wkDanger+'% of nights move >3% (the stop zone)':'')+(r.wkLeg?', the '+r.wkLeg.toUpperCase()+' leg usually breaks':'')+'. GO only on the IV turn with a calm tape; band-adaptive 2×/3× stop.';
     return r;
   }
 
@@ -24599,44 +24606,43 @@ const REVEAL_DATA = {
     note: 'Weekly expiry settlement occurs Sunday 17:30 IST.'
   },
   clock_entry: {
-    title: '22:30–23:30 IST · PROVEN PRIME ENTRY WINDOW',
+    title: '00:30–01:30 IST · BEST-ENTRY SWEET SPOT (5-YR)',
     icon: SVG_ICONS.bullseye('#10B981', 38),
-    sizing: 'AUTHORIZED PRIME WINDOW',
-    status: 'BONFERRONI-PROVEN (p = 0.0014)',
+    sizing: 'SELL HERE — PAST THE CASCADE PEAK',
+    status: '5-YEAR OPTIMAL (balances stop + premium)',
     badgeClass: 'proven',
     stats: [
-      { label: 'NY+180m Point Estimate', val: '33.0% stops (89/270) vs 46.8% baseline (126/269)' },
-      { label: 'Statistical Significance', val: 'χ² = 10.251, p = 0.0014 (Clears Bonferroni α = 0.00556)' },
-      { label: 'Premium Sacrifice', val: 'Sacrifices only 3.2% credit ($314 vs $325) for +13.9% safety' },
-      { label: '50/50 OOS Split', val: 'In-Sample stop 23.2% → Out-of-Sample stop 19.3% (stable, net stays positive)' }
+      { label: 'Why here', val: 'Entering after 00:30 clears the 23:30–00:30 liquidation-cascade peak.' },
+      { label: 'Stop drop', val: 'Fri ~12%→4% · Tue ~20%→8.5% vs the old 22:30 entry (5-yr, 1302 nights).' },
+      { label: 'Per weekday', val: 'Mon–Thu ~01:30 · Fri ~00:30 (Friday is calmest).' },
+      { label: 'Why not later', val: 'Lowest stop is ~03:30 but the crush is over by then — almost no premium.' }
     ],
-    note: 'The ONLY entry timing statistically proven safer across the entire 269-session dataset.'
+    note: 'Sell the IV turn in this window — calm tape, cascade behind you, crush still ahead.'
   },
   clock_setup: {
-    title: '21:30–22:30 IST · AMBER SETUP WATCH',
-    icon: SVG_ICONS.bullseye('#F59E0B', 38),
-    sizing: 'GO SIGNAL STRICTLY PROHIBITED',
-    status: 'EMPIRICAL SETUP ONLY (FAILS BONFERRONI)',
-    badgeClass: 'empirical',
+    title: '23:30–00:30 IST · CASCADE DANGER — DO NOT SELL',
+    icon: SVG_ICONS.stop('#EF4444', 38),
+    sizing: 'WAIT — LIQUIDATION SWEEPS PEAK NOW',
+    status: '5-YEAR: cascade night = 74% stop vs 13% calm',
+    badgeClass: 'hazard',
     stats: [
-      { label: 'Historical Stop Rate', val: '37.4% stops (101/270), χ² = 4.539, p = 0.0331' },
-      { label: 'Bonferroni Bar', val: 'FAILS Bonferroni threshold (0.00556)' },
-      { label: 'Desk Execution Action', val: 'Pre-flight setup watch only. Trade entry barred until 22:30 IST' }
+      { label: 'Cascade peak', val: 'Liquidation sweeps cluster 23:30–00:30 IST (US session still hot).' },
+      { label: 'The stop', val: 'A ≥2% 1h sweep in the hold = 74% stop vs 13% on a calm night.' },
+      { label: 'Action', val: 'Do NOT sell into this window — wait for it to pass (~00:30+).' }
     ],
-    note: 'Early evening whipsaws frequently trigger 2.0x stops before overnight calm settles.'
+    note: 'This is where the stops come from. Let the cascade exhaust, then sell.'
   },
   clock_exit: {
-    title: '04:00–07:00 IST · SYSTEMATIC MORNING EXIT',
+    title: '07:00 IST · MORNING EXIT',
     icon: SVG_ICONS.door('#3B82F6', 38),
-    sizing: 'SYSTEMATIC PROFIT-TAKING EXIT',
-    status: 'EMPIRICAL MORNING EXIT EDGE',
+    sizing: 'CLOSE / LET THE STOP OR 12% TARGET WORK',
+    status: 'Hold the overnight crush to the morning',
     badgeClass: 'empirical',
     stats: [
-      { label: 'Morning Exit Stop Rate', val: '42.4% stops (vs 46.8% holding to 07:00 default)' },
-      { label: 'Statistical Bar', val: 'p = 0.048 (Directional edge, fails Bonferroni)' },
-      { label: 'Desk Action', val: 'Close both legs to lock in overnight theta before Asian day momentum' }
+      { label: 'Exit', val: 'Hold to 07:00 IST unless the band-adaptive stop (2×, 3× in 35–45) or 12% target fires first.' },
+      { label: 'Why morning', val: 'Captures the full overnight theta + IV crush before the Asia day.' }
     ],
-    note: 'Preserves realized overnight credit without exposing capital to Asian day trends.'
+    note: 'Band-adaptive stop or 12% target or 07:00 — whichever comes first.'
   },
   clock_trap: {
     title: '17:30 IST · PROHIBITED SETTLEMENT TRAP',
@@ -24845,42 +24851,29 @@ function face(big){
     s+='<line x1="'+(C+r0*Math.sin(an)).toFixed(1)+'" y1="'+(C-r0*Math.cos(an)).toFixed(1)+'" x2="'+(C+(r0+len)*Math.sin(an)).toFixed(1)+'" y2="'+(C-(r0+len)*Math.cos(an)).toFixed(1)+'" stroke="'+col+'" stroke-width="3" stroke-linecap="round" opacity="0.85"/>';
   }
 
-  // 1. Ruby Red Zone: 20:30–21:30 IST (8:30–9:30 PM — Opening volatility spike)
-  s+='<path d="'+wedgePath12(C,C,104,R,8.5,9.5)+'" fill="'+F0.red+'" fill-opacity="0.16"/>';
-  s+='<path d="'+arcPath12(C,C,R,8.5,9.5)+'" fill="none" stroke="'+F0.red+'" stroke-width="6" stroke-linecap="round"/>';
-
-  // 2. Amber Setup Zone: 21:30–22:30 IST (9:30–10:30 PM — Setup Watch)
-  s+='<g class="clk-wedge-setup" data-reveal="clock_setup" style="cursor:pointer">'+
-     '<path d="'+wedgePath12(C,C,106,R,9.5,10.5)+'" fill="'+F0.amber+'" fill-opacity="0.12"/>'+
-     '<path d="'+arcPath12(C,C,R,9.5,10.5)+'" fill="none" stroke="'+F0.amber+'" stroke-width="5" stroke-linecap="round"/>'+
+  // === 5-YEAR BACKTEST WINDOWS (recreated) ===
+  // A. Red CASCADE-DANGER arc 23:30–00:30 IST (dial 11.5→12.5) — liquidation sweeps peak here; never sell into it.
+  s+='<g class="clk-wedge-casc" data-reveal="clock_setup" style="cursor:pointer">'+
+     '<path d="'+wedgePath12(C,C,104,R,11.5,12.5)+'" fill="'+F0.red+'" fill-opacity="0.16"/>'+
+     '<path d="'+arcPath12(C,C,R,11.5,12.5)+'" fill="none" stroke="'+F0.red+'" stroke-width="6" stroke-linecap="round"/>'+
      '</g>';
 
-  // 3. Glowing Emerald Green Wedge: 22:30–23:30 IST (10:30–11:30 PM — NY+180m Prime Entry, p = 0.0014)
+  // B. Glowing Green BEST-ENTRY arc 00:30–01:30 IST (dial 0.5→1.5) — the 5-yr sweet spot, past the cascade.
   s+='<g class="clk-wedge-entry" data-reveal="clock_entry" style="cursor:pointer">'+
-     '<path d="'+wedgePath12(C,C,94,R,10.5,11.5)+'" fill="'+F0.green+'" fill-opacity="0.38" filter="url(#glowGreen)"/>'+
-     '<path d="'+arcPath12(C,C,R,10.5,11.5)+'" fill="none" stroke="'+F0.green+'" stroke-width="10" stroke-linecap="round" filter="url(#glowGreen)"/>'+
+     '<path d="'+wedgePath12(C,C,94,R,0.5,1.5)+'" fill="'+F0.green+'" fill-opacity="0.38" filter="url(#glowGreen)"/>'+
+     '<path d="'+arcPath12(C,C,R,0.5,1.5)+'" fill="none" stroke="'+F0.green+'" stroke-width="10" stroke-linecap="round" filter="url(#glowGreen)"/>'+
      '</g>';
 
-  // 4. Cool Ocean Blue Wedge: 04:00–07:00 IST (4:00–7:00 AM — Morning exit window)
+  // C. Blue EXIT marker at 07:00 IST (dial 7) — hold the overnight crush to the morning.
   s+='<g class="clk-wedge-exit" data-reveal="clock_exit" style="cursor:pointer">'+
-     '<path d="'+wedgePath12(C,C,104,R,4.0,7.0)+'" fill="'+F0.blue+'" fill-opacity="0.18"/>'+
-     '<path d="'+arcPath12(C,C,R,4.0,7.0)+'" fill="none" stroke="'+F0.blue+'" stroke-width="6" stroke-linecap="round"/>'+
-     '</g>';
-
-  // 5. Black Skull & Red Slash: 17:30 IST (5:30 PM — Prohibited Settlement Trap)
-  const aTrap=(5.5/12)*2*Math.PI;
-  const xTrap=C+120*Math.sin(aTrap),yTrap=C-120*Math.cos(aTrap);
-  s+='<g class="clk-wedge-trap" data-reveal="clock_trap" style="cursor:pointer">'+
-     '<circle cx="'+xTrap+'" cy="'+yTrap+'" r="10" fill="#000" stroke="'+F0.red+'" stroke-width="2.5"/>'+
-     '<line x1="'+(xTrap-7)+'" y1="'+(yTrap-7)+'" x2="'+(xTrap+7)+'" y2="'+(yTrap+7)+'" stroke="'+F0.red+'" stroke-width="2.5"/>'+
-     '<text x="'+xTrap+'" y="'+(yTrap+3)+'" font-size="9" font-weight="900" text-anchor="middle" fill="#fff" font-family="system-ui">☠</text>'+
+     '<path d="'+arcPath12(C,C,R,6.75,7.25)+'" fill="none" stroke="'+F0.blue+'" stroke-width="8" stroke-linecap="round"/>'+
      '</g>';
 
   // 12-Hour Numerals & Major Ticks
   for(let h=1;h<=12;h++){
     const an=(h/12)*2*Math.PI;
     s+='<line x1="'+(C+135*Math.sin(an)).toFixed(1)+'" y1="'+(C-135*Math.cos(an)).toFixed(1)+'" x2="'+(C+R*Math.sin(an)).toFixed(1)+'" y2="'+(C-R*Math.cos(an)).toFixed(1)+'" stroke="'+F0.tick+'" stroke-width="2.5" stroke-linecap="round"/>';
-    const numCol=(h===10||h===11)?F0.green:(h>=4&&h<=7)?F0.blue:(h===5)?F0.red:F0.num;
+    const numCol=(h===1)?F0.green:(h===7)?F0.blue:(h===12)?F0.red:F0.num;
     s+='<text x="'+(C+121*Math.sin(an)).toFixed(1)+'" y="'+(C-121*Math.cos(an)+4.5).toFixed(1)+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" font-weight="700" fill="'+numCol+'">'+h+'</text>';
   }
 
@@ -24892,12 +24885,12 @@ function face(big){
   }
 
   // Zone Label Icons on the Dial
-  // 11:00 (23:00) Bullseye Icon
-  const a11=(11/12)*2*Math.PI;
-  s+='<g transform="translate('+(C+92*Math.sin(a11)-8)+','+(C-92*Math.cos(a11)-8)+')" data-reveal="clock_entry" style="cursor:pointer">'+SVG_ICONS.bullseye(F0.green,18)+'</g>';
-  // 05:30 (5:30) Exit Door Icon
-  const a05=(5.5/12)*2*Math.PI;
-  s+='<g transform="translate('+(C+92*Math.sin(a05)-8)+','+(C-92*Math.cos(a05)-8)+')" data-reveal="clock_exit" style="cursor:pointer">'+SVG_ICONS.door(F0.blue,16)+'</g>';
+  // 01:00 IST Bullseye Icon (best-entry window)
+  const a1=(1/12)*2*Math.PI;
+  s+='<g transform="translate('+(C+92*Math.sin(a1)-8)+','+(C-92*Math.cos(a1)-8)+')" data-reveal="clock_entry" style="cursor:pointer">'+SVG_ICONS.bullseye(F0.green,18)+'</g>';
+  // 07:00 IST Exit Door Icon
+  const a07=(7/12)*2*Math.PI;
+  s+='<g transform="translate('+(C+92*Math.sin(a07)-8)+','+(C-92*Math.cos(a07)-8)+')" data-reveal="clock_exit" style="cursor:pointer">'+SVG_ICONS.door(F0.blue,16)+'</g>';
 
   // Center Speed Beacon Light & Master Combined Verdict Hub
   s+='<g class="clk-beacon-hub" data-reveal="speed_beacon" style="cursor:pointer">'+
@@ -24966,19 +24959,7 @@ function paintMini(){
   const f=face(false);
   if(m.__k!==f.svg){m.innerHTML=f.svg;m.__k=f.svg;}
   m.setAttribute('aria-label','Trade clock: '+f.st.word+', '+f.st.d1);
-  // Live info caption under the on-chart clock — so it actually tells you something at a glance.
-  let cap=$('v147MiniCap');
-  if(!cap && m.parentElement){cap=D.createElement('div');cap.id='v147MiniCap';m.parentElement.appendChild(cap);cap.addEventListener('click',function(e){e.stopPropagation();try{openBig();}catch(x){}});}
-  if(cap){
-    cap.hidden=!PREF.mini;
-    const st=f.st,w=st.word||'';
-    const tone=(w==='GO')?'#10B981':(w.indexOf('EXIT')>=0||w.indexOf('HOLD')>=0)?'#3B82F6':(w==='LOADING')?'#94A3B8':'#EF4444';
-    const iv=(st.ivNow!=null)?('IV '+st.ivNow.toFixed(0)+'%'):'';
-    const extra=(w==='GO')?('stop '+(st.stopX||'2×')+(st.wkPat?(' · watch '+st.wkPat.hurtLeg):'')):'';
-    cap.innerHTML='<div class="mc-w" style="color:'+tone+'">'+w+'</div>'+
-      '<div class="mc-s">'+[iv,extra].filter(Boolean).join(' · ')+'</div>'+
-      '<div class="mc-d">'+(st.d1||'')+'</div>';
-  }
+  var cap=$('v147MiniCap');if(cap)cap.remove();   // caption removed per request
 }
 
 /* ---------- Telemetry Client Logger & Self-Test Verifier ---------- */
@@ -25715,22 +25696,26 @@ function paintCal(){
     const isSel=D0===SEL;
     
     // Day Icon
+    const dngCol=(dd)=>dd==null?'#38BDF8':dd<=10?'#10B981':dd<=15?'#F59E0B':'#EF4444';   // colour a forward day by its 5-yr danger
     const dayIcon=p.kind==='win'||p.kind==='full'?SVG_ICONS.shield('#10B981',16):
                   p.kind==='stopped'?SVG_ICONS.stop('#EF4444',16):
                   p.kind==='wait'?SVG_ICONS.off('#64748B',16):
-                  p.kind==='pending'?SVG_ICONS.bullseye('#38BDF8',16):'';
+                  p.kind==='pending'?SVG_ICONS.bullseye(dngCol(p.wkDanger),16):'';
 
-    let sizingText=p.kind==='off'?'Weekend · off':p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?'Gate decides · 22:30 IST':(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
+    let sizingText=p.kind==='off'?'Weekend · off':p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?('enter '+(p.wkEntry||'01:30')+' IST'):(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
     let resultText='';
     if(p.isPast){
       if(p.kind==='win') resultText='<div class="cc-result res-ok">✓ Won (+'+p.histPnl+'%)</div>';
       else if(p.kind==='stopped') resultText='<div class="cc-result res-bad">✗ Stopped (2.0×)</div>';
       else if(p.kind==='wait') resultText='<div class="cc-result" style="color:#94A3B8">⏸ WAIT · passed</div>';
+    }else if(p.kind==='off'){
+      resultText='<div class="cc-result" style="color:#64748B">Desk off</div>';
     }else{
-      resultText = p.kind==='off' ? '<div class="cc-result" style="color:#64748B">Desk off</div>' : '<div class="cc-result" style="color:var(--focus,#38BDF8)">Gate decides · 22:30 IST</div>';
+      resultText='<div class="cc-result" style="color:'+dngCol(p.wkDanger)+'">'+(p.wkDanger!=null?p.wkDanger+'% danger':'gate decides')+(p.wkLeg?' · '+p.wkLeg:'')+'</div>';
     }
+    const cellStyle=(p.kind==='pending')?' style="border-left:3px solid '+dngCol(p.wkDanger)+'"':'';
 
-    h+='<button type="button" class="cal-cell '+p.kind+' '+(isSel?'selected':'')+' '+(isToday?'today':'')+'" data-a="day" data-d="'+D0+'" aria-label="'+fmt(D0)+': '+p.title+'">'+
+    h+='<button type="button" class="cal-cell '+p.kind+' '+(isSel?'selected':'')+' '+(isToday?'today':'')+'"'+cellStyle+' data-a="day" data-d="'+D0+'" aria-label="'+fmt(D0)+': '+p.title+'">'+
       '<div class="cc-top">'+
         '<span class="cc-date">'+n+'</span>'+
         '<span class="cc-icon">'+dayIcon+'</span>'+
@@ -25807,10 +25792,7 @@ css.textContent=`
 #v147Mini{position:absolute;top:42px;left:8px;z-index:6;width:clamp(122px,14vw,166px);aspect-ratio:1;padding:0;border:0;background:none;cursor:pointer;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35));transition:transform .15s ease}
 #v147Mini:hover{transform:scale(1.04)}
 #v147Mini svg{width:100%;height:100%;display:block}
-#v147MiniCap{position:absolute;top:calc(48px + clamp(122px,14vw,166px));left:8px;z-index:6;width:clamp(150px,17vw,200px);box-sizing:border-box;background:rgba(8,12,18,.82);border:1px solid #1f2f3e;border-radius:9px;padding:6px 8px;cursor:pointer;backdrop-filter:blur(4px);font-family:system-ui,sans-serif}
-#v147MiniCap .mc-w{font-size:13px;font-weight:900;letter-spacing:.02em}
-#v147MiniCap .mc-s{font-size:10.5px;font-weight:700;color:#cbd5e1;margin-top:1px}
-#v147MiniCap .mc-d{font-size:9.5px;color:#8c9bb0;margin-top:2px;line-height:1.2}
+/* v147MiniCap removed per request */
 
 #v147Big{position:fixed;inset:0;z-index:1350;background:rgba(10,16,22,.97);display:flex;justify-content:center;align-items:flex-start;overflow-y:auto;overflow-x:hidden;padding:max(12px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) 28px max(8px,env(safe-area-inset-left));box-sizing:border-box;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;transform:translateZ(0)}
 @media (min-width:769px){#v147Big{background:rgba(0,0,0,.65);backdrop-filter:blur(6px)}}
