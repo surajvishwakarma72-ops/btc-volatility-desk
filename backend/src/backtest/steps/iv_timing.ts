@@ -173,6 +173,52 @@ function nyHeatmap(cfg: SimConfig) {
   }
 }
 
+/** NY entry-time heatmaps grouped by week-of-month and by month (weekday nights only). */
+function nyHeatmapExtra(cfg: SimConfig) {
+  const data = loadData();
+  const OFFS = [0, 1, 2, 3, 4, 5, 6];
+  const label = (o: number) => String((19 + o) % 24).padStart(2, '0') + ':00';
+  interface C { wom: number; month: string; off: number; pnl: number; stopped: boolean; win: boolean; }
+  const cells: C[] = [];
+  for (let dayMs = d0(FIRST); dayMs <= d0(LAST); dayMs += DAY) {
+    const day = dk(dayMs + 12 * HR);
+    const f = frame(d0(day) + 20 * HR);
+    if (f.dow < 1 || f.dow > 5) continue;
+    if (!data.hasIv(f.n2n) || f.exit > data.priceLast) continue;
+    const dom = new Date(day).getUTCDate();
+    const wom = Math.min(5, Math.floor((dom - 1) / 7) + 1);
+    for (const o of OFFS) {
+      const entryT = f.open + o * HR;
+      if (entryT >= f.exit || data.ivAt(f.n2n, entryT) == null) continue;
+      const sim = simulateStrangle(data, f, entryT, cfg);
+      if (!sim.ok) continue;
+      cells.push({ wom, month: day.slice(0, 7), off: o, pnl: sim.pnlPctMargin, stopped: sim.stopped, win: sim.pnlPctMargin > 0 });
+    }
+  }
+  const colhead = '  ' + 'group'.padEnd(9) + OFFS.map((o) => label(o).padStart(8)).join('');
+  const render = (title: string, rows: { key: string; test: (c: C) => boolean }[]) => {
+    console.log(`\n${title} — avg PnL % of margin (★ = best entry that row):`);
+    console.log(colhead);
+    for (const r of rows) {
+      const avgs = OFFS.map((o) => mean(cells.filter((c) => r.test(c) && c.off === o).map((c) => c.pnl)));
+      const bi = avgs.indexOf(Math.max(...avgs));
+      console.log('  ' + r.key.padEnd(9) + OFFS.map((o, i) => ((i === bi ? '★' : '') + (avgs[i] >= 0 ? '+' : '') + f1(avgs[i])).padStart(8)).join(''));
+    }
+    console.log('   Stop% by entry time:');
+    console.log(colhead);
+    for (const r of rows) {
+      console.log('  ' + r.key.padEnd(9) + OFFS.map((o) => { const s = cells.filter((c) => r.test(c) && c.off === o); return f1(pct(s.filter((c) => c.stopped).length, s.length)).padStart(8); }).join(''));
+    }
+    console.log('   → best entry per row (max avg PnL%):');
+    for (const r of rows) {
+      const b = OFFS.map((o) => { const s = cells.filter((c) => r.test(c) && c.off === o); return { o, v: mean(s.map((c) => c.pnl)), n: s.length, st: pct(s.filter((c) => c.stopped).length, s.length), w: pct(s.filter((c) => c.win).length, s.length) }; }).sort((a, b) => b.v - a.v)[0];
+      console.log(`     ${r.key.padEnd(8)} ${label(b.o)} IST → avgPnL ${(b.v >= 0 ? '+' : '') + f1(b.v)}%, win ${f1(b.w)}%, stop ${f1(b.st)}% (n=${b.n})`);
+    }
+  };
+  render('6b) NY ENTRY-TIME × WEEK-OF-MONTH', [1, 2, 3, 4, 5].map((w) => ({ key: 'W' + w, test: (c: C) => c.wom === w })));
+  render('6c) NY ENTRY-TIME × MONTH', [...new Set(cells.map((c) => c.month))].sort().map((m) => ({ key: m, test: (c: C) => c.month === m })));
+}
+
 function main() {
   const recs = run(DEFAULT_SIM); // base: 0.15Δ symmetric
   const bySess = (s: string) => recs.filter((r) => r.session === s);
@@ -212,6 +258,7 @@ function main() {
   }
 
   nyHeatmap(DEFAULT_SIM);
+  nyHeatmapExtra(DEFAULT_SIM);
 
   // Plain-language takeaways.
   console.log('\n' + '='.repeat(100));
