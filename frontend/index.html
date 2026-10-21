@@ -25725,6 +25725,36 @@ function paintDayIcons(st){
   el.innerHTML=h;
 }
 
+// Live price position inside the day/week/month range → the backtest DANGER/SAFER tag (from __STRANGLE_LEVELS)
+function livePosTag(){
+  const S=W.__gexSeries,LV=W.__STRANGLE_LEVELS;if(!S||!S.data||!LV)return null;
+  let d;try{d=S.data();}catch(e){return null;}if(!d||!d.length)return null;
+  const sp=d[d.length-1].close,nowT=d[d.length-1].time;
+  const span=(sec)=>{const from=nowT-sec;let hi=-Infinity,lo=Infinity;for(let i=d.length-1;i>=0;i--){const b=d[i];if(b.time<from)break;if(b.high>hi)hi=b.high;if(b.low<lo)lo=b.low;}return hi>lo?{hi,lo}:null;};
+  const bk=(p)=>p<0.33?'low':p<0.66?'mid':'high';
+  const one=(sec,k)=>{const r=span(sec);if(!r)return null;const pos=Math.max(0,Math.min(1,(sp-r.lo)/(r.hi-r.lo)));const b=bk(pos);return {pct:Math.round(pos*100),bucket:b,tag:LV[k][b].tag,hi:r.hi,lo:r.lo};};
+  return {week:one(7*86400,'week'),month:one(30*86400,'month'),spot:sp};
+}
+// The synthesized ACTION card — turns the gate verdict + 5-yr deep data + live levels into one "do this now" instruction
+function decisionCard(st){
+  const DN2=(typeof DN!=='undefined')?DN:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const DEEP=(W.__STRANGLE_WEEKDAY_DEEP&&st.p&&W.__STRANGLE_WEEKDAY_DEEP[DN2[st.p.wd]])||null;
+  const leg=(DEEP?DEEP.leg:(st.wkPat?st.wkPat.hurtLeg:'call')||'call').toUpperCase();
+  const delta=(st.ivNow!=null&&st.ivNow>=40&&st.ivNow<45)?'0.10Δ':'0.15Δ';
+  const lp=livePosTag(),k$=(n)=>'$'+(n/1000).toFixed(1)+'k';
+  let lvlLine='';
+  if(lp&&lp.week){const w=lp.week,dng=w.tag==='DANGER',sf=w.tag==='SAFER';
+    lvlLine= dng?('<b style="color:#F87171">⚠ price near the WEEK LOW ('+w.pct+'%) — danger zone</b>: most stops happen here. Keep the put strike below '+k$(w.lo)+', or wait for a bounce.')
+          : sf?('<b style="color:#34D399">✓ price hugs the WEEK HIGH ('+w.pct+'%) — safer zone</b>. Put the CALL strike above '+k$(w.hi)+' (resistance barrier).')
+          : ('• price mid-week range ('+w.pct+'%) — neutral; place strikes symmetrically.');
+  }
+  const cls=st.cls;let title,body,tone;
+  if(cls==='exit'){tone='go';title='EXIT NOW — close both legs';body='Overnight decay captured. Never hold to the 17:30 settlement trap.';}
+  else if(cls==='hold'){tone='hold';title='HOLD the open strangle';body='Target exit 04:00–07:00 IST. Watch the <b>'+leg+'</b> leg against its '+st.stopX+' stop. Never hold to 17:30.';}
+  else if(cls==='full'){tone='go';title='SELL NOW — 100× '+delta+' N2N strangle';body='Stop <b>'+st.stopX+'</b> · exit 07:00 IST · defend the <b>'+leg+'</b> side (breaks most on '+DN2[st.p.wd]+').'+(lvlLine?'<br>'+lvlLine:'');}
+  else{tone='wait';title='WAIT — don’t sell yet';body=st.d2+'<br><span style="opacity:.85">When the gate opens: sell '+delta+', stop '+st.stopX+', watch the <b>'+leg+'</b> leg.</span>'+(lvlLine?'<br>'+lvlLine:'');}
+  return '<div class="v147-decide '+tone+'"><div class="vd-k">▶ DO NOW</div><div class="vd-title">'+title+'</div><div class="vd-body">'+body+'</div></div>';
+}
 function paintTop(st){
   st=st||status();
   const tx=$('v147Tx');
@@ -25756,6 +25786,8 @@ function paintTop(st){
       '</div>'+
     '</div>'+
 
+    decisionCard(st)+
+
     '<!-- Dual Agreement Requirement Grid -->'+
     '<div class="dual-agreement-grid">'+
       '<div class="dual-card '+(isCalOk?'status-green':'status-red')+'" data-reveal="'+(st.p&&st.p.wd===4?'thu':(st.p&&(st.p.wd===2||st.p.wd===3))?'tue':'mon')+'" style="cursor:pointer">'+
@@ -25764,7 +25796,7 @@ function paintTop(st){
           '<b>1. CALENDAR DAY EDGE</b>'+
         '</div>'+
         '<div class="dc-value">'+st.p.title+'</div>'+
-        '<div class="dc-desc">'+(isCalOk?(st.wkPat?st.wkPat.note:'Weekday — the gate decides GO / WAIT'):'Weekend — desk off')+'</div>'+
+        '<div class="dc-desc">'+(isCalOk?((W.__STRANGLE_WEEKDAY_DEEP&&st.p&&W.__STRANGLE_WEEKDAY_DEEP[DN[st.p.wd]])?(function(o){return o.n+' '+DN[st.p.wd]+'s · '+o.winPct+'% survive · '+o.stopPct+'% stop · manage '+o.leg;})(W.__STRANGLE_WEEKDAY_DEEP[DN[st.p.wd]]):(st.wkPat?st.wkPat.note:'Weekday — the gate decides GO / WAIT')):'Weekend — desk off')+'</div>'+
       '</div>'+
 
       '<div class="dual-card '+(isSpeedOk?'status-green':'status-red')+'" data-reveal="speed_beacon" style="cursor:pointer">'+
@@ -25958,6 +25990,19 @@ css.textContent=`
 
 .master-go-sub{font:700 13px var(--font);color:var(--text,#E2E8F0);margin-top:4px}
 .master-go-detail{font:500 11px var(--mono,monospace);color:var(--muted,#94A3B8);margin-top:2px}
+
+/* Synthesized DO-NOW decision card */
+.v147-decide{margin-top:10px;padding:11px 13px;border-radius:10px;border:1px solid;position:relative}
+.v147-decide .vd-k{font:800 9.5px var(--font);letter-spacing:.12em;opacity:.8;margin-bottom:3px}
+.v147-decide .vd-title{font:900 16px/1.15 var(--font);margin-bottom:5px}
+.v147-decide .vd-body{font:600 12.5px/1.55 var(--font);color:var(--text,#E2E8F0)}
+.v147-decide .vd-body b{font-weight:800}
+.v147-decide.go{background:linear-gradient(180deg,rgba(16,185,129,.16),rgba(16,185,129,.05));border-color:rgba(16,185,129,.55)}
+.v147-decide.go .vd-k,.v147-decide.go .vd-title{color:#34D399}
+.v147-decide.hold{background:linear-gradient(180deg,rgba(59,130,246,.16),rgba(59,130,246,.05));border-color:rgba(59,130,246,.55)}
+.v147-decide.hold .vd-k,.v147-decide.hold .vd-title{color:#60A5FA}
+.v147-decide.wait{background:linear-gradient(180deg,rgba(245,158,11,.14),rgba(245,158,11,.04));border-color:rgba(245,158,11,.5)}
+.v147-decide.wait .vd-k,.v147-decide.wait .vd-title{color:#FBBF24}
 
 /* Dual Agreement Grid */
 .dual-agreement-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
