@@ -474,6 +474,7 @@
 <script src="data/fiveyear_days.js"></script>
 <script src="data/weekday_patterns.js"></script>
 <script src="data/weekday_deep.js"></script>
+<script src="data/levels_risk.js"></script>
 <script src="data/indicator_grades.js"></script>
 <script src="data/fiveyear_risk.js"></script>
 <script src="data/entry_times.js"></script>
@@ -17829,6 +17830,22 @@ function chartLines(ctx){const S=W.__gexSeries;if(!S||!S.createPriceLine)return;
   const amber=getComputedStyle(D.documentElement).getPropertyValue('--amber').trim()||'#F2A93B',blue=getComputedStyle(D.documentElement).getPropertyValue('--rv').trim()||'#5FA8E8';
   if(ctx.or){LN.or.push(S.createPriceLine({price:ctx.or.h,color:amber,lineWidth:1,lineStyle:2,axisLabelVisible:false,title:'OR high'}),S.createPriceLine({price:ctx.or.l,color:amber,lineWidth:1,lineStyle:2,axisLabelVisible:false,title:'OR low'}));}
   const P=plan(),sp=spot();if(P&&P.em&&sp){const c=ctx.orMid||sp;LN.em.push(S.createPriceLine({price:c+P.em,color:blue,lineWidth:1,lineStyle:1,axisLabelVisible:false,title:'+1 EM'}),S.createPriceLine({price:c-P.em,color:blue,lineWidth:1,lineStyle:1,axisLabelVisible:false,title:'−1 EM'}));}}
+/* ---------------- BTC chart: day / week / month high-low LEVELS (5-yr backtest-tagged) ----------------
+   week / month LOW = the danger zone (most stops) → red ⬇ ; HIGH = safer → green ⬆ ; day = neutral grey.
+   Sell near the HIGH, place the call strike above the week high. Toggle via the ƒx "Levels" indicator. */
+const LVL={lines:[],key:''};
+const lvlOn=()=>{try{return !!(W.v132ind&&W.v132ind.state&&W.v132ind.state().lvl);}catch(e){return false;}};
+function lvlRanges(){const S=W.__gexSeries;if(!S||!S.data)return null;let d;try{d=S.data();}catch(e){return null;}if(!d||!d.length)return null;
+  const nowT=d[d.length-1].time;const span=(sec)=>{const from=nowT-sec;let hi=-Infinity,lo=Infinity;for(let i=d.length-1;i>=0;i--){const b=d[i];if(b.time<from)break;if(b.high>hi)hi=b.high;if(b.low<lo)lo=b.low;}return hi>lo?{hi,lo}:null;};
+  return {day:span(86400),week:span(7*86400),month:span(30*86400)};}
+function lvlDraw(){const S=W.__gexSeries;if(!S||!S.createPriceLine)return;const on=lvlOn();const R=on?lvlRanges():null;
+  const rk=(x)=>x?Math.round(x.hi)+'_'+Math.round(x.lo):'0';const key=on&&R?[rk(R.day),rk(R.week),rk(R.month)].join('|'):'off';
+  if(key===LVL.key)return;LVL.key=key;for(const l of LVL.lines)try{S.removePriceLine(l);}catch(e){}LVL.lines=[];if(!on||!R)return;
+  const RED='#DC4040',GRN='#2BA85B',GRY='#8AA0B6';
+  const add=(price,color,title,w)=>{if(!(price>0))return;LVL.lines.push(S.createPriceLine({price,color,lineWidth:w||1,lineStyle:2,axisLabelVisible:true,title}));};
+  if(R.day){add(R.day.hi,GRY,'day high');add(R.day.lo,GRY,'day low');}
+  if(R.week){add(R.week.hi,GRN,'⬆ WEEK high · safer',2);add(R.week.lo,RED,'⬇ WEEK low · danger',2);}
+  if(R.month){add(R.month.hi,GRN,'⬆ MONTH high · safer');add(R.month.lo,RED,'⬇ MONTH low · danger');}}
 function wireEm(){const b=$('emBtn');if(!b||b.__v89)return;b.__v89=true;b.textContent='OR · EM';b.title='30-minute NY opening range and ±1 expected move to the planned exit';b.setAttribute('aria-pressed',String(emOn()));
   b.addEventListener('click',e=>{e.stopImmediatePropagation();try{localStorage.setItem('v89_em',emOn()?'0':'1');}catch(x){}b.setAttribute('aria-pressed',String(emOn()));LN.key='';run(true);},true);}
 
@@ -17879,6 +17896,7 @@ function run(force){const now=Date.now();if(!force&&(D.hidden||D.body.dataset.pa
   try{renderRail(now,ST.R,ctx);}catch(x){console.warn('v89 rail render',x);}
   try{ticker(now,L);}catch(x){}
   try{chartLines(ctx);}catch(x){}
+  try{lvlDraw();}catch(x){}
 }
 
 /* ---------------- boot ---------------- */
@@ -21533,6 +21551,7 @@ const LIST=[['spd','Speed vs IV','RV ÷ IV bars · 1× and 1.5× lines','btc'],[
   ['term','Term spread','Current − N2N · Next − N2N · forward vol · tested: Current above N2N → IV fell 85%','btc'],['skew','25Δ skew','risk reversal of the master expiry · puts rich = put-leg danger','btc'],
   ['fund','Funding + OI','Delta perp funding (a year) + open interest · crowding gauge','btc'],['liq','Liquidations','OKX BTC swaps, last 15 min · alarm badge on the BTC chart','btc'],
   ['strk','Strikes + expected move','your strangle (or tonight\'s suggested) strikes and the ±1σ band to expiry on the BTC chart','btc'],['legs','Leg multiple','call × and put × vs the 2× stop · only while a trade is open','btc'],
+  ['lvl','Levels · day/week/month','day · week · month high-low lines on the BTC chart · week/month LOW = ⬇ danger (red), HIGH = ⬆ safer (green) — 5-yr backtested','btc'],
   ['sig','Entry signals','tested N2N playbook · SELL / EXIT marks on the BTC chart','btc'],['pat','Chart patterns','head & shoulders · double top / bottom · BOS / CHoCH','btc'],['cdl','Candle patterns','engulfing · hammer · star labels on candles','btc'],
   ['gng','Go / No-Go','one score per 15 min · GO only when the tested verdict says SELL · cautions never block','btc'],['pwin','P(success)','chance the strangle ends in profit if sold now · your archive + the 1-year test','btc'],
   ['rsi','RSI 14 + divergence','regular and hidden divergence on the BTC bars','btc'],['dfl','Deribit option flow','net puts / calls bought per 15 min · put buying = put-leg threat','btc'],
@@ -21542,7 +21561,7 @@ const LIST=[['spd','Speed vs IV','RV ÷ IV bars · 1× and 1.5× lines','btc'],[
   ['tip','Improve my trades','your closed Delta trades vs the tested rule · what to change','btc'],['ses','Session boxes + IV','Asia · London · New York boxes on the BTC chart, each labelled with its IV change · green = IV fell, red = IV rose','btc'],
   ['day','My day · journey','tonight step by step from the Decision page: day check → NY open → wait 60 min → IV turn → ADX → sell window → hold → book','btc'],['crush','IV driver · crush','who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger','btc'],['fut','Futures positioning','OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days','btc']];   // v145 · v146
 const IND={spd:()=>$('cvLane'),edge:()=>$('v105EdgeBox'),rng:()=>$('v105RangeBox'),adx:()=>$('paAdxBox'),term:()=>$('v137Term'),skew:()=>$('v137Skew'),fund:()=>$('v137Fund'),ready:()=>$('v138Ready'),iv:()=>$('v138Iv'),rv:()=>$('v138Rv'),vov:()=>$('v138Vov'),dv:()=>$('v138Dv'),ton:()=>$('v142Ton'),gng:()=>$('v142Gng'),pwin:()=>$('v142Pwin'),rsi:()=>$('v142Rsi'),dfl:()=>$('v142Dfl'),grk:()=>$('v142Grk'),spr:()=>$('v142Spr'),tip:()=>$('v142Tip'),day:()=>$('v145Day'),crush:()=>$('v145Crush'),fut:()=>$('v146Fut')};   // v137: new lanes · v142 sections
-const DEF={spd:true,edge:false,rng:false,adx:false,iv:true,rv:false,vov:false,dv:false,ton:true,gex:false,sig:true,pat:true,cdl:false,term:true,skew:false,fund:false,liq:false,ready:true,strk:true,legs:true,ses:true,gng:false,pwin:false,rsi:false,dfl:false,grk:false,spr:false,fp:false,vwap:false,avp:false,lhm:false,tip:false,day:true,crush:false,fut:true};   // v133: a clean first screen; tick more in the menu
+const DEF={spd:true,edge:false,rng:false,adx:false,iv:true,rv:false,vov:false,dv:false,ton:true,gex:false,sig:true,pat:true,cdl:false,term:true,skew:false,fund:false,liq:false,ready:true,strk:true,legs:true,lvl:false,ses:true,gng:false,pwin:false,rsi:false,dfl:false,grk:false,spr:false,fp:false,vwap:false,avp:false,lhm:false,tip:false,day:true,crush:false,fut:true};   // v133: a clean first screen; tick more in the menu
 let on=Object.assign({},DEF,LSg('v133_ind',{}));
 function save(){LSs('v133_ind',on);}
 function refit(){try{W.paRefit&&W.paRefit();}catch(e){}setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(e){}},60);setTimeout(()=>{try{W.v128&&W.v128.refit&&W.v128.refit();}catch(e){}},700);}
@@ -22707,7 +22726,7 @@ function legRec(){const R=L121();const lg=R&&R.legs?R.legs.filter(l=>l.x!=null):
   if(!S.legs||S.legs.id!==id)S.legs={id,pts:[]};const c=lg.find(l=>/c/i.test(l.type||'')),p=lg.find(l=>/p/i.test(l.type||''));const t=Math.floor(Date.now()/MIN)*MIN;
   const last=S.legs.pts[S.legs.pts.length-1];if(last&&last[0]===t)return;S.legs.pts.push([t,c?c.x:null,p?p.x:null]);if(S.legs.pts.length>2000)S.legs.pts.shift();LSs('v138_legs',S.legs);}
 /* ---------- presets in the Indicators menu ---------- */
-const PRE={Entry:{ready:1,spd:1,vov:1,rng:1,rv:1,dv:1,iv:1,edge:1,ton:1,term:1,sig:1,gng:1,crush:1,vwap:1,avp:1,ses:1,day:1},Hold:{ready:1,legs:1,strk:1,grk:1,rsi:1,liq:1,lhm:1,iv:1,crush:1,pwin:1},Exit:{ready:1,ton:1,sig:1,legs:1,tip:1,iv:1,day:1,crush:1},Clean:{}};   // v149: groups graded by the 5-year backtest — Entry = calm-tape + IV-turn verifiers (primary+confirm) · Hold = position/leg/greeks/cascade · Exit = exit state + review
+const PRE={Entry:{ready:1,spd:1,vov:1,rng:1,rv:1,dv:1,iv:1,edge:1,ton:1,term:1,sig:1,gng:1,crush:1,vwap:1,avp:1,ses:1,day:1,lvl:1},Hold:{ready:1,legs:1,strk:1,grk:1,rsi:1,liq:1,lhm:1,iv:1,crush:1,pwin:1,lvl:1},Exit:{ready:1,ton:1,sig:1,legs:1,tip:1,iv:1,day:1,crush:1},Clean:{}};   // v149: groups graded by the 5-year backtest — Entry = calm-tape + IV-turn verifiers (primary+confirm) · Hold = position/leg/greeks/cascade · Exit = exit state + review
 const KEEP=['day','crush','fut','pat','cdl','gex','ton','ses','gng','pwin','rsi','dfl','grk','spr','fp','vwap','avp','lhm','tip'];   // v142: layouts (and auto) never switch off the new items you ticked
 function preset(name){const P=PRE[name];if(!P||!W.v132ind)return;const on=W.v132ind.state();for(const k of Object.keys(on))if(!KEEP.includes(k))on[k]=false;Object.assign(on,Object.fromEntries(Object.entries(P).map(([k,v])=>[k,!!v])));LSs('v133_ind',on);try{W.v132ind.apply(true);}catch(x){}setTimeout(()=>{paintAll();try{W.v137&&W.v137.paintAll();}catch(x){}},120);}
 function presets(){const m=$('v132Ind');if(!m||m.querySelector('.v138-presets'))return;const row=D.createElement('div');row.className='v138-presets';row.innerHTML='<span>LAYOUT</span>'+Object.keys(PRE).map(k=>`<button type="button" data-p="${k}">${k}</button>`).join('');
@@ -25639,23 +25658,41 @@ function paintDeep(st){
   const ivLive=st.ivNow, falling=st.ivFalling;
   const liveDelta=(ivLive!=null&&ivLive>=40&&ivLive<45)?'0.10Δ (further OTM)':'0.15Δ';
   const liveStop=(ivLive!=null&&ivLive>=35&&ivLive<45)?'3×':'2×';
-  const kv=(k,v)=>'<div style="background:#0c141d;border:1px solid var(--line,#1F2F3E);border-radius:8px;padding:7px 9px"><div style="font-size:10px;color:var(--muted,#94A3B8);text-transform:uppercase;letter-spacing:.04em">'+k+'</div><div style="font-size:12.5px;font-weight:700;color:var(--text,#E8EEF7);margin-top:2px">'+v+'</div></div>';
-  const hist=o.history.map(h=>{const sl=h.out.indexOf('SL')===0;const col=sl?'#EF4444':(h.pnl>0?'#10B981':'#94A3B8');const gl=sl?'✗':(h.pnl>0?'✓':'–');
-    return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:3px 0;border-top:1px dashed var(--line,#1F2F3E)"><span style="color:var(--muted,#94A3B8)">'+h.date+'</span><span>IV '+h.iv+' · fell '+h.fall+'pt</span><span style="color:'+col+';font-weight:700;min-width:64px;text-align:right">'+gl+' '+(h.pnl>=0?'+':'')+h.pnl+'%</span></div>';}).join('');
+  // LIGHT theme palette (user: "deep plan is black and white make it light")
+  const kv=(k,v,ac)=>'<div style="background:#ffffff;border:1px solid #d2e0f0;border-radius:9px;padding:8px 10px;box-shadow:0 1px 2px rgba(20,40,70,.05)"><div style="font-size:9.5px;color:#64748b;text-transform:uppercase;letter-spacing:.05em;font-weight:700">'+k+'</div><div style="font-size:12.5px;font-weight:800;color:'+(ac||'#16212e')+';margin-top:3px">'+v+'</div></div>';
+  const hist=o.history.map(h=>{const sl=h.out.indexOf('SL')===0;const col=sl?'#dc2626':(h.pnl>0?'#16a34a':'#64748b');const gl=sl?'✗':(h.pnl>0?'✓':'–');
+    return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:3px 0;border-top:1px dashed #dbe7f2"><span style="color:#64748b">'+h.date+'</span><span style="color:#16212e">IV '+h.iv+' · DVOL −'+h.fall+'pt</span><span style="color:'+col+';font-weight:800;min-width:58px;text-align:right">'+gl+' '+(h.pnl>=0?'+':'')+h.pnl+'%</span></div>';}).join('');
+  // LEVELS indicator — day/week/month high-low, tagged from the 5-yr backtest (low=danger, high=safer)
+  const LV=W.__STRANGLE_LEVELS;
+  const lvlRow=(label,g)=>{if(!g)return'';
+    const cell=(nm,x)=>{const dng=x.tag==='DANGER',sf=x.tag==='SAFER';const bg=dng?'#fdeaea':sf?'#e8f7ee':'#eef3f9',fg=dng?'#dc2626':sf?'#15803d':'#64748b',tg=dng?'⚠ DANGER':sf?'✓ SAFER':'• ok';
+      return '<div style="flex:1;background:'+bg+';border-radius:7px;padding:5px 4px;text-align:center"><div style="font-size:9px;color:#64748b;text-transform:uppercase;letter-spacing:.03em">'+nm+'</div><div style="font-size:13px;font-weight:800;color:'+fg+';margin-top:1px">'+x.stop+'%</div><div style="font-size:8.5px;font-weight:800;color:'+fg+'">'+tg+'</div></div>';};
+    return '<div style="margin-bottom:6px"><div style="font-size:10px;font-weight:800;color:#334155;margin-bottom:3px">'+label+'</div><div style="display:flex;gap:5px">'+cell('near low',g.low)+cell('mid',g.mid)+cell('near high',g.high)+'</div></div>';};
+  const levelsBlock=LV?('<div style="background:#ffffff;border:1px solid #d2e0f0;border-radius:9px;padding:10px 11px;margin-bottom:10px">'+
+    '<div style="font-size:11px;font-weight:900;color:#1d4ed8;margin-bottom:8px">📏 LEVELS — where is price in the range NOW? (5-yr stop% by position)</div>'+
+    lvlRow('WEEK high → low',LV.week)+lvlRow('MONTH high → low',LV.month)+lvlRow('DAY high → low',LV.day)+
+    '<div style="font-size:11px;color:#16212e;margin-top:6px;line-height:1.5">Sell when price hugs the <b style="color:#15803d">week / month HIGH</b> (safer) — the <b style="color:#dc2626">LOW is the danger zone</b> (most stops). Place the <b>call strike above the week high</b> so resistance caps the breakout leg.</div>'+
+    '</div>'):'';
+  const impArr=Array.isArray(o.improve)?o.improve:[o.improve];
+  const impList='<ol style="margin:6px 0 0;padding-left:17px;font-size:11.5px;color:#4a3410;line-height:1.5">'+impArr.map(t=>'<li style="margin:4px 0">'+t+'</li>').join('')+'</ol>';
   el.innerHTML=
-    '<div style="margin:0 0 16px;padding:14px 16px;background:linear-gradient(180deg,#141d2a,#101722);border:1px solid var(--line2,#2A3E50);border-radius:12px">'+
-    '<div style="font-size:12px;font-weight:900;letter-spacing:.06em;color:#8FB8FF;margin-bottom:10px">📘 DEEP PLAN — '+name.toUpperCase()+' · '+o.n+' past '+name+'s · '+o.winPct+'% win · '+o.stopPct+'% stop</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;margin-bottom:10px">'+
-      kv('1 · Delta to sell',(ivLive!=null?liveDelta+' (IV '+ivLive.toFixed(0)+')':o.deltaRule))+
-      kv('2 · Leg to manage',o.leg.toUpperCase()+' side (breaks most)')+
+    '<div style="margin:0 0 16px;padding:15px 16px;background:linear-gradient(180deg,#f6faff,#e8f1fb);border:1px solid #cfe0f2;border-radius:12px;color:#16212e;box-shadow:0 2px 10px rgba(20,50,90,.08)">'+
+    '<div style="display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:12px">'+
+      '<span style="font-size:13px;font-weight:900;letter-spacing:.04em;color:#1d4ed8">📘 DEEP PLAN — '+name.toUpperCase()+'</span>'+
+      '<span style="font-size:10.5px;font-weight:700;color:#475569;background:#dcebfb;border-radius:20px;padding:2px 9px">5-YEAR · '+o.n+' '+name+'s · '+o.winPct+'% survive · '+o.stopPct+'% stop</span></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:8px;margin-bottom:10px">'+
+      kv('1 · Delta to sell',(ivLive!=null?liveDelta+' (IV '+ivLive.toFixed(0)+')':o.deltaRule),'#1d4ed8')+
+      kv('2 · Leg to manage',o.leg.toUpperCase()+' side (breaks most)','#b45309')+
       kv('3 · IV-wise stop',(ivLive!=null?liveStop+' · '+o.ivNote:o.stopRule))+
-      kv('4 · IV falling? (the signal)',(ivLive==null?'—':falling?'✓ YES — sell the crush':'✗ not yet — wait for the turn'))+
-      kv('Win needs IV to fall','~'+o.ivFallToWin+'pt (avg on wins)')+
+      kv('4 · IV falling? (the signal)',(ivLive==null?'—':falling?'✓ YES — sell the crush':'✗ not yet — wait'),(ivLive!=null&&falling)?'#15803d':'#dc2626')+
+      kv('Wins saw DVOL drop','~'+o.ivFallToWin+'pt overnight')+
     '</div>'+
-    '<div style="font-size:11.5px;color:#9fd0ff;background:#0c141d;border:1px solid var(--line,#1F2F3E);border-radius:8px;padding:8px 10px;margin-bottom:10px">📏 LEVELS: sell when price is near the <b>week HIGH</b> (16% stop) — avoid near the week <b>LOW</b> (32%). Place the <b>call strike above the week high</b> (resistance barrier → 15% vs 20% call-stops).</div>'+
-    '<div style="font-size:12px;color:#ffd98a;background:#2a2109;border:1px solid #4a3a12;border-radius:8px;padding:8px 10px;margin-bottom:10px">⟳ IMPROVE NEXT '+name.toUpperCase()+': '+o.improve+'</div>'+
-    '<div style="font-size:11px;font-weight:800;color:var(--muted,#94A3B8);margin-bottom:2px">WHAT PREVIOUS '+name.toUpperCase()+'s DID:</div>'+
+    levelsBlock+
+    '<div style="background:#fff8ec;border:1px solid #f1d9a8;border-radius:9px;padding:9px 11px;margin-bottom:10px">'+
+      '<div style="font-size:11px;font-weight:900;color:#b45309">⟳ IMPROVEMENT PROGRAM — NEXT '+name.toUpperCase()+' (what the stops had in common → the fix)</div>'+impList+'</div>'+
+    '<div style="font-size:10.5px;font-weight:800;color:#64748b;letter-spacing:.03em;margin-bottom:2px">WHAT THE LAST '+o.history.length+' '+name.toUpperCase()+'s DID (5-yr sample):</div>'+
     hist+
+    '<div style="font-size:9.5px;color:#8aa0b6;margin-top:7px">5-yr is modelled (DVOL = 30-day IV + Black-Scholes legs); the STOP-rate and leg/levels patterns are the robust read, P&L is directional.</div>'+
     '</div>';
 }
 
