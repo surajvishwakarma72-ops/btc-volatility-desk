@@ -4,9 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BTC Short Strangle — Trade Clock & Year Calendar</title>
-<!-- Data globals: window.__STRANGLE_RULES and window.__STRANGLE_CAL -->
+<!-- Data globals: window.__STRANGLE_RULES, window.__STRANGLE_CAL, window.__STRANGLE_PATHS -->
 <script src="/data/strategy_rules.js"></script>
 <script src="/data/strangle_calendar.js"></script>
+<script src="/data/strangle_paths.js"></script>
 <style>
 /* ========================================================================
    All styles scoped under #tc-app, every class prefixed tc- (no collisions)
@@ -237,6 +238,7 @@ html, body { margin:0; padding:0; background:#0a0d12; }
   "use strict";
   var RULES = window.__STRANGLE_RULES;
   var CAL   = window.__STRANGLE_CAL;
+  var PATHS = window.__STRANGLE_PATHS || {};
   var root  = document.getElementById("tc-root");
 
   /* ---------- guard ---------- */
@@ -670,10 +672,91 @@ html, body { margin:0; padding:0; background:#0a0d12; }
   }
 
   /* ================= RENDER ================= */
+  /* -------- BTC ROAD CHART (entry + exit marked on price) -------- */
+  function minHM(m){ var h=Math.floor(m/60)%24, mm=((m%60)+60)%60; return (h<10?"0":"")+h+":"+(mm<10?"0":"")+mm; }
+  function fmtK(p){ return p>=1000 ? (Math.round(p/100)/10)+"k" : ""+p; }
+
+  function roadStrike(y, price, lab, stop){
+    var col = stop ? "var(--tc-red)" : "rgba(46,196,95,0.55)";
+    var ink = stop ? "#ffb3b3" : "#7fcf97";
+    return '<line x1="52" y1="'+y+'" x2="616" y2="'+y+'" stroke="'+col+'" stroke-width="1.4" stroke-dasharray="6 4"/>' +
+      '<text x="620" y="'+(y+3)+'" font-size="10" font-weight="800" fill="'+ink+'">'+lab+'</text>' +
+      '<text x="620" y="'+(y+14)+'" font-size="10" fill="'+ink+'">'+fmtK(price)+'</text>';
+  }
+
+  function roadSVG(){
+    var ds = selected, P = PATHS[ds], c = CAL.days[ds] || {};
+    if (!P || !P.px || !P.px.length){
+      var why = (c.v==="REST") ? "Weekend rest — no trade." : (c.v==="EMERGENCY") ? "Panic band — stood down." : "No price road recorded for this night.";
+      return '<div style="padding:28px 10px;text-align:center;color:var(--tc-muted);font-size:13px">'+why+'</div>';
+    }
+    var W=680,H=300, padL=52,padR=64,padT=16,padB=26;
+    var px=P.px, N=px.length, s=P.s, step=P.step||15, i;
+    var lo=Infinity, hi=-Infinity;
+    for(i=0;i<N;i++){ if(px[i]<lo)lo=px[i]; if(px[i]>hi)hi=px[i]; }
+    lo=Math.min(lo,P.kp,P.entry.p,P.exit.p); hi=Math.max(hi,P.kc,P.entry.p,P.exit.p);
+    var pad=(hi-lo)*0.08||1; lo-=pad; hi+=pad;
+    function xi(idx){ return padL + (N<=1?0:(idx/(N-1)))*(W-padL-padR); }
+    function xm(m){ return xi((m-s)/step); }
+    function yv(p){ return padT + (1-(p-lo)/(hi-lo))*(H-padT-padB); }
+    var yKc=yv(P.kc), yKp=yv(P.kp);
+    var stopCall=P.stopped&&P.hurt==="CALL", stopPut=P.stopped&&P.hurt==="PUT";
+    var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" width="100%" style="display:block">';
+    // safe corridor between the strikes
+    svg+='<rect x="'+padL+'" y="'+yKc.toFixed(1)+'" width="'+(W-padL-padR)+'" height="'+(yKp-yKc).toFixed(1)+'" fill="rgba(46,196,95,0.07)"/>';
+    // session-event vertical markers (context)
+    svg+='<line x1="'+xm(21.5*60)+'" y1="16" x2="'+xm(21.5*60)+'" y2="274" stroke="#ffb020" stroke-width="1" stroke-dasharray="2 5" opacity="0.4"/>';
+    svg+='<text x="'+xm(21.5*60)+'" y="13" text-anchor="middle" font-size="9" fill="#ffb020">London</text>';
+    svg+='<line x1="'+xm(25.5*60)+'" y1="16" x2="'+xm(25.5*60)+'" y2="274" stroke="#8c9bb0" stroke-width="1" stroke-dasharray="2 5" opacity="0.35"/>';
+    svg+='<text x="'+xm(25.5*60)+'" y="13" text-anchor="middle" font-size="9" fill="#8c9bb0">NY/CME</text>';
+    // strike guard-rails
+    svg+=roadStrike(yKc, P.kc, "CALL", stopCall);
+    svg+=roadStrike(yKp, P.kp, "PUT", stopPut);
+    // price polyline
+    var d="";
+    for(i=0;i<N;i++){ d+=(i?"L":"M")+xi(i).toFixed(1)+" "+yv(px[i]).toFixed(1)+" "; }
+    svg+='<path d="'+d+'" fill="none" stroke="#dce6f2" stroke-width="2" stroke-linejoin="round"/>';
+    // ENTRY (sell)
+    var ex=xm(P.entry.m), ey=yv(P.entry.p);
+    svg+='<line x1="'+ex.toFixed(1)+'" y1="'+padT+'" x2="'+ex.toFixed(1)+'" y2="'+(H-padB)+'" stroke="var(--tc-green)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>';
+    svg+='<polygon points="'+(ex-6).toFixed(1)+','+(ey+12)+' '+(ex+6).toFixed(1)+','+(ey+12)+' '+ex.toFixed(1)+','+(ey+1)+'" fill="var(--tc-green)"/>';
+    svg+='<text x="'+ex.toFixed(1)+'" y="'+(ey+25)+'" text-anchor="middle" font-size="11" font-weight="800" fill="#8ff0a9">SELL '+minHM(P.entry.m)+'</text>';
+    // EXIT
+    var xx=xm(P.exit.m), xy=yv(P.exit.p);
+    var ecol=P.stopped?"var(--tc-red)":"var(--tc-green)", eink=P.stopped?"#ffb3b3":"#8ff0a9";
+    svg+='<line x1="'+xx.toFixed(1)+'" y1="'+padT+'" x2="'+xx.toFixed(1)+'" y2="'+(H-padB)+'" stroke="'+ecol+'" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>';
+    svg+='<polygon points="'+(xx-6).toFixed(1)+','+(xy-12)+' '+(xx+6).toFixed(1)+','+(xy-12)+' '+xx.toFixed(1)+','+(xy-1)+'" fill="'+ecol+'"/>';
+    svg+='<text x="'+xx.toFixed(1)+'" y="'+(xy-16)+'" text-anchor="middle" font-size="11" font-weight="800" fill="'+eink+'">EXIT '+minHM(P.exit.m)+'</text>';
+    // x-axis time ticks
+    var ticks=[18*60,21*60,24*60,27*60,30*60,31*60];
+    for(i=0;i<ticks.length;i++){ var m=ticks[i]; if(m<s||m>s+(N-1)*step)continue;
+      svg+='<text x="'+xm(m).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="#8c9bb0">'+minHM(m)+'</text>'; }
+    svg+='</svg>';
+    return svg;
+  }
+
+  function roadSectionHTML(){
+    return '' +
+    '<div class="tc-card" id="tc-road-card">' +
+      '<div class="tc-h2"><span class="tc-ic">🛣️</span>Your Road on BTC &mdash; where you got in &amp; out</div>' +
+      '<div class="tc-dayhint" style="margin-bottom:10px">The white line is BTC on the selected night. The green dashed rails are your two strikes &mdash; stay inside = win; a rail turning red = that leg hit the 2&times; stop. Tap any calendar night to change it.</div>' +
+      '<div style="background:#05070a;border:1px solid var(--tc-line2);border-radius:10px;padding:8px;overflow:hidden" id="tc-road-mount">'+roadSVG()+'</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--tc-muted)">' +
+        '<span><b style="color:#dce6f2">&mdash;</b> BTC price (15m)</span>' +
+        '<span><b style="color:var(--tc-green)">&#9650;</b> SELL / entry</span>' +
+        '<span><b style="color:var(--tc-green)">&#9660;</b> EXIT (red if stopped)</span>' +
+        '<span><b style="color:#7fcf97">&#8230;&#8230;</b> strike guard-rails</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function rerenderRoad(){ var m=document.getElementById("tc-road-mount"); if(m) m.innerHTML=roadSVG(); }
+
   function renderAll(){
     root.innerHTML =
       headerHTML() +
       clockSectionHTML() +
+      roadSectionHTML() +
       weekHTML() +
       ivLegendHTML() +
       calendarHTML() +
@@ -691,6 +774,7 @@ html, body { margin:0; padding:0; background:#0a0d12; }
     var bm = document.getElementById("tc-banner-mount");
     if (bm) bm.innerHTML = clockBannerHTML();
     wireClock();
+    rerenderRoad();
   }
 
   /* ---- clock tooltips (events + indicators) ---- */
