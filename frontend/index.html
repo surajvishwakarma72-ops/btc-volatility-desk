@@ -25749,7 +25749,7 @@ function paintCal(){
                   p.kind==='wait'?SVG_ICONS.off('#64748B',16):
                   p.kind==='pending'?SVG_ICONS.bullseye(dngCol(p.wkDanger),16):'';
 
-    let sizingText=p.kind==='nodata'?'no data':p.kind==='off'?'Weekend · off':p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?('enter '+(p.wkEntry||'01:30')+' IST'):(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
+    let sizingText=p.kind==='nodata'?'':p.kind==='off'?'Weekend · off':p.kind==='wait'?'WAIT — no trade':p.kind==='pending'?('enter '+(p.wkEntry||'01:30')+' IST'):(p.isPast?(p.kind==='win'?'Win · GO':p.kind==='stopped'?'2.0× Stop · GO':'Time exit · GO'):'100 lots on GO');
     let resultText='';
     if(p.kind==='nodata'){
       resultText='<div class="cc-result" style="color:#4a5568">— pre-2021</div>';
