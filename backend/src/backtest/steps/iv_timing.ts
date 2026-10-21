@@ -219,6 +219,63 @@ function nyHeatmapExtra(cfg: SimConfig) {
   render('6c) NY ENTRY-TIME × MONTH', [...new Set(cells.map((c) => c.month))].sort().map((m) => ({ key: m, test: (c: C) => c.month === m })));
 }
 
+/** Outcome bucketed by entry ATM-IV level (absolute %) and by IV percentile. NY IV-turn entry, weekdays. */
+function ivLevelAnalysis(cfg: SimConfig) {
+  const data = loadData();
+  interface T { iv0: number; pnl: number; stopped: boolean; label: 'CRUSH' | 'REBOUND' | 'NO-EVENT'; }
+  const trades: T[] = [];
+  const [nySh, nyEh] = SESSIONS.NY;
+  for (let dayMs = d0(FIRST); dayMs <= d0(LAST); dayMs += DAY) {
+    const day = dk(dayMs + 12 * HR);
+    const f = frame(d0(day) + 20 * HR);
+    if (f.dow < 1 || f.dow > 5) continue;
+    if (!data.hasIv(f.n2n) || f.exit > data.priceLast) continue;
+    const nyStart = f.D0 + nySh * HR, nyEnd = f.D0 + nyEh * HR;
+    const sLab = classifyCrush(data.ivWindow(f.n2n, nyStart, nyEnd), nyStart, nyEnd, nyEnd);
+    if (!sLab.hasEvent) continue;
+    const entryT = turnEntry(data, f.n2n, sLab.peakT, nyEnd, 1.0);
+    if (entryT == null) continue;
+    const sim = simulateStrangle(data, f, entryT, cfg);
+    if (!sim.ok) continue;
+    const hold = classifyCrush(data.ivWindow(f.n2n, entryT, f.exit), entryT, entryT + 30 * MIN, f.exit);
+    trades.push({ iv0: sim.iv0, pnl: sim.pnlPctMargin, stopped: sim.stopped, label: hold.label === 'NO-EVENT' ? (sim.stopped ? 'REBOUND' : 'CRUSH') : hold.label });
+  }
+
+  const summ2 = (xs: T[]) => ({
+    n: xs.length, avgIV: mean(xs.map((x) => x.iv0)),
+    stop: pct(xs.filter((x) => x.stopped).length, xs.length),
+    win: pct(xs.filter((x) => x.pnl > 0).length, xs.length),
+    kept: pct(xs.filter((x) => x.label === 'CRUSH').length, xs.length),
+    bnc: pct(xs.filter((x) => x.label === 'REBOUND').length, xs.length),
+    sl: mean(xs.filter((x) => x.stopped).map((x) => x.pnl)),
+    pnl: mean(xs.map((x) => x.pnl)),
+  });
+  const printRow = (lab: string, s: ReturnType<typeof summ2>) => console.log(
+    `  ${lab.padEnd(14)} ${String(s.n).padStart(3)}  ${f1(s.avgIV).padStart(5)}  ${f1(s.stop).padStart(5)}  ${f1(s.win).padStart(5)}  ${f1(s.kept).padStart(5)}  ${f1(s.bnc).padStart(5)}  ${f1(s.sl).padStart(6)}  ${((s.pnl >= 0 ? '+' : '') + f1(s.pnl)).padStart(7)}`);
+  const head = '  bucket          n   avgIV  Stop%  Win%  Kept%  Bncd%  avgSL%  avgPnL%';
+
+  console.log(`\n7) BY ENTRY ATM-IV LEVEL (NY IV-turn entry, weekday nights, n=${trades.length}):`);
+  console.log('  7a) Absolute ATM IV % at entry:');
+  console.log(head);
+  const abs: [string, (iv: number) => boolean][] = [
+    ['<40', (iv) => iv < 40], ['40-45', (iv) => iv >= 40 && iv < 45], ['45-50', (iv) => iv >= 45 && iv < 50],
+    ['50-55', (iv) => iv >= 50 && iv < 55], ['55-60', (iv) => iv >= 55 && iv < 60], ['60-65', (iv) => iv >= 60 && iv < 65],
+    ['65-70', (iv) => iv >= 65 && iv < 70], ['>=70', (iv) => iv >= 70],
+  ];
+  for (const [lab, test] of abs) { const xs = trades.filter((t) => test(t.iv0)); if (xs.length) printRow(lab, summ2(xs)); }
+
+  console.log('\n  7b) ATM IV percentile at entry (rank of entry IV within the year of entries):');
+  console.log(head);
+  const sorted = [...trades].sort((a, b) => a.iv0 - b.iv0);
+  const rank = new Map<T, number>();
+  sorted.forEach((t, i) => rank.set(t, (i / Math.max(1, sorted.length - 1)) * 100));
+  const qs: [string, (p: number) => boolean][] = [
+    ['p0-20 (low)', (p) => p < 20], ['p20-40', (p) => p >= 20 && p < 40], ['p40-60 (mid)', (p) => p >= 40 && p < 60],
+    ['p60-80', (p) => p >= 60 && p < 80], ['p80-100 (high)', (p) => p >= 80],
+  ];
+  for (const [lab, test] of qs) { const xs = trades.filter((t) => test(rank.get(t)!)); if (xs.length) printRow(lab, summ2(xs)); }
+}
+
 function main() {
   const recs = run(DEFAULT_SIM); // base: 0.15Δ symmetric
   const bySess = (s: string) => recs.filter((r) => r.session === s);
@@ -259,6 +316,7 @@ function main() {
 
   nyHeatmap(DEFAULT_SIM);
   nyHeatmapExtra(DEFAULT_SIM);
+  ivLevelAnalysis(DEFAULT_SIM);
 
   // Plain-language takeaways.
   console.log('\n' + '='.repeat(100));
