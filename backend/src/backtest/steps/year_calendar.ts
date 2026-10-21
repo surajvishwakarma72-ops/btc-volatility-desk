@@ -28,17 +28,17 @@ function band(iv: number): { label: string; tone: string } {
   if (iv >= 65) return { label: 'PANIC', tone: 'red' };
   if (iv >= 60) return { label: 'hot', tone: 'amber' };
   if (iv >= 45) return { label: 'rich', tone: 'green' };
-  if (iv >= 35) return { label: 'dead-zone', tone: 'amber' };
+  if (iv >= 35) return { label: 'mid · 3× stop', tone: 'green' };
   if (iv >= 25) return { label: 'calm', tone: 'green' };
   return { label: 'thin', tone: 'amber' };
 }
-// THE GATE — returns null if GO, else the reason to WAIT.
-const inDeadZone = (iv: number) => iv >= 35 && iv < 45;
+// Band-adaptive stop: 35–45 gets 3× room (revives it to 12.7% stop); 2× everywhere else.
+const stopOf = (iv: number) => (iv >= 35 && iv < 45 ? 3.0 : 2.0);
+// THE GATE — returns null if GO, else the reason to WAIT. 35–45 is now a GO band (traded at 3×).
 function waitReason(iv: number, edge: number, medEdge: number): string | null {
   if (iv >= 65) return 'IV ≥ 65 (panic) — stand down';
-  if (inDeadZone(iv)) return 'IV in the 35–45 dead-zone — stops cluster here';
   if (!(edge >= medEdge)) return 'edge thin — IV not rich vs realised';
-  return null; // GO
+  return null; // GO (dead-zone included, with its wider 3× stop)
 }
 
 function turnEntry(data: any, n2n: string, peakT: number, endMs: number, turnPts = 1.0): number | null {
@@ -96,8 +96,8 @@ function main() {
       days[dayKey] = { v: 'WAIT', dow: dowName, iv: +n.iv0.toFixed(1), band: bd.label, tone: bd.tone, reason, why: 'Gate says WAIT: ' + reason + '. Not every night is a trade.' };
       btDays[dayKey] = { v: 'WAIT', note: reason }; wait++; wdStat[f.dow].w++; continue;
     }
-    // GO — simulate the strict-2× trade.
-    const sim = simulateStrangle(data, n.f, n.entryT, { ...DEFAULT_SIM, stopMult: 2.0, targetPct: 0.12 });
+    // GO — simulate with the band-adaptive stop (3× in the 35–45 mid-band, 2× elsewhere).
+    const sim = simulateStrangle(data, n.f, n.entryT, { ...DEFAULT_SIM, stopMult: stopOf(n.iv0), targetPct: 0.12 });
     if (!sim.ok) { days[dayKey] = { v: 'NODATA', dow: dowName, why: 'sim gap' }; continue; }
     go++; pnlSum += sim.pnlPctMargin; wdStat[f.dow].go++; wdStat[f.dow].pnl += sim.pnlPctMargin;
     let out: string, why: string, fix = '';
@@ -105,7 +105,7 @@ function main() {
       stop++; wdStat[f.dow].s++;
       const leg = (sim.hurtLeg || '').toLowerCase();
       out = `SL-${leg.toUpperCase()}`;
-      why = `${leg === 'put' ? 'Put' : 'Call'} leg hit 2× — BTC ran ${sim.btcMovePct >= 0 ? '+' : ''}${sim.btcMovePct.toFixed(1)}% (a gated trade that still stopped — the residual ~26%).`;
+      why = `${leg === 'put' ? 'Put' : 'Call'} leg hit ${stopOf(n.iv0)}× — BTC ran ${sim.btcMovePct >= 0 ? '+' : ''}${sim.btcMovePct.toFixed(1)}% (a gated trade that still stopped — the residual).`;
       fix = 'enter ~30m later next time — let the move exhaust further before selling';
     } else if (sim.pnlPctMargin > 0) {
       win++;
