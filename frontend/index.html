@@ -25038,6 +25038,11 @@ function showReveal(key){
     </div>
   `).join('');
 
+  // Live observed pattern for this weekday (what the calendar alerts on the upcoming one).
+  var _wk={mon:'Mon',tue:'Tue',wed:'Wed',thu:'Thu',fri:'Fri'}[key];
+  var _pat=(_wk&&window.__STRANGLE_WEEKDAY&&window.__STRANGLE_WEEKDAY[_wk])?window.__STRANGLE_WEEKDAY[_wk]:null;
+  var _patHtml=_pat?('<div class="sm-note" style="border-top:1px dashed #2a3e50;margin-top:8px;padding-top:8px"><b style="color:#38bdf8">📊 Observed pattern (alert for the upcoming '+_wk+'):</b> '+_pat.note+'</div>'):'';
+
   m.innerHTML=`
     <div class="v147-modal-backdrop" data-close="true"></div>
     <div class="v147-modal-card ${d.badgeClass}">
@@ -25052,8 +25057,9 @@ function showReveal(key){
       <div class="sm-sizing-callout">${d.sizing}</div>
       <div class="sm-stats-grid">${statsHtml}</div>
       <div class="sm-note">${d.note}</div>
+      ${_patHtml}
       <div class="sm-footer">
-        <span>Verified against 269 weekday sessions archive (Oct 2025 – Oct 2026)</span>
+        <span>Band-adaptive strict 2× (3× in the 35–45 mid-band) · 1-year backtest</span>
       </div>
     </div>
   `;
