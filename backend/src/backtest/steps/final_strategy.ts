@@ -28,7 +28,7 @@ function turnEntry(data: any, n2n: string, peakT: number, endMs: number, turnPts
   }
   return null;
 }
-const stopOf = (iv: number) => (iv >= 35 && iv < 55 ? 2.5 : 2.0); // capped at 2.5× — no 3× (too wide)
+const stopOf = (_iv: number) => 2.0; // user rule: STRICT 2× only — reduce stops via entry, not width
 const deltaOf = (iv: number) => (iv >= 40 && iv < 45 ? 0.10 : 0.15);
 
 function main() {
@@ -65,7 +65,9 @@ function main() {
 
   const base = run(() => true, () => DEFAULT_SIM);
   const adaptive = run(() => true, (e) => ({ ...DEFAULT_SIM, deltaCall: deltaOf(e.iv0), deltaPut: deltaOf(e.iv0), stopMult: stopOf(e.iv0), targetPct: 0.12 }));
-  const finalF = run((e) => e.feat.edge >= medEdge, (e) => ({ ...DEFAULT_SIM, deltaCall: deltaOf(e.iv0), deltaPut: deltaOf(e.iv0), stopMult: stopOf(e.iv0), targetPct: 0.12 }));
+  const cfgOf = (e: typeof ent[number]) => ({ ...DEFAULT_SIM, deltaCall: deltaOf(e.iv0), deltaPut: deltaOf(e.iv0), stopMult: stopOf(e.iv0), targetPct: 0.12 });
+  const finalF = run((e) => e.feat.edge >= medEdge, cfgOf);
+  const finalSkip = run((e) => e.feat.edge >= medEdge && !(e.iv0 >= 35 && e.iv0 < 45), cfgOf); // also skip the 35-45 dead-zone
 
   console.log('='.repeat(92));
   console.log('FINAL STRATEGY RESULT — NY short strangle, IV + indicator rules (span 2025-10 → 2026-10)');
@@ -73,8 +75,9 @@ function main() {
   console.log('  strategy                                   n    Stop%   Win%   avgPnL%   total%/yr');
   const row = (lab: string, s: ReturnType<typeof stat>) => console.log(`  ${lab.padEnd(40)} ${String(s.n).padStart(3)}  ${f1(s.stop).padStart(5)}  ${f1(s.win).padStart(5)}  ${('+' + f1(s.avg)).padStart(6)}   ${('+' + f1(s.tot)).padStart(7)}`);
   row('BASE (every IV-turn · 0.15Δ · 2× · 10%)', stat(base));
-  row('+ adaptive stop/delta · 12% target', stat(adaptive));
-  row('FINAL (+ edge-rich filter)', stat(finalF));
+  row('+ 0.10Δ@40-45 · 12% target (flat 2×)', stat(adaptive));
+  row('FINAL (+ edge-rich filter · flat 2×)', stat(finalF));
+  row('FINAL + skip 35-45 dead-zone', stat(finalSkip));
 
   console.log('\nFINAL strategy by IV band (adaptive stop + edge filter):');
   console.log('  IV band    n    stop(×)  Stop%   Win%   avgPnL%');
@@ -85,7 +88,7 @@ function main() {
   for (const [lab, test] of bands) {
     const xs = finalF.filter((x) => test(x.iv0)); if (!xs.length) continue;
     const sx = stat(xs);
-    const st = lab === '45-55' || lab === '35-45' ? '2.5' : '2.0';
+    const st = '2.0';
     console.log(`  ${lab.padEnd(8)} ${String(sx.n).padStart(3)}  ${st.padStart(5)}×   ${f1(sx.stop).padStart(5)}  ${f1(sx.win).padStart(5)}  ${('+' + f1(sx.avg)).padStart(6)}`);
   }
 
