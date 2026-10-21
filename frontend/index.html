@@ -25185,7 +25185,7 @@ function openBig(){
           '<span class="hd-logo">Ω</span>'+
           '<div>'+
             '<b>MASTER STRATEGY BLUEPRINT · 12H TRADE CLOCK</b>'+
-            '<span class="hd-sub">CALENDAR EDGE + SPEED BEACON + NY+180M TIMING</span>'+
+            '<span class="hd-sub">CALM TAPE + IV TURN + 5-YEAR TIMING</span>'+
           '</div>'+
         '</div>'+
         '<span class="sp"></span>'+
@@ -25658,10 +25658,10 @@ function paintTop(st){
       '<div class="dual-card '+(inProvenWindow?'status-green':'status-amber')+'" data-reveal="clock_entry" style="cursor:pointer">'+
         '<div class="dc-head">'+
           '<span class="dc-icon">'+SVG_ICONS.bullseye(inProvenWindow?'#10B981':'#F59E0B',18)+'</span>'+
-          '<b>3. NY+180M EXECUTION</b>'+
+          '<b>3. BEST-ENTRY WINDOW</b>'+
         '</div>'+
-        '<div class="dc-value">22:30 – 23:30 IST</div>'+
-        '<div class="dc-desc">Bonferroni-proven entry point (p = 0.0014)</div>'+
+        '<div class="dc-value">'+((W.__STRANGLE_ENTRYTIME&&st.p&&W.__STRANGLE_ENTRYTIME[DN[st.p.wd]]&&W.__STRANGLE_ENTRYTIME[DN[st.p.wd]].best)||'00:30–01:30')+' IST</div>'+
+        '<div class="dc-desc">5-yr sweet spot — past the 23:30–00:30 cascade peak</div>'+
       '</div>'+
     '</div>'+
 
@@ -25761,9 +25761,9 @@ function paintSheet(){
         '<div class="sr-val" style="font-size:12.5px;color:var(--text,#F8FAFC);margin-top:4px">'+(p.diag||'⚡ Full size (100 lots) every weekday. Sell the IV turn ~22:30 IST (Fri ~23:00): 0.15Δ N2N strangle, strict 2× stop, 12% target or 07:00 IST exit. The only sit-out is IV ≥ 65% (panic).')+'</div>'+
       '</div>'+
       '<div class="sr-card" data-reveal="clock_entry" style="cursor:pointer">'+
-        '<div class="sr-label">🎯 PROVEN ENTRY WINDOW</div>'+
-        '<div class="sr-val">22:30 – 23:30 IST</div>'+
-        '<div class="sr-note">NY+180 min point estimate (p = 0.0014). Avoids 20:30 opening spike.</div>'+
+        '<div class="sr-label">🎯 BEST-ENTRY WINDOW (5-YR)</div>'+
+        '<div class="sr-val">'+((W.__STRANGLE_ENTRYTIME&&p&&W.__STRANGLE_ENTRYTIME[DN[p.wd]]&&W.__STRANGLE_ENTRYTIME[DN[p.wd]].best)||'00:30–01:30')+' IST</div>'+
+        '<div class="sr-note">Sweet spot — past the 23:30–00:30 liquidation-cascade peak (enter later cuts stops a lot).</div>'+
       '</div>'+
       '<div class="sr-card" data-reveal="clock_exit" style="cursor:pointer">'+
         '<div class="sr-label">🚪 PROVEN MORNING EXIT</div>'+
