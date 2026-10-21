@@ -171,7 +171,7 @@ html, body { margin:0; padding:0; background:#0a0d12; }
 #tc-app .tc-cell.loss { background:#381618; border-color:#6e2328; }
 #tc-app .tc-cell.flat { background:#20262f; border-color:#333e4d; }
 #tc-app .tc-cell.rest { background:#13171e; }
-#tc-app .tc-cell.emer { background:#352708; border-color:#6d540f; }
+#tc-app .tc-cell.wait { background:#1a2230; border-color:#36506e; }
 #tc-app .tc-cell.nodata { background:#121620; }
 #tc-app .tc-cell.win .tc-cg  { color: var(--tc-green); }
 #tc-app .tc-cell.loss .tc-cg { color: var(--tc-red); }
@@ -307,7 +307,7 @@ html, body { margin:0; padding:0; background:#0a0d12; }
   function cellClass(c){
     if (!c) return "nodata";
     if (c.v==="REST") return "rest";
-    if (c.v==="EMERGENCY") return "emer";
+    if (c.v==="WAIT") return "wait";
     if (c.v==="NODATA") return "nodata";
     if (c.out==="TARGET"||c.out==="TIME-WIN") return "win";
     if (c.out==="SL-PUT"||c.out==="SL-CALL") return "loss";
@@ -317,7 +317,7 @@ html, body { margin:0; padding:0; background:#0a0d12; }
   function cellGlyph(c){
     if (!c) return "";
     if (c.v==="REST") return "😴";
-    if (c.v==="EMERGENCY") return "⚠";
+    if (c.v==="WAIT") return "⏸";
     if (c.v==="NODATA") return "";
     if (c.out==="TARGET"||c.out==="TIME-WIN") return "✓";
     if (c.out==="SL-PUT"||c.out==="SL-CALL") return "✗";
@@ -335,8 +335,8 @@ html, body { margin:0; padding:0; background:#0a0d12; }
   /* ---------- selected day state ---------- */
   var dates = Object.keys(CAL.days).sort();
   var selected = null;
-  // default = most recent TRADE cell
-  for (var i=dates.length-1;i>=0;i--){ if (CAL.days[dates[i]].v==="TRADE"){ selected = dates[i]; break; } }
+  // default = most recent GO cell (an actual trade)
+  for (var i=dates.length-1;i>=0;i--){ if (CAL.days[dates[i]].v==="GO"){ selected = dates[i]; break; } }
   if (!selected && dates.length) selected = dates[dates.length-1];
 
   /* ================= BUILD STATIC SECTIONS ================= */
@@ -347,10 +347,11 @@ html, body { margin:0; padding:0; background:#0a0d12; }
     '<div class="tc-card tc-header">' +
       '<div class="tc-title">BTC Short Strangle — Trade Clock &amp; Year Calendar</div>' +
       '<div class="tc-stats">' +
-        '<span class="tc-stat"><b>'+ (s.trades!=null?s.trades:"—") +'</b> nights</span>' +
+        '<span class="tc-stat"><b class="g">'+ (s.go!=null?s.go:"—") +'</b> GO</span>' +
+        '<span class="tc-stat"><b>'+ (s.wait!=null?s.wait:"—") +'</b> WAIT</span>' +
         '<span class="tc-stat">stop <b class="r">'+ (s.stopPct!=null?s.stopPct+"%":"—") +'</b></span>' +
         '<span class="tc-stat">win <b class="g">'+ (s.winPct!=null?s.winPct+"%":"—") +'</b></span>' +
-        '<span class="tc-stat">avg <b class="'+(s.avgPnl>=0?"g":"r")+'">'+ (s.avgPnl!=null?num(s.avgPnl)+"%":"—") +'</b>/trade</span>' +
+        '<span class="tc-stat">cover <b>'+ (s.coveragePct!=null?s.coveragePct+"%":"—") +'</b></span>' +
       '</div>' +
       '<div class="tc-rule">'+ esc(s.rule||"") +'</div>' +
     '</div>';
@@ -359,7 +360,7 @@ html, body { margin:0; padding:0; background:#0a0d12; }
   /* -------- CLOCK (SVG) : rebuilt whenever selection changes -------- */
   function clockSVG(){
     var c = CAL.days[selected] || {};
-    var isTrade = c.v==="TRADE";
+    var isTrade = c.v==="GO";
     var isFri = c.dow==="Fri";
     var win = (isFri ? RULES.entry.windowIST.friday : RULES.entry.windowIST.default) || [22,23.5];
 
@@ -467,22 +468,22 @@ html, body { margin:0; padding:0; background:#0a0d12; }
     var dayName = {Mon:"MONDAY",Tue:"TUESDAY",Wed:"WEDNESDAY",Thu:"THURSDAY",Fri:"FRIDAY",Sat:"SATURDAY",Sun:"SUNDAY"}[c.dow] || (c.dow||"").toUpperCase();
     var v = verdict(c.out);
     var instr = RULES.instrument;
-    if (c.v==="TRADE"){
-      var txt = dayName + " — SELL " + instr.delta + "Δ, " + (c.lots||RULES.sizing.baseLots) + " lots, enter " + c.entry + ", exit " + c.exit + ".";
+    if (c.v==="GO"){
+      var txt = dayName + " — GATE OPEN: SELL " + instr.delta + "Δ, " + (c.lots||RULES.sizing.baseLots) + " lots, enter " + c.entry + ", exit " + c.exit + ".";
       return '<div class="tc-banner">' +
-        '<span class="tc-bverb">'+esc(selected)+' · the plan</span>' + esc(txt) +
+        '<span class="tc-bverb">'+esc(selected)+' · GO</span>' + esc(txt) +
         ' <span class="tc-res tc-bg-'+v.tone+'">'+v.emoji+' '+esc(v.word)+' '+num(c.pnl)+'%</span>' +
+        '</div>';
+    }
+    if (c.v==="WAIT"){
+      return '<div class="tc-banner">' +
+        '<span class="tc-bverb">'+esc(selected)+' · WAIT</span>' + dayName + ' — ⏸ WAIT, no trade. ' + esc(c.why||c.reason||"") +
+        ' <span class="tc-res tc-bg-grey">GATE CLOSED</span>' +
         '</div>';
     }
     if (c.v==="REST"){
       return '<div class="tc-banner">' +
         '<span class="tc-bverb">'+esc(selected)+'</span>' + dayName + ' — 😴 REST. ' + esc(c.why||"") +
-        '</div>';
-    }
-    if (c.v==="EMERGENCY"){
-      return '<div class="tc-banner">' +
-        '<span class="tc-bverb">'+esc(selected)+'</span>' + dayName + ' — ⚠️ STAND-DOWN, 0 lots. ' + esc(c.why||"") +
-        ' <span class="tc-res tc-bg-amber">PANIC band</span>' +
         '</div>';
     }
     return '<div class="tc-banner"><span class="tc-bverb">'+esc(selected)+'</span>' + dayName + ' — no trade data. ' + esc(c.why||"") + '</div>';
@@ -599,7 +600,7 @@ html, body { margin:0; padding:0; background:#0a0d12; }
       '<span><i class="tc-sq" style="background:#14311f;border-color:#235c37"></i>✓ win</span>' +
       '<span><i class="tc-sq" style="background:#381618;border-color:#6e2328"></i>✗ stop</span>' +
       '<span><i class="tc-sq" style="background:#20262f"></i>– flat</span>' +
-      '<span><i class="tc-sq" style="background:#352708;border-color:#6d540f"></i>⚠ stand-down</span>' +
+      '<span><i class="tc-sq" style="background:#1a2230;border-color:#36506e"></i>⏸ WAIT (gate closed)</span>' +
       '<span><i class="tc-sq" style="background:#13171e"></i>😴 rest</span>' +
       '<span><i class="tc-sq" style="background:#121620"></i>no data</span>' +
       '</div>';
@@ -614,11 +615,11 @@ html, body { margin:0; padding:0; background:#0a0d12; }
   function detailHTML(ds){
     var c = CAL.days[ds]; if (!c) return "";
     var full = {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[c.dow]||c.dow;
-    var v = verdict(c.out);
+    var v = c.v==="WAIT" ? {emoji:"⏸", word:"WAIT", tone:"grey"} : verdict(c.out);
     var head = '<div class="tc-dhead"><div class="tc-ddate">'+esc(ds)+' · '+esc(full)+'</div>' +
       '<div class="tc-dverdict tc-tone-'+v.tone+'">'+v.emoji+' '+esc(v.word)+'</div></div>';
     var kv = "";
-    if (c.v==="TRADE"){
+    if (c.v==="GO"){
       var bd = bandFor(c.iv);
       kv = '<div class="tc-dkv">' +
         kvBox("IV", c.iv + " · " + (bd?bd.label:"")) +
@@ -628,14 +629,14 @@ html, body { margin:0; padding:0; background:#0a0d12; }
         kvBox("P&amp;L", '<span class="tc-tone-'+(c.pnl>=0?"green":"red")+'">'+num(c.pnl)+'%</span>') +
         kvBox("BTC move", num(c.move)+"%") +
         '</div>';
-    } else if (c.v==="EMERGENCY"){
+    } else if (c.v==="WAIT"){
       kv = '<div class="tc-dkv">' +
         kvBox("IV", (c.iv!=null?c.iv:"—") + (c.band?(" · "+c.band):"")) +
-        kvBox("Lots", c.lots!=null?c.lots:0) +
-        kvBox("Outcome", esc(c.out)) +
+        kvBox("Why WAIT", esc(c.reason||"gate closed")) +
+        kvBox("Action", "No trade — protect capital") +
         '</div>';
     } else {
-      kv = '<div class="tc-dkv">'+kvBox("Outcome", esc(c.out))+'</div>';
+      kv = '<div class="tc-dkv">'+kvBox("Outcome", esc(c.why||c.v||"—"))+'</div>';
     }
     var why = c.why ? '<div class="tc-dwhy">📝 '+esc(c.why)+'</div>' : "";
     var fix = c.fix ? '<div class="tc-dfix">⟳ <b>Next time:</b> '+esc(c.fix)+'</div>' : "";
