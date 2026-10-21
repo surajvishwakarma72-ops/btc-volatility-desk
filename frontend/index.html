@@ -17835,9 +17835,12 @@ function chartLines(ctx){const S=W.__gexSeries;if(!S||!S.createPriceLine)return;
    Sell near the HIGH, place the call strike above the week high. Toggle via the ƒx "Levels" indicator. */
 const LVL={lines:[],key:''};
 const lvlOn=()=>{try{return !!(W.v132ind&&W.v132ind.state&&W.v132ind.state().lvl);}catch(e){return false;}};
-function lvlRanges(){const S=W.__gexSeries;if(!S||!S.data)return null;let d;try{d=S.data();}catch(e){return null;}if(!d||!d.length)return null;
-  const nowT=d[d.length-1].time;const span=(sec)=>{const from=nowT-sec;let hi=-Infinity,lo=Infinity;for(let i=d.length-1;i>=0;i--){const b=d[i];if(b.time<from)break;if(b.high>hi)hi=b.high;if(b.low<lo)lo=b.low;}return hi>lo?{hi,lo}:null;};
-  return {day:span(86400),week:span(7*86400),month:span(30*86400)};}
+// 366-day 5-min price index (the 10-day chart can't reach a 30-day range) — cached, sorted once per version.
+let _lvlArr=null,_lvlVer='';
+function lvlArr(){try{const L=W.rvIndexLong&&W.rvIndexLong();if(!L||!L.bars||!L.bars.size)return null;const ver=(L.ver||0)+'|'+L.bars.size;if(_lvlVer!==ver){_lvlArr=[...L.bars.values()].sort((a,b)=>a.t-b.t);_lvlVer=ver;}return _lvlArr;}catch(e){return null;}}
+function lvlRanges(){const a=lvlArr();if(!a||!a.length)return null;const nowT=a[a.length-1].t;
+  const span=(ms)=>{const from=nowT-ms;let hi=-Infinity,lo=Infinity;for(let i=a.length-1;i>=0;i--){const b=a[i];if(b.t<from)break;if(b.h>hi)hi=b.h;if(b.l<lo)lo=b.l;}return hi>lo?{hi,lo}:null;};
+  return {day:span(864e5),week:span(7*864e5),month:span(30*864e5),spot:a[a.length-1].c};}
 function lvlDraw(){const S=W.__gexSeries;if(!S||!S.createPriceLine)return;const on=lvlOn();const R=on?lvlRanges():null;
   const rk=(x)=>x?Math.round(x.hi)+'_'+Math.round(x.lo):'0';const key=on&&R?[rk(R.day),rk(R.week),rk(R.month)].join('|'):'off';
   if(key===LVL.key)return;LVL.key=key;for(const l of LVL.lines)try{S.removePriceLine(l);}catch(e){}LVL.lines=[];if(!on||!R)return;
@@ -25726,14 +25729,17 @@ function paintDayIcons(st){
 }
 
 // Live price position inside the day/week/month range → the backtest DANGER/SAFER tag (from __STRANGLE_LEVELS)
+// Uses the 366-day 5-min price index (window.rvIndexLong) so the 30-day range is real, not a 10-day chart window.
+let _lpArr=null,_lpVer='';
 function livePosTag(){
-  const S=W.__gexSeries,LV=W.__STRANGLE_LEVELS;if(!S||!S.data||!LV)return null;
-  let d;try{d=S.data();}catch(e){return null;}if(!d||!d.length)return null;
-  const sp=d[d.length-1].close,nowT=d[d.length-1].time;
-  const span=(sec)=>{const from=nowT-sec;let hi=-Infinity,lo=Infinity;for(let i=d.length-1;i>=0;i--){const b=d[i];if(b.time<from)break;if(b.high>hi)hi=b.high;if(b.low<lo)lo=b.low;}return hi>lo?{hi,lo}:null;};
+  const LV=W.__STRANGLE_LEVELS;if(!LV)return null;
+  let L;try{L=W.rvIndexLong&&W.rvIndexLong();}catch(e){return null;}if(!L||!L.bars||!L.bars.size)return null;
+  const ver=(L.ver||0)+'|'+L.bars.size;if(_lpVer!==ver){_lpArr=[...L.bars.values()].sort((a,b)=>a.t-b.t);_lpVer=ver;}
+  const a=_lpArr;if(!a.length)return null;const sp=a[a.length-1].c,nowT=a[a.length-1].t;
+  const span=(ms)=>{const from=nowT-ms;let hi=-Infinity,lo=Infinity;for(let i=a.length-1;i>=0;i--){const b=a[i];if(b.t<from)break;if(b.h>hi)hi=b.h;if(b.l<lo)lo=b.l;}return hi>lo?{hi,lo}:null;};
   const bk=(p)=>p<0.33?'low':p<0.66?'mid':'high';
-  const one=(sec,k)=>{const r=span(sec);if(!r)return null;const pos=Math.max(0,Math.min(1,(sp-r.lo)/(r.hi-r.lo)));const b=bk(pos);return {pct:Math.round(pos*100),bucket:b,tag:LV[k][b].tag,hi:r.hi,lo:r.lo};};
-  return {week:one(7*86400,'week'),month:one(30*86400,'month'),spot:sp};
+  const one=(ms,k)=>{const r=span(ms);if(!r)return null;const pos=Math.max(0,Math.min(1,(sp-r.lo)/(r.hi-r.lo)));const b=bk(pos);return {pct:Math.round(pos*100),bucket:b,tag:LV[k][b].tag,hi:r.hi,lo:r.lo};};
+  return {week:one(7*864e5,'week'),month:one(30*864e5,'month'),spot:sp};
 }
 // The synthesized ACTION card — turns the gate verdict + 5-yr deep data + live levels into one "do this now" instruction
 function decisionCard(st){
