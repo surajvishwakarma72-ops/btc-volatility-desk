@@ -47,15 +47,17 @@ function main(){
   const best={};
   for(let w=1;w<=5;w++){
     const cells=ENTRIES.map(([h])=>{const g=grid[w][h];return (g.n?pct(g.s,g.n)+'%':'—').padStart(7);});
-    // best = lowest stop with n>=50
-    let bh=null,bs2=999;for(const[h,l]of ENTRIES){const g=grid[w][h];if(g.n>=50&&g.s/g.n*100<bs2){bs2=g.s/g.n*100;bh=l;}}
-    best[DOW[w]]=bh;
-    console.log(`  ${DOW[w]}          ${cells.join('')}   ← best ${bh} (${bs2.toFixed(1)}%)`);
+    // SWEET SPOT = lowest stop within 23:30–01:30 (cleared the cascade peak, still keeps premium/hold)
+    let bh=null,bs2=999;for(const[h,l]of ENTRIES){if(h<18||h>20)continue;const g=grid[w][h];if(g.n>=50&&g.s/g.n*100<bs2){bs2=g.s/g.n*100;bh=l;}}
+    // absolute lowest-stop entry (for reference only — later = less premium)
+    let lh=null,ls=999;for(const[h,l]of ENTRIES){const g=grid[w][h];if(g.n>=50&&g.s/g.n*100<ls){ls=g.s/g.n*100;lh=l;}}
+    best[DOW[w]]={sweet:bh,sweetStop:+bs2.toFixed(1),lowest:lh,lowestStop:+ls.toFixed(1)};
+    console.log(`  ${DOW[w]}          ${cells.join('')}   ← sweet ${bh} (${bs2.toFixed(1)}%)  · lowest ${lh} (${ls.toFixed(1)}%)`);
   }
-  console.log('\n  BEST ENTRY PER WEEKDAY (5yr):  '+Object.entries(best).map(([d,t])=>`${d} ${t}`).join(' · '));
-  console.log('  (later entry = past the 23:30–00:30 cascade peak, but shorter hold = less premium — this is the stop-side read.)');
-  // emit for the calendar/clock
-  const outObj={}; for(let w=1;w<=5;w++){const rows=ENTRIES.map(([h,l])=>({ist:l,stop:grid[w][h].n?+ (grid[w][h].s/grid[w][h].n*100).toFixed(1):null,n:grid[w][h].n}));outObj[DOW[w]]={best:best[DOW[w]],byHour:rows};}
+  console.log('\n  SWEET-SPOT ENTRY PER WEEKDAY (5yr, balances stop + premium):  '+Object.entries(best).map(([d,t])=>`${d} ${t.sweet}`).join(' · '));
+  console.log('  (lowest-stop is even later but earns almost no premium by then — sweet spot clears the cascade peak and keeps the hold.)');
+  // emit for the calendar/clock: .best = sweet-spot string; lowest kept for reference
+  const outObj={}; for(let w=1;w<=5;w++){const rows=ENTRIES.map(([h,l])=>({ist:l,stop:grid[w][h].n?+ (grid[w][h].s/grid[w][h].n*100).toFixed(1):null,n:grid[w][h].n}));const b=best[DOW[w]];outObj[DOW[w]]={best:b.sweet,bestStop:b.sweetStop,lowest:b.lowest,lowestStop:b.lowestStop,byHour:rows};}
   const fe=P('../../frontend/public/data/entry_times.js');fs.writeFileSync(fe,`window.__STRANGLE_ENTRYTIME = ${JSON.stringify(outObj)};\n`);
   console.log('\n[entry_times] wrote frontend/public/data/entry_times.js (window.__STRANGLE_ENTRYTIME).');
 }
