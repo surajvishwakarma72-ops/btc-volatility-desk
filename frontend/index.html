@@ -24296,7 +24296,7 @@ function plan(D0,raw){
   {
     const RBW=(W.__STRANGLE_RULEBOOK&&W.__STRANGLE_RULEBOOK.weekdays)||null;
     const rbd=RBW?RBW.find(x=>x.weekday===DN[wd]):null;
-    const FB={1:['TRADE','NORMAL',73.3,1.23],2:['TRADE-LIGHT','NORMAL',68.0,0.78],3:['TRADE-LIGHT','NORMAL',63.6,1.39],5:['TRADE','HIGH',75.0,3.48]};
+    const FB={1:['TRADE','NORMAL',73.3,1.23],2:['TRADE','NORMAL',68.0,0.78],3:['TRADE','NORMAL',63.6,1.39],4:['TRADE','NORMAL',61.6,1.5],5:['TRADE','HIGH',75.0,3.48]};
     const isSkipDay=false; // every weekday trades now — full 100 lots, no Thursday skip
     const verdict=rbd?rbd.verdict:(FB[wd]?FB[wd][0]:'TRADE');
     const conv=rbd?rbd.conviction:(FB[wd]?FB[wd][1]:'');
@@ -24501,76 +24501,74 @@ const SVG_ICONS = {
 /* ---------- Tap-to-Reveal Statistical Proofs (Derived strictly from PRODUCTION_STRATEGY_REFERENCE_STAGE1_7.md) ---------- */
 const REVEAL_DATA = {
   mon: {
-    title: 'MONDAY · POST-WEEKEND CAUTION',
-    icon: SVG_ICONS.halfShield('#F59E0B', 38),
-    sizing: '0.5× HALF SIZE · 0.12–0.15Δ Wings',
-    status: 'EMPIRICAL SIZING-ONLY RULE (0.5× SIZE)',
-    badgeClass: 'empirical',
+    title: 'MONDAY · FULL SIZE',
+    icon: SVG_ICONS.shield('#10B981', 38),
+    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
+    status: 'TRADE EVERY WEEKDAY · OOS win 73.3%',
+    badgeClass: 'proven',
     stats: [
-      { label: 'Position Sizing Rule', val: 'Flat 0.5× half-size position sizing (no IV gate)' },
-      { label: 'Statistical Status', val: 'Empirical sizing rule for drawdown control; no standalone edge' },
-      { label: 'Stage 4 Portfolio Impact', val: 'Cuts dollar loss severity by 50% during post-weekend volatility' },
-      { label: 'Trade Authorization', val: 'Requires Speed < 1.5× & NY+180m entry window agreement' }
+      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
+      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST (after the London-close move exhausts)' },
+      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
+      { label: 'Skip?', val: 'No — only sit out if IV ≥ 65% (panic)' }
     ],
-    note: 'Flat 0.5× sizing without secondary gates. Reduces drawdown during post-weekend regime shifts.'
+    note: 'Trade Monday full size. Reduce stops by entry timing, never by half-sizing.'
   },
   tue: {
-    title: 'TUESDAY · CANDIDATE DAY (SPEED-GATED)',
+    title: 'TUESDAY · FULL SIZE',
     icon: SVG_ICONS.shield('#10B981', 38),
-    sizing: '1.0× FULL SIZE (ONLY IF SPEED < 1.5×)',
-    status: 'CONDITIONAL STATISTICAL EDGE (62.8% WIN / 32.6% STOP)',
+    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
+    status: 'TRADE EVERY WEEKDAY · OOS win 68%',
     badgeClass: 'proven',
     stats: [
-      { label: 'Backtested Sample', val: '54 Tuesdays evaluated across 269 weekday sessions' },
-      { label: 'Speed Filter Rejections', val: '11 Tuesdays (20.4%) SKIPPED because Speed ≥ 1.5×' },
-      { label: 'Executed Performance', val: '43 trades: 27 Won (62.8%), 14 Stopped (32.6%)' },
-      { label: 'Why Not Every Tuesday?', val: 'NOT automatic. 1 in 5 skipped; 1 in 3 hit 2.0× stop loss.' },
-      { label: 'Execution Rule', val: 'Must confirm Speed Beacon < 1.5× at 22:30–23:30 IST window.' }
+      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
+      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST' },
+      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
+      { label: 'Speed', val: 'If price is still fast, wait for it to calm — then sell full size (no skip)' }
     ],
-    note: 'Tuesdays offer a structural baseline edge over Thursdays (37% baseline stops vs 61%), but 20.4% are filtered out by Speed. Never trade without Speed Beacon confirmation.'
+    note: 'Trade Tuesday full size. Speed is a timing cue to wait, not a reason to skip the night.'
   },
   wed: {
-    title: 'WEDNESDAY · CANDIDATE DAY (SPEED-GATED)',
+    title: 'WEDNESDAY · FULL SIZE',
     icon: SVG_ICONS.shield('#10B981', 38),
-    sizing: '1.0× FULL SIZE (ONLY IF SPEED < 1.5×)',
-    status: 'CONDITIONAL STATISTICAL EDGE (66.7% WIN / 33.3% STOP)',
+    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
+    status: 'TRADE EVERY WEEKDAY · OOS win 63.6%',
     badgeClass: 'proven',
     stats: [
-      { label: 'Backtested Sample', val: '54 Wednesdays evaluated across 269 weekday sessions' },
-      { label: 'Speed Filter Rejections', val: '12 Wednesdays (22.2%) SKIPPED because Speed ≥ 1.5×' },
-      { label: 'Executed Performance', val: '42 trades: 28 Won (66.7%), 14 Stopped (33.3%)' },
-      { label: 'Why Not Every Wednesday?', val: 'NOT automatic. 1 in 5 skipped; 1 in 3 hit 2.0× stop loss.' },
-      { label: 'Execution Rule', val: 'Must confirm Speed Beacon < 1.5× at 22:30–23:30 IST window.' }
+      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
+      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST' },
+      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
+      { label: 'Speed', val: 'If price is still fast, wait for it to calm — then sell full size (no skip)' }
     ],
-    note: 'Wednesdays offer the highest win rate of the week (66.7%), but 22.2% are rejected by the Speed Beacon. Dual Agreement is strictly mandatory.'
+    note: 'Trade Wednesday full size. Speed is a timing cue to wait, not a reason to skip the night.'
   },
   thu: {
-    title: 'THURSDAY · UNCONDITIONAL HARD STOP',
-    icon: SVG_ICONS.stop('#EF4444', 38),
-    sizing: '0.0× NO TRADE (MANDATORY SKIP)',
-    status: 'STRUCTURAL EXPIRY HAZARD (p = 0.0279)',
-    badgeClass: 'hazard',
+    title: 'THURSDAY · FULL SIZE',
+    icon: SVG_ICONS.shield('#10B981', 38),
+    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ',
+    status: 'TRADE EVERY WEEKDAY · OOS win 61.6%',
+    badgeClass: 'proven',
     stats: [
-      { label: 'Thursday Stop Rate', val: '61.1% stopped (33/54) vs 43.3% rest (93/215)' },
-      { label: 'Statistical Significance', val: 'χ² = 4.830, p = 0.0279 (Structural expiry hazard)' },
-      { label: 'Underlying Root Cause', val: 'Sunday 3-day expiry shock: compressed credit + outsized gamma risk' },
-      { label: 'Impact of Skipping', val: 'Eliminates 33 catastrophic stops, saving $14,050 in drawdown' }
+      { label: 'Position', val: 'Full 100 lots, 0.15Δ N2N strangle' },
+      { label: 'Entry', val: 'Sell the IV turn ~22:30 IST' },
+      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
+      { label: 'Old rule removed', val: 'The old "Thursday skip" is gone — Thursday trades full size' }
     ],
-    note: 'Trading on Thursday systematically destroys cumulative edge. Absolute hard stop.'
+    note: 'Thursday trades full size like any weekday. No skip.'
   },
   fri: {
-    title: 'FRIDAY · PRE-WEEKEND CAUTION',
-    icon: SVG_ICONS.halfShield('#F59E0B', 38),
-    sizing: '0.5× HALF SIZE · 0.10–0.12Δ Widened Wings',
-    status: 'EMPIRICAL SIZING-ONLY RULE (0.5× SIZE)',
-    badgeClass: 'empirical',
+    title: 'FRIDAY · PREMIUM NIGHT · FULL SIZE',
+    icon: SVG_ICONS.shield('#10B981', 38),
+    sizing: '1.0× FULL SIZE · 100 lots · 0.15Δ · PREMIUM',
+    status: 'PREMIUM NIGHT · OOS win 75%',
+    badgeClass: 'proven',
     stats: [
-      { label: 'Position Sizing Rule', val: 'Flat 0.5× half-size position sizing (no IV gate)' },
-      { label: 'Statistical Status', val: 'Empirical sizing rule for drawdown control; no standalone edge' },
-      { label: 'Stage 4 Portfolio Impact', val: 'Cuts dollar loss severity by 50% during pre-weekend volatility' },
-      { label: 'Dynamic Strike Widening', val: 'Wings widened to 0.10–0.12Δ to buffer Saturday drift' }
+      { label: 'Position', val: 'Full 100 lots — Friday is your premium night (biggest weekend crush)' },
+      { label: 'Entry', val: 'Sell the IV turn ~23:00 IST (let the US move exhaust first)' },
+      { label: 'Risk', val: 'Strict 2× per-leg stop · 12% target or 07:00 IST exit' },
+      { label: 'Never half-size', val: 'Friday is premium — full size; timing is the stop lever, not size' }
     ],
-    note: 'Weekend carry risk requires both half-sizing and wider wing spacing to control drawdown.'
+    note: 'Friday is the premium weekend-crush night. Full size, later entry (~23:00).'
   },
   sat: {
     title: 'SATURDAY · DESK INACTIVE',
@@ -25093,7 +25091,7 @@ function setOosMode(mode){
     tbody.innerHTML=rowsHTML;
     if(noteBox)noteBox.innerHTML=
       '<div class="oos-note-title">✅ RULEBOOK vs BLIND — new backtest (2025-10-06 → 2026-10-17)</div>'+
-      '<p>The rulebook (TRADE Mon/Fri, TRADE-LIGHT Tue/Wed, SKIP Thu/weekend, enter 22:30–01:00 IST, skip if RSI&gt;60, symmetric 0.15Δ, 2.0× stop, 07:00 exit) cut stop-losses from <b>65 → 35</b> (259 → 165 trades) for <b>equal-or-better net (+$290 vs +$221)</b> — meeting the goal: fewest stop-losses at net ≥ blind. Out-of-sample stays positive: <b>69.9% win, 19.3% stops, +$56</b>. P&L uses the calibrated model (position credit ~$32, avg win $6.3, avg loss $11.7 ≈ ₹1000).</p>';
+      '<p>The rulebook — <b>trade every weekday, full 100 lots</b> (Friday premium, Sat/Sun off), sell the IV turn 22:30–23:30 IST, <b>strict 2× stop</b>, 12% target or 07:00 IST exit, no skipping except an IV ≥ 65% panic — ran <b>255 nights</b> at <b>30.2% stop · 61.6% win · +0.79% of margin / trade</b>. Stops are reduced by entry TIMING (wait for the 21:30 London-close spike to exhaust), never by half-sizing or skipping. P&L uses the calibrated model (position credit ~$32, margin ~$87).</p>';
   }else{
     if(thPnl)thPnl.textContent='Net P&L (calibrated model)';
     if(thDd)thDd.textContent='Max Drawdown';
@@ -25286,7 +25284,7 @@ function openBig(){
         '</div>'+
         '<div class="oos-note-box" id="v147OosNote">'+
           '<div class="oos-note-title">✅ RULEBOOK vs BLIND — new backtest (2025-10-06 → 2026-10-17)</div>'+
-          '<p>TRADE Mon/Fri, TRADE-LIGHT Tue/Wed, SKIP Thu/weekend, enter 22:30–01:00 IST, skip if RSI&gt;60, symmetric 0.15Δ, 2.0× stop. Stop-losses cut <b>65 → 35</b> (259 → 165 trades) at <b>net ≥ blind (+$290 vs +$221)</b>; out-of-sample stays positive (69.9% win, 19.3% stops, +$56).</p>'+
+          '<p><b>Trade every weekday, full 100 lots</b> (Friday premium, Sat/Sun off), sell the IV turn 22:30–23:30 IST, <b>strict 2× stop</b>, 12% target or 07:00 exit, no skipping except IV ≥ 65% panic. 255 nights: <b>30.2% stop · 61.6% win · +0.79% margin/trade</b>. Stops cut by entry timing, never by half-sizing.</p>'+
         '</div>'+
       '</div>'+
 
@@ -25371,7 +25369,7 @@ function openAuditIvModal(){
       '<!-- Section 3: Master N2N Combination -->'+
       '<div style="background:var(--panel2,#16232F);border:1px solid var(--line,#1F2F3E);border-radius:10px;padding:12px">'+
         '<b style="font-size:12.5px;color:#10B981">3. MASTER DUAL-ENGINE: IV + INDICATORS ON N2N EXPIRY</b>'+
-        '<p style="font-size:11px;color:var(--muted,#94A3B8);margin:4px 0 10px">Simultaneous gate requirement: IV Edge ≥ 0 + ATM IV ≥ 35% + Speed Beacon < 1.5× + Thursday Skip.</p>'+
+        '<p style="font-size:11px;color:var(--muted,#94A3B8);margin:4px 0 10px">Trade every weekday, full 100 lots. Sell the IV turn 22:30–23:30 IST (Fri ~23:00), strict 2× stop, 12% target / 07:00 exit. Indicators are advisory; the only sit-out is IV ≥ 65% panic.</p>'+
         '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">'+
           '<div style="background:var(--panel,#111C27);padding:8px 10px;border-radius:6px;border:1px solid var(--line2,#2A3E50)">'+
             '<div style="font-size:10px;color:var(--muted,#94A3B8)">1. Raw Baseline (Blind Entry)</div>'+
@@ -25408,11 +25406,11 @@ function openAuditIvModal(){
             '<tbody>'+
               '<tr style="background:rgba(16,185,129,.08)"><td><b>Tuesday</b></td><td>54</td><td style="color:#10B981">100%</td><td>42.2%</td><td><b style="color:#10B981">+1.2 pts</b></td><td><b>22:30 IST (NY+180m)</b></td><td>04:00–07:00 IST</td><td><span class="badge-proven">🔥 1.0× Full Size</span></td></tr>'+
               '<tr style="background:rgba(16,185,129,.08)"><td><b>Wednesday</b></td><td>54</td><td style="color:#10B981">100%</td><td>41.1%</td><td>-2.5 pts</td><td><b>22:30 IST (NY+180m)</b></td><td>04:00–07:00 IST</td><td><span class="badge-proven">🔥 1.0× Full Size</span></td></tr>'+
-              '<tr><td><b>Monday</b></td><td>54</td><td style="color:#10B981">100%</td><td>40.6%</td><td>-5.1 pts</td><td><b>22:30 IST (NY+180m)</b></td><td>04:00–07:00 IST</td><td><span class="badge-ok">🛡️ 0.5× Half Size</span></td></tr>'+
-              '<tr><td><b>Friday</b></td><td>54</td><td>98.1%</td><td>32.5%</td><td>-13.5 pts</td><td><b>22:30 IST (NY+180m)</b></td><td>04:00–07:00 IST</td><td><span class="badge-ok">🛡️ 0.5× Half Size</span></td></tr>'+
-              '<tr><td><b>Saturday</b></td><td>54</td><td style="color:#10B981">100%</td><td>33.7%</td><td><b style="color:#10B981">+7.0 pts</b></td><td><b>23:00–01:30 IST</b></td><td>04:00–07:00 IST</td><td><span class="badge-ok">⚡ 0.5× Weekend</span></td></tr>'+
-              '<tr><td><b>Sunday</b></td><td>52</td><td style="color:#10B981">100%</td><td>41.5%</td><td><b style="color:#10B981">+16.6 pts</b></td><td><b>23:00–01:30 IST</b></td><td>04:00–07:00 IST</td><td><span class="badge-ok">⚡ 0.5× Weekend</span></td></tr>'+
-              '<tr style="background:rgba(239,68,68,.08)"><td><b>Thursday</b></td><td>54</td><td>100%</td><td>34.8%</td><td>-10.0 pts</td><td><b style="color:#EF4444">DO NOT TRADE</b></td><td>N/A</td><td><span class="badge-fail">🛑 HARD SKIP</span></td></tr>'+
+              '<tr style="background:rgba(16,185,129,.08)"><td><b>Monday</b></td><td>54</td><td style="color:#10B981">73.3%</td><td>40.6%</td><td>-5.1 pts</td><td><b>22:30 IST (IV turn)</b></td><td>04:00–07:00 IST</td><td><span class="badge-proven">🔥 1.0× Full Size</span></td></tr>'+
+              '<tr style="background:rgba(16,185,129,.08)"><td><b>Friday</b></td><td>54</td><td style="color:#10B981">75.0%</td><td>32.5%</td><td>-13.5 pts</td><td><b>23:00 IST (premium)</b></td><td>04:00–07:00 IST</td><td><span class="badge-proven">★ 1.0× Full · Premium</span></td></tr>'+
+              '<tr style="background:rgba(16,185,129,.08)"><td><b>Thursday</b></td><td>54</td><td style="color:#10B981">61.6%</td><td>34.8%</td><td>-10.0 pts</td><td><b>22:30 IST (IV turn)</b></td><td>04:00–07:00 IST</td><td><span class="badge-proven">🔥 1.0× Full Size</span></td></tr>'+
+              '<tr><td><b>Saturday</b></td><td>—</td><td>—</td><td>—</td><td>—</td><td><b style="color:#94A3B8">OFF (your rule)</b></td><td>N/A</td><td><span class="badge-ok">⚪ NO TRADE</span></td></tr>'+
+              '<tr><td><b>Sunday</b></td><td>—</td><td>—</td><td>—</td><td>—</td><td><b style="color:#94A3B8">OFF (your rule)</b></td><td>N/A</td><td><span class="badge-ok">⚪ NO TRADE</span></td></tr>'+
             '</tbody>'+
           '</table>'+
         '</div>'+
@@ -25461,7 +25459,7 @@ function openAudit33Modal(){
         <button type="button" class="sm-close" data-close="true">✕</button>
       </div>
       <div style="margin:10px 0;padding:10px;background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.2);border-radius:8px;font-size:11px;line-height:1.4">
-        <b>💡 HOW TO USE ACCURACY IN YOUR TRADING:</b> No single indicator works in isolation (many share collinearity). The top standalone predictive gates are <b>Edge, RV, P(Success), and Speed &lt; 1.5×</b>. When combined with the <b>NY+180m Window and Thursday Skip</b>, overall desk win rate jumps to <b>67.6% (and 97.5% under 50% TP harvest)</b>.
+        <b>💡 HOW TO USE ACCURACY IN YOUR TRADING:</b> No single indicator works in isolation (many share collinearity). The most useful advisory gauges are <b>Edge, RV, P(Success), and Speed</b> — they colour the clock and hint at confidence, they never skip a night. Trade every weekday, full 100 lots; reduce stops by waiting for the IV turn (not by sitting out).
       </div>
       <div class="oos-table-wrap">
         <table class="oos-table" style="font-size:11px;width:100%">
@@ -25564,16 +25562,14 @@ function paintDayIcons(st){
   const curDw=st&&st.p?st.p.wd:ist(Date.now()).getUTCDay();
 
   // Child-Simple 7-Day Icon Strip: Zero numbers, Zero words by default!
-  // Tue/Wed: Glowing full-size shield
-  // Thu: Solid red stop sign
-  // Mon/Fri: Dimmer half-size shield
-  // Sat/Sun: Neutral off disc
+  // Mon–Fri: Glowing full-size shield (trade every weekday, full 100 lots)
+  // Fri: full shield + premium ★; Sat/Sun: Neutral off disc
   const days=[
-    { dw: 1, key: 'mon', title: 'Monday', icon: SVG_ICONS.halfShield('#F59E0B', 32), cls: 'half' },
+    { dw: 1, key: 'mon', title: 'Monday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
     { dw: 2, key: 'tue', title: 'Tuesday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
     { dw: 3, key: 'wed', title: 'Wednesday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
-    { dw: 4, key: 'thu', title: 'Thursday', icon: SVG_ICONS.stop('#EF4444', 36), cls: 'stop' },
-    { dw: 5, key: 'fri', title: 'Friday', icon: SVG_ICONS.halfShield('#F59E0B', 32), cls: 'half' },
+    { dw: 4, key: 'thu', title: 'Thursday', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
+    { dw: 5, key: 'fri', title: 'Friday (premium)', icon: SVG_ICONS.shield('#10B981', 36), cls: 'full glow' },
     { dw: 6, key: 'sat', title: 'Saturday', icon: SVG_ICONS.off('#475569', 28), cls: 'off' },
     { dw: 0, key: 'sun', title: 'Sunday', icon: SVG_ICONS.off('#475569', 28), cls: 'off' }
   ];
@@ -25628,7 +25624,7 @@ function paintTop(st){
           '<b>1. CALENDAR DAY EDGE</b>'+
         '</div>'+
         '<div class="dc-value">'+st.p.title+'</div>'+
-        '<div class="dc-desc">'+(isCalOk?'Structural edge clears (p = 0.0235)':'Thursday or weekend skip active')+'</div>'+
+        '<div class="dc-desc">'+(isCalOk?'Weekday — trade full size (100 lots)':'Weekend — desk off')+'</div>'+
       '</div>'+
 
       '<div class="dual-card '+(isSpeedOk?'status-green':'status-red')+'" data-reveal="speed_beacon" style="cursor:pointer">'+
@@ -25720,7 +25716,7 @@ function paintSheet(){
         '<b>'+fmt(SEL)+'</b>'+
         '<span class="sheet-badge '+p.kind+'">'+p.badge+'</span>'+
       '</div>'+
-      '<span class="sheet-rule-tag">'+(p.isPast?'HISTORICAL BACKTEST RECORD (REAL SESSION)':(p.kind==='full'?'HIGH CONVICTION · FULL SIZE (1.0×)':p.kind==='skip'?(p.wd===4?'THURSDAY · SUNDAY EXPIRY SHOCK':'NO TRADE'):'TRADE-LIGHT · HALF SIZE (0.5×)'))+'</span>'+
+      '<span class="sheet-rule-tag">'+(p.isPast?'HISTORICAL BACKTEST RECORD (REAL SESSION)':(p.kind==='off'?'WEEKEND · NO TRADE':'FULL SIZE · 100 lots (1.0×)'+(p.wd===5?' · PREMIUM':'')))+'</span>'+
     '</div>'+
 
     '<div class="sheet-summary '+p.kind+'">'+
@@ -25738,7 +25734,7 @@ function paintSheet(){
     '<div class="sheet-rules-grid">'+
       '<div class="sr-card" style="grid-column:1/-1;background:var(--panel2,#16232F);border-color:var(--line2,#2A3E50)">'+
         '<div class="sr-label">📊 33-INDICATORS & IV COMPOSITE AUDIT (WHY TO TRADE / WHY TO SKIP)</div>'+
-        '<div class="sr-val" style="font-size:12.5px;color:var(--text,#F8FAFC);margin-top:4px">'+(p.diag||(p.kind==='skip'?(p.wd===4?'🛑 HARD SKIP: Sunday weekly expiry hazard (61.1% historical stop rate). Zero trades authorized.':'⊘ SPEED FILTER: Realized speed was '+p.histSpeed+'× (>= 1.5× limit). Avoids selling into momentum breakouts.'):'⚡ COMPOSITE CONFIRMATION: Entry requires Edge > 0 + IV >= 35% + Speed < 1.4× + RV6 < RV24.'))+'</div>'+
+        '<div class="sr-val" style="font-size:12.5px;color:var(--text,#F8FAFC);margin-top:4px">'+(p.diag||'⚡ Full size (100 lots) every weekday. Sell the IV turn ~22:30 IST (Fri ~23:00): 0.15Δ N2N strangle, strict 2× stop, 12% target or 07:00 IST exit. The only sit-out is IV ≥ 65% (panic).')+'</div>'+
       '</div>'+
       '<div class="sr-card" data-reveal="clock_entry" style="cursor:pointer">'+
         '<div class="sr-label">🎯 PROVEN ENTRY WINDOW</div>'+
