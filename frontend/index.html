@@ -24928,6 +24928,29 @@ function face(big){
   }
   s+='<circle cx="'+C+'" cy="'+C+'" r="4" fill="'+F0.sec+'"/>';
 
+  // ===== PHASE-BASED PICTORIAL INDICATOR CLUSTER (no text) =====
+  // Entry set until the entry gate closes (~01:30 IST) · Hold set until Asia open (05:30 IST) · Exit set after Asia open.
+  const istHh=d.getUTCHours()+d.getUTCMinutes()/60;
+  let phase='entry';
+  if(istHh>=1.5&&istHh<5.5)phase='hold'; else if(istHh>=5.5&&istHh<7.75)phase='exit';
+  const PHG={
+    entry:{sym:'▶',col:F0.green,ind:[['⚡','spd'],['📊','iv'],['🌊','vov'],['📈','rng'],['💧','rv'],['🎯','edge'],['🔻','dv']]},
+    hold:{sym:'⏸',col:F0.blue,ind:[['🛡','legs'],['🎚','strk'],['📐','grk'],['📉','rsi'],['💥','liq']]},
+    exit:{sym:'⏹',col:F0.amber,ind:[['🚪','ready'],['🧭','ton'],['⏱','sig'],['🛡','legs']]}
+  };
+  const indCol=(k)=>{
+    if(k==='spd')return st.speedVal<1.0?F0.green:st.speedVal<1.5?F0.amber:F0.red;
+    if(k==='iv')return st.ivNow==null?F0.num:(st.ivNow>=65?F0.red:st.ivNow>=60?F0.amber:F0.green);
+    if(k==='edge')return st.edgeOk?F0.green:(st.edgeOk===false?F0.red:F0.num);
+    return F0.num; // not live-computed → neutral grey dot (still a picture of the phase set)
+  };
+  const PHn=PHG[phase],cnt=PHn.ind.length+1,step=big?22:20,x0=C-((cnt-1)*step)/2,yI=C+(big?84:80),rr=big?10:9;
+  s+='<circle cx="'+x0+'" cy="'+yI+'" r="'+(rr+1)+'" fill="'+PHn.col+'" fill-opacity="0.22" stroke="'+PHn.col+'" stroke-width="1.6"/>'+
+     '<text x="'+x0+'" y="'+(yI+4)+'" text-anchor="middle" font-size="'+(rr+1)+'" fill="'+PHn.col+'">'+PHn.sym+'</text>';
+  for(let i=0;i<PHn.ind.length;i++){const g=PHn.ind[i][0],k=PHn.ind[i][1],xx=x0+(i+1)*step,cc=indCol(k);
+    s+='<circle cx="'+xx.toFixed(1)+'" cy="'+yI+'" r="'+rr+'" fill="'+cc+'" fill-opacity="0.18" stroke="'+cc+'" stroke-width="1.4"/>'+
+       '<text x="'+xx.toFixed(1)+'" y="'+(yI+3.5)+'" text-anchor="middle" font-size="'+(rr-1)+'">'+g+'</text>';}
+
   s+='</svg>';
   return {svg:s,st};
 }
@@ -25205,6 +25228,20 @@ function openBig(){
       '<div class="top-verdict-grid">'+
         '<div class="dial-container" id="v147Dial"></div>'+
         '<div class="status-panel" id="v147Tx"></div>'+
+      '</div>'+
+
+      '<!-- Clock legend (shown with the clock) -->'+
+      '<div style="margin:0 0 16px;padding:12px 14px;background:var(--panel2,#16232F);border:1px solid var(--line,#1F2F3E);border-radius:12px">'+
+        '<div style="font-size:11px;font-weight:900;letter-spacing:.08em;color:var(--muted,#94A3B8);margin-bottom:9px">🕛 CLOCK LEGEND</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:8px 18px;font-size:12.5px;color:var(--text,#E8EEF7);line-height:1.5">'+
+          '<span><b style="color:#10B981">●</b> Best-entry arc · 00:30–01:30 IST (at 1 o’clock)</span>'+
+          '<span><b style="color:#EF4444">●</b> Cascade-danger arc · 23:30–00:30 (at 12 — don’t sell)</span>'+
+          '<span><b style="color:#3B82F6">●</b> Exit · 07:00 IST (at 7)</span>'+
+          '<span><b>▶</b> Entry set · <b>⏸</b> Hold set · <b>⏹</b> Exit set — the dots switch by phase</span>'+
+          '<span>Dot colour — <b style="color:#10B981">green</b> good · <b style="color:#F59E0B">yellow</b> caution · <b style="color:#EF4444">red</b> danger</span>'+
+          '<span>Outer rays = Speed (green &lt;1× · amber &lt;1.5× · red storm)</span>'+
+          '<span>Centre — 🛡 GO · ⛔ NOT NOW</span>'+
+        '</div>'+
       '</div>'+
 
       '<!-- Child-Simple 7-Day Icon Strip (Zero numbers, Zero words by default) -->'+
@@ -25789,7 +25826,7 @@ function paintSheet(){
 const css=D.createElement('style');
 css.id='v147Css';
 css.textContent=`
-#v147Mini{position:absolute;top:42px;left:8px;z-index:6;width:clamp(122px,14vw,166px);aspect-ratio:1;padding:0;border:0;background:none;cursor:pointer;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35));transition:transform .15s ease}
+#v147Mini{position:absolute;top:40px;left:8px;z-index:6;width:clamp(176px,21vw,252px);aspect-ratio:1;padding:0;border:0;background:none;cursor:pointer;filter:drop-shadow(0 4px 12px rgba(0,0,0,.4));transition:transform .15s ease}
 #v147Mini:hover{transform:scale(1.04)}
 #v147Mini svg{width:100%;height:100%;display:block}
 /* v147MiniCap removed per request */
