@@ -120,6 +120,24 @@ function main() {
   }).sort((a, b) => b.net - a.net);
   exitRows.forEach((r, i) => console.log(`  ${String(i + 1).padStart(2)}.  ${r.tr.name.padEnd(26)} ${f1(r.recall).padStart(8)}  ${f1(r.fa).padStart(16)}  ${((r.net >= 0 ? '+' : '') + f1(r.net)).padStart(7)}`));
 
+  // CONSOLIDATED effectiveness = combined entry-win + hold-survive separation (how much the indicator moves the outcome).
+  const cons = INDS.map((ind) => {
+    const vals = trades.map((t) => ind.get(t.feat)).filter(Number.isFinite);
+    const med = median(vals);
+    const hi = trades.filter((t) => Number.isFinite(ind.get(t.feat)) && ind.get(t.feat) >= med);
+    const lo = trades.filter((t) => Number.isFinite(ind.get(t.feat)) && ind.get(t.feat) < med);
+    const winHi = pct(hi.filter((t) => t.win).length, hi.length), winLo = pct(lo.filter((t) => t.win).length, lo.length);
+    const svHi = pct(hi.filter((t) => !t.stopped).length, hi.length), svLo = pct(lo.filter((t) => !t.stopped).length, lo.length);
+    const pnlHi = mean(hi.map((t) => t.pnl)), pnlLo = mean(lo.map((t) => t.pnl));
+    const favHigh = pnlHi >= pnlLo;
+    return { ind, favDir: favHigh ? 'HIGH' : 'LOW', med, win: favHigh ? winHi : winLo, sv: favHigh ? svHi : svLo, pnl: favHigh ? pnlHi : pnlLo, score: (Math.abs(winHi - winLo) + Math.abs(svHi - svLo)) / 2 };
+  }).sort((a, b) => b.score - a.score);
+  console.log('\n' + '='.repeat(94));
+  console.log('CONSOLIDATED EFFECTIVENESS RANK — highest-impact indicators (entry-win + hold-survive separation):');
+  console.log('  rank  indicator                    favorable        Win%  Surv%  avgPnL%  effect(pts)');
+  cons.forEach((r, i) => console.log(
+    `  ${String(i + 1).padStart(2)}.  ${(r.ind.fx + ' ' + r.ind.name).padEnd(28)} ${(r.favDir + ' (med ' + f1(r.med) + ')').padEnd(15)} ${f1(r.win).padStart(5)}  ${f1(r.sv).padStart(5)}  ${((r.pnl >= 0 ? '+' : '') + f1(r.pnl)).padStart(6)}  ${f1(r.score).padStart(5)}`));
+
   console.log('\nNOT BACKTESTABLE here (no archived year of data) — rank live instead:');
   console.log('  gex (dealer gamma) · skew (25Δ) · fund (funding+OI history) · liq (OKX liquidations) ·');
   console.log('  dfl (Deribit option flow) · fp (footprint) · lhm (liq heatmap) · fut (OI positioning) ·');
