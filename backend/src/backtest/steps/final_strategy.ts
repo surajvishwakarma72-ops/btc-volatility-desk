@@ -28,7 +28,7 @@ function turnEntry(data: any, n2n: string, peakT: number, endMs: number, turnPts
   }
   return null;
 }
-const stopOf = (iv: number) => (iv < 35 ? 2.0 : iv < 45 ? 3.0 : iv < 55 ? 2.5 : 2.0);
+const stopOf = (iv: number) => (iv >= 35 && iv < 55 ? 2.5 : 2.0); // capped at 2.5× — no 3× (too wide)
 const deltaOf = (iv: number) => (iv >= 40 && iv < 45 ? 0.10 : 0.15);
 
 function main() {
