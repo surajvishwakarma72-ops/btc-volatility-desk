@@ -471,6 +471,7 @@
 <script src="data/shadow_backtest_dataset.js"></script>
 <script src="data/rulebook.js"></script>
 <script src="data/backtest_days.js"></script>
+<script src="data/fiveyear_days.js"></script>
 <script src="data/weekday_patterns.js"></script>
 <script src="data/indicator_grades.js"></script>
 <script src="data/fiveyear_risk.js"></script>
@@ -24308,7 +24309,7 @@ function plan(D0,raw){
     const exp=rbd?rbd.expectancyUsd:(FB[wd]?FB[wd][3]:null);
     const high=true; // every weekday = full 100 lots (no half-size anywhere)
     r.rb={verdict,conviction:conv,oos,exp};
-    const bd=(W.__STRANGLE_BT_DAYS&&W.__STRANGLE_BT_DAYS[key])||null;
+    const bd=(W.__STRANGLE_BT_DAYS&&W.__STRANGLE_BT_DAYS[key])||(W.__STRANGLE_BT_DAYS_5Y&&W.__STRANGLE_BT_DAYS_5Y[key])||null;   // real 1-yr first, then 5-yr modelled fill
 
     if(verdict==='SKIP'){
       r.kind='skip';r.size=0;r.delta='None';r.icon='stop';
