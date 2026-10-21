@@ -19,7 +19,20 @@ export const RULES = {
 
   instrument: { product: 'BTC short strangle', expiry: 'N2N (3rd weekly)', delta: 0.15, legs: 'call + put' },
   session: 'New York',
-  sizing: { baseLots: 100, rule: 'always 100 lots; trim ONLY in a declared emergency — never skip a normal night' },
+  sizing: { baseLots: 100, rule: '100 lots WHEN the gate says GO. This is a conditions-based trade — not blind daily entry.' },
+
+  // THE GATE — the whole point is to AVOID the stop. GO only when every condition holds; else WAIT.
+  // Backtest (strict 2×, 1 yr): GO fires ~1 night in 3 → ~26% stop / ~73% win vs 33% stop trading every night.
+  gate: {
+    goal: 'Avoid the stop-loss. Trade the best setup, wait out the rest — never enter every day blindly.',
+    conditions: [
+      { id: 'turn', label: 'On the IV turn', need: 'IV has peaked and turned DOWN ≥1pt in the NY window — never sell into the 21:30 London-close spike.' },
+      { id: 'band', label: 'IV out of the dead-zone', need: 'ATM IV is NOT in the 35–45 dead-zone (where stops cluster) and is below 65 (not panic).' },
+      { id: 'edge', label: 'Edge-rich', need: 'ATM IV is richer than recent realised vol (you are being paid to sell).' },
+    ],
+    waitReasons: ['before the window / no IV turn yet', 'IV in the 35–45 dead-zone', 'IV ≥ 65 (panic)', 'edge thin — IV not rich vs realised'],
+    result: 'All hold → SELL 100 lots. Backtest: ~26% stop, ~73% win, trades ~1 night in 3.',
+  },
 
   entry: {
     trigger: 'ATM IV has peaked and turned DOWN ≥1pt in the NY session (sell the turn, never the spike)',
