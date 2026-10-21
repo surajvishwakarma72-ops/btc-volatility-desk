@@ -85,7 +85,7 @@ function main() {
   for (const [lab, test] of bands) {
     const xs = finalF.filter((x) => test(x.iv0)); if (!xs.length) continue;
     const sx = stat(xs);
-    const st = lab === '25-35' ? '2.0' : lab === '35-45' ? '3.0' : lab === '45-55' ? '2.5' : '2.0';
+    const st = lab === '45-55' || lab === '35-45' ? '2.5' : '2.0';
     console.log(`  ${lab.padEnd(8)} ${String(sx.n).padStart(3)}  ${st.padStart(5)}×   ${f1(sx.stop).padStart(5)}  ${f1(sx.win).padStart(5)}  ${('+' + f1(sx.avg)).padStart(6)}`);
   }
 
