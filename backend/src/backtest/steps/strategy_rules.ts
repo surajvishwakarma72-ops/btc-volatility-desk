@@ -26,11 +26,11 @@ export const RULES = {
   gate: {
     goal: 'Avoid the stop-loss. Trade the best setup, wait out the rest — never enter every day blindly.',
     conditions: [
-      { id: 'turn', label: 'On the IV turn', need: 'IV has peaked and turned DOWN ≥1pt in the NY window — never sell into the 21:30 London-close spike.' },
-      { id: 'band', label: 'IV out of the dead-zone', need: 'ATM IV is NOT in the 35–45 dead-zone (where stops cluster) and is below 65 (not panic).' },
-      { id: 'edge', label: 'Edge-rich', need: 'ATM IV is richer than recent realised vol (you are being paid to sell).' },
+      { id: 'turn', label: 'IV FALLING (the crush)', need: 'IV has peaked and turned DOWN ≥1pt — this is the real signal. Backtest: IV-fall predicts the win; premium richness does not. Even thin premium pays if IV crushes (your Fridays).' },
+      { id: 'band', label: 'Not panic', need: 'ATM IV below 65. The 35–45 band IS traded (at a 3× stop), not skipped.' },
+      { id: 'calm', label: 'Calm tape', need: 'Speed (RV÷IV) not in a storm — let a fast move exhaust first.' },
     ],
-    waitReasons: ['before the window / no IV turn yet', 'IV in the 35–45 dead-zone', 'IV ≥ 65 (panic)', 'edge thin — IV not rich vs realised'],
+    waitReasons: ['IV not falling yet (wait for the turn)', 'IV ≥ 65 (panic)', 'price still fast (storm)'],
     result: 'All hold → SELL 100 lots. Backtest: ~26% stop, ~73% win, trades ~1 night in 3.',
   },
 

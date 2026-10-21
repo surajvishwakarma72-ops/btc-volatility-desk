@@ -24697,13 +24697,15 @@ function status(now){
   const isWeekend=p.wd===0||p.wd===6;
   // Live GATE — conditions-based, built to AVOID the stop. GO only when every condition aligns.
   const ser=series(F.n2n), ivNow=ser?at(ser,now):null;
-  const clz=closes(now-26*HR,now), rv24=(clz?rvOver(clz,now,24*60):null);
   const bandOk=(ivNow!=null)&&ivNow<65; // only an IV≥65 panic is out; 35–45 now trades (at a 3× stop)
-  const edgeOk=(ivNow!=null&&rv24!=null)?(ivNow>=rv24):true;     // edge-rich: IV richer than realised
+  // IV FALLING = the crush/turn — the REAL signal (backtest: IV-fall predicts the win; premium richness does not).
+  const ivRecent=ser?ser.filter(function(x){return x[0]>=now-3*HR&&x[0]<=now;}).map(function(x){return x[1];}):[];
+  const ivPeak=ivRecent.length?Math.max.apply(null,ivRecent):(ivNow||0);
+  const ivFalling=(ivNow!=null)&&(ivPeak-ivNow>=1.0);           // IV turned down ≥1pt from its recent peak
   const stopX=(ivNow!=null&&ivNow>=35&&ivNow<45)?'3×':'2×';     // band-adaptive stop
   const wkPat=(window.__STRANGLE_WEEKDAY&&window.__STRANGLE_WEEKDAY[DN[p.wd]])||null;
   const calendarOk=isWeekday;
-  const dualGo=calendarOk&&speedOk&&bandOk&&edgeOk; // the full stop-avoiding gate
+  const dualGo=calendarOk&&speedOk&&bandOk&&ivFalling; // gate: weekday + calm + not-panic + IV FALLING (not premium)
   
   const dNow=ist(now);
   const istMins=dNow.getUTCHours()*60+dNow.getUTCMinutes();
@@ -24714,7 +24716,7 @@ function status(now){
   const isExitWindow = istMins >= window.PROVEN_BOUNDARIES.EXIT_START_MINS && istMins <= window.PROVEN_BOUNDARIES.EXIT_END_MINS;
   const isTrapWindow = istMins >= window.PROVEN_BOUNDARIES.TRAP_MINS_START && istMins <= window.PROVEN_BOUNDARIES.TRAP_MINS_END;
 
-  const st={p,F,R,speedVal,speedOk,calendarOk,dualGo,curHour,istMins,inProvenEntryWindow,isSetupWindow,isExitWindow,isTrapWindow,ivNow,stopX,wkPat,edgeOk,bandOk};
+  const st={p,F,R,speedVal,speedOk,calendarOk,dualGo,curHour,istMins,inProvenEntryWindow,isSetupWindow,isExitWindow,isTrapWindow,ivNow,stopX,wkPat,ivFalling,ivPeak,bandOk};
 
   // 1. Holding Open Strangle Position
   if(R&&R.pos&&!R.stale){
@@ -24733,7 +24735,7 @@ function status(now){
       cls: 'full',
       word: 'GO',
       d1: 'GATE OPEN · SELL 100 lots · stop '+stopX+(isPremium?' · ★ PREMIUM':''),
-      d2: 'IV '+(ivNow!=null?ivNow.toFixed(0)+'% ':'')+'· edge-rich · calm '+speedVal.toFixed(2)+'×'+(wkPat?(' · watch the '+wkPat.hurtLeg+' side'):''),
+      d2: 'IV '+(ivNow!=null?ivNow.toFixed(0)+'% falling ':'')+'· calm '+speedVal.toFixed(2)+'×'+(wkPat?(' · watch the '+wkPat.hurtLeg+' side'):''),
       icon: 'shield'
     });
   }
@@ -24751,10 +24753,10 @@ function status(now){
     whyD1 = 'WAIT — IV panic ('+ivNow.toFixed(0)+'% ≥ 65)';
     whyD2 = 'Real fear · stand down until IV cools';
     stopIcon = 'beacon_red';
-  } else if(!edgeOk){
-    whyD1 = 'WAIT — edge thin (IV not rich vs realised)';
-    whyD2 = 'Not being paid enough to sell · pass, keep capital';
-    stopIcon = 'stop';
+  } else if(ivNow!=null && !ivFalling){
+    whyD1 = 'WAIT — IV not falling yet (peak '+ivPeak.toFixed(0)+' → now '+ivNow.toFixed(0)+')';
+    whyD2 = 'Sell the CRUSH: wait for IV to peak and turn down — thin premium is fine, a falling IV is the signal';
+    stopIcon = 'bullseye';
   } else if(!speedOk){
     whyD1 = 'WAIT — price still fast ('+speedVal.toFixed(2)+'× ≥ 1.50×)';
     whyD2 = 'Let the move exhaust, then sell the IV turn';

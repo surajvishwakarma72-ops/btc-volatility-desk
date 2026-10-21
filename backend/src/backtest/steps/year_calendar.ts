@@ -34,11 +34,11 @@ function band(iv: number): { label: string; tone: string } {
 }
 // Band-adaptive stop: 35–45 gets 3× room (revives it to 12.7% stop); 2× everywhere else.
 const stopOf = (iv: number) => (iv >= 35 && iv < 45 ? 3.0 : 2.0);
-// THE GATE — returns null if GO, else the reason to WAIT. 35–45 is now a GO band (traded at 3×).
-function waitReason(iv: number, edge: number, medEdge: number): string | null {
+// THE GATE — GO on the IV turn (IV falling = the crush, the real signal). Premium thinness is NOT a skip
+// reason (backtest: thin-edge nights still win ~67%; IV-fall predicts the win, edge does not). Only sit out panic.
+function waitReason(iv: number, _edge: number, _medEdge: number): string | null {
   if (iv >= 65) return 'IV ≥ 65 (panic) — stand down';
-  if (!(edge >= medEdge)) return 'edge thin — IV not rich vs realised';
-  return null; // GO (dead-zone included, with its wider 3× stop)
+  return null; // GO: sell the IV turn (dead-zone included, 3× stop). Edge/premium filter dropped.
 }
 
 function turnEntry(data: any, n2n: string, peakT: number, endMs: number, turnPts = 1.0): number | null {
