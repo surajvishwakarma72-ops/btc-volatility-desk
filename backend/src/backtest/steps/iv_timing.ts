@@ -12,7 +12,7 @@
  * delta-sensitivity row (0.10 vs 0.125 vs 0.15). Run: npx tsx src/backtest/steps/iv_timing.ts
  */
 import { loadData } from '../data/load.js';
-import { frame, d0, dk, DAY, HR, MIN } from '../lib/frame.js';
+import { frame, d0, dk, DAY, HR, MIN, type Frame } from '../lib/frame.js';
 import { simulateStrangle, DEFAULT_SIM, type SimConfig } from '../lib/simulate.js';
 import { classifyCrush } from '../lib/signals.js';
 import type { BacktestData } from '../data/load.js';
@@ -281,6 +281,61 @@ function ivLevelAnalysis(cfg: SimConfig) {
   for (const [lab, test] of qs) { const xs = trades.filter((t) => test(rank.get(t)!)); if (xs.length) printRow(lab, summ2(xs)); }
 }
 
+/** Exit optimisation: sweep time-exit, profit target, and stop multiple on the NY IV-turn trades. */
+function exitAnalysis() {
+  const data = loadData();
+  const [nySh, nyEh] = SESSIONS.NY;
+  const entries: { f: Frame; entryT: number }[] = [];
+  for (let dayMs = d0(FIRST); dayMs <= d0(LAST); dayMs += DAY) {
+    const day = dk(dayMs + 12 * HR);
+    const f = frame(d0(day) + 20 * HR);
+    if (f.dow < 1 || f.dow > 5) continue;
+    if (!data.hasIv(f.n2n) || f.exit > data.priceLast) continue;
+    const nyStart = f.D0 + nySh * HR, nyEnd = f.D0 + nyEh * HR;
+    const sLab = classifyCrush(data.ivWindow(f.n2n, nyStart, nyEnd), nyStart, nyEnd, nyEnd);
+    if (!sLab.hasEvent) continue;
+    const entryT = turnEntry(data, f.n2n, sLab.peakT, nyEnd, 1.0);
+    if (entryT != null) entries.push({ f, entryT });
+  }
+
+  const agg = (cfg: SimConfig, exitHr?: number) => {
+    const xs: { stopped: boolean; pnl: number; outcome: string; hold: number }[] = [];
+    for (const { f, entryT } of entries) {
+      const ff = exitHr == null ? f : { ...f, exit: f.D0 + exitHr * HR };
+      if (ff.exit <= entryT + 30 * MIN || ff.exit > data.priceLast) continue;
+      const s = simulateStrangle(data, ff, entryT, cfg);
+      if (s.ok) xs.push({ stopped: s.stopped, pnl: s.pnlPctMargin, outcome: s.outcome, hold: (s.exitMs - entryT) / HR });
+    }
+    const n = xs.length;
+    return {
+      n, stop: pct(xs.filter((x) => x.stopped).length, n), win: pct(xs.filter((x) => x.pnl > 0).length, n),
+      tgt: pct(xs.filter((x) => x.outcome === 'TARGET').length, n), pnl: mean(xs.map((x) => x.pnl)),
+      sl: mean(xs.filter((x) => x.stopped).map((x) => x.pnl)), hold: mean(xs.map((x) => x.hold)),
+    };
+  };
+  const sgn = (v: number) => ((v >= 0 ? '+' : '') + f1(v)).padStart(7);
+
+  console.log(`\n8) EXIT OPTIMISATION (NY IV-turn entry, weekday, ${entries.length} nights):`);
+  console.log('  8a) TIME EXIT (10% target + 2× stop unchanged; * = current):');
+  console.log('  exit(IST)   n   Stop%  Win%  avgPnL%  avgHold(h)');
+  for (const [lab, hr] of [['03:00', 27], ['05:00', 29], ['07:00*', 31], ['09:00', 33], ['11:00', 35], ['13:00', 37]] as [string, number][]) {
+    const a = agg(DEFAULT_SIM, hr);
+    console.log(`  ${lab.padEnd(9)} ${String(a.n).padStart(3)}  ${f1(a.stop).padStart(5)}  ${f1(a.win).padStart(5)}  ${sgn(a.pnl)}  ${f1(a.hold).padStart(6)}`);
+  }
+  console.log('\n  8b) PROFIT TARGET (07:00 exit + 2× stop; * = current):');
+  console.log('  target     n   Stop%  Win%  TgtHit%  avgPnL%');
+  for (const [lab, tp] of [['5%', 0.05], ['8%', 0.08], ['10%*', 0.10], ['12%', 0.12], ['15%', 0.15], ['none', 999]] as [string, number][]) {
+    const a = agg({ ...DEFAULT_SIM, targetPct: tp });
+    console.log(`  ${lab.padEnd(9)} ${String(a.n).padStart(3)}  ${f1(a.stop).padStart(5)}  ${f1(a.win).padStart(5)}  ${f1(a.tgt).padStart(6)}  ${sgn(a.pnl)}`);
+  }
+  console.log('\n  8c) STOP MULTIPLE (07:00 exit + 10% target; * = current):');
+  console.log('  stop       n   Stop%  Win%  avgSL%  avgPnL%');
+  for (const [lab, sm] of [['1.5x', 1.5], ['2.0x*', 2.0], ['2.5x', 2.5], ['3.0x', 3.0], ['none', 999]] as [string, number][]) {
+    const a = agg({ ...DEFAULT_SIM, stopMult: sm });
+    console.log(`  ${lab.padEnd(9)} ${String(a.n).padStart(3)}  ${f1(a.stop).padStart(5)}  ${f1(a.win).padStart(5)}  ${f1(a.sl).padStart(6)}  ${sgn(a.pnl)}`);
+  }
+}
+
 function main() {
   const recs = run(DEFAULT_SIM); // base: 0.15Δ symmetric
   const bySess = (s: string) => recs.filter((r) => r.session === s);
@@ -322,6 +377,7 @@ function main() {
   nyHeatmap(DEFAULT_SIM);
   nyHeatmapExtra(DEFAULT_SIM);
   ivLevelAnalysis(DEFAULT_SIM);
+  exitAnalysis();
 
   // Plain-language takeaways.
   console.log('\n' + '='.repeat(100));
