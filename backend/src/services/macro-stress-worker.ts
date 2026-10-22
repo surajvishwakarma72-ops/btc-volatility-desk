@@ -91,7 +91,7 @@ export interface MacroStressSnapshot {
   tradeRule: string;   // Sizing guidance for the desk
   matrix: MacroCategoryData[];
   curve: StressPoint[];
-  events: Array<{ timeIdx: number; name: string; shockVal: number }>;
+  events: Array<{ timeIdx: number; name: string; shockVal: number; timestamp?: number }>;
   weights: StressWeights;
   gaps: MarketGap[];
   failures: Array<{ symbol: string; error: string; at: number }>;
@@ -493,9 +493,9 @@ export class MacroStressWorker {
       zone,
     };
 
-    // Keep sliding window of historic points
+    // Keep sliding window of historic points (up to 288 points = 24 hours of 5-min recordings)
     this.historicalCurve.push(currentPoint);
-    if (this.historicalCurve.length > 36) {
+    if (this.historicalCurve.length > 288) {
       this.historicalCurve.shift();
     }
 
@@ -503,12 +503,13 @@ export class MacroStressWorker {
     const fullCurve = this.buildFullCurveWithProjection(score, now);
 
     // Event markers for chart
-    const eventMarkers: Array<{ timeIdx: number; name: string; shockVal: number }> = [];
-    if (events.length > 0) {
+    const eventMarkers: Array<{ timeIdx: number; name: string; shockVal: number; timestamp?: number }> = [];
+    for (const ev of events.slice(0, 3)) {
       eventMarkers.push({
         timeIdx: Math.max(0, fullCurve.findIndex((p) => p.isNow)),
-        name: events[0].title,
+        name: ev.title,
         shockVal: score,
+        timestamp: ev.timestamp,
       });
     }
 
@@ -550,26 +551,16 @@ export class MacroStressWorker {
   private buildFullCurveWithProjection(currentScore: number, now: number): StressPoint[] {
     const out: StressPoint[] = [];
 
-    // Ensure we have at least 6 historic hourly points before NOW
-    const numHistoric = Math.min(6, this.historicalCurve.length);
-    const startHour = now - numHistoric * 3600 * 1000;
-
-    for (let i = 0; i < numHistoric; i++) {
-      const t = startHour + i * 3600 * 1000;
-      const pt = this.historicalCurve[i] || { val: Math.max(15, currentScore - (numHistoric - i) * 2) };
-      const d = new Date(t);
-      const timeStr = d.toLocaleTimeString('en-GB', {
-        timeZone: 'Asia/Kolkata',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-      out.push({
-        time: timeStr,
-        timestamp: t,
-        val: pt.val,
-        zone: pt.val < 35 ? 'calm' : pt.val <= 65 ? 'elevated' : 'shock',
-      });
+    // Use the actual historical points recorded up to now
+    for (const pt of this.historicalCurve) {
+      if (pt.timestamp < now - 60_000) {
+        out.push({
+          time: pt.time,
+          timestamp: pt.timestamp,
+          val: pt.val,
+          zone: pt.val < 35 ? 'calm' : pt.val <= 65 ? 'elevated' : 'shock',
+        });
+      }
     }
 
     // "NOW" point
@@ -589,7 +580,7 @@ export class MacroStressWorker {
       const projD = new Date(projT);
       const projTimeStr = `${projD.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false })} (Proj)`;
       // Decay or mean-revert towards 25 baseline
-      const decayVal = Math.round(currentScore + (25 - currentScore) * (h * 0.25));
+      const decayVal = Math.max(10, Math.min(95, Math.round(currentScore + (25 - currentScore) * (h * 0.25))));
       out.push({
         time: projTimeStr,
         timestamp: projT,
@@ -604,7 +595,7 @@ export class MacroStressWorker {
 
   private seedInitialCurve() {
     const now = Date.now();
-    for (let i = 6; i >= 1; i--) {
+    for (let i = 24; i >= 1; i--) {
       const t = now - i * 3600 * 1000;
       const d = new Date(t);
       const timeStr = d.toLocaleTimeString('en-GB', {
@@ -616,7 +607,7 @@ export class MacroStressWorker {
       this.historicalCurve.push({
         time: timeStr,
         timestamp: t,
-        val: 22 + Math.round(Math.sin(i) * 5),
+        val: Math.max(12, Math.min(85, Math.round(24 + Math.sin(i * 0.5) * 5))),
         zone: 'calm',
       });
     }

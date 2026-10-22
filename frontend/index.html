@@ -49620,18 +49620,33 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const lineCol = score < 35 ? '#15803d' : (score <= 65 ? '#b45309' : '#b91c1c');
           const ruleTxt = score < 35 ? 'NORMAL SIZE' : (score <= 65 ? 'HALF SIZE' : 'CUT / SKIP');
           const curve = (ST && ST.curve) || [];
-          const cMap = new Map(); for (const p of curve) if (p && p.timestamp) cMap.set(Math.floor(p.timestamp / 1000), p.val);
-          const nowS = Math.floor(Date.now() / 1000);
-          const pts = B.b.map((bar, i) => {
-            const bs = t0ms(bar) / 1000;
-            if (bs > nowS + B.tf / 1000) return blank(B, i);
-            let v = score;
-            if (cMap.has(bs)) v = cMap.get(bs);
-            else {
-              const hAgo = Math.max(0, (nowS - bs) / 3600);
-              if (hAgo <= 24) v = Math.max(10, Math.min(95, Math.round(score + Math.sin(hAgo * 0.6) * 5)));
-              else v = Math.max(10, Math.min(95, Math.round(25 + Math.cos(hAgo * 0.4) * 6)));
+          const cPts = [];
+          for (const p of curve) {
+            if (p && typeof p.timestamp === 'number' && typeof p.val === 'number') cPts.push({ t: p.timestamp, v: p.val });
+          }
+          cPts.sort((a, b) => a.t - b.t);
+          function curveVal(tMs) {
+            const len = cPts.length;
+            if (!len) return score;
+            if (tMs <= cPts[0].t) return cPts[0].v;
+            if (tMs >= cPts[len - 1].t) return cPts[len - 1].v;
+            let lo = 0, hi = len - 1;
+            while (lo <= hi) {
+              const mid = (lo + hi) >> 1;
+              if (cPts[mid].t === tMs) return cPts[mid].v;
+              if (cPts[mid].t < tMs) lo = mid + 1;
+              else hi = mid - 1;
             }
+            const p0 = cPts[Math.max(0, hi)], p1 = cPts[Math.min(len - 1, lo)];
+            if (p1.t === p0.t) return p0.v;
+            const alpha = (tMs - p0.t) / (p1.t - p0.t);
+            return p0.v + alpha * (p1.v - p0.v);
+          }
+          const nowMs = Date.now();
+          const pts = B.b.map((bar, i) => {
+            const barMs = t0ms(bar);
+            if (barMs > nowMs + B.tf) return blank(B, i);
+            const v = Math.max(0, Math.min(100, Math.round(curveVal(barMs) * 10) / 10));
             vals[i] = v;
             return { time: bar.time, value: v };
           });
@@ -49647,7 +49662,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
               if (ix >= 0 && ix < B.n) M.push({ time: B.b[ix].time, position: 'aboveBar', shape: 'circle', color: '#b45309', text: '📅 ' + (ev.name || 'EVT'), size: 0.9 });
             }
             if (M.length) try { o.a.setMarkers(M.sort((a, b) => a.time - b.time)); } catch (e) { }
-          }
+            else { try { o.a.setMarkers([]); } catch (e) { } }
+          } else { try { o.a.setMarkers([]); } catch (e) { } }
           st(o, cls);
           setLeg(o, `<b>MACRO STRESS</b><span class="${cls}">${score}/100</span><span class="${cls}">${arrow}</span><span class="${cls}">${dir}</span><span class="m">Uplift: ${uplift}</span><span class="${cls}" style="font-weight:700">${ruleTxt}</span><span class="m">Forex · Commodities · Stocks · Bonds · Events (0–100)</span>`);
         }
