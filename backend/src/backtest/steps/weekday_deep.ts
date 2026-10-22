@@ -67,7 +67,6 @@ function main() {
     const avgIV = r1(mean(r.map((x) => x.iv)));
     const stopIVfall = mean(stops.map((x) => x.ivFall));   // how much IV fell on the nights that STILL stopped
     const winIVfall = mean(r.filter((x) => x.pnl > 0).map((x) => x.ivFall));
-    const deadZone = r.filter((x) => x.iv >= 40 && x.iv < 45).length;
     outObj[DOW[d]] = {
       n: r.length,
       stopPct: r1(pct(stops.length, r.length)),

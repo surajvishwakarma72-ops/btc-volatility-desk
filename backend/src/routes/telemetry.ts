@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { db, sessionAuditLogs, recalibrationAudits } from '../db/index.js';
-import { desc, eq, and } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import {
   PROVEN_BOUNDARIES,
   DEFAULT_USER_ID,

@@ -9,6 +9,7 @@ export class BinanceMarketWorker {
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private recentBars: Bar[] = [];
   private recentCloses: number[] = [];
+  private lastAlertCheck = 0;
 
   public currentSpotPrice: number | null = null;
   public lastKlineTime: Date | null = null;
@@ -55,6 +56,15 @@ export class BinanceMarketWorker {
             this.currentSpotPrice = currentClose;
             this.lastKlineTime = new Date(k.t);
 
+            // Spot barrier check (throttled to 1s)
+            if (this.currentSpotPrice) {
+              const now = Date.now();
+              if (now - this.lastAlertCheck >= 1000) {
+                this.lastAlertCheck = now;
+                await alertService.checkMetrics({ spotPrice: this.currentSpotPrice });
+              }
+            }
+
             // Check if candle is finalized (k.x === true)
             if (k.x) {
               const barTime = new Date(k.t);
@@ -86,7 +96,7 @@ export class BinanceMarketWorker {
                   low: String(low),
                   close: String(close),
                   volume: String(volume),
-                  rv: rvAnnualized ? String(rvAnnualized.toFixed(2)) : null,
+                  rv: rvAnnualized !== null && Number.isFinite(rvAnnualized) ? String(rvAnnualized.toFixed(2)) : null,
                 })
                 .onConflictDoNothing();
 

@@ -1,1229 +1,2433 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BTC Short Strangle — Trade Clock & Year Calendar</title>
-<!-- Data globals: window.__STRANGLE_RULES, window.__STRANGLE_CAL, window.__STRANGLE_PATHS -->
-<script src="/data/strategy_rules.js"></script>
-<script src="/data/strangle_calendar.js"></script>
-<script src="/data/strangle_paths.js"></script>
-<!-- backtest command-center data (guarded if missing) -->
-<script src="/data/weekday_patterns.js"></script>
-<script src="/data/fiveyear_risk.js"></script>
-<script src="/data/entry_times.js"></script>
-<script src="/data/indicator_grades.js"></script>
-<style>
-/* ========================================================================
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BTC Short Strangle — Trade Clock & Year Calendar</title>
+  <!-- Data globals: window.__STRANGLE_RULES, window.__STRANGLE_CAL, window.__STRANGLE_PATHS -->
+  <script src="/data/strategy_rules.js"></script>
+  <script src="/data/strangle_calendar.js"></script>
+  <script src="/data/strangle_paths.js"></script>
+  <!-- backtest command-center data (guarded if missing) -->
+  <script src="/data/weekday_patterns.js"></script>
+  <script src="/data/fiveyear_risk.js"></script>
+  <script src="/data/entry_times.js"></script>
+  <script src="/data/indicator_grades.js"></script>
+  <style>
+    /* ========================================================================
    All styles scoped under #tc-app, every class prefixed tc- (no collisions)
    ======================================================================== */
-#tc-app, #tc-app *, #tc-app *::before, #tc-app *::after { box-sizing: border-box; }
-#tc-app {
-  --tc-bg:        #0a0d12;
-  --tc-bg2:       #10151d;
-  --tc-panel:     #141a24;
-  --tc-panel2:    #1b2330;
-  --tc-line:      #27303f;
-  --tc-line2:     #35425a;
-  --tc-txt:       #eaf0f7;
-  --tc-muted:     #8c9bb0;
-  --tc-faint:     #5d6b80;
-  --tc-green:     #2ec45f;
-  --tc-green-d:   #16351f;
-  --tc-amber:     #ffb020;
-  --tc-amber-d:   #3a2c0a;
-  --tc-red:       #ff4d4d;
-  --tc-red-d:     #3a1414;
-  --tc-grey:      #6b7688;
-  --tc-blue:      #4ea8ff;
-  --tc-gold:      #ffd34d;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  color: var(--tc-txt);
-  background:
-     radial-gradient(1200px 600px at 50% -10%, #16202e 0%, transparent 60%),
-     var(--tc-bg);
-  min-height: 100vh;
-  margin: 0;
-  padding: 16px;
-  line-height: 1.4;
-  -webkit-font-smoothing: antialiased;
-}
-html, body { margin:0; padding:0; background:#0a0d12; }
+    #tc-app,
+    #tc-app *,
+    #tc-app *::before,
+    #tc-app *::after {
+      box-sizing: border-box;
+    }
 
-#tc-app .tc-wrap { max-width: 1120px; margin: 0 auto; }
+    #tc-app {
+      --tc-bg: #0a0d12;
+      --tc-bg2: #10151d;
+      --tc-panel: #141a24;
+      --tc-panel2: #1b2330;
+      --tc-line: #27303f;
+      --tc-line2: #35425a;
+      --tc-txt: #eaf0f7;
+      --tc-muted: #8c9bb0;
+      --tc-faint: #5d6b80;
+      --tc-green: #2ec45f;
+      --tc-green-d: #16351f;
+      --tc-amber: #ffb020;
+      --tc-amber-d: #3a2c0a;
+      --tc-red: #ff4d4d;
+      --tc-red-d: #3a1414;
+      --tc-grey: #6b7688;
+      --tc-blue: #4ea8ff;
+      --tc-gold: #ffd34d;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
+      color: var(--tc-txt);
+      background:
+        radial-gradient(1200px 600px at 50% -10%, #16202e 0%, transparent 60%),
+        var(--tc-bg);
+      min-height: 100vh;
+      margin: 0;
+      padding: 16px;
+      line-height: 1.4;
+      -webkit-font-smoothing: antialiased;
+    }
 
-/* ---- generic blocks ---- */
-#tc-app .tc-card {
-  background: linear-gradient(180deg, var(--tc-panel) 0%, var(--tc-bg2) 100%);
-  border: 1px solid var(--tc-line);
-  border-radius: 16px;
-  padding: 18px;
-  margin-bottom: 18px;
-  box-shadow: 0 8px 24px rgba(0,0,0,.35);
-}
-#tc-app .tc-h2 {
-  font-size: 15px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--tc-muted); margin: 0 0 14px; display:flex; align-items:center; gap:8px;
-}
-#tc-app .tc-h2 .tc-ic { font-size: 18px; }
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: #0a0d12;
+    }
 
-/* ---- header ---- */
-#tc-app .tc-header { text-align:center; padding: 10px 14px 18px; }
-#tc-app .tc-title {
-  font-size: clamp(20px, 5vw, 34px); font-weight: 900; letter-spacing: -.01em; margin: 2px 0 10px;
-  background: linear-gradient(90deg, #eaf0f7, #9fd0ff); -webkit-background-clip:text; background-clip:text; color: transparent;
-}
-#tc-app .tc-stats {
-  display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-bottom: 8px;
-}
-#tc-app .tc-stat {
-  background: var(--tc-panel2); border:1px solid var(--tc-line); border-radius: 999px;
-  padding: 6px 14px; font-size: 13px; font-weight:700;
-}
-#tc-app .tc-stat b { font-size: 15px; }
-#tc-app .tc-stat .g { color: var(--tc-green); }
-#tc-app .tc-stat .r { color: var(--tc-red); }
-#tc-app .tc-stat .a { color: var(--tc-amber); }
-#tc-app .tc-rule { color: var(--tc-muted); font-size: 12.5px; max-width: 760px; margin: 6px auto 0; }
+    #tc-app .tc-wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
 
-/* ---- clock section ---- */
-#tc-app .tc-clockgrid { display:grid; grid-template-columns: minmax(0,1fr); gap: 16px; align-items:start; }
-@media (min-width: 760px){ #tc-app .tc-clockgrid { grid-template-columns: 420px minmax(0,1fr); } }
-#tc-app .tc-clockwrap { position:relative; width:100%; max-width: 420px; margin: 0 auto; }
-#tc-app .tc-clocksvg { width:100%; height:auto; display:block; overflow: visible; }
-#tc-app .tc-clocksvg text { font-family: inherit; }
+    /* ---- generic blocks ---- */
+    #tc-app .tc-card {
+      background: linear-gradient(180deg, var(--tc-panel) 0%, var(--tc-bg2) 100%);
+      border: 1px solid var(--tc-line);
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 18px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .35);
+    }
 
-/* the floating tooltip for markers */
-#tc-app .tc-tip {
-  position:absolute; z-index: 30; pointer-events:none; opacity:0; transform: translate(-50%,-110%);
-  background: #05070a; border:1px solid var(--tc-line2); border-radius:10px; padding:8px 10px;
-  font-size:12px; max-width: 220px; box-shadow: 0 6px 18px rgba(0,0,0,.6); transition: opacity .12s;
-}
-#tc-app .tc-tip.on { opacity:1; }
-#tc-app .tc-tip .tt { font-weight:800; margin-bottom:2px; }
-#tc-app .tc-tip .ts { color: var(--tc-muted); }
+    #tc-app .tc-h2 {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--tc-muted);
+      margin: 0 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
-/* side legend + banner */
-#tc-app .tc-side { display:flex; flex-direction:column; gap: 12px; }
-#tc-app .tc-dayhint { font-size:12.5px; color: var(--tc-muted); }
-#tc-app .tc-banner {
-  border-radius: 14px; padding: 14px 16px; font-weight:800; font-size: clamp(15px,2.6vw,19px);
-  border:1px solid var(--tc-line2); background: var(--tc-panel2); line-height:1.35;
-}
-#tc-app .tc-banner .tc-bverb { display:block; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--tc-muted); margin-bottom:4px; font-weight:800; }
-#tc-app .tc-banner .tc-res { display:inline-block; margin-top:8px; padding:3px 10px; border-radius:999px; font-size:14px; }
-#tc-app .tc-tone-green { color: var(--tc-green); }
-#tc-app .tc-tone-amber { color: var(--tc-amber); }
-#tc-app .tc-tone-red   { color: var(--tc-red); }
-#tc-app .tc-bg-green { background: var(--tc-green-d); color:#8ff0a9; }
-#tc-app .tc-bg-amber { background: var(--tc-amber-d); color:#ffd98a; }
-#tc-app .tc-bg-red   { background: var(--tc-red-d);   color:#ffb3b3; }
-#tc-app .tc-bg-grey  { background: #20262f; color:#b7c2d1; }
+    #tc-app .tc-h2 .tc-ic {
+      font-size: 18px;
+    }
 
-#tc-app .tc-legmini { display:flex; flex-wrap:wrap; gap:6px 12px; font-size:12px; color:var(--tc-muted); }
-#tc-app .tc-legmini span { display:inline-flex; align-items:center; gap:5px; }
-#tc-app .tc-dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    /* ---- header ---- */
+    #tc-app .tc-header {
+      text-align: center;
+      padding: 10px 14px 18px;
+    }
 
-/* ---- weekly practice cards ---- */
-#tc-app .tc-week { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:10px; }
-@media (min-width: 560px){ #tc-app .tc-week { grid-template-columns: repeat(4, minmax(0,1fr)); } }
-@media (min-width: 920px){ #tc-app .tc-week { grid-template-columns: repeat(7, minmax(0,1fr)); } }
-#tc-app .tc-daycard {
-  background: var(--tc-panel2); border:1px solid var(--tc-line); border-radius:12px; padding:10px; position:relative; overflow:hidden;
-}
-#tc-app .tc-daycard.trade { border-color: #27503a; }
-#tc-app .tc-daycard.rest  { opacity:.75; }
-#tc-app .tc-daycard .tc-dname { font-weight:900; font-size:14px; display:flex; align-items:center; gap:6px; }
-#tc-app .tc-daycard .tc-dbig { font-size:26px; line-height:1; margin:6px 0; }
-#tc-app .tc-daycard .tc-drow { font-size:11.5px; color:var(--tc-muted); display:flex; justify-content:space-between; gap:4px; padding:2px 0; border-top:1px dashed var(--tc-line); }
-#tc-app .tc-daycard .tc-drow b { color: var(--tc-txt); font-weight:700; }
-#tc-app .tc-daycard .tc-dnote { font-size:11px; color:var(--tc-faint); margin-top:6px; }
-#tc-app .tc-badge-prem {
-  position:absolute; top:8px; right:8px; background: linear-gradient(90deg,#ffd34d,#ff9d2e); color:#2a1d00;
-  font-size:9.5px; font-weight:900; letter-spacing:.05em; padding:2px 7px; border-radius:999px;
-}
-#tc-app .tc-tag-trade { color: var(--tc-green); font-size:11px; font-weight:900; }
-#tc-app .tc-tag-rest  { color: var(--tc-grey);  font-size:11px; font-weight:900; }
+    #tc-app .tc-title {
+      font-size: clamp(20px, 5vw, 34px);
+      font-weight: 900;
+      letter-spacing: -.01em;
+      margin: 2px 0 10px;
+      background: linear-gradient(90deg, #eaf0f7, #9fd0ff);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
 
-/* ---- IV band legend ---- */
-#tc-app .tc-ivstrip { display:flex; border-radius:12px; overflow:hidden; border:1px solid var(--tc-line); }
-#tc-app .tc-ivseg { flex:1 1 0; min-width:0; padding:10px 8px; text-align:center; position:relative; }
-#tc-app .tc-ivseg .tc-ivlab { font-weight:900; font-size:12.5px; text-transform:uppercase; letter-spacing:.03em; }
-#tc-app .tc-ivseg .tc-ivrange { font-size:11px; opacity:.9; }
-#tc-app .tc-ivseg .tc-ivsit { font-size:9.5px; font-weight:900; margin-top:3px; letter-spacing:.04em; }
-#tc-app .tc-ivnote { font-size:11.5px; color:var(--tc-muted); margin-top:10px; }
-#tc-app .tc-ivskip { font-size:12px; color:var(--tc-amber); margin-top:6px; }
+    #tc-app .tc-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
 
-/* ---- calendar ---- */
-#tc-app .tc-months { display:grid; grid-template-columns: minmax(0,1fr); gap:16px; }
-@media (min-width: 620px){ #tc-app .tc-months { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-@media (min-width: 980px){ #tc-app .tc-months { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-#tc-app .tc-month { background: var(--tc-panel2); border:1px solid var(--tc-line); border-radius:12px; padding:10px; }
-#tc-app .tc-mtitle { font-weight:900; font-size:13px; margin:0 0 8px; letter-spacing:.03em; }
-#tc-app .tc-mgrid { display:grid; grid-template-columns: repeat(7, 1fr); gap:3px; }
-#tc-app .tc-wd { font-size:9px; color:var(--tc-faint); text-align:center; font-weight:800; padding-bottom:2px; }
-#tc-app .tc-cell {
-  aspect-ratio: 1/1; border-radius:6px; border:1px solid transparent; background:#161c26;
-  display:flex; flex-direction:column; align-items:center; justify-content:center; cursor:pointer;
-  font-size:10px; position:relative; transition: transform .08s, box-shadow .08s; user-select:none;
-}
-#tc-app .tc-cell.empty { background:transparent; cursor:default; }
-#tc-app .tc-cell:not(.empty):hover { transform: translateY(-1px); box-shadow:0 2px 8px rgba(0,0,0,.5); }
-#tc-app .tc-cell.sel { outline:2px solid var(--tc-blue); outline-offset:1px; z-index:2; }
-#tc-app .tc-cell .tc-cn { font-size:9.5px; font-weight:700; opacity:.85; line-height:1; }
-#tc-app .tc-cell .tc-cg { font-size:11px; line-height:1; margin-top:1px; }
-#tc-app .tc-cell.win  { background:#14311f; border-color:#235c37; }
-#tc-app .tc-cell.loss { background:#381618; border-color:#6e2328; }
-#tc-app .tc-cell.flat { background:#20262f; border-color:#333e4d; }
-#tc-app .tc-cell.rest { background:#13171e; }
-#tc-app .tc-cell.wait { background:#1a2230; border-color:#36506e; }
-#tc-app .tc-cell.nodata { background:#121620; }
-#tc-app .tc-cell.win .tc-cg  { color: var(--tc-green); }
-#tc-app .tc-cell.loss .tc-cg { color: var(--tc-red); }
-#tc-app .tc-cell.flat .tc-cg { color: var(--tc-grey); }
-#tc-app .tc-cell.emer .tc-cg { color: var(--tc-amber); }
-#tc-app .tc-cell.rest .tc-cg { opacity:.4; }
-#tc-app .tc-callegend { display:flex; flex-wrap:wrap; gap:6px 14px; font-size:12px; color:var(--tc-muted); margin-bottom:14px; }
-#tc-app .tc-callegend span { display:inline-flex; align-items:center; gap:5px; }
-#tc-app .tc-sq { width:12px; height:12px; border-radius:4px; display:inline-block; border:1px solid var(--tc-line2); }
+    #tc-app .tc-stat {
+      background: var(--tc-panel2);
+      border: 1px solid var(--tc-line);
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 700;
+    }
 
-/* ---- detail panel ---- */
-#tc-app .tc-detail {
-  background: linear-gradient(180deg,#141b26,#0d1218); border:1px solid var(--tc-line2); border-radius:14px; padding:16px; margin-top:14px;
-}
-#tc-app .tc-detail.hide { display:none; }
-#tc-app .tc-dhead { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
-#tc-app .tc-ddate { font-weight:900; font-size:17px; }
-#tc-app .tc-dverdict { font-weight:900; font-size:15px; display:flex; align-items:center; gap:6px; }
-#tc-app .tc-dkv { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:8px; }
-@media (min-width: 560px){ #tc-app .tc-dkv { grid-template-columns: repeat(3, minmax(0,1fr)); } }
-#tc-app .tc-kv { background: var(--tc-panel2); border:1px solid var(--tc-line); border-radius:10px; padding:8px 10px; }
-#tc-app .tc-kv .k { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--tc-faint); font-weight:800; }
-#tc-app .tc-kv .val { font-size:15px; font-weight:800; margin-top:2px; }
-#tc-app .tc-dwhy { margin-top:12px; font-size:13.5px; color:var(--tc-txt); }
-#tc-app .tc-dfix {
-  margin-top:10px; background: #0f2518; border:1px solid #1f5234; border-radius:10px; padding:10px 12px;
-  font-size:13px; color:#8ff0a9;
-}
-#tc-app .tc-dfix b { color:#b7ffcb; }
+    #tc-app .tc-stat b {
+      font-size: 15px;
+    }
 
-/* ---- journey timeline ---- */
-#tc-app .tc-journey { position:relative; }
-#tc-app .tc-jbar-wrap { position:relative; padding: 70px 10px 64px; overflow-x:auto; }
-#tc-app .tc-jtrack { position:relative; height:10px; border-radius:999px; background: linear-gradient(90deg,#2a3242,#1a202b); margin: 0 6px; min-width: 520px; }
-#tc-app .tc-jentry { position:absolute; top:0; height:10px; background: linear-gradient(90deg, rgba(46,196,95,.25), rgba(46,196,95,.55)); border-radius:999px; }
-#tc-app .tc-jpin { position:absolute; top:10px; transform: translateX(-50%); display:flex; flex-direction:column; align-items:center; width: 120px; }
-#tc-app .tc-jpin .tc-jtick { width:2px; height:14px; background:var(--tc-line2); }
-#tc-app .tc-jpin .tc-jicon { font-size:22px; line-height:1; margin-top:-30px; }
-#tc-app .tc-jpin .tc-jname { font-size:11px; font-weight:800; text-align:center; margin-top:3px; }
-#tc-app .tc-jpin .tc-jmeta { font-size:10px; color:var(--tc-muted); text-align:center; }
-#tc-app .tc-jpin .tc-jnote { font-size:9.5px; color:var(--tc-faint); text-align:center; margin-top:2px; line-height:1.25; }
-#tc-app .tc-jpin.above { top:-58px; }
-#tc-app .tc-jrisk-high .tc-jtick { background: var(--tc-red); }
-#tc-app .tc-jrisk-med  .tc-jtick { background: var(--tc-amber); }
-#tc-app .tc-jrisk-low  .tc-jtick { background: var(--tc-green); }
-#tc-app .tc-jends { position:absolute; left:0; right:0; top: 90px; display:flex; justify-content:space-between; padding: 0 10px; font-size:11px; color:var(--tc-faint); font-weight:800; }
-#tc-app .tc-jexit { position:absolute; top:-6px; right:0; transform:translateX(50%); display:flex; flex-direction:column; align-items:center; }
-#tc-app .tc-jcaption { font-size:13px; color:var(--tc-muted); margin-top:6px; }
-#tc-app .tc-jentrylabel { position:absolute; top:-20px; transform:translateX(-50%); font-size:10px; color:#8ff0a9; font-weight:800; white-space:nowrap; }
+    #tc-app .tc-stat .g {
+      color: var(--tc-green);
+    }
 
-/* ======================================================================
+    #tc-app .tc-stat .r {
+      color: var(--tc-red);
+    }
+
+    #tc-app .tc-stat .a {
+      color: var(--tc-amber);
+    }
+
+    #tc-app .tc-rule {
+      color: var(--tc-muted);
+      font-size: 12.5px;
+      max-width: 760px;
+      margin: 6px auto 0;
+    }
+
+    /* ---- clock section ---- */
+    #tc-app .tc-clockgrid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (min-width: 760px) {
+      #tc-app .tc-clockgrid {
+        grid-template-columns: 420px minmax(0, 1fr);
+      }
+    }
+
+    #tc-app .tc-clockwrap {
+      position: relative;
+      width: 100%;
+      max-width: 420px;
+      margin: 0 auto;
+    }
+
+    #tc-app .tc-clocksvg {
+      width: 100%;
+      height: auto;
+      display: block;
+      overflow: visible;
+    }
+
+    #tc-app .tc-clocksvg text {
+      font-family: inherit;
+    }
+
+    /* the floating tooltip for markers */
+    #tc-app .tc-tip {
+      position: absolute;
+      z-index: 30;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, -110%);
+      background: #05070a;
+      border: 1px solid var(--tc-line2);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      max-width: 220px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .6);
+      transition: opacity .12s;
+    }
+
+    #tc-app .tc-tip.on {
+      opacity: 1;
+    }
+
+    #tc-app .tc-tip .tt {
+      font-weight: 800;
+      margin-bottom: 2px;
+    }
+
+    #tc-app .tc-tip .ts {
+      color: var(--tc-muted);
+    }
+
+    /* side legend + banner */
+    #tc-app .tc-side {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #tc-app .tc-dayhint {
+      font-size: 12.5px;
+      color: var(--tc-muted);
+    }
+
+    #tc-app .tc-banner {
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-weight: 800;
+      font-size: clamp(15px, 2.6vw, 19px);
+      border: 1px solid var(--tc-line2);
+      background: var(--tc-panel2);
+      line-height: 1.35;
+    }
+
+    #tc-app .tc-banner .tc-bverb {
+      display: block;
+      font-size: 12px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--tc-muted);
+      margin-bottom: 4px;
+      font-weight: 800;
+    }
+
+    #tc-app .tc-banner .tc-res {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 14px;
+    }
+
+    #tc-app .tc-tone-green {
+      color: var(--tc-green);
+    }
+
+    #tc-app .tc-tone-amber {
+      color: var(--tc-amber);
+    }
+
+    #tc-app .tc-tone-red {
+      color: var(--tc-red);
+    }
+
+    #tc-app .tc-bg-green {
+      background: var(--tc-green-d);
+      color: #8ff0a9;
+    }
+
+    #tc-app .tc-bg-amber {
+      background: var(--tc-amber-d);
+      color: #ffd98a;
+    }
+
+    #tc-app .tc-bg-red {
+      background: var(--tc-red-d);
+      color: #ffb3b3;
+    }
+
+    #tc-app .tc-bg-grey {
+      background: #20262f;
+      color: #b7c2d1;
+    }
+
+    #tc-app .tc-legmini {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 12px;
+      font-size: 12px;
+      color: var(--tc-muted);
+    }
+
+    #tc-app .tc-legmini span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    #tc-app .tc-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    /* ---- weekly practice cards ---- */
+    #tc-app .tc-week {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    @media (min-width: 560px) {
+      #tc-app .tc-week {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    @media (min-width: 920px) {
+      #tc-app .tc-week {
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+      }
+    }
+
+    #tc-app .tc-daycard {
+      background: var(--tc-panel2);
+      border: 1px solid var(--tc-line);
+      border-radius: 12px;
+      padding: 10px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #tc-app .tc-daycard.trade {
+      border-color: #27503a;
+    }
+
+    #tc-app .tc-daycard.rest {
+      opacity: .75;
+    }
+
+    #tc-app .tc-daycard .tc-dname {
+      font-weight: 900;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #tc-app .tc-daycard .tc-dbig {
+      font-size: 26px;
+      line-height: 1;
+      margin: 6px 0;
+    }
+
+    #tc-app .tc-daycard .tc-drow {
+      font-size: 11.5px;
+      color: var(--tc-muted);
+      display: flex;
+      justify-content: space-between;
+      gap: 4px;
+      padding: 2px 0;
+      border-top: 1px dashed var(--tc-line);
+    }
+
+    #tc-app .tc-daycard .tc-drow b {
+      color: var(--tc-txt);
+      font-weight: 700;
+    }
+
+    #tc-app .tc-daycard .tc-dnote {
+      font-size: 11px;
+      color: var(--tc-faint);
+      margin-top: 6px;
+    }
+
+    #tc-app .tc-badge-prem {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: linear-gradient(90deg, #ffd34d, #ff9d2e);
+      color: #2a1d00;
+      font-size: 9.5px;
+      font-weight: 900;
+      letter-spacing: .05em;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+
+    #tc-app .tc-tag-trade {
+      color: var(--tc-green);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    #tc-app .tc-tag-rest {
+      color: var(--tc-grey);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    /* ---- IV band legend ---- */
+    #tc-app .tc-ivstrip {
+      display: flex;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--tc-line);
+    }
+
+    #tc-app .tc-ivseg {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 10px 8px;
+      text-align: center;
+      position: relative;
+    }
+
+    #tc-app .tc-ivseg .tc-ivlab {
+      font-weight: 900;
+      font-size: 12.5px;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+
+    #tc-app .tc-ivseg .tc-ivrange {
+      font-size: 11px;
+      opacity: .9;
+    }
+
+    #tc-app .tc-ivseg .tc-ivsit {
+      font-size: 9.5px;
+      font-weight: 900;
+      margin-top: 3px;
+      letter-spacing: .04em;
+    }
+
+    #tc-app .tc-ivnote {
+      font-size: 11.5px;
+      color: var(--tc-muted);
+      margin-top: 10px;
+    }
+
+    #tc-app .tc-ivskip {
+      font-size: 12px;
+      color: var(--tc-amber);
+      margin-top: 6px;
+    }
+
+    /* ---- calendar ---- */
+    #tc-app .tc-months {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    @media (min-width: 620px) {
+      #tc-app .tc-months {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (min-width: 980px) {
+      #tc-app .tc-months {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    #tc-app .tc-month {
+      background: var(--tc-panel2);
+      border: 1px solid var(--tc-line);
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    #tc-app .tc-mtitle {
+      font-weight: 900;
+      font-size: 13px;
+      margin: 0 0 8px;
+      letter-spacing: .03em;
+    }
+
+    #tc-app .tc-mgrid {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 3px;
+    }
+
+    #tc-app .tc-wd {
+      font-size: 9px;
+      color: var(--tc-faint);
+      text-align: center;
+      font-weight: 800;
+      padding-bottom: 2px;
+    }
+
+    #tc-app .tc-cell {
+      aspect-ratio: 1/1;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: #161c26;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 10px;
+      position: relative;
+      transition: transform .08s, box-shadow .08s;
+      user-select: none;
+    }
+
+    #tc-app .tc-cell.empty {
+      background: transparent;
+      cursor: default;
+    }
+
+    #tc-app .tc-cell:not(.empty):hover {
+      transform: translateY(-1px);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, .5);
+    }
+
+    #tc-app .tc-cell.sel {
+      outline: 2px solid var(--tc-blue);
+      outline-offset: 1px;
+      z-index: 2;
+    }
+
+    #tc-app .tc-cell .tc-cn {
+      font-size: 9.5px;
+      font-weight: 700;
+      opacity: .85;
+      line-height: 1;
+    }
+
+    #tc-app .tc-cell .tc-cg {
+      font-size: 11px;
+      line-height: 1;
+      margin-top: 1px;
+    }
+
+    #tc-app .tc-cell.win {
+      background: #14311f;
+      border-color: #235c37;
+    }
+
+    #tc-app .tc-cell.loss {
+      background: #381618;
+      border-color: #6e2328;
+    }
+
+    #tc-app .tc-cell.flat {
+      background: #20262f;
+      border-color: #333e4d;
+    }
+
+    #tc-app .tc-cell.rest {
+      background: #13171e;
+    }
+
+    #tc-app .tc-cell.wait {
+      background: #1a2230;
+      border-color: #36506e;
+    }
+
+    #tc-app .tc-cell.nodata {
+      background: #121620;
+    }
+
+    #tc-app .tc-cell.win .tc-cg {
+      color: var(--tc-green);
+    }
+
+    #tc-app .tc-cell.loss .tc-cg {
+      color: var(--tc-red);
+    }
+
+    #tc-app .tc-cell.flat .tc-cg {
+      color: var(--tc-grey);
+    }
+
+    #tc-app .tc-cell.emer .tc-cg {
+      color: var(--tc-amber);
+    }
+
+    #tc-app .tc-cell.rest .tc-cg {
+      opacity: .4;
+    }
+
+    #tc-app .tc-callegend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 14px;
+      font-size: 12px;
+      color: var(--tc-muted);
+      margin-bottom: 14px;
+    }
+
+    #tc-app .tc-callegend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    #tc-app .tc-sq {
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+      display: inline-block;
+      border: 1px solid var(--tc-line2);
+    }
+
+    /* ---- detail panel ---- */
+    #tc-app .tc-detail {
+      background: linear-gradient(180deg, #141b26, #0d1218);
+      border: 1px solid var(--tc-line2);
+      border-radius: 14px;
+      padding: 16px;
+      margin-top: 14px;
+    }
+
+    #tc-app .tc-detail.hide {
+      display: none;
+    }
+
+    #tc-app .tc-dhead {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    #tc-app .tc-ddate {
+      font-weight: 900;
+      font-size: 17px;
+    }
+
+    #tc-app .tc-dverdict {
+      font-weight: 900;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #tc-app .tc-dkv {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    @media (min-width: 560px) {
+      #tc-app .tc-dkv {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    #tc-app .tc-kv {
+      background: var(--tc-panel2);
+      border: 1px solid var(--tc-line);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+
+    #tc-app .tc-kv .k {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--tc-faint);
+      font-weight: 800;
+    }
+
+    #tc-app .tc-kv .val {
+      font-size: 15px;
+      font-weight: 800;
+      margin-top: 2px;
+    }
+
+    #tc-app .tc-dwhy {
+      margin-top: 12px;
+      font-size: 13.5px;
+      color: var(--tc-txt);
+    }
+
+    #tc-app .tc-dfix {
+      margin-top: 10px;
+      background: #0f2518;
+      border: 1px solid #1f5234;
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: #8ff0a9;
+    }
+
+    #tc-app .tc-dfix b {
+      color: #b7ffcb;
+    }
+
+    /* ---- journey timeline ---- */
+    #tc-app .tc-journey {
+      position: relative;
+    }
+
+    #tc-app .tc-jbar-wrap {
+      position: relative;
+      padding: 70px 10px 64px;
+      overflow-x: auto;
+    }
+
+    #tc-app .tc-jtrack {
+      position: relative;
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #2a3242, #1a202b);
+      margin: 0 6px;
+      min-width: 520px;
+    }
+
+    #tc-app .tc-jentry {
+      position: absolute;
+      top: 0;
+      height: 10px;
+      background: linear-gradient(90deg, rgba(46, 196, 95, .25), rgba(46, 196, 95, .55));
+      border-radius: 999px;
+    }
+
+    #tc-app .tc-jpin {
+      position: absolute;
+      top: 10px;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 120px;
+    }
+
+    #tc-app .tc-jpin .tc-jtick {
+      width: 2px;
+      height: 14px;
+      background: var(--tc-line2);
+    }
+
+    #tc-app .tc-jpin .tc-jicon {
+      font-size: 22px;
+      line-height: 1;
+      margin-top: -30px;
+    }
+
+    #tc-app .tc-jpin .tc-jname {
+      font-size: 11px;
+      font-weight: 800;
+      text-align: center;
+      margin-top: 3px;
+    }
+
+    #tc-app .tc-jpin .tc-jmeta {
+      font-size: 10px;
+      color: var(--tc-muted);
+      text-align: center;
+    }
+
+    #tc-app .tc-jpin .tc-jnote {
+      font-size: 9.5px;
+      color: var(--tc-faint);
+      text-align: center;
+      margin-top: 2px;
+      line-height: 1.25;
+    }
+
+    #tc-app .tc-jpin.above {
+      top: -58px;
+    }
+
+    #tc-app .tc-jrisk-high .tc-jtick {
+      background: var(--tc-red);
+    }
+
+    #tc-app .tc-jrisk-med .tc-jtick {
+      background: var(--tc-amber);
+    }
+
+    #tc-app .tc-jrisk-low .tc-jtick {
+      background: var(--tc-green);
+    }
+
+    #tc-app .tc-jends {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 90px;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 10px;
+      font-size: 11px;
+      color: var(--tc-faint);
+      font-weight: 800;
+    }
+
+    #tc-app .tc-jexit {
+      position: absolute;
+      top: -6px;
+      right: 0;
+      transform: translateX(50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    #tc-app .tc-jcaption {
+      font-size: 13px;
+      color: var(--tc-muted);
+      margin-top: 6px;
+    }
+
+    #tc-app .tc-jentrylabel {
+      position: absolute;
+      top: -20px;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: #8ff0a9;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    /* ======================================================================
    NEW: backtest command-center panels
    ====================================================================== */
 
-/* ---- The Gate (hero) ---- */
-#tc-app .tc-gate {
-  background:
-     radial-gradient(900px 340px at 20% -40%, rgba(46,196,95,.10), transparent 60%),
-     radial-gradient(900px 340px at 90% -30%, rgba(78,168,255,.10), transparent 60%),
-     linear-gradient(180deg, var(--tc-panel) 0%, var(--tc-bg2) 100%);
-  border:1px solid var(--tc-line2);
-}
-#tc-app .tc-gate-top { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
-#tc-app .tc-gate-kick { font-size:11px; font-weight:900; letter-spacing:.14em; text-transform:uppercase; color:var(--tc-faint); }
-#tc-app .tc-gate-go { color:var(--tc-green); } #tc-app .tc-gate-wait { color:var(--tc-amber); }
-#tc-app .tc-gate-rule {
-  display:grid; grid-template-columns:1fr; gap:12px; align-items:stretch;
-}
-@media (min-width: 720px){ #tc-app .tc-gate-rule { grid-template-columns: 1fr 1fr; } }
-#tc-app .tc-gate-box {
-  border-radius:14px; padding:14px 16px; border:1px solid var(--tc-line);
-  background:var(--tc-panel2); position:relative;
-}
-#tc-app .tc-gate-box.go   { border-color:#275039; background:linear-gradient(180deg,rgba(46,196,95,.10),rgba(46,196,95,.02)); }
-#tc-app .tc-gate-box.wait { border-color:#4a3a14; background:linear-gradient(180deg,rgba(255,176,32,.09),rgba(255,176,32,.02)); }
-#tc-app .tc-gate-lab { font-size:20px; font-weight:900; letter-spacing:.02em; display:flex; align-items:center; gap:8px; }
-#tc-app .tc-gate-box.go .tc-gate-lab   { color:#8ff0a9; }
-#tc-app .tc-gate-box.wait .tc-gate-lab { color:#ffd98a; }
-#tc-app .tc-gate-desc { font-size:13px; color:var(--tc-txt); margin-top:7px; line-height:1.5; }
-#tc-app .tc-gate-desc b { color:#fff; }
-#tc-app .tc-gate-chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-#tc-app .tc-gchip {
-  background:var(--tc-panel2); border:1px solid var(--tc-line); border-radius:999px;
-  padding:7px 14px; font-size:13px; font-weight:700; display:inline-flex; align-items:center; gap:6px;
-}
-#tc-app .tc-gchip b { font-size:16px; }
-#tc-app .tc-gchip .g { color:var(--tc-green); } #tc-app .tc-gchip .r { color:var(--tc-red); } #tc-app .tc-gchip .a { color:var(--tc-amber); } #tc-app .tc-gchip .b { color:var(--tc-blue); }
-#tc-app .tc-gate-caveat {
-  margin-top:12px; font-size:11.5px; color:var(--tc-faint); display:flex; gap:7px; align-items:flex-start;
-  border-top:1px dashed var(--tc-line); padding-top:11px; line-height:1.45;
-}
-#tc-app .tc-gate-caveat .tc-ic { color:var(--tc-amber); flex:0 0 auto; }
+    /* ---- The Gate (hero) ---- */
+    #tc-app .tc-gate {
+      background:
+        radial-gradient(900px 340px at 20% -40%, rgba(46, 196, 95, .10), transparent 60%),
+        radial-gradient(900px 340px at 90% -30%, rgba(78, 168, 255, .10), transparent 60%),
+        linear-gradient(180deg, var(--tc-panel) 0%, var(--tc-bg2) 100%);
+      border: 1px solid var(--tc-line2);
+    }
 
-/* ---- per-weekday plan strip ---- */
-#tc-app .tc-plan { display:grid; grid-template-columns: repeat(1,minmax(0,1fr)); gap:12px; }
-@media (min-width: 520px){ #tc-app .tc-plan { grid-template-columns: repeat(2,minmax(0,1fr)); } }
-@media (min-width: 860px){ #tc-app .tc-plan { grid-template-columns: repeat(5,minmax(0,1fr)); } }
-#tc-app .tc-plancard {
-  position:relative; border-radius:14px; padding:14px; overflow:hidden;
-  border:1px solid var(--tc-line); background:var(--tc-panel2);
-  display:flex; flex-direction:column; gap:0;
-}
-#tc-app .tc-plancard::before {
-  content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--tc-grey);
-}
-#tc-app .tc-plancard.lv-green::before { background:var(--tc-green); }
-#tc-app .tc-plancard.lv-amber::before { background:var(--tc-amber); }
-#tc-app .tc-plancard.lv-red::before   { background:var(--tc-red); }
-#tc-app .tc-plancard.lv-green { box-shadow: inset 0 0 0 1px rgba(46,196,95,.14); }
-#tc-app .tc-plancard.lv-amber { box-shadow: inset 0 0 0 1px rgba(255,176,32,.14); }
-#tc-app .tc-plancard.prem { border-color:#5a4408; background:linear-gradient(180deg,rgba(255,211,77,.07),var(--tc-panel2)); }
-#tc-app .tc-pl-day { font-size:15px; font-weight:900; letter-spacing:.02em; display:flex; align-items:center; gap:6px; }
-#tc-app .tc-pl-star { color:var(--tc-gold); font-size:13px; }
-#tc-app .tc-pl-time { font-size:27px; font-weight:900; line-height:1; margin:10px 0 2px; letter-spacing:-.01em; }
-#tc-app .tc-pl-time span { font-size:12px; font-weight:700; color:var(--tc-faint); letter-spacing:.04em; }
-#tc-app .tc-pl-metrics { display:flex; gap:8px; margin-top:10px; }
-#tc-app .tc-pl-metric { flex:1 1 0; min-width:0; background:#0e131b; border:1px solid var(--tc-line); border-radius:9px; padding:6px 7px; text-align:center; }
-#tc-app .tc-pl-metric .mk { font-size:9px; letter-spacing:.06em; text-transform:uppercase; color:var(--tc-faint); font-weight:800; }
-#tc-app .tc-pl-metric .mv { font-size:15px; font-weight:900; margin-top:2px; }
-#tc-app .tc-pl-metric .mv.green { color:var(--tc-green); } #tc-app .tc-pl-metric .mv.amber { color:var(--tc-amber); } #tc-app .tc-pl-metric .mv.red { color:var(--tc-red); }
-#tc-app .tc-pl-leg { display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:800; margin-top:10px; padding:4px 9px; border-radius:999px; align-self:flex-start; }
-#tc-app .tc-pl-leg.call { background:rgba(255,77,77,.12); color:#ffb3b3; border:1px solid #5a2222; }
-#tc-app .tc-pl-leg.put  { background:rgba(78,168,255,.12); color:#aed4ff; border:1px solid #244a66; }
-#tc-app .tc-pl-note { font-size:11px; color:var(--tc-muted); margin-top:10px; line-height:1.4; }
-#tc-app .tc-pl-badge { position:absolute; top:10px; right:10px; background:linear-gradient(90deg,#ffd34d,#ff9d2e); color:#2a1d00; font-size:9px; font-weight:900; letter-spacing:.05em; padding:2px 7px; border-radius:999px; }
+    #tc-app .tc-gate-top {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
 
-/* ---- heatmaps ---- */
-#tc-app .tc-heatwrap { display:grid; grid-template-columns:1fr; gap:16px; }
-@media (min-width: 900px){ #tc-app .tc-heatwrap { grid-template-columns: 1fr 1fr; } }
-#tc-app .tc-heatwrap .tc-heat-wide { grid-column:1/-1; }
-#tc-app .tc-subh { font-size:12.5px; font-weight:900; letter-spacing:.04em; color:var(--tc-txt); margin:0 0 4px; display:flex; align-items:center; gap:7px; }
-#tc-app .tc-subh .tc-subh-tag { font-size:10px; font-weight:800; color:var(--tc-faint); letter-spacing:.02em; }
-#tc-app .tc-subnote { font-size:11px; color:var(--tc-muted); margin:0 0 10px; line-height:1.4; }
-#tc-app .tc-heatrow { display:grid; gap:6px; }
-#tc-app .tc-heat-wd { grid-template-columns: repeat(7, minmax(0,1fr)); }
-#tc-app .tc-heat-mo { grid-template-columns: repeat(6, minmax(0,1fr)); }
-@media (min-width: 560px){ #tc-app .tc-heat-mo { grid-template-columns: repeat(12, minmax(0,1fr)); } }
-#tc-app .tc-hcell {
-  border-radius:9px; padding:9px 4px 8px; text-align:center; border:1px solid rgba(255,255,255,.05);
-  position:relative; min-width:0;
-}
-#tc-app .tc-hcell .hl { font-size:11px; font-weight:900; letter-spacing:.01em; }
-#tc-app .tc-hcell .hv { font-size:16px; font-weight:900; line-height:1; margin-top:3px; }
-#tc-app .tc-hcell .hs { font-size:8.5px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; margin-top:2px; opacity:.9; }
-#tc-app .tc-hcell.off { background:#13171e !important; color:var(--tc-faint); border-color:var(--tc-line); }
-#tc-app .tc-heat-scale { display:flex; align-items:center; gap:8px; font-size:10.5px; color:var(--tc-faint); margin-top:11px; }
-#tc-app .tc-heat-bar { flex:1 1 auto; height:8px; border-radius:999px; background:linear-gradient(90deg,#2ec45f,#ffb020,#ff4d4d); max-width:220px; }
-#tc-app .tc-heat-tags { display:flex; justify-content:space-between; gap:10px; font-size:11px; margin-top:9px; }
-#tc-app .tc-heat-tags .lean { color:var(--tc-green); font-weight:800; }
-#tc-app .tc-heat-tags .ease { color:var(--tc-red); font-weight:800; }
+    #tc-app .tc-gate-kick {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--tc-faint);
+    }
 
-/* cascade clock */
-#tc-app .tc-cascade { display:flex; align-items:flex-end; gap:6px; height:132px; padding:6px 2px 0; }
-#tc-app .tc-casc-col { flex:1 1 0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:5px; }
-#tc-app .tc-casc-bar { width:100%; max-width:34px; border-radius:6px 6px 3px 3px; transition:height .3s; }
-#tc-app .tc-casc-val { font-size:10px; font-weight:900; color:var(--tc-muted); }
-#tc-app .tc-casc-time { font-size:9px; font-weight:800; color:var(--tc-faint); }
-#tc-app .tc-casc-col.peak .tc-casc-time { color:var(--tc-red); }
-#tc-app .tc-casc-col.enter { position:relative; }
-#tc-app .tc-casc-col.enter .tc-casc-time { color:var(--tc-green); }
-#tc-app .tc-casc-enter { font-size:9px; font-weight:900; color:#8ff0a9; margin-top:2px; }
+    #tc-app .tc-gate-go {
+      color: var(--tc-green);
+    }
 
-/* ---- indicator scorecard ---- */
-#tc-app .tc-scoreleg { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
-#tc-app .tc-scoreleg .tc-lg {
-  display:flex; align-items:flex-start; gap:8px; font-size:11.5px; color:var(--tc-muted);
-  background:var(--tc-panel2); border:1px solid var(--tc-line); border-radius:10px; padding:8px 11px; flex:1 1 180px; line-height:1.35;
-}
-#tc-app .tc-scoreleg .tc-lg b { color:var(--tc-txt); font-weight:800; }
-#tc-app .tc-gradedot { width:11px; height:11px; border-radius:50%; flex:0 0 auto; margin-top:2px; }
-#tc-app .tc-gd-primary { background:var(--tc-green); }
-#tc-app .tc-gd-watch   { background:var(--tc-amber); }
-#tc-app .tc-gd-veto    { background:var(--tc-red); }
-#tc-app .tc-gd-off     { background:var(--tc-grey); }
-#tc-app .tc-scoregroup { margin-top:16px; }
-#tc-app .tc-scoregroup:first-of-type { margin-top:4px; }
-#tc-app .tc-scorehead { display:flex; align-items:center; gap:9px; margin-bottom:10px; }
-#tc-app .tc-scorebadge { font-size:10px; font-weight:900; letter-spacing:.09em; text-transform:uppercase; padding:4px 11px; border-radius:999px; }
-#tc-app .tc-scorebadge.primary { background:var(--tc-green-d); color:#8ff0a9; border:1px solid #275039; }
-#tc-app .tc-scorebadge.watch   { background:var(--tc-amber-d); color:#ffd98a; border:1px solid #4a3a14; }
-#tc-app .tc-scorebadge.veto    { background:var(--tc-red-d); color:#ffb3b3; border:1px solid #5a2222; }
-#tc-app .tc-scorebadge.off     { background:#20262f; color:#b7c2d1; border:1px solid var(--tc-line2); }
-#tc-app .tc-scorecount { font-size:11px; color:var(--tc-faint); font-weight:800; }
-#tc-app .tc-scorelabel { font-size:11px; color:var(--tc-muted); }
-#tc-app .tc-scorelist { display:grid; grid-template-columns:1fr; gap:8px; }
-@media (min-width: 620px){ #tc-app .tc-scorelist { grid-template-columns:1fr 1fr; } }
-@media (min-width: 980px){ #tc-app .tc-scorelist.cols3 { grid-template-columns:1fr 1fr 1fr; } }
-#tc-app .tc-scoreitem {
-  display:flex; gap:11px; align-items:flex-start; background:var(--tc-panel2);
-  border:1px solid var(--tc-line); border-radius:11px; padding:11px 12px; position:relative;
-}
-#tc-app .tc-scoreitem.primary { border-left:3px solid var(--tc-green); }
-#tc-app .tc-scoreitem.watch   { border-left:3px solid var(--tc-amber); }
-#tc-app .tc-scoreitem.veto    { border-left:3px solid var(--tc-red); }
-#tc-app .tc-scoreitem.off     { border-left:3px solid var(--tc-grey); opacity:.82; }
-#tc-app .tc-si-body { min-width:0; flex:1 1 auto; }
-#tc-app .tc-si-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-#tc-app .tc-si-name { font-size:13.5px; font-weight:800; color:var(--tc-txt); }
-#tc-app .tc-si-stat { font-size:10.5px; font-weight:800; padding:2px 8px; border-radius:999px; letter-spacing:.01em; }
-#tc-app .tc-scoreitem.primary .tc-si-stat { background:rgba(46,196,95,.14); color:#8ff0a9; }
-#tc-app .tc-scoreitem.watch   .tc-si-stat { background:rgba(255,176,32,.14); color:#ffd98a; }
-#tc-app .tc-scoreitem.veto    .tc-si-stat { background:rgba(255,77,77,.14); color:#ffb3b3; }
-#tc-app .tc-scoreitem.off     .tc-si-stat { background:#20262f; color:#b7c2d1; }
-#tc-app .tc-si-note { font-size:11.5px; color:var(--tc-muted); margin-top:5px; line-height:1.45; }
+    #tc-app .tc-gate-wait {
+      color: var(--tc-amber);
+    }
 
-/* ---- error ---- */
-#tc-app .tc-err { background: var(--tc-red-d); border:1px solid var(--tc-red); border-radius:14px; padding:24px; text-align:center; }
-#tc-app .tc-err h3 { margin:0 0 8px; font-size:20px; }
-#tc-app .tc-err code { background:#000; padding:2px 6px; border-radius:5px; color:#ffd98a; }
+    #tc-app .tc-gate-rule {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
 
-#tc-app .tc-foot { text-align:center; color:var(--tc-faint); font-size:11px; padding: 6px 0 20px; }
-</style>
+    @media (min-width: 720px) {
+      #tc-app .tc-gate-rule {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    #tc-app .tc-gate-box {
+      border-radius: 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--tc-line);
+      background: var(--tc-panel2);
+      position: relative;
+    }
+
+    #tc-app .tc-gate-box.go {
+      border-color: #275039;
+      background: linear-gradient(180deg, rgba(46, 196, 95, .10), rgba(46, 196, 95, .02));
+    }
+
+    #tc-app .tc-gate-box.wait {
+      border-color: #4a3a14;
+      background: linear-gradient(180deg, rgba(255, 176, 32, .09), rgba(255, 176, 32, .02));
+    }
+
+    #tc-app .tc-gate-lab {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: .02em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #tc-app .tc-gate-box.go .tc-gate-lab {
+      color: #8ff0a9;
+    }
+
+    #tc-app .tc-gate-box.wait .tc-gate-lab {
+      color: #ffd98a;
+    }
+
+    #tc-app .tc-gate-desc {
+      font-size: 13px;
+      color: var(--tc-txt);
+      margin-top: 7px;
+      line-height: 1.5;
+    }
+
+    #tc-app .tc-gate-desc b {
+      color: #fff;
+    }
+
+    #tc-app .tc-gate-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    #tc-app .tc-gchip {
+      background: var(--tc-panel2);
+      border: 1px solid var(--tc-line);
+      border-radius: 999px;
+      padding: 7px 14px;
+      font-size: 13px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #tc-app .tc-gchip b {
+      font-size: 16px;
+    }
+
+    #tc-app .tc-gchip .g {
+      color: var(--tc-green);
+    }
+
+    #tc-app .tc-gchip .r {
+      color: var(--tc-red);
+    }
+
+    #tc-app .tc-gchip .a {
+      color: var(--tc-amber);
+    }
+
+    #tc-app .tc-gchip .b {
+      color: var(--tc-blue);
+    }
+
+    #tc-app .tc-gate-caveat {
+      margin-top: 12px;
+      font-size: 11.5px;
+      color: var(--tc-faint);
+      display: flex;
+      gap: 7px;
+      align-items: flex-start;
+      border-top: 1px dashed var(--tc-line);
+      padding-top: 11px;
+      line-height: 1.45;
+    }
+
+    #tc-app .tc-gate-caveat .tc-ic {
+      color: var(--tc-amber);
+      flex: 0 0 auto;
+    }
+
+    /* ---- per-weekday plan strip ---- */
+    #tc-app .tc-plan {
+      display: grid;
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    @media (min-width: 520px) {
+      #tc-app .tc-plan {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (min-width: 860px) {
+      #tc-app .tc-plan {
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+      }
+    }
+
+    #tc-app .tc-plancard {
+      position: relative;
+      border-radius: 14px;
+      padding: 14px;
+      overflow: hidden;
+      border: 1px solid var(--tc-line);
+      background: var(--tc-panel2);
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    #tc-app .tc-plancard::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 4px;
+      background: var(--tc-grey);
+    }
+
+    #tc-app .tc-plancard.lv-green::before {
+      background: var(--tc-green);
+    }
+
+    #tc-app .tc-plancard.lv-amber::before {
+      background: var(--tc-amber);
+    }
+
+    #tc-app .tc-plancard.lv-red::before {
+      background: var(--tc-red);
+    }
+
+    #tc-app .tc-plancard.lv-green {
+      box-shadow: inset 0 0 0 1px rgba(46, 196, 95, .14);
+    }
+
+    #tc-app .tc-plancard.lv-amber {
+      box-shadow: inset 0 0 0 1px rgba(255, 176, 32, .14);
+    }
+
+    #tc-app .tc-plancard.prem {
+      border-color: #5a4408;
+      background: linear-gradient(180deg, rgba(255, 211, 77, .07), var(--tc-panel2));
+    }
+
+    #tc-app .tc-pl-day {
+      font-size: 15px;
+      font-weight: 900;
+      letter-spacing: .02em;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #tc-app .tc-pl-star {
+      color: var(--tc-gold);
+      font-size: 13px;
+    }
+
+    #tc-app .tc-pl-time {
+      font-size: 27px;
+      font-weight: 900;
+      line-height: 1;
+      margin: 10px 0 2px;
+      letter-spacing: -.01em;
+    }
+
+    #tc-app .tc-pl-time span {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--tc-faint);
+      letter-spacing: .04em;
+    }
+
+    #tc-app .tc-pl-metrics {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    #tc-app .tc-pl-metric {
+      flex: 1 1 0;
+      min-width: 0;
+      background: #0e131b;
+      border: 1px solid var(--tc-line);
+      border-radius: 9px;
+      padding: 6px 7px;
+      text-align: center;
+    }
+
+    #tc-app .tc-pl-metric .mk {
+      font-size: 9px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--tc-faint);
+      font-weight: 800;
+    }
+
+    #tc-app .tc-pl-metric .mv {
+      font-size: 15px;
+      font-weight: 900;
+      margin-top: 2px;
+    }
+
+    #tc-app .tc-pl-metric .mv.green {
+      color: var(--tc-green);
+    }
+
+    #tc-app .tc-pl-metric .mv.amber {
+      color: var(--tc-amber);
+    }
+
+    #tc-app .tc-pl-metric .mv.red {
+      color: var(--tc-red);
+    }
+
+    #tc-app .tc-pl-leg {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11.5px;
+      font-weight: 800;
+      margin-top: 10px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      align-self: flex-start;
+    }
+
+    #tc-app .tc-pl-leg.call {
+      background: rgba(255, 77, 77, .12);
+      color: #ffb3b3;
+      border: 1px solid #5a2222;
+    }
+
+    #tc-app .tc-pl-leg.put {
+      background: rgba(78, 168, 255, .12);
+      color: #aed4ff;
+      border: 1px solid #244a66;
+    }
+
+    #tc-app .tc-pl-note {
+      font-size: 11px;
+      color: var(--tc-muted);
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+
+    #tc-app .tc-pl-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: linear-gradient(90deg, #ffd34d, #ff9d2e);
+      color: #2a1d00;
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: .05em;
+      padding: 2px 7px;
+      border-radius: 999px;
+    }
+
+    /* ---- heatmaps ---- */
+    #tc-app .tc-heatwrap {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+
+    @media (min-width: 900px) {
+      #tc-app .tc-heatwrap {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    #tc-app .tc-heatwrap .tc-heat-wide {
+      grid-column: 1/-1;
+    }
+
+    #tc-app .tc-subh {
+      font-size: 12.5px;
+      font-weight: 900;
+      letter-spacing: .04em;
+      color: var(--tc-txt);
+      margin: 0 0 4px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    #tc-app .tc-subh .tc-subh-tag {
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--tc-faint);
+      letter-spacing: .02em;
+    }
+
+    #tc-app .tc-subnote {
+      font-size: 11px;
+      color: var(--tc-muted);
+      margin: 0 0 10px;
+      line-height: 1.4;
+    }
+
+    #tc-app .tc-heatrow {
+      display: grid;
+      gap: 6px;
+    }
+
+    #tc-app .tc-heat-wd {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+
+    #tc-app .tc-heat-mo {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    @media (min-width: 560px) {
+      #tc-app .tc-heat-mo {
+        grid-template-columns: repeat(12, minmax(0, 1fr));
+      }
+    }
+
+    #tc-app .tc-hcell {
+      border-radius: 9px;
+      padding: 9px 4px 8px;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, .05);
+      position: relative;
+      min-width: 0;
+    }
+
+    #tc-app .tc-hcell .hl {
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .01em;
+    }
+
+    #tc-app .tc-hcell .hv {
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1;
+      margin-top: 3px;
+    }
+
+    #tc-app .tc-hcell .hs {
+      font-size: 8.5px;
+      font-weight: 800;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      margin-top: 2px;
+      opacity: .9;
+    }
+
+    #tc-app .tc-hcell.off {
+      background: #13171e !important;
+      color: var(--tc-faint);
+      border-color: var(--tc-line);
+    }
+
+    #tc-app .tc-heat-scale {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10.5px;
+      color: var(--tc-faint);
+      margin-top: 11px;
+    }
+
+    #tc-app .tc-heat-bar {
+      flex: 1 1 auto;
+      height: 8px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #2ec45f, #ffb020, #ff4d4d);
+      max-width: 220px;
+    }
+
+    #tc-app .tc-heat-tags {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 11px;
+      margin-top: 9px;
+    }
+
+    #tc-app .tc-heat-tags .lean {
+      color: var(--tc-green);
+      font-weight: 800;
+    }
+
+    #tc-app .tc-heat-tags .ease {
+      color: var(--tc-red);
+      font-weight: 800;
+    }
+
+    /* cascade clock */
+    #tc-app .tc-cascade {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 132px;
+      padding: 6px 2px 0;
+    }
+
+    #tc-app .tc-casc-col {
+      flex: 1 1 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-end;
+      height: 100%;
+      gap: 5px;
+    }
+
+    #tc-app .tc-casc-bar {
+      width: 100%;
+      max-width: 34px;
+      border-radius: 6px 6px 3px 3px;
+      transition: height .3s;
+    }
+
+    #tc-app .tc-casc-val {
+      font-size: 10px;
+      font-weight: 900;
+      color: var(--tc-muted);
+    }
+
+    #tc-app .tc-casc-time {
+      font-size: 9px;
+      font-weight: 800;
+      color: var(--tc-faint);
+    }
+
+    #tc-app .tc-casc-col.peak .tc-casc-time {
+      color: var(--tc-red);
+    }
+
+    #tc-app .tc-casc-col.enter {
+      position: relative;
+    }
+
+    #tc-app .tc-casc-col.enter .tc-casc-time {
+      color: var(--tc-green);
+    }
+
+    #tc-app .tc-casc-enter {
+      font-size: 9px;
+      font-weight: 900;
+      color: #8ff0a9;
+      margin-top: 2px;
+    }
+
+    /* ---- indicator scorecard ---- */
+    #tc-app .tc-scoreleg {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    #tc-app .tc-scoreleg .tc-lg {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 11.5px;
+      color: var(--tc-muted);
+      background: var(--tc-panel2);
+      border: 1px solid var(--tc-line);
+      border-radius: 10px;
+      padding: 8px 11px;
+      flex: 1 1 180px;
+      line-height: 1.35;
+    }
+
+    #tc-app .tc-scoreleg .tc-lg b {
+      color: var(--tc-txt);
+      font-weight: 800;
+    }
+
+    #tc-app .tc-gradedot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      margin-top: 2px;
+    }
+
+    #tc-app .tc-gd-primary {
+      background: var(--tc-green);
+    }
+
+    #tc-app .tc-gd-watch {
+      background: var(--tc-amber);
+    }
+
+    #tc-app .tc-gd-veto {
+      background: var(--tc-red);
+    }
+
+    #tc-app .tc-gd-off {
+      background: var(--tc-grey);
+    }
+
+    #tc-app .tc-scoregroup {
+      margin-top: 16px;
+    }
+
+    #tc-app .tc-scoregroup:first-of-type {
+      margin-top: 4px;
+    }
+
+    #tc-app .tc-scorehead {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 10px;
+    }
+
+    #tc-app .tc-scorebadge {
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      padding: 4px 11px;
+      border-radius: 999px;
+    }
+
+    #tc-app .tc-scorebadge.primary {
+      background: var(--tc-green-d);
+      color: #8ff0a9;
+      border: 1px solid #275039;
+    }
+
+    #tc-app .tc-scorebadge.watch {
+      background: var(--tc-amber-d);
+      color: #ffd98a;
+      border: 1px solid #4a3a14;
+    }
+
+    #tc-app .tc-scorebadge.veto {
+      background: var(--tc-red-d);
+      color: #ffb3b3;
+      border: 1px solid #5a2222;
+    }
+
+    #tc-app .tc-scorebadge.off {
+      background: #20262f;
+      color: #b7c2d1;
+      border: 1px solid var(--tc-line2);
+    }
+
+    #tc-app .tc-scorecount {
+      font-size: 11px;
+      color: var(--tc-faint);
+      font-weight: 800;
+    }
+
+    #tc-app .tc-scorelabel {
+      font-size: 11px;
+      color: var(--tc-muted);
+    }
+
+    #tc-app .tc-scorelist {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    @media (min-width: 620px) {
+      #tc-app .tc-scorelist {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (min-width: 980px) {
+      #tc-app .tc-scorelist.cols3 {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+    }
+
+    #tc-app .tc-scoreitem {
+      display: flex;
+      gap: 11px;
+      align-items: flex-start;
+      background: var(--tc-panel2);
+      border: 1px solid var(--tc-line);
+      border-radius: 11px;
+      padding: 11px 12px;
+      position: relative;
+    }
+
+    #tc-app .tc-scoreitem.primary {
+      border-left: 3px solid var(--tc-green);
+    }
+
+    #tc-app .tc-scoreitem.watch {
+      border-left: 3px solid var(--tc-amber);
+    }
+
+    #tc-app .tc-scoreitem.veto {
+      border-left: 3px solid var(--tc-red);
+    }
+
+    #tc-app .tc-scoreitem.off {
+      border-left: 3px solid var(--tc-grey);
+      opacity: .82;
+    }
+
+    #tc-app .tc-si-body {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    #tc-app .tc-si-top {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    #tc-app .tc-si-name {
+      font-size: 13.5px;
+      font-weight: 800;
+      color: var(--tc-txt);
+    }
+
+    #tc-app .tc-si-stat {
+      font-size: 10.5px;
+      font-weight: 800;
+      padding: 2px 8px;
+      border-radius: 999px;
+      letter-spacing: .01em;
+    }
+
+    #tc-app .tc-scoreitem.primary .tc-si-stat {
+      background: rgba(46, 196, 95, .14);
+      color: #8ff0a9;
+    }
+
+    #tc-app .tc-scoreitem.watch .tc-si-stat {
+      background: rgba(255, 176, 32, .14);
+      color: #ffd98a;
+    }
+
+    #tc-app .tc-scoreitem.veto .tc-si-stat {
+      background: rgba(255, 77, 77, .14);
+      color: #ffb3b3;
+    }
+
+    #tc-app .tc-scoreitem.off .tc-si-stat {
+      background: #20262f;
+      color: #b7c2d1;
+    }
+
+    #tc-app .tc-si-note {
+      font-size: 11.5px;
+      color: var(--tc-muted);
+      margin-top: 5px;
+      line-height: 1.45;
+    }
+
+    /* ---- error ---- */
+    #tc-app .tc-err {
+      background: var(--tc-red-d);
+      border: 1px solid var(--tc-red);
+      border-radius: 14px;
+      padding: 24px;
+      text-align: center;
+    }
+
+    #tc-app .tc-err h3 {
+      margin: 0 0 8px;
+      font-size: 20px;
+    }
+
+    #tc-app .tc-err code {
+      background: #000;
+      padding: 2px 6px;
+      border-radius: 5px;
+      color: #ffd98a;
+    }
+
+    #tc-app .tc-foot {
+      text-align: center;
+      color: var(--tc-faint);
+      font-size: 11px;
+      padding: 6px 0 20px;
+    }
+  </style>
 </head>
+
 <body>
-<div id="tc-app"><div class="tc-wrap" id="tc-root"></div></div>
+  <div id="tc-app">
+    <div class="tc-wrap" id="tc-root"></div>
+  </div>
 
-<script>
-(function(){
-  "use strict";
-  var RULES = window.__STRANGLE_RULES;
-  var CAL   = window.__STRANGLE_CAL;
-  var PATHS = window.__STRANGLE_PATHS || {};
-  // new backtest command-center globals (all optional — guarded below)
-  var WEEKDAY = window.__STRANGLE_WEEKDAY || null;
-  var FIVEYR  = window.__STRANGLE_FIVEYEAR || null;
-  var ENTRYT  = window.__STRANGLE_ENTRYTIME || null;
-  var INDIC   = window.__STRANGLE_INDICATORS || null;
-  var root  = document.getElementById("tc-root");
+  <script>
+    (function () {
+      "use strict";
+      var RULES = window.__STRANGLE_RULES;
+      var CAL = window.__STRANGLE_CAL;
+      var PATHS = window.__STRANGLE_PATHS || {};
+      // new backtest command-center globals (all optional — guarded below)
+      var WEEKDAY = window.__STRANGLE_WEEKDAY || null;
+      var FIVEYR = window.__STRANGLE_FIVEYEAR || null;
+      var ENTRYT = window.__STRANGLE_ENTRYTIME || null;
+      var INDIC = window.__STRANGLE_INDICATORS || null;
+      var root = document.getElementById("tc-root");
 
-  /* ---------- guard ---------- */
-  if (!RULES || !CAL || !CAL.days) {
-    root.innerHTML =
-      '<div class="tc-err"><h3>⚠️ Data not loaded</h3>' +
-      '<p>This page needs two data files. Make sure these load first:</p>' +
-      '<p><code>/data/strategy_rules.js</code> &nbsp;and&nbsp; <code>/data/strangle_calendar.js</code></p>' +
-      '<p style="color:#ffb3b3">' +
-      (!RULES ? 'window.__STRANGLE_RULES is missing. ' : '') +
-      (!CAL ? 'window.__STRANGLE_CAL is missing.' : '') +
-      '</p></div>';
-    return;
-  }
-
-  /* ---------- helpers ---------- */
-  var DOW = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-  var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-  var esc = function(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); };
-  var num = function(n){ return (n>0?"+":"") + (Math.round(n*10)/10); };
-  var toneColor = function(t){ return t==="green"?"var(--tc-green)":t==="amber"?"var(--tc-amber)":t==="red"?"var(--tc-red)":"var(--tc-grey)"; };
-  var riskColor = function(r){ return r==="high"?"var(--tc-red)":r==="med"?"var(--tc-amber)":"var(--tc-green)"; };
-
-  /* ---- shared "danger" colour scale (green -> amber -> red) ---- */
-  // d = % of nights that moved >3% (lower = safer). 0..~25 mapped across green->amber->red.
-  function lerp(a,b,t){ return a + (b-a)*t; }
-  function dangerRGB(d){
-    var lo=5, hi=22;                    // 5-yr observed range of danger3
-    var t = Math.max(0, Math.min(1, (d-lo)/(hi-lo)));
-    var g=[46,196,95], a=[255,176,32], r=[255,77,77];
-    var c; if (t<0.5){ var u=t/0.5; c=[lerp(g[0],a[0],u),lerp(g[1],a[1],u),lerp(g[2],a[2],u)]; }
-    else { var u2=(t-0.5)/0.5; c=[lerp(a[0],r[0],u2),lerp(a[1],r[1],u2),lerp(a[2],r[2],u2)]; }
-    return c.map(function(x){return Math.round(x);});
-  }
-  function dangerBg(d){ var c=dangerRGB(d); return "rgba("+c[0]+","+c[1]+","+c[2]+",0.20)"; }
-  function dangerBorder(d){ var c=dangerRGB(d); return "rgba("+c[0]+","+c[1]+","+c[2]+",0.55)"; }
-  function dangerInk(d){ var c=dangerRGB(d); return "rgb("+Math.min(255,c[0]+60)+","+Math.min(255,c[1]+60)+","+Math.min(255,c[2]+60)+")"; }
-  function dangerLevel(d){ return d<=10 ? "green" : d<=16 ? "amber" : "red"; }
-
-  // IST decimal hour -> "HH:MM"
-  function istToHHMM(h){
-    var hh = Math.floor(h) % 24; var mm = Math.round((h - Math.floor(h))*60);
-    return (hh<10?"0":"")+hh+":"+(mm<10?"0":"")+mm;
-  }
-  // map an IST hour (18..31 night span) to angle on clock. 18:00 at bottom-left, sweep clockwise to 07:00.
-  // We lay 13h of night (18:00->07:00) across 270 degrees of the ring (leaving bottom gap).
-  var NIGHT_START = 18, NIGHT_END = 31; // 07:00 next day = 31
-  function normNight(ist){ // bring event ist into night frame; ist<18 means next-day small hours
-    var v = ist; if (v < NIGHT_START) v += 24; return v;
-  }
-  // angle in degrees (SVG, 0 = +x axis, clockwise positive since y grows down)
-  // We want 18:00 at lower-left (~135°) sweeping clockwise through top to 07:00 at lower-right (~45°)...
-  // simpler: use a 300° sweep starting at 150° going clockwise.
-  var ARC_START = 150;   // degrees, where 18:00 sits
-  var ARC_SWEEP = 240;   // total degrees covered to reach 07:00
-  function nightFrac(ist){ var v = normNight(ist); return (v - NIGHT_START)/(NIGHT_END - NIGHT_START); }
-  function nightAngle(ist){ return ARC_START + nightFrac(ist)*ARC_SWEEP; }
-  function polar(cx,cy,r,deg){ var a = (deg) * Math.PI/180; return { x: cx + r*Math.cos(a), y: cy + r*Math.sin(a) }; }
-  function arcPath(cx,cy,r,deg0,deg1){
-    var p0 = polar(cx,cy,r,deg0), p1 = polar(cx,cy,r,deg1);
-    var large = (deg1-deg0) > 180 ? 1 : 0;
-    return "M "+p0.x.toFixed(2)+" "+p0.y.toFixed(2)+" A "+r+" "+r+" 0 "+large+" 1 "+p1.x.toFixed(2)+" "+p1.y.toFixed(2);
-  }
-
-  var EVENT_ICON = { londonClose:"🇬🇧", cmeSettle:"🔔", nyClose:"🇺🇸", asiaOpen:"🌏" };
-  function evIcon(ev){ return EVENT_ICON[ev.id] || "•"; }
-
-  // outcome -> verdict emoji + words
-  function verdict(out){
-    switch(out){
-      case "TARGET":    return {emoji:"🎯", word:"TARGET",   tone:"green"};
-      case "TIME-WIN":  return {emoji:"😌", word:"TIME-WIN", tone:"green"};
-      case "TIME-FLAT": return {emoji:"😐", word:"FLAT",     tone:"grey"};
-      case "SL-PUT":    return {emoji:"🛑", word:"STOP (put)",  tone:"red"};
-      case "SL-CALL":   return {emoji:"🛑", word:"STOP (call)", tone:"red"};
-      case "REST":      return {emoji:"😴", word:"REST",     tone:"grey"};
-      case "STAND-DOWN":return {emoji:"⚠️", word:"STAND-DOWN", tone:"amber"};
-      case "NODATA":    return {emoji:"·",  word:"NO DATA",  tone:"grey"};
-      default:          return {emoji:"·",  word:out||"—",   tone:"grey"};
-    }
-  }
-  function cellClass(c){
-    if (!c) return "nodata";
-    if (c.v==="REST") return "rest";
-    if (c.v==="WAIT") return "wait";
-    if (c.v==="NODATA") return "nodata";
-    if (c.out==="TARGET"||c.out==="TIME-WIN") return "win";
-    if (c.out==="SL-PUT"||c.out==="SL-CALL") return "loss";
-    if (c.out==="TIME-FLAT") return "flat";
-    return "nodata";
-  }
-  function cellGlyph(c){
-    if (!c) return "";
-    if (c.v==="REST") return "😴";
-    if (c.v==="WAIT") return "⏸";
-    if (c.v==="NODATA") return "";
-    if (c.out==="TARGET"||c.out==="TIME-WIN") return "✓";
-    if (c.out==="SL-PUT"||c.out==="SL-CALL") return "✗";
-    if (c.out==="TIME-FLAT") return "–";
-    return "";
-  }
-
-  // which IV band holds a given iv
-  function bandFor(iv){
-    var b = RULES.ivBands;
-    for (var i=0;i<b.length;i++){ if (iv >= b[i].lo && iv < b[i].hi) return b[i]; }
-    return b[b.length-1];
-  }
-
-  /* ---------- selected day state ---------- */
-  var dates = Object.keys(CAL.days).sort();
-  var selected = null;
-  // default = most recent GO cell (an actual trade)
-  for (var i=dates.length-1;i>=0;i--){ if (CAL.days[dates[i]].v==="GO"){ selected = dates[i]; break; } }
-  if (!selected && dates.length) selected = dates[dates.length-1];
-
-  /* ================= BUILD STATIC SECTIONS ================= */
-
-  function headerHTML(){
-    var s = CAL.summary || {};
-    return '' +
-    '<div class="tc-card tc-header">' +
-      '<div class="tc-title">BTC Short Strangle — Trade Clock &amp; Year Calendar</div>' +
-      '<div class="tc-stats">' +
-        '<span class="tc-stat"><b class="g">'+ (s.go!=null?s.go:"—") +'</b> GO</span>' +
-        '<span class="tc-stat"><b>'+ (s.wait!=null?s.wait:"—") +'</b> WAIT</span>' +
-        '<span class="tc-stat">stop <b class="r">'+ (s.stopPct!=null?s.stopPct+"%":"—") +'</b></span>' +
-        '<span class="tc-stat">win <b class="g">'+ (s.winPct!=null?s.winPct+"%":"—") +'</b></span>' +
-        '<span class="tc-stat">cover <b>'+ (s.coveragePct!=null?s.coveragePct+"%":"—") +'</b></span>' +
-      '</div>' +
-      '<div class="tc-rule">'+ esc(s.rule||"") +'</div>' +
-    '</div>';
-  }
-
-  /* -------- CLOCK (SVG) : rebuilt whenever selection changes -------- */
-  function clockSVG(){
-    var c = CAL.days[selected] || {};
-    var isTrade = c.v==="GO";
-    var isFri = c.dow==="Fri";
-    var win = (isFri ? RULES.entry.windowIST.friday : RULES.entry.windowIST.default) || [22,23.5];
-
-    var W=400,H=400,cx=200,cy=205,R=168;        // ring radius
-    var innerR=150;                             // inner edge of ring band
-    var out=[];
-
-    out.push('<svg class="tc-clocksvg" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Night trade clock">');
-
-    // ----- ring base -----
-    out.push('<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="#1c2432" stroke-width="20"/>');
-
-    // ----- hour ticks + labels across the night -----
-    for (var h=NIGHT_START; h<=NIGHT_END; h++){
-      var ang = nightAngle(h);
-      var a = polar(cx,cy,R+11,ang), b = polar(cx,cy,R-11,ang);
-      var major = (h%2===0);
-      out.push('<line x1="'+a.x.toFixed(1)+'" y1="'+a.y.toFixed(1)+'" x2="'+b.x.toFixed(1)+'" y2="'+b.y.toFixed(1)+'" stroke="'+(major?"#4a596f":"#2c3545")+'" stroke-width="'+(major?2:1)+'"/>');
-      if (major){
-        var lp = polar(cx,cy,R+24,ang);
-        var lbl = ((h%24<10)?"0":"")+(h%24)+":00";
-        out.push('<text x="'+lp.x.toFixed(1)+'" y="'+lp.y.toFixed(1)+'" fill="#6f7f95" font-size="10" font-weight="700" text-anchor="middle" dominant-baseline="middle">'+lbl+'</text>');
+      /* ---------- guard ---------- */
+      if (!RULES || !CAL || !CAL.days) {
+        root.innerHTML =
+          '<div class="tc-err"><h3>⚠️ Data not loaded</h3>' +
+          '<p>This page needs two data files. Make sure these load first:</p>' +
+          '<p><code>/data/strategy_rules.js</code> &nbsp;and&nbsp; <code>/data/strangle_calendar.js</code></p>' +
+          '<p style="color:#ffb3b3">' +
+          (!RULES ? 'window.__STRANGLE_RULES is missing. ' : '') +
+          (!CAL ? 'window.__STRANGLE_CAL is missing.' : '') +
+          '</p></div>';
+        return;
       }
-    }
 
-    // ----- entry window arc (soft green) -----
-    var e0 = nightAngle(win[0]), e1 = nightAngle(win[1]);
-    out.push('<path d="'+arcPath(cx,cy,R,e0,e1)+'" stroke="rgba(46,196,95,.55)" stroke-width="20" fill="none" stroke-linecap="butt"/>');
-    var emid = polar(cx,cy,R-40, (e0+e1)/2);
-    out.push('<text x="'+emid.x.toFixed(1)+'" y="'+emid.y.toFixed(1)+'" fill="#8ff0a9" font-size="9.5" font-weight="800" text-anchor="middle">ENTER</text>');
-    out.push('<text x="'+emid.x.toFixed(1)+'" y="'+(emid.y+11).toFixed(1)+'" fill="#8ff0a9" font-size="8.5" text-anchor="middle">'+istToHHMM(win[0])+'–'+istToHHMM(win[1])+'</text>');
+      /* ---------- helpers ---------- */
+      var DOW = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+      var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); };
+      var num = function (n) { return (n > 0 ? "+" : "") + (Math.round(n * 10) / 10); };
+      var toneColor = function (t) { return t === "green" ? "var(--tc-green)" : t === "amber" ? "var(--tc-amber)" : t === "red" ? "var(--tc-red)" : "var(--tc-grey)"; };
+      var riskColor = function (r) { return r === "high" ? "var(--tc-red)" : r === "med" ? "var(--tc-amber)" : "var(--tc-green)"; };
 
-    // ----- indicator dots (advisory) sized by weight, just inside ring -----
-    (RULES.indicators||[]).forEach(function(ind, idx){
-      var frac = (RULES.indicators.length>1)? idx/(RULES.indicators.length-1) : 0.5;
-      var ang = ARC_START + 30 + frac*(ARC_SWEEP-60); // spread along arc
-      var pr = polar(cx,cy,innerR-18,ang);
-      var rr = 2.5 + (ind.weight||1)*1.6;
-      out.push('<circle class="tc-ind-dot" data-ind="'+idx+'" cx="'+pr.x.toFixed(1)+'" cy="'+pr.y.toFixed(1)+'" r="'+rr.toFixed(1)+'" fill="#3b4a63" stroke="#58708f" stroke-width="1" style="cursor:pointer"/>');
-    });
-    out.push('<text x="'+cx+'" y="'+(cy+innerR-20)+'" fill="#43506522" font-size="8"></text>');
+      /* ---- shared "danger" colour scale (green -> amber -> red) ---- */
+      // d = % of nights that moved >3% (lower = safer). 0..~25 mapped across green->amber->red.
+      function lerp(a, b, t) { return a + (b - a) * t; }
+      function dangerRGB(d) {
+        var lo = 5, hi = 22;                    // 5-yr observed range of danger3
+        var t = Math.max(0, Math.min(1, (d - lo) / (hi - lo)));
+        var g = [46, 196, 95], a = [255, 176, 32], r = [255, 77, 77];
+        var c; if (t < 0.5) { var u = t / 0.5; c = [lerp(g[0], a[0], u), lerp(g[1], a[1], u), lerp(g[2], a[2], u)]; }
+        else { var u2 = (t - 0.5) / 0.5; c = [lerp(a[0], r[0], u2), lerp(a[1], r[1], u2), lerp(a[2], r[2], u2)]; }
+        return c.map(function (x) { return Math.round(x); });
+      }
+      function dangerBg(d) { var c = dangerRGB(d); return "rgba(" + c[0] + "," + c[1] + "," + c[2] + ",0.20)"; }
+      function dangerBorder(d) { var c = dangerRGB(d); return "rgba(" + c[0] + "," + c[1] + "," + c[2] + ",0.55)"; }
+      function dangerInk(d) { var c = dangerRGB(d); return "rgb(" + Math.min(255, c[0] + 60) + "," + Math.min(255, c[1] + 60) + "," + Math.min(255, c[2] + 60) + ")"; }
+      function dangerLevel(d) { return d <= 10 ? "green" : d <= 16 ? "amber" : "red"; }
 
-    // ----- event markers -----
-    (RULES.events||[]).forEach(function(ev, idx){
-      var ang = nightAngle(ev.ist);
-      var p = polar(cx,cy,R,ang);
-      out.push('<circle class="tc-ev-dot" data-ev="'+idx+'" cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="11" fill="#0a0d12" stroke="'+riskColor(ev.risk)+'" stroke-width="3" style="cursor:pointer"/>');
-      out.push('<text class="tc-ev-ic" data-ev="'+idx+'" x="'+p.x.toFixed(1)+'" y="'+(p.y+0.5).toFixed(1)+'" font-size="12" text-anchor="middle" dominant-baseline="central" style="cursor:pointer">'+evIcon(ev)+'</text>');
-    });
+      // IST decimal hour -> "HH:MM"
+      function istToHHMM(h) {
+        var hh = Math.floor(h) % 24; var mm = Math.round((h - Math.floor(h)) * 60);
+        return (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
+      }
+      // map an IST hour (18..31 night span) to angle on clock. 18:00 at bottom-left, sweep clockwise to 07:00.
+      // We lay 13h of night (18:00->07:00) across 270 degrees of the ring (leaving bottom gap).
+      var NIGHT_START = 18, NIGHT_END = 31; // 07:00 next day = 31
+      function normNight(ist) { // bring event ist into night frame; ist<18 means next-day small hours
+        var v = ist; if (v < NIGHT_START) v += 24; return v;
+      }
+      // angle in degrees (SVG, 0 = +x axis, clockwise positive since y grows down)
+      // We want 18:00 at lower-left (~135°) sweeping clockwise through top to 07:00 at lower-right (~45°)...
+      // simpler: use a 300° sweep starting at 150° going clockwise.
+      var ARC_START = 150;   // degrees, where 18:00 sits
+      var ARC_SWEEP = 240;   // total degrees covered to reach 07:00
+      function nightFrac(ist) { var v = normNight(ist); return (v - NIGHT_START) / (NIGHT_END - NIGHT_START); }
+      function nightAngle(ist) { return ARC_START + nightFrac(ist) * ARC_SWEEP; }
+      function polar(cx, cy, r, deg) { var a = (deg) * Math.PI / 180; return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) }; }
+      function arcPath(cx, cy, r, deg0, deg1) {
+        var p0 = polar(cx, cy, r, deg0), p1 = polar(cx, cy, r, deg1);
+        var large = (deg1 - deg0) > 180 ? 1 : 0;
+        return "M " + p0.x.toFixed(2) + " " + p0.y.toFixed(2) + " A " + r + " " + r + " 0 " + large + " 1 " + p1.x.toFixed(2) + " " + p1.y.toFixed(2);
+      }
 
-    // ===== CENTRE GAUGES =====
-    // (a) IV needle/arc : small gauge, top-centre inside
-    var gcx=cx, gcy=cy-54, gR=52;
-    var g0=180, g1=360; // a 180° gauge, left->right across the top
-    out.push('<path d="'+arcPath(gcx,gcy,gR,g0,g1)+'" stroke="#222b3a" stroke-width="9" fill="none"/>');
-    // colour segments by band proportion across a fixed 0..70 IV scale
-    var IVMAX = 70;
-    var bands = RULES.ivBands;
-    bands.forEach(function(bd){
-      var lo=Math.max(0,bd.lo), hi=Math.min(IVMAX, bd.hi>900?IVMAX:bd.hi);
-      if (hi<=lo) return;
-      var s0=g0+(lo/IVMAX)*(g1-g0), s1=g0+(hi/IVMAX)*(g1-g0);
-      out.push('<path d="'+arcPath(gcx,gcy,gR,s0,s1)+'" stroke="'+toneColor(bd.tone)+'" stroke-opacity="0.85" stroke-width="9" fill="none"/>');
-    });
-    if (isTrade && typeof c.iv==="number"){
-      var ivFrac = Math.max(0, Math.min(1, c.iv/IVMAX));
-      var needAng = g0 + ivFrac*(g1-g0);
-      var np = polar(gcx,gcy,gR-3,needAng);
-      out.push('<line x1="'+gcx+'" y1="'+gcy+'" x2="'+np.x.toFixed(1)+'" y2="'+np.y.toFixed(1)+'" stroke="#fff" stroke-width="2.5"/>');
-      out.push('<circle cx="'+gcx+'" cy="'+gcy+'" r="4" fill="#fff"/>');
-      var bd = bandFor(c.iv);
-      out.push('<text x="'+gcx+'" y="'+(gcy-16)+'" fill="#cdd8e6" font-size="9" text-anchor="middle" font-weight="700">ATM IV</text>');
-      out.push('<text x="'+gcx+'" y="'+(gcy+4)+'" fill="#fff" font-size="20" font-weight="900" text-anchor="middle">'+c.iv+'</text>');
-      out.push('<text x="'+gcx+'" y="'+(gcy+18)+'" fill="'+toneColor(bd.tone)+'" font-size="10" font-weight="900" text-anchor="middle" style="text-transform:uppercase">'+esc(bd.label)+'</text>');
-    } else {
-      out.push('<text x="'+gcx+'" y="'+(gcy+2)+'" fill="#55627a" font-size="11" text-anchor="middle">no IV</text>');
-    }
+      var EVENT_ICON = { londonClose: "🇬🇧", cmeSettle: "🔔", nyClose: "🇺🇸", asiaOpen: "🌏" };
+      function evIcon(ev) { return EVENT_ICON[ev.id] || "•"; }
 
-    // (b) PROFIT DIAL : big emoji + pnl, centre
-    var v = verdict(c.out);
-    var pcy = cy+34;
-    out.push('<text x="'+cx+'" y="'+pcy+'" font-size="40" text-anchor="middle" dominant-baseline="central">'+v.emoji+'</text>');
-    if (isTrade && typeof c.pnl==="number"){
-      var pcol = c.pnl>=0 ? "var(--tc-green)" : "var(--tc-red)";
-      out.push('<text x="'+cx+'" y="'+(pcy+34)+'" fill="'+pcol+'" font-size="22" font-weight="900" text-anchor="middle">'+num(c.pnl)+'%</text>');
-    } else {
-      out.push('<text x="'+cx+'" y="'+(pcy+32)+'" fill="#8c9bb0" font-size="13" font-weight="800" text-anchor="middle" style="text-transform:uppercase">'+esc(v.word)+'</text>');
-    }
+      // outcome -> verdict emoji + words
+      function verdict(out) {
+        switch (out) {
+          case "TARGET": return { emoji: "🎯", word: "TARGET", tone: "green" };
+          case "TIME-WIN": return { emoji: "😌", word: "TIME-WIN", tone: "green" };
+          case "TIME-FLAT": return { emoji: "😐", word: "FLAT", tone: "grey" };
+          case "SL-PUT": return { emoji: "🛑", word: "STOP (put)", tone: "red" };
+          case "SL-CALL": return { emoji: "🛑", word: "STOP (call)", tone: "red" };
+          case "REST": return { emoji: "😴", word: "REST", tone: "grey" };
+          case "STAND-DOWN": return { emoji: "⚠️", word: "STAND-DOWN", tone: "amber" };
+          case "NODATA": return { emoji: "·", word: "NO DATA", tone: "grey" };
+          default: return { emoji: "·", word: out || "—", tone: "grey" };
+        }
+      }
+      function cellClass(c) {
+        if (!c) return "nodata";
+        if (c.v === "REST") return "rest";
+        if (c.v === "WAIT") return "wait";
+        if (c.v === "NODATA") return "nodata";
+        if (c.out === "TARGET" || c.out === "TIME-WIN") return "win";
+        if (c.out === "SL-PUT" || c.out === "SL-CALL") return "loss";
+        if (c.out === "TIME-FLAT") return "flat";
+        return "nodata";
+      }
+      function cellGlyph(c) {
+        if (!c) return "";
+        if (c.v === "REST") return "😴";
+        if (c.v === "WAIT") return "⏸";
+        if (c.v === "NODATA") return "";
+        if (c.out === "TARGET" || c.out === "TIME-WIN") return "✓";
+        if (c.out === "SL-PUT" || c.out === "SL-CALL") return "✗";
+        if (c.out === "TIME-FLAT") return "–";
+        return "";
+      }
 
-    // (c) lot chip
-    var lots = (isTrade && c.lots!=null) ? c.lots : (c.v==="EMERGENCY"? 0 : RULES.sizing.baseLots);
-    out.push('<rect x="'+(cx-34)+'" y="'+(cy+86)+'" width="68" height="20" rx="10" fill="#1b2330" stroke="#35425a"/>');
-    out.push('<text x="'+cx+'" y="'+(cy+96.5)+'" fill="#cdd8e6" font-size="11" font-weight="800" text-anchor="middle" dominant-baseline="central">'+lots+' lots</text>');
+      // which IV band holds a given iv
+      function bandFor(iv) {
+        var b = RULES.ivBands;
+        for (var i = 0; i < b.length; i++) { if (iv >= b[i].lo && iv < b[i].hi) return b[i]; }
+        return b[b.length - 1];
+      }
 
-    // ----- "advisory" label near indicators -----
-    out.push('<text x="'+cx+'" y="'+(cy+R-6)+'" fill="#4a5a72" font-size="8.5" font-weight="700" text-anchor="middle">small dots = advisory indicators</text>');
+      /* ---------- selected day state ---------- */
+      var dates = Object.keys(CAL.days).sort();
+      var selected = null;
+      // default = most recent GO cell (an actual trade)
+      for (var i = dates.length - 1; i >= 0; i--) { if (CAL.days[dates[i]].v === "GO") { selected = dates[i]; break; } }
+      if (!selected && dates.length) selected = dates[dates.length - 1];
 
-    out.push('</svg>');
-    return out.join("");
-  }
+      /* ================= BUILD STATIC SECTIONS ================= */
 
-  function clockBannerHTML(){
-    var c = CAL.days[selected];
-    if (!c) return "";
-    var dayName = {Mon:"MONDAY",Tue:"TUESDAY",Wed:"WEDNESDAY",Thu:"THURSDAY",Fri:"FRIDAY",Sat:"SATURDAY",Sun:"SUNDAY"}[c.dow] || (c.dow||"").toUpperCase();
-    var v = verdict(c.out);
-    var instr = RULES.instrument;
-    if (c.v==="GO"){
-      var txt = dayName + " — GATE OPEN: SELL " + instr.delta + "Δ, " + (c.lots||RULES.sizing.baseLots) + " lots, enter " + c.entry + ", exit " + c.exit + ".";
-      return '<div class="tc-banner">' +
-        '<span class="tc-bverb">'+esc(selected)+' · GO</span>' + esc(txt) +
-        ' <span class="tc-res tc-bg-'+v.tone+'">'+v.emoji+' '+esc(v.word)+' '+num(c.pnl)+'%</span>' +
-        '</div>';
-    }
-    if (c.v==="WAIT"){
-      return '<div class="tc-banner">' +
-        '<span class="tc-bverb">'+esc(selected)+' · WAIT</span>' + dayName + ' — ⏸ WAIT, no trade. ' + esc(c.why||c.reason||"") +
-        ' <span class="tc-res tc-bg-grey">GATE CLOSED</span>' +
-        '</div>';
-    }
-    if (c.v==="REST"){
-      return '<div class="tc-banner">' +
-        '<span class="tc-bverb">'+esc(selected)+'</span>' + dayName + ' — 😴 REST. ' + esc(c.why||"") +
-        '</div>';
-    }
-    return '<div class="tc-banner"><span class="tc-bverb">'+esc(selected)+'</span>' + dayName + ' — no trade data. ' + esc(c.why||"") + '</div>';
-  }
-
-  function clockSectionHTML(){
-    return '' +
-    '<div class="tc-card" id="tc-clock-card">' +
-      '<div class="tc-h2"><span class="tc-ic">🕛</span>Tonight&rsquo;s Trade Clock</div>' +
-      '<div class="tc-clockgrid">' +
-        '<div class="tc-clockwrap"><div class="tc-tip" id="tc-tip"></div><div id="tc-clock-mount">'+clockSVG()+'</div></div>' +
-        '<div class="tc-side">' +
-          '<div class="tc-dayhint">Showing one night (18:00 NY open → 07:00 exit). Tap a calendar day below to change it. The green arc is your entry window; dots are session events (colour = how wild).</div>' +
-          '<div id="tc-banner-mount">'+clockBannerHTML()+'</div>' +
-          '<div class="tc-legmini">' +
-            '<span><i class="tc-dot" style="background:var(--tc-red)"></i>high risk</span>' +
-            '<span><i class="tc-dot" style="background:var(--tc-amber)"></i>medium</span>' +
-            '<span><i class="tc-dot" style="background:var(--tc-green)"></i>low / calm</span>' +
-            '<span><i class="tc-dot" style="background:#3b4a63;border:1px solid #58708f"></i>advisory indicator</span>' +
+      function headerHTML() {
+        var s = CAL.summary || {};
+        return '' +
+          '<div class="tc-card tc-header">' +
+          '<div class="tc-title">BTC Short Strangle — Trade Clock &amp; Year Calendar</div>' +
+          '<div class="tc-stats">' +
+          '<span class="tc-stat"><b class="g">' + (s.go != null ? s.go : "—") + '</b> GO</span>' +
+          '<span class="tc-stat"><b>' + (s.wait != null ? s.wait : "—") + '</b> WAIT</span>' +
+          '<span class="tc-stat">stop <b class="r">' + (s.stopPct != null ? s.stopPct + "%" : "—") + '</b></span>' +
+          '<span class="tc-stat">win <b class="g">' + (s.winPct != null ? s.winPct + "%" : "—") + '</b></span>' +
+          '<span class="tc-stat">cover <b>' + (s.coveragePct != null ? s.coveragePct + "%" : "—") + '</b></span>' +
           '</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }
-
-  /* -------- WEEKLY PRACTICE CARDS -------- */
-  function weekHTML(){
-    var d = RULES.days, instr = RULES.instrument, ex = RULES.exit, sz = RULES.sizing;
-    var cards = DOW.map(function(k){
-      var day = d[k]; if (!day) return "";
-      var full = {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[k];
-      if (day.trade){
-        var win = (k==="Fri") ? RULES.entry.windowIST.friday : RULES.entry.windowIST.default;
-        var prem = day.premium ? '<span class="tc-badge-prem">★ PREMIUM</span>' : '';
-        return '<div class="tc-daycard trade">'+prem+
-          '<div class="tc-dname">'+full+'</div>' +
-          '<div class="tc-dbig">✅</div>' +
-          '<div class="tc-tag-trade">TRADE</div>' +
-          '<div class="tc-drow"><span>sell</span><b>'+instr.delta+'Δ</b></div>' +
-          '<div class="tc-drow"><span>lots</span><b>'+sz.baseLots+'</b></div>' +
-          '<div class="tc-drow"><span>enter</span><b>'+istToHHMM(win[0])+'–'+istToHHMM(win[1])+'</b></div>' +
-          '<div class="tc-drow"><span>stop</span><b>'+ex.stopMultiple+'×</b></div>' +
-          '<div class="tc-drow"><span>target</span><b>'+ex.profitTargetPctMargin+'%</b></div>' +
-          '<div class="tc-drow"><span>exit</span><b>'+(ex.hardTimeIST<10?"0":"")+ex.hardTimeIST+':00</b></div>' +
-          '<div class="tc-dnote">'+esc(day.note||"")+'</div>' +
-          '</div>';
-      } else {
-        return '<div class="tc-daycard rest">' +
-          '<div class="tc-dname">'+full+'</div>' +
-          '<div class="tc-dbig">😴</div>' +
-          '<div class="tc-tag-rest">REST</div>' +
-          '<div class="tc-dnote" style="margin-top:10px">'+esc(day.note||"")+'</div>' +
+          '<div class="tc-rule">' + esc(s.rule || "") + '</div>' +
           '</div>';
       }
-    }).join("");
-    return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">📅</span>Your Week — what to do each night</div><div class="tc-week">'+cards+'</div></div>';
-  }
 
-  /* -------- IV BAND LEGEND -------- */
-  function ivLegendHTML(){
-    var segs = (RULES.ivBands||[]).map(function(bd){
-      var col = toneColor(bd.tone);
-      var hi = bd.hi>900 ? "∞" : bd.hi;
-      var sit = bd.emergencySkip ? '<div class="tc-ivsit">THE ONLY SIT-OUT</div>' : '';
-      var bg = bd.tone==="green"?"rgba(46,196,95,.14)":bd.tone==="amber"?"rgba(255,176,32,.13)":"rgba(255,77,77,.16)";
-      return '<div class="tc-ivseg" style="background:'+bg+';border-right:1px solid var(--tc-line)">' +
-        '<div class="tc-ivlab" style="color:'+col+'">'+esc(bd.label)+'</div>' +
-        '<div class="tc-ivrange">'+bd.lo+'–'+hi+'</div>' + sit +
-        '</div>';
-    }).join("");
-    var skips = (RULES.emergencySkipIf||[]).map(esc).join(" · ");
-    return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🌡️</span>IV Bands — how rich is the fear tonight</div>' +
-      '<div class="tc-ivstrip">'+segs+'</div>' +
-      '<div class="tc-ivnote">Green = reliable money zones. Amber = trade, but with care. Red PANIC is the ONE band you sit out.</div>' +
-      '<div class="tc-ivskip">🚫 Only skip if: '+skips+'</div>' +
-      '</div>';
-  }
+      /* -------- CLOCK (SVG) : rebuilt whenever selection changes -------- */
+      function clockSVG() {
+        var c = CAL.days[selected] || {};
+        var isTrade = c.v === "GO";
+        var isFri = c.dow === "Fri";
+        var win = (isFri ? RULES.entry.windowIST.friday : RULES.entry.windowIST.default) || [22, 23.5];
 
-  /* -------- WHOLE-YEAR CALENDAR -------- */
-  function calendarHTML(){
-    // group by YYYY-MM
-    var groups = {};
-    dates.forEach(function(ds){
-      var ym = ds.slice(0,7);
-      (groups[ym] = groups[ym] || []).push(ds);
-    });
-    var months = Object.keys(groups).sort().map(function(ym){
-      var y = +ym.slice(0,4), m = +ym.slice(5,7);
-      var title = MONTHS[m-1] + " " + y;
-      // weekday of 1st (Mon=0..Sun=6)
-      var first = new Date(Date.UTC(y, m-1, 1));
-      var lead = (first.getUTCDay()+6)%7; // convert Sun=0 -> Mon=0 index
-      var daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-      var wds = ['M','T','W','T','F','S','S'].map(function(w){ return '<div class="tc-wd">'+w+'</div>'; }).join("");
-      var cells = [];
-      for (var k=0;k<lead;k++) cells.push('<div class="tc-cell empty"></div>');
-      for (var d=1; d<=daysInMonth; d++){
-        var ds = ym + "-" + (d<10?"0":"") + d;
-        var c = CAL.days[ds];
-        var cls = c ? cellClass(c) : "empty";
-        if (!c){ cells.push('<div class="tc-cell empty"></div>'); continue; }
-        var glyph = cellGlyph(c);
-        var selCls = (ds===selected) ? " sel" : "";
-        cells.push('<div class="tc-cell '+cls+selCls+'" data-date="'+ds+'" title="'+ds+'">' +
-          '<span class="tc-cn">'+d+'</span>' +
-          (glyph?'<span class="tc-cg">'+glyph+'</span>':'') +
-          '</div>');
+        var W = 400, H = 400, cx = 200, cy = 205, R = 168;        // ring radius
+        var innerR = 150;                             // inner edge of ring band
+        var out = [];
+
+        out.push('<svg class="tc-clocksvg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Night trade clock">');
+
+        // ----- ring base -----
+        out.push('<circle cx="' + cx + '" cy="' + cy + '" r="' + R + '" fill="none" stroke="#1c2432" stroke-width="20"/>');
+
+        // ----- hour ticks + labels across the night -----
+        for (var h = NIGHT_START; h <= NIGHT_END; h++) {
+          var ang = nightAngle(h);
+          var a = polar(cx, cy, R + 11, ang), b = polar(cx, cy, R - 11, ang);
+          var major = (h % 2 === 0);
+          out.push('<line x1="' + a.x.toFixed(1) + '" y1="' + a.y.toFixed(1) + '" x2="' + b.x.toFixed(1) + '" y2="' + b.y.toFixed(1) + '" stroke="' + (major ? "#4a596f" : "#2c3545") + '" stroke-width="' + (major ? 2 : 1) + '"/>');
+          if (major) {
+            var lp = polar(cx, cy, R + 24, ang);
+            var lbl = ((h % 24 < 10) ? "0" : "") + (h % 24) + ":00";
+            out.push('<text x="' + lp.x.toFixed(1) + '" y="' + lp.y.toFixed(1) + '" fill="#6f7f95" font-size="10" font-weight="700" text-anchor="middle" dominant-baseline="middle">' + lbl + '</text>');
+          }
+        }
+
+        // ----- entry window arc (soft green) -----
+        var e0 = nightAngle(win[0]), e1 = nightAngle(win[1]);
+        out.push('<path d="' + arcPath(cx, cy, R, e0, e1) + '" stroke="rgba(46,196,95,.55)" stroke-width="20" fill="none" stroke-linecap="butt"/>');
+        var emid = polar(cx, cy, R - 40, (e0 + e1) / 2);
+        out.push('<text x="' + emid.x.toFixed(1) + '" y="' + emid.y.toFixed(1) + '" fill="#8ff0a9" font-size="9.5" font-weight="800" text-anchor="middle">ENTER</text>');
+        out.push('<text x="' + emid.x.toFixed(1) + '" y="' + (emid.y + 11).toFixed(1) + '" fill="#8ff0a9" font-size="8.5" text-anchor="middle">' + istToHHMM(win[0]) + '–' + istToHHMM(win[1]) + '</text>');
+
+        // ----- indicator dots (advisory) sized by weight, just inside ring -----
+        (RULES.indicators || []).forEach(function (ind, idx) {
+          var frac = (RULES.indicators.length > 1) ? idx / (RULES.indicators.length - 1) : 0.5;
+          var ang = ARC_START + 30 + frac * (ARC_SWEEP - 60); // spread along arc
+          var pr = polar(cx, cy, innerR - 18, ang);
+          var rr = 2.5 + (ind.weight || 1) * 1.6;
+          out.push('<circle class="tc-ind-dot" data-ind="' + idx + '" cx="' + pr.x.toFixed(1) + '" cy="' + pr.y.toFixed(1) + '" r="' + rr.toFixed(1) + '" fill="#3b4a63" stroke="#58708f" stroke-width="1" style="cursor:pointer"/>');
+        });
+        out.push('<text x="' + cx + '" y="' + (cy + innerR - 20) + '" fill="#43506522" font-size="8"></text>');
+
+        // ----- event markers -----
+        (RULES.events || []).forEach(function (ev, idx) {
+          var ang = nightAngle(ev.ist);
+          var p = polar(cx, cy, R, ang);
+          out.push('<circle class="tc-ev-dot" data-ev="' + idx + '" cx="' + p.x.toFixed(1) + '" cy="' + p.y.toFixed(1) + '" r="11" fill="#0a0d12" stroke="' + riskColor(ev.risk) + '" stroke-width="3" style="cursor:pointer"/>');
+          out.push('<text class="tc-ev-ic" data-ev="' + idx + '" x="' + p.x.toFixed(1) + '" y="' + (p.y + 0.5).toFixed(1) + '" font-size="12" text-anchor="middle" dominant-baseline="central" style="cursor:pointer">' + evIcon(ev) + '</text>');
+        });
+
+        // ===== CENTRE GAUGES =====
+        // (a) IV needle/arc : small gauge, top-centre inside
+        var gcx = cx, gcy = cy - 54, gR = 52;
+        var g0 = 180, g1 = 360; // a 180° gauge, left->right across the top
+        out.push('<path d="' + arcPath(gcx, gcy, gR, g0, g1) + '" stroke="#222b3a" stroke-width="9" fill="none"/>');
+        // colour segments by band proportion across a fixed 0..70 IV scale
+        var IVMAX = 70;
+        var bands = RULES.ivBands;
+        bands.forEach(function (bd) {
+          var lo = Math.max(0, bd.lo), hi = Math.min(IVMAX, bd.hi > 900 ? IVMAX : bd.hi);
+          if (hi <= lo) return;
+          var s0 = g0 + (lo / IVMAX) * (g1 - g0), s1 = g0 + (hi / IVMAX) * (g1 - g0);
+          out.push('<path d="' + arcPath(gcx, gcy, gR, s0, s1) + '" stroke="' + toneColor(bd.tone) + '" stroke-opacity="0.85" stroke-width="9" fill="none"/>');
+        });
+        if (isTrade && typeof c.iv === "number") {
+          var ivFrac = Math.max(0, Math.min(1, c.iv / IVMAX));
+          var needAng = g0 + ivFrac * (g1 - g0);
+          var np = polar(gcx, gcy, gR - 3, needAng);
+          out.push('<line x1="' + gcx + '" y1="' + gcy + '" x2="' + np.x.toFixed(1) + '" y2="' + np.y.toFixed(1) + '" stroke="#fff" stroke-width="2.5"/>');
+          out.push('<circle cx="' + gcx + '" cy="' + gcy + '" r="4" fill="#fff"/>');
+          var bd = bandFor(c.iv);
+          out.push('<text x="' + gcx + '" y="' + (gcy - 16) + '" fill="#cdd8e6" font-size="9" text-anchor="middle" font-weight="700">ATM IV</text>');
+          out.push('<text x="' + gcx + '" y="' + (gcy + 4) + '" fill="#fff" font-size="20" font-weight="900" text-anchor="middle">' + c.iv + '</text>');
+          out.push('<text x="' + gcx + '" y="' + (gcy + 18) + '" fill="' + toneColor(bd.tone) + '" font-size="10" font-weight="900" text-anchor="middle" style="text-transform:uppercase">' + esc(bd.label) + '</text>');
+        } else {
+          out.push('<text x="' + gcx + '" y="' + (gcy + 2) + '" fill="#55627a" font-size="11" text-anchor="middle">no IV</text>');
+        }
+
+        // (b) PROFIT DIAL : big emoji + pnl, centre
+        var v = verdict(c.out);
+        var pcy = cy + 34;
+        out.push('<text x="' + cx + '" y="' + pcy + '" font-size="40" text-anchor="middle" dominant-baseline="central">' + v.emoji + '</text>');
+        if (isTrade && typeof c.pnl === "number") {
+          var pcol = c.pnl >= 0 ? "var(--tc-green)" : "var(--tc-red)";
+          out.push('<text x="' + cx + '" y="' + (pcy + 34) + '" fill="' + pcol + '" font-size="22" font-weight="900" text-anchor="middle">' + num(c.pnl) + '%</text>');
+        } else {
+          out.push('<text x="' + cx + '" y="' + (pcy + 32) + '" fill="#8c9bb0" font-size="13" font-weight="800" text-anchor="middle" style="text-transform:uppercase">' + esc(v.word) + '</text>');
+        }
+
+        // (c) lot chip
+        var lots = (isTrade && c.lots != null) ? c.lots : (c.v === "EMERGENCY" ? 0 : RULES.sizing.baseLots);
+        out.push('<rect x="' + (cx - 34) + '" y="' + (cy + 86) + '" width="68" height="20" rx="10" fill="#1b2330" stroke="#35425a"/>');
+        out.push('<text x="' + cx + '" y="' + (cy + 96.5) + '" fill="#cdd8e6" font-size="11" font-weight="800" text-anchor="middle" dominant-baseline="central">' + lots + ' lots</text>');
+
+        // ----- "advisory" label near indicators -----
+        out.push('<text x="' + cx + '" y="' + (cy + R - 6) + '" fill="#4a5a72" font-size="8.5" font-weight="700" text-anchor="middle">small dots = advisory indicators</text>');
+
+        out.push('</svg>');
+        return out.join("");
       }
-      return '<div class="tc-month"><div class="tc-mtitle">'+title+'</div>' +
-        '<div class="tc-mgrid">'+wds+cells.join("")+'</div></div>';
-    }).join("");
 
-    var legend = '<div class="tc-callegend">' +
-      '<span><i class="tc-sq" style="background:#14311f;border-color:#235c37"></i>✓ win</span>' +
-      '<span><i class="tc-sq" style="background:#381618;border-color:#6e2328"></i>✗ stop</span>' +
-      '<span><i class="tc-sq" style="background:#20262f"></i>– flat</span>' +
-      '<span><i class="tc-sq" style="background:#1a2230;border-color:#36506e"></i>⏸ WAIT (gate closed)</span>' +
-      '<span><i class="tc-sq" style="background:#13171e"></i>😴 rest</span>' +
-      '<span><i class="tc-sq" style="background:#121620"></i>no data</span>' +
-      '</div>';
+      function clockBannerHTML() {
+        var c = CAL.days[selected];
+        if (!c) return "";
+        var dayName = { Mon: "MONDAY", Tue: "TUESDAY", Wed: "WEDNESDAY", Thu: "THURSDAY", Fri: "FRIDAY", Sat: "SATURDAY", Sun: "SUNDAY" }[c.dow] || (c.dow || "").toUpperCase();
+        var v = verdict(c.out);
+        var instr = RULES.instrument;
+        if (c.v === "GO") {
+          var txt = dayName + " — GATE OPEN: SELL " + instr.delta + "Δ, " + (c.lots || RULES.sizing.baseLots) + " lots, enter " + c.entry + ", exit " + c.exit + ".";
+          return '<div class="tc-banner">' +
+            '<span class="tc-bverb">' + esc(selected) + ' · GO</span>' + esc(txt) +
+            ' <span class="tc-res tc-bg-' + v.tone + '">' + v.emoji + ' ' + esc(v.word) + ' ' + num(c.pnl) + '%</span>' +
+            '</div>';
+        }
+        if (c.v === "WAIT") {
+          return '<div class="tc-banner">' +
+            '<span class="tc-bverb">' + esc(selected) + ' · WAIT</span>' + dayName + ' — ⏸ WAIT, no trade. ' + esc(c.why || c.reason || "") +
+            ' <span class="tc-res tc-bg-grey">GATE CLOSED</span>' +
+            '</div>';
+        }
+        if (c.v === "REST") {
+          return '<div class="tc-banner">' +
+            '<span class="tc-bverb">' + esc(selected) + '</span>' + dayName + ' — 😴 REST. ' + esc(c.why || "") +
+            '</div>';
+        }
+        return '<div class="tc-banner"><span class="tc-bverb">' + esc(selected) + '</span>' + dayName + ' — no trade data. ' + esc(c.why || "") + '</div>';
+      }
 
-    return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🗓️</span>The Whole Year — tap any night</div>' +
-      legend +
-      '<div class="tc-months">'+months+'</div>' +
-      '<div class="tc-detail hide" id="tc-detail"></div>' +
-      '</div>';
-  }
+      function clockSectionHTML() {
+        return '' +
+          '<div class="tc-card" id="tc-clock-card">' +
+          '<div class="tc-h2"><span class="tc-ic">🕛</span>Tonight&rsquo;s Trade Clock</div>' +
+          '<div class="tc-clockgrid">' +
+          '<div class="tc-clockwrap"><div class="tc-tip" id="tc-tip"></div><div id="tc-clock-mount">' + clockSVG() + '</div></div>' +
+          '<div class="tc-side">' +
+          '<div class="tc-dayhint">Showing one night (18:00 NY open → 07:00 exit). Tap a calendar day below to change it. The green arc is your entry window; dots are session events (colour = how wild).</div>' +
+          '<div id="tc-banner-mount">' + clockBannerHTML() + '</div>' +
+          '<div class="tc-legmini">' +
+          '<span><i class="tc-dot" style="background:var(--tc-red)"></i>high risk</span>' +
+          '<span><i class="tc-dot" style="background:var(--tc-amber)"></i>medium</span>' +
+          '<span><i class="tc-dot" style="background:var(--tc-green)"></i>low / calm</span>' +
+          '<span><i class="tc-dot" style="background:#3b4a63;border:1px solid #58708f"></i>advisory indicator</span>' +
+          '</div>' +
+          '</div>' +
+          '</div>' +
+          '</div>';
+      }
 
-  function detailHTML(ds){
-    var c = CAL.days[ds]; if (!c) return "";
-    var full = {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday",Sat:"Saturday",Sun:"Sunday"}[c.dow]||c.dow;
-    var v = c.v==="WAIT" ? {emoji:"⏸", word:"WAIT", tone:"grey"} : verdict(c.out);
-    var head = '<div class="tc-dhead"><div class="tc-ddate">'+esc(ds)+' · '+esc(full)+'</div>' +
-      '<div class="tc-dverdict tc-tone-'+v.tone+'">'+v.emoji+' '+esc(v.word)+'</div></div>';
-    var kv = "";
-    if (c.v==="GO"){
-      var bd = bandFor(c.iv);
-      kv = '<div class="tc-dkv">' +
-        kvBox("IV", c.iv + " · " + (bd?bd.label:"")) +
-        kvBox("Entry → Exit", esc(c.entry)+" → "+esc(c.exit)) +
-        kvBox("Lots", c.lots) +
-        kvBox("Outcome", esc(c.out)) +
-        kvBox("P&amp;L", '<span class="tc-tone-'+(c.pnl>=0?"green":"red")+'">'+num(c.pnl)+'%</span>') +
-        kvBox("BTC move", num(c.move)+"%") +
-        '</div>';
-    } else if (c.v==="WAIT"){
-      kv = '<div class="tc-dkv">' +
-        kvBox("IV", (c.iv!=null?c.iv:"—") + (c.band?(" · "+c.band):"")) +
-        kvBox("Why WAIT", esc(c.reason||"gate closed")) +
-        kvBox("Action", "No trade — protect capital") +
-        '</div>';
-    } else {
-      kv = '<div class="tc-dkv">'+kvBox("Outcome", esc(c.why||c.v||"—"))+'</div>';
-    }
-    var why = c.why ? '<div class="tc-dwhy">📝 '+esc(c.why)+'</div>' : "";
-    var fix = c.fix ? '<div class="tc-dfix">⟳ <b>Next time:</b> '+esc(c.fix)+'</div>' : "";
-    return head + kv + why + fix;
-  }
-  function kvBox(k,val){ return '<div class="tc-kv"><div class="k">'+k+'</div><div class="val">'+val+'</div></div>'; }
+      /* -------- WEEKLY PRACTICE CARDS -------- */
+      function weekHTML() {
+        var d = RULES.days, instr = RULES.instrument, ex = RULES.exit, sz = RULES.sizing;
+        var cards = DOW.map(function (k) {
+          var day = d[k]; if (!day) return "";
+          var full = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" }[k];
+          if (day.trade) {
+            var win = (k === "Fri") ? RULES.entry.windowIST.friday : RULES.entry.windowIST.default;
+            var prem = day.premium ? '<span class="tc-badge-prem">★ PREMIUM</span>' : '';
+            return '<div class="tc-daycard trade">' + prem +
+              '<div class="tc-dname">' + full + '</div>' +
+              '<div class="tc-dbig">✅</div>' +
+              '<div class="tc-tag-trade">TRADE</div>' +
+              '<div class="tc-drow"><span>sell</span><b>' + instr.delta + 'Δ</b></div>' +
+              '<div class="tc-drow"><span>lots</span><b>' + sz.baseLots + '</b></div>' +
+              '<div class="tc-drow"><span>enter</span><b>' + istToHHMM(win[0]) + '–' + istToHHMM(win[1]) + '</b></div>' +
+              '<div class="tc-drow"><span>stop</span><b>' + ex.stopMultiple + '×</b></div>' +
+              '<div class="tc-drow"><span>target</span><b>' + ex.profitTargetPctMargin + '%</b></div>' +
+              '<div class="tc-drow"><span>exit</span><b>' + (ex.hardTimeIST < 10 ? "0" : "") + ex.hardTimeIST + ':00</b></div>' +
+              '<div class="tc-dnote">' + esc(day.note || "") + '</div>' +
+              '</div>';
+          } else {
+            return '<div class="tc-daycard rest">' +
+              '<div class="tc-dname">' + full + '</div>' +
+              '<div class="tc-dbig">😴</div>' +
+              '<div class="tc-tag-rest">REST</div>' +
+              '<div class="tc-dnote" style="margin-top:10px">' + esc(day.note || "") + '</div>' +
+              '</div>';
+          }
+        }).join("");
+        return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">📅</span>Your Week — what to do each night</div><div class="tc-week">' + cards + '</div></div>';
+      }
 
-  /* -------- JOURNEY TIMELINE -------- */
-  function journeyHTML(){
-    var win = RULES.entry.windowIST.default;
-    var pins = (RULES.events||[]).map(function(ev, idx){
-      var f = nightFrac(ev.ist)*100;
-      var above = (idx%2===0);
-      return '<div class="tc-jpin tc-jrisk-'+ev.risk+(above?' above':'')+'" style="left:'+f.toFixed(2)+'%">' +
-        '<div class="tc-jicon">'+evIcon(ev)+'</div>' +
-        '<div class="tc-jname">'+esc(ev.name)+'</div>' +
-        '<div class="tc-jmeta">'+istToHHMM(ev.ist)+' · RV '+ev.rvAvg+'%</div>' +
-        '<div class="tc-jnote">'+esc(ev.note||"")+'</div>' +
-        '<div class="tc-jtick"></div>' +
-        '</div>';
-    }).join("");
-    var ef0 = nightFrac(win[0])*100, ef1 = nightFrac(win[1])*100;
-    var entryBar = '<div class="tc-jentry" style="left:'+ef0.toFixed(2)+'%;width:'+(ef1-ef0).toFixed(2)+'%"></div>' +
-                   '<div class="tc-jentrylabel" style="left:'+((ef0+ef1)/2).toFixed(2)+'%">▲ entry window</div>';
-    var london = (RULES.events||[]).filter(function(e){return e.id==="londonClose";})[0];
-    var caption = 'London close (~'+(london?istToHHMM(london.ist):"21:30")+') is the night&rsquo;s wildest moment — never sell into it; wait for the IV turn. The overnight hold is calmer.';
-    return '<div class="tc-card tc-journey"><div class="tc-h2"><span class="tc-ic">🛣️</span>The Night&rsquo;s Journey — 18:00 to 07:00</div>' +
-      '<div class="tc-jbar-wrap"><div class="tc-jtrack">'+entryBar+pins+'</div>' +
-        '<div class="tc-jexit" style="position:absolute;right:16px;top:-2px"><div class="tc-jicon" style="font-size:20px">🚪</div><div class="tc-jname">07:00 EXIT</div></div>' +
-        '<div class="tc-jends"><span>18:00 · NY open</span><span>07:00 · exit</span></div>' +
-      '</div>' +
-      '<div class="tc-jcaption">'+caption+'</div>' +
-      '</div>';
-  }
+      /* -------- IV BAND LEGEND -------- */
+      function ivLegendHTML() {
+        var segs = (RULES.ivBands || []).map(function (bd) {
+          var col = toneColor(bd.tone);
+          var hi = bd.hi > 900 ? "∞" : bd.hi;
+          var sit = bd.emergencySkip ? '<div class="tc-ivsit">THE ONLY SIT-OUT</div>' : '';
+          var bg = bd.tone === "green" ? "rgba(46,196,95,.14)" : bd.tone === "amber" ? "rgba(255,176,32,.13)" : "rgba(255,77,77,.16)";
+          return '<div class="tc-ivseg" style="background:' + bg + ';border-right:1px solid var(--tc-line)">' +
+            '<div class="tc-ivlab" style="color:' + col + '">' + esc(bd.label) + '</div>' +
+            '<div class="tc-ivrange">' + bd.lo + '–' + hi + '</div>' + sit +
+            '</div>';
+        }).join("");
+        var skips = (RULES.emergencySkipIf || []).map(esc).join(" · ");
+        return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🌡️</span>IV Bands — how rich is the fear tonight</div>' +
+          '<div class="tc-ivstrip">' + segs + '</div>' +
+          '<div class="tc-ivnote">Green = reliable money zones. Amber = trade, but with care. Red PANIC is the ONE band you sit out.</div>' +
+          '<div class="tc-ivskip">🚫 Only skip if: ' + skips + '</div>' +
+          '</div>';
+      }
 
-  /* -------- THE GATE (hero) -------- */
-  function gateHTML(){
-    var s = CAL.summary || {};
-    var caveat = (INDIC && INDIC.basis) ? INDIC.basis
-               : (FIVEYR && FIVEYR.basis) ? FIVEYR.basis
-               : "5-yr signals use DVOL + modelled legs; 1-yr real option IV.";
-    var chips =
-      '<span class="tc-gchip"><b class="g">'+(s.go!=null?s.go:"—")+'</b> GO nights</span>' +
-      '<span class="tc-gchip"><b class="a">'+(s.wait!=null?s.wait:"—")+'</b> WAIT</span>' +
-      '<span class="tc-gchip">stop <b class="r">'+(s.stopPct!=null?s.stopPct+"%":"—")+'</b></span>' +
-      '<span class="tc-gchip">win <b class="g">'+(s.winPct!=null?s.winPct+"%":"—")+'</b></span>' +
-      '<span class="tc-gchip">coverage <b class="b">'+(s.coveragePct!=null?s.coveragePct+"%":"—")+'</b></span>';
-    return '' +
-    '<div class="tc-card tc-gate">' +
-      '<div class="tc-gate-top">' +
-        '<div class="tc-h2" style="margin:0"><span class="tc-ic">🚦</span>The Gate</div>' +
-        '<span class="tc-gate-kick">one rule · trade the setup, not the day</span>' +
-      '</div>' +
-      '<div class="tc-gate-rule">' +
-        '<div class="tc-gate-box go">' +
+      /* -------- WHOLE-YEAR CALENDAR -------- */
+      function calendarHTML() {
+        // group by YYYY-MM
+        var groups = {};
+        dates.forEach(function (ds) {
+          var ym = ds.slice(0, 7);
+          (groups[ym] = groups[ym] || []).push(ds);
+        });
+        var months = Object.keys(groups).sort().map(function (ym) {
+          var y = +ym.slice(0, 4), m = +ym.slice(5, 7);
+          var title = MONTHS[m - 1] + " " + y;
+          // weekday of 1st (Mon=0..Sun=6)
+          var first = new Date(Date.UTC(y, m - 1, 1));
+          var lead = (first.getUTCDay() + 6) % 7; // convert Sun=0 -> Mon=0 index
+          var daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+          var wds = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(function (w) { return '<div class="tc-wd">' + w + '</div>'; }).join("");
+          var cells = [];
+          for (var k = 0; k < lead; k++) cells.push('<div class="tc-cell empty"></div>');
+          for (var d = 1; d <= daysInMonth; d++) {
+            var ds = ym + "-" + (d < 10 ? "0" : "") + d;
+            var c = CAL.days[ds];
+            var cls = c ? cellClass(c) : "empty";
+            if (!c) { cells.push('<div class="tc-cell empty"></div>'); continue; }
+            var glyph = cellGlyph(c);
+            var selCls = (ds === selected) ? " sel" : "";
+            cells.push('<div class="tc-cell ' + cls + selCls + '" data-date="' + ds + '" title="' + ds + '">' +
+              '<span class="tc-cn">' + d + '</span>' +
+              (glyph ? '<span class="tc-cg">' + glyph + '</span>' : '') +
+              '</div>');
+          }
+          return '<div class="tc-month"><div class="tc-mtitle">' + title + '</div>' +
+            '<div class="tc-mgrid">' + wds + cells.join("") + '</div></div>';
+        }).join("");
+
+        var legend = '<div class="tc-callegend">' +
+          '<span><i class="tc-sq" style="background:#14311f;border-color:#235c37"></i>✓ win</span>' +
+          '<span><i class="tc-sq" style="background:#381618;border-color:#6e2328"></i>✗ stop</span>' +
+          '<span><i class="tc-sq" style="background:#20262f"></i>– flat</span>' +
+          '<span><i class="tc-sq" style="background:#1a2230;border-color:#36506e"></i>⏸ WAIT (gate closed)</span>' +
+          '<span><i class="tc-sq" style="background:#13171e"></i>😴 rest</span>' +
+          '<span><i class="tc-sq" style="background:#121620"></i>no data</span>' +
+          '</div>';
+
+        return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🗓️</span>The Whole Year — tap any night</div>' +
+          legend +
+          '<div class="tc-months">' + months + '</div>' +
+          '<div class="tc-detail hide" id="tc-detail"></div>' +
+          '</div>';
+      }
+
+      function detailHTML(ds) {
+        var c = CAL.days[ds]; if (!c) return "";
+        var full = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" }[c.dow] || c.dow;
+        var v = c.v === "WAIT" ? { emoji: "⏸", word: "WAIT", tone: "grey" } : verdict(c.out);
+        var head = '<div class="tc-dhead"><div class="tc-ddate">' + esc(ds) + ' · ' + esc(full) + '</div>' +
+          '<div class="tc-dverdict tc-tone-' + v.tone + '">' + v.emoji + ' ' + esc(v.word) + '</div></div>';
+        var kv = "";
+        if (c.v === "GO") {
+          var bd = bandFor(c.iv);
+          kv = '<div class="tc-dkv">' +
+            kvBox("IV", c.iv + " · " + (bd ? bd.label : "")) +
+            kvBox("Entry → Exit", esc(c.entry) + " → " + esc(c.exit)) +
+            kvBox("Lots", c.lots) +
+            kvBox("Outcome", esc(c.out)) +
+            kvBox("P&amp;L", '<span class="tc-tone-' + (c.pnl >= 0 ? "green" : "red") + '">' + num(c.pnl) + '%</span>') +
+            kvBox("BTC move", num(c.move) + "%") +
+            '</div>';
+        } else if (c.v === "WAIT") {
+          kv = '<div class="tc-dkv">' +
+            kvBox("IV", (c.iv != null ? c.iv : "—") + (c.band ? (" · " + c.band) : "")) +
+            kvBox("Why WAIT", esc(c.reason || "gate closed")) +
+            kvBox("Action", "No trade — protect capital") +
+            '</div>';
+        } else {
+          kv = '<div class="tc-dkv">' + kvBox("Outcome", esc(c.why || c.v || "—")) + '</div>';
+        }
+        var why = c.why ? '<div class="tc-dwhy">📝 ' + esc(c.why) + '</div>' : "";
+        var fix = c.fix ? '<div class="tc-dfix">⟳ <b>Next time:</b> ' + esc(c.fix) + '</div>' : "";
+        return head + kv + why + fix;
+      }
+      function kvBox(k, val) { return '<div class="tc-kv"><div class="k">' + k + '</div><div class="val">' + val + '</div></div>'; }
+
+      /* -------- JOURNEY TIMELINE -------- */
+      function journeyHTML() {
+        var win = RULES.entry.windowIST.default;
+        var pins = (RULES.events || []).map(function (ev, idx) {
+          var f = nightFrac(ev.ist) * 100;
+          var above = (idx % 2 === 0);
+          return '<div class="tc-jpin tc-jrisk-' + ev.risk + (above ? ' above' : '') + '" style="left:' + f.toFixed(2) + '%">' +
+            '<div class="tc-jicon">' + evIcon(ev) + '</div>' +
+            '<div class="tc-jname">' + esc(ev.name) + '</div>' +
+            '<div class="tc-jmeta">' + istToHHMM(ev.ist) + ' · RV ' + ev.rvAvg + '%</div>' +
+            '<div class="tc-jnote">' + esc(ev.note || "") + '</div>' +
+            '<div class="tc-jtick"></div>' +
+            '</div>';
+        }).join("");
+        var ef0 = nightFrac(win[0]) * 100, ef1 = nightFrac(win[1]) * 100;
+        var entryBar = '<div class="tc-jentry" style="left:' + ef0.toFixed(2) + '%;width:' + (ef1 - ef0).toFixed(2) + '%"></div>' +
+          '<div class="tc-jentrylabel" style="left:' + ((ef0 + ef1) / 2).toFixed(2) + '%">▲ entry window</div>';
+        var london = (RULES.events || []).filter(function (e) { return e.id === "londonClose"; })[0];
+        var caption = 'London close (~' + (london ? istToHHMM(london.ist) : "21:30") + ') is the night&rsquo;s wildest moment — never sell into it; wait for the IV turn. The overnight hold is calmer.';
+        return '<div class="tc-card tc-journey"><div class="tc-h2"><span class="tc-ic">🛣️</span>The Night&rsquo;s Journey — 18:00 to 07:00</div>' +
+          '<div class="tc-jbar-wrap"><div class="tc-jtrack">' + entryBar + pins + '</div>' +
+          '<div class="tc-jexit" style="position:absolute;right:16px;top:-2px"><div class="tc-jicon" style="font-size:20px">🚪</div><div class="tc-jname">07:00 EXIT</div></div>' +
+          '<div class="tc-jends"><span>18:00 · NY open</span><span>07:00 · exit</span></div>' +
+          '</div>' +
+          '<div class="tc-jcaption">' + caption + '</div>' +
+          '</div>';
+      }
+
+      /* -------- THE GATE (hero) -------- */
+      function gateHTML() {
+        var s = CAL.summary || {};
+        var caveat = (INDIC && INDIC.basis) ? INDIC.basis
+          : (FIVEYR && FIVEYR.basis) ? FIVEYR.basis
+            : "5-yr signals use DVOL + modelled legs; 1-yr real option IV.";
+        var chips =
+          '<span class="tc-gchip"><b class="g">' + (s.go != null ? s.go : "—") + '</b> GO nights</span>' +
+          '<span class="tc-gchip"><b class="a">' + (s.wait != null ? s.wait : "—") + '</b> WAIT</span>' +
+          '<span class="tc-gchip">stop <b class="r">' + (s.stopPct != null ? s.stopPct + "%" : "—") + '</b></span>' +
+          '<span class="tc-gchip">win <b class="g">' + (s.winPct != null ? s.winPct + "%" : "—") + '</b></span>' +
+          '<span class="tc-gchip">coverage <b class="b">' + (s.coveragePct != null ? s.coveragePct + "%" : "—") + '</b></span>';
+        return '' +
+          '<div class="tc-card tc-gate">' +
+          '<div class="tc-gate-top">' +
+          '<div class="tc-h2" style="margin:0"><span class="tc-ic">🚦</span>The Gate</div>' +
+          '<span class="tc-gate-kick">one rule · trade the setup, not the day</span>' +
+          '</div>' +
+          '<div class="tc-gate-rule">' +
+          '<div class="tc-gate-box go">' +
           '<div class="tc-gate-lab">✅ GO</div>' +
           '<div class="tc-gate-desc"><b>Calm tape + the IV turn.</b> Speed&lt;1.0 &middot; low VoV &middot; quiet Range24 &middot; price near VWAP — <b>and</b> DVOL gently falling (the crush). Then sell the strangle.</div>' +
-        '</div>' +
-        '<div class="tc-gate-box wait">' +
+          '</div>' +
+          '<div class="tc-gate-box wait">' +
           '<div class="tc-gate-lab">⏸ WAIT</div>' +
           '<div class="tc-gate-desc"><b>Anything else.</b> Fast tape, spiking DVOL, stretched from VWAP, or no clean turn — stand aside and keep your capital. No blind daily entry.</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="tc-gate-chips">'+chips+'</div>' +
-      '<div class="tc-gate-caveat"><span class="tc-ic">⚠</span><span>'+esc(caveat)+'</span></div>' +
-    '</div>';
-  }
+          '</div>' +
+          '</div>' +
+          '<div class="tc-gate-chips">' + chips + '</div>' +
+          '<div class="tc-gate-caveat"><span class="tc-ic">⚠</span><span>' + esc(caveat) + '</span></div>' +
+          '</div>';
+      }
 
-  /* -------- PER-WEEKDAY PLAN STRIP -------- */
-  function planHTML(){
-    if (!WEEKDAY) return "";
-    var order = ["Mon","Tue","Wed","Thu","Fri"];
-    var legIcon = { call:"📈", put:"📉" };
-    var cards = order.map(function(k){
-      var w = WEEKDAY[k]; if (!w) return "";
-      var best = (ENTRYT && ENTRYT[k] && ENTRYT[k].best) ? ENTRYT[k].best : (w.bestEntry || "—");
-      var fy = (FIVEYR && FIVEYR.weekday && FIVEYR.weekday[k]) ? FIVEYR.weekday[k] : null;
-      var danger = fy ? fy.danger3 : null;
-      var lvl = danger!=null ? dangerLevel(danger) : "amber";
-      var isFri = (k==="Fri");
-      var full = {Mon:"Monday",Tue:"Tuesday",Wed:"Wednesday",Thu:"Thursday",Fri:"Friday"}[k];
-      var leg = (w.hurtLeg==="call") ? "call" : "put";
-      var stopCls = w.stop<=28 ? "green" : w.stop<=36 ? "amber" : "red";
-      var dCls = danger==null ? "" : (danger<=10 ? "green" : danger<=16 ? "amber" : "red");
-      return '<div class="tc-plancard lv-'+lvl+(isFri?' prem':'')+'">' +
-        (isFri?'<span class="tc-pl-badge">★ PREMIUM</span>':'') +
-        '<div class="tc-pl-day">'+(isFri?'<span class="tc-pl-star">★</span>':'')+full+'</div>' +
-        '<div class="tc-pl-time">'+esc(best)+' <span>IST entry</span></div>' +
-        '<div class="tc-pl-metrics">' +
-          '<div class="tc-pl-metric"><div class="mk">5yr stop</div><div class="mv '+stopCls+'">'+w.stop+'%</div></div>' +
-          '<div class="tc-pl-metric"><div class="mk">danger&gt;3%</div><div class="mv '+dCls+'">'+(danger!=null?danger+"%":"—")+'</div></div>' +
-        '</div>' +
-        '<div class="tc-pl-leg '+leg+'">'+(legIcon[leg]||"")+' '+(leg==="call"?"CALL leg breaks":"PUT leg breaks")+'</div>' +
-        '<div class="tc-pl-note">'+esc(w.note||"")+'</div>' +
-      '</div>';
-    }).join("");
-    return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🗂️</span>The Weekday Playbook — best entry &amp; which leg to guard</div>' +
-      '<div class="tc-plan">'+cards+'</div>' +
-      '<div class="tc-subnote" style="margin:12px 0 0">Entry time = the <b>sweet spot</b> (past the 23:30–00:30 cascade peak, still keeps premium) — entering later cuts stops more but earns almost nothing. Card colour tracks <b>danger&gt;3%</b> (overnight moves big enough to hit the 2× stop). Friday is calmest — your premium night.</div>' +
-    '</div>';
-  }
+      /* -------- PER-WEEKDAY PLAN STRIP -------- */
+      function planHTML() {
+        if (!WEEKDAY) return "";
+        var order = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+        var legIcon = { call: "📈", put: "📉" };
+        var cards = order.map(function (k) {
+          var w = WEEKDAY[k]; if (!w) return "";
+          var best = (ENTRYT && ENTRYT[k] && ENTRYT[k].best) ? ENTRYT[k].best : (w.bestEntry || "—");
+          var fy = (FIVEYR && FIVEYR.weekday && FIVEYR.weekday[k]) ? FIVEYR.weekday[k] : null;
+          var danger = fy ? fy.danger3 : null;
+          var lvl = danger != null ? dangerLevel(danger) : "amber";
+          var isFri = (k === "Fri");
+          var full = { Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday" }[k];
+          var leg = (w.hurtLeg === "call") ? "call" : "put";
+          var stopCls = w.stop <= 28 ? "green" : w.stop <= 36 ? "amber" : "red";
+          var dCls = danger == null ? "" : (danger <= 10 ? "green" : danger <= 16 ? "amber" : "red");
+          return '<div class="tc-plancard lv-' + lvl + (isFri ? ' prem' : '') + '">' +
+            (isFri ? '<span class="tc-pl-badge">★ PREMIUM</span>' : '') +
+            '<div class="tc-pl-day">' + (isFri ? '<span class="tc-pl-star">★</span>' : '') + full + '</div>' +
+            '<div class="tc-pl-time">' + esc(best) + ' <span>IST entry</span></div>' +
+            '<div class="tc-pl-metrics">' +
+            '<div class="tc-pl-metric"><div class="mk">5yr stop</div><div class="mv ' + stopCls + '">' + w.stop + '%</div></div>' +
+            '<div class="tc-pl-metric"><div class="mk">danger&gt;3%</div><div class="mv ' + dCls + '">' + (danger != null ? danger + "%" : "—") + '</div></div>' +
+            '</div>' +
+            '<div class="tc-pl-leg ' + leg + '">' + (legIcon[leg] || "") + ' ' + (leg === "call" ? "CALL leg breaks" : "PUT leg breaks") + '</div>' +
+            '<div class="tc-pl-note">' + esc(w.note || "") + '</div>' +
+            '</div>';
+        }).join("");
+        return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🗂️</span>The Weekday Playbook — best entry &amp; which leg to guard</div>' +
+          '<div class="tc-plan">' + cards + '</div>' +
+          '<div class="tc-subnote" style="margin:12px 0 0">Entry time = the <b>sweet spot</b> (past the 23:30–00:30 cascade peak, still keeps premium) — entering later cuts stops more but earns almost nothing. Card colour tracks <b>danger&gt;3%</b> (overnight moves big enough to hit the 2× stop). Friday is calmest — your premium night.</div>' +
+          '</div>';
+      }
 
-  /* -------- FIVE-YEAR HEATMAPS (weekday / month / cascade) -------- */
-  function heatmapsHTML(){
-    var wdOrder = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-    var wdCells = wdOrder.map(function(k){
-      var fy = (FIVEYR && FIVEYR.weekday && FIVEYR.weekday[k]) ? FIVEYR.weekday[k] : null;
-      if (k==="Sat") return '<div class="tc-hcell off"><div class="hl">Sat</div><div class="hv">—</div><div class="hs">off</div></div>';
-      if (!fy) return '<div class="tc-hcell off"><div class="hl">'+k+'</div><div class="hv">—</div><div class="hs">'+(k==="Sun"?"off":"")+'</div></div>';
-      if (k==="Sun") return '<div class="tc-hcell off"><div class="hl">Sun</div><div class="hv">'+fy.danger3+'%</div><div class="hs">off</div></div>';
-      var d=fy.danger3;
-      return '<div class="tc-hcell" style="background:'+dangerBg(d)+';border-color:'+dangerBorder(d)+'">' +
-        '<div class="hl" style="color:'+dangerInk(d)+'">'+k+'</div>' +
-        '<div class="hv" style="color:'+dangerInk(d)+'">'+d+'%</div>' +
-        '<div class="hs" style="color:'+dangerInk(d)+'">danger</div></div>';
-    }).join("");
+      /* -------- FIVE-YEAR HEATMAPS (weekday / month / cascade) -------- */
+      function heatmapsHTML() {
+        var wdOrder = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+        var wdCells = wdOrder.map(function (k) {
+          var fy = (FIVEYR && FIVEYR.weekday && FIVEYR.weekday[k]) ? FIVEYR.weekday[k] : null;
+          if (k === "Sat") return '<div class="tc-hcell off"><div class="hl">Sat</div><div class="hv">—</div><div class="hs">off</div></div>';
+          if (!fy) return '<div class="tc-hcell off"><div class="hl">' + k + '</div><div class="hv">—</div><div class="hs">' + (k === "Sun" ? "off" : "") + '</div></div>';
+          if (k === "Sun") return '<div class="tc-hcell off"><div class="hl">Sun</div><div class="hv">' + fy.danger3 + '%</div><div class="hs">off</div></div>';
+          var d = fy.danger3;
+          return '<div class="tc-hcell" style="background:' + dangerBg(d) + ';border-color:' + dangerBorder(d) + '">' +
+            '<div class="hl" style="color:' + dangerInk(d) + '">' + k + '</div>' +
+            '<div class="hv" style="color:' + dangerInk(d) + '">' + d + '%</div>' +
+            '<div class="hs" style="color:' + dangerInk(d) + '">danger</div></div>';
+        }).join("");
 
-    var moOrder = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    var moCells = moOrder.map(function(k){
-      var fy = (FIVEYR && FIVEYR.month && FIVEYR.month[k]) ? FIVEYR.month[k] : null;
-      if (!fy) return '<div class="tc-hcell off"><div class="hl">'+k+'</div><div class="hv">—</div></div>';
-      var d=fy.danger3;
-      return '<div class="tc-hcell" style="background:'+dangerBg(d)+';border-color:'+dangerBorder(d)+'">' +
-        '<div class="hl" style="color:'+dangerInk(d)+'">'+k+'</div>' +
-        '<div class="hv" style="color:'+dangerInk(d)+'">'+d+'%</div></div>';
-    }).join("");
+        var moOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var moCells = moOrder.map(function (k) {
+          var fy = (FIVEYR && FIVEYR.month && FIVEYR.month[k]) ? FIVEYR.month[k] : null;
+          if (!fy) return '<div class="tc-hcell off"><div class="hl">' + k + '</div><div class="hv">—</div></div>';
+          var d = fy.danger3;
+          return '<div class="tc-hcell" style="background:' + dangerBg(d) + ';border-color:' + dangerBorder(d) + '">' +
+            '<div class="hl" style="color:' + dangerInk(d) + '">' + k + '</div>' +
+            '<div class="hv" style="color:' + dangerInk(d) + '">' + d + '%</div></div>';
+        }).join("");
 
-    // cascade clock — fixed 5-year relative cascade frequency
-    var casc = [
-      {t:"22:30",v:77}, {t:"23:30",v:82}, {t:"00:30",v:82}, {t:"01:30",v:66},
-      {t:"02:30",v:64}, {t:"03:30",v:46}, {t:"04:30",v:32}, {t:"05:30",v:43}, {t:"06:30",v:58}
-    ];
-    var cmax=82;
-    var cascCols = casc.map(function(b){
-      var peak = (b.v>=80), enter = (b.t==="01:30");
-      var col = b.v>=75 ? "var(--tc-red)" : b.v>=55 ? "var(--tc-amber)" : "var(--tc-green)";
-      var hpx = Math.round((b.v/cmax)*96)+6;
-      return '<div class="tc-casc-col'+(peak?' peak':'')+(enter?' enter':'')+'">' +
-        '<div class="tc-casc-val">'+b.v+'</div>' +
-        '<div class="tc-casc-bar" style="height:'+hpx+'px;background:'+col+'"></div>' +
-        '<div class="tc-casc-time">'+b.t+'</div>' +
-        (enter?'<div class="tc-casc-enter">▲ enter</div>':'') +
-      '</div>';
-    }).join("");
+        // cascade clock — fixed 5-year relative cascade frequency
+        var casc = [
+          { t: "22:30", v: 77 }, { t: "23:30", v: 82 }, { t: "00:30", v: 82 }, { t: "01:30", v: 66 },
+          { t: "02:30", v: 64 }, { t: "03:30", v: 46 }, { t: "04:30", v: 32 }, { t: "05:30", v: 43 }, { t: "06:30", v: 58 }
+        ];
+        var cmax = 82;
+        var cascCols = casc.map(function (b) {
+          var peak = (b.v >= 80), enter = (b.t === "01:30");
+          var col = b.v >= 75 ? "var(--tc-red)" : b.v >= 55 ? "var(--tc-amber)" : "var(--tc-green)";
+          var hpx = Math.round((b.v / cmax) * 96) + 6;
+          return '<div class="tc-casc-col' + (peak ? ' peak' : '') + (enter ? ' enter' : '') + '">' +
+            '<div class="tc-casc-val">' + b.v + '</div>' +
+            '<div class="tc-casc-bar" style="height:' + hpx + 'px;background:' + col + '"></div>' +
+            '<div class="tc-casc-time">' + b.t + '</div>' +
+            (enter ? '<div class="tc-casc-enter">▲ enter</div>' : '') +
+            '</div>';
+        }).join("");
 
-    var span = (FIVEYR && FIVEYR.span) ? FIVEYR.span : "5 years";
-    var nights = (FIVEYR && FIVEYR.nights) ? (" · "+FIVEYR.nights+" nights") : "";
+        var span = (FIVEYR && FIVEYR.span) ? FIVEYR.span : "5 years";
+        var nights = (FIVEYR && FIVEYR.nights) ? (" · " + FIVEYR.nights + " nights") : "";
 
-    return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🔥</span>Five-Year Danger Maps</div>' +
-      '<div class="tc-subnote" style="margin-top:-4px">'+esc(span)+esc(nights)+' — cells show <b>danger&gt;3%</b>: how often the overnight move was big enough to threaten the 2× stop. Greener = safer.</div>' +
-      '<div class="tc-heatwrap">' +
-        '<div>' +
+        return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🔥</span>Five-Year Danger Maps</div>' +
+          '<div class="tc-subnote" style="margin-top:-4px">' + esc(span) + esc(nights) + ' — cells show <b>danger&gt;3%</b>: how often the overnight move was big enough to threaten the 2× stop. Greener = safer.</div>' +
+          '<div class="tc-heatwrap">' +
+          '<div>' +
           '<div class="tc-subh">Weekday <span class="tc-subh-tag">· Fri calmest · Wed/Mon hottest · Sun OFF</span></div>' +
-          '<div class="tc-heatrow tc-heat-wd">'+wdCells+'</div>' +
+          '<div class="tc-heatrow tc-heat-wd">' + wdCells + '</div>' +
           '<div class="tc-heat-scale">safer<span class="tc-heat-bar"></span>riskier</div>' +
-        '</div>' +
-        '<div>' +
+          '</div>' +
+          '<div>' +
           '<div class="tc-subh">Month <span class="tc-subh-tag">· 12-month seasonality</span></div>' +
-          '<div class="tc-heatrow tc-heat-mo">'+moCells+'</div>' +
+          '<div class="tc-heatrow tc-heat-mo">' + moCells + '</div>' +
           '<div class="tc-heat-tags"><span class="lean">▲ lean in: Sep &middot; Oct</span><span class="ease">ease off: Jan–Mar &middot; Nov ▼</span></div>' +
-        '</div>' +
-        '<div class="tc-heat-wide">' +
+          '</div>' +
+          '<div class="tc-heat-wide">' +
           '<div class="tc-subh">Cascade Clock <span class="tc-subh-tag">· liquidation-sweep frequency by IST hour</span></div>' +
           '<div class="tc-subnote">Taller bar = more liquidation cascades. Sweeps peak <b>23:30–00:30 IST</b> — enter <b>after</b> them (~01:00), not into them.</div>' +
-          '<div class="tc-cascade">'+cascCols+'</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>';
-  }
-
-  /* -------- INDICATOR SCORECARD -------- */
-  function scorecardHTML(){
-    if (!INDIC || !INDIC.items) return "";
-    var leg = INDIC.legend || {};
-    var grades = [
-      {key:"primary", title:"Primary", sub:"verify the entry"},
-      {key:"watch",   title:"Watch",   sub:"confirming context"},
-      {key:"veto",    title:"Veto",    sub:"extremes only"},
-      {key:"off",     title:"Off",     sub:"live-only / not backtestable"}
-    ];
-    var legendRow = grades.map(function(g){
-      var txt = leg[g.key] || "";
-      return '<div class="tc-lg"><span class="tc-gradedot tc-gd-'+g.key+'"></span><span><b>'+g.title+'</b> — '+esc(txt)+'</span></div>';
-    }).join("");
-
-    var groups = grades.map(function(g){
-      var items = INDIC.items.filter(function(it){ return it.grade===g.key; });
-      if (!items.length) return "";
-      var rows = items.map(function(it){
-        var stat = it.stat ? '<span class="tc-si-stat">'+esc(it.stat)+'</span>' : '';
-        return '<div class="tc-scoreitem '+g.key+'">' +
-          '<span class="tc-gradedot tc-gd-'+g.key+'" style="margin-top:4px"></span>' +
-          '<div class="tc-si-body">' +
-            '<div class="tc-si-top"><span class="tc-si-name">'+esc(it.name)+'</span>'+stat+'</div>' +
-            (it.note?'<div class="tc-si-note">'+esc(it.note)+'</div>':'') +
+          '<div class="tc-cascade">' + cascCols + '</div>' +
           '</div>' +
-        '</div>';
-      }).join("");
-      var cols3 = (g.key==="off") ? " cols3" : "";
-      return '<div class="tc-scoregroup">' +
-        '<div class="tc-scorehead">' +
-          '<span class="tc-scorebadge '+g.key+'">'+g.title+'</span>' +
-          '<span class="tc-scorelabel">'+esc(g.sub)+'</span>' +
-          '<span class="tc-scorecount">'+items.length+'</span>' +
-        '</div>' +
-        '<div class="tc-scorelist'+cols3+'">'+rows+'</div>' +
-      '</div>';
-    }).join("");
+          '</div>' +
+          '</div>';
+      }
 
-    var updated = INDIC.updated ? (" · updated "+INDIC.updated) : "";
-    return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🎛️</span>Indicator Scorecard — every signal, graded</div>' +
-      '<div class="tc-subnote" style="margin-top:-4px">'+esc(INDIC.basis||"")+esc(updated)+'</div>' +
-      '<div class="tc-scoreleg">'+legendRow+'</div>' +
-      groups +
-    '</div>';
-  }
+      /* -------- INDICATOR SCORECARD -------- */
+      function scorecardHTML() {
+        if (!INDIC || !INDIC.items) return "";
+        var leg = INDIC.legend || {};
+        var grades = [
+          { key: "primary", title: "Primary", sub: "verify the entry" },
+          { key: "watch", title: "Watch", sub: "confirming context" },
+          { key: "veto", title: "Veto", sub: "extremes only" },
+          { key: "off", title: "Off", sub: "live-only / not backtestable" }
+        ];
+        var legendRow = grades.map(function (g) {
+          var txt = leg[g.key] || "";
+          return '<div class="tc-lg"><span class="tc-gradedot tc-gd-' + g.key + '"></span><span><b>' + g.title + '</b> — ' + esc(txt) + '</span></div>';
+        }).join("");
 
-  /* ================= RENDER ================= */
-  /* -------- BTC ROAD CHART (entry + exit marked on price) -------- */
-  function minHM(m){ var h=Math.floor(m/60)%24, mm=((m%60)+60)%60; return (h<10?"0":"")+h+":"+(mm<10?"0":"")+mm; }
-  function fmtK(p){ return p>=1000 ? (Math.round(p/100)/10)+"k" : ""+p; }
+        var groups = grades.map(function (g) {
+          var items = INDIC.items.filter(function (it) { return it.grade === g.key; });
+          if (!items.length) return "";
+          var rows = items.map(function (it) {
+            var stat = it.stat ? '<span class="tc-si-stat">' + esc(it.stat) + '</span>' : '';
+            return '<div class="tc-scoreitem ' + g.key + '">' +
+              '<span class="tc-gradedot tc-gd-' + g.key + '" style="margin-top:4px"></span>' +
+              '<div class="tc-si-body">' +
+              '<div class="tc-si-top"><span class="tc-si-name">' + esc(it.name) + '</span>' + stat + '</div>' +
+              (it.note ? '<div class="tc-si-note">' + esc(it.note) + '</div>' : '') +
+              '</div>' +
+              '</div>';
+          }).join("");
+          var cols3 = (g.key === "off") ? " cols3" : "";
+          return '<div class="tc-scoregroup">' +
+            '<div class="tc-scorehead">' +
+            '<span class="tc-scorebadge ' + g.key + '">' + g.title + '</span>' +
+            '<span class="tc-scorelabel">' + esc(g.sub) + '</span>' +
+            '<span class="tc-scorecount">' + items.length + '</span>' +
+            '</div>' +
+            '<div class="tc-scorelist' + cols3 + '">' + rows + '</div>' +
+            '</div>';
+        }).join("");
 
-  function roadStrike(y, price, lab, stop){
-    var col = stop ? "var(--tc-red)" : "rgba(46,196,95,0.55)";
-    var ink = stop ? "#ffb3b3" : "#7fcf97";
-    return '<line x1="52" y1="'+y+'" x2="616" y2="'+y+'" stroke="'+col+'" stroke-width="1.4" stroke-dasharray="6 4"/>' +
-      '<text x="620" y="'+(y+3)+'" font-size="10" font-weight="800" fill="'+ink+'">'+lab+'</text>' +
-      '<text x="620" y="'+(y+14)+'" font-size="10" fill="'+ink+'">'+fmtK(price)+'</text>';
-  }
+        var updated = INDIC.updated ? (" · updated " + INDIC.updated) : "";
+        return '<div class="tc-card"><div class="tc-h2"><span class="tc-ic">🎛️</span>Indicator Scorecard — every signal, graded</div>' +
+          '<div class="tc-subnote" style="margin-top:-4px">' + esc(INDIC.basis || "") + esc(updated) + '</div>' +
+          '<div class="tc-scoreleg">' + legendRow + '</div>' +
+          groups +
+          '</div>';
+      }
 
-  function roadSVG(){
-    var ds = selected, P = PATHS[ds], c = CAL.days[ds] || {};
-    if (!P || !P.px || !P.px.length){
-      var why = (c.v==="REST") ? "Weekend rest — no trade." : (c.v==="EMERGENCY") ? "Panic band — stood down." : "No price road recorded for this night.";
-      return '<div style="padding:28px 10px;text-align:center;color:var(--tc-muted);font-size:13px">'+why+'</div>';
-    }
-    var W=680,H=300, padL=52,padR=64,padT=16,padB=26;
-    var px=P.px, N=px.length, s=P.s, step=P.step||15, i;
-    var lo=Infinity, hi=-Infinity;
-    for(i=0;i<N;i++){ if(px[i]<lo)lo=px[i]; if(px[i]>hi)hi=px[i]; }
-    lo=Math.min(lo,P.kp,P.entry.p,P.exit.p); hi=Math.max(hi,P.kc,P.entry.p,P.exit.p);
-    var pad=(hi-lo)*0.08||1; lo-=pad; hi+=pad;
-    function xi(idx){ return padL + (N<=1?0:(idx/(N-1)))*(W-padL-padR); }
-    function xm(m){ return xi((m-s)/step); }
-    function yv(p){ return padT + (1-(p-lo)/(hi-lo))*(H-padT-padB); }
-    var yKc=yv(P.kc), yKp=yv(P.kp);
-    var stopCall=P.stopped&&P.hurt==="CALL", stopPut=P.stopped&&P.hurt==="PUT";
-    var svg='<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet" width="100%" style="display:block">';
-    // safe corridor between the strikes
-    svg+='<rect x="'+padL+'" y="'+yKc.toFixed(1)+'" width="'+(W-padL-padR)+'" height="'+(yKp-yKc).toFixed(1)+'" fill="rgba(46,196,95,0.07)"/>';
-    // session-event vertical markers (context)
-    svg+='<line x1="'+xm(21.5*60)+'" y1="16" x2="'+xm(21.5*60)+'" y2="274" stroke="#ffb020" stroke-width="1" stroke-dasharray="2 5" opacity="0.4"/>';
-    svg+='<text x="'+xm(21.5*60)+'" y="13" text-anchor="middle" font-size="9" fill="#ffb020">London</text>';
-    svg+='<line x1="'+xm(25.5*60)+'" y1="16" x2="'+xm(25.5*60)+'" y2="274" stroke="#8c9bb0" stroke-width="1" stroke-dasharray="2 5" opacity="0.35"/>';
-    svg+='<text x="'+xm(25.5*60)+'" y="13" text-anchor="middle" font-size="9" fill="#8c9bb0">NY/CME</text>';
-    // strike guard-rails
-    svg+=roadStrike(yKc, P.kc, "CALL", stopCall);
-    svg+=roadStrike(yKp, P.kp, "PUT", stopPut);
-    // price polyline
-    var d="";
-    for(i=0;i<N;i++){ d+=(i?"L":"M")+xi(i).toFixed(1)+" "+yv(px[i]).toFixed(1)+" "; }
-    svg+='<path d="'+d+'" fill="none" stroke="#dce6f2" stroke-width="2" stroke-linejoin="round"/>';
-    // ENTRY (sell)
-    var ex=xm(P.entry.m), ey=yv(P.entry.p);
-    svg+='<line x1="'+ex.toFixed(1)+'" y1="'+padT+'" x2="'+ex.toFixed(1)+'" y2="'+(H-padB)+'" stroke="var(--tc-green)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>';
-    svg+='<polygon points="'+(ex-6).toFixed(1)+','+(ey+12)+' '+(ex+6).toFixed(1)+','+(ey+12)+' '+ex.toFixed(1)+','+(ey+1)+'" fill="var(--tc-green)"/>';
-    svg+='<text x="'+ex.toFixed(1)+'" y="'+(ey+25)+'" text-anchor="middle" font-size="11" font-weight="800" fill="#8ff0a9">SELL '+minHM(P.entry.m)+'</text>';
-    // EXIT
-    var xx=xm(P.exit.m), xy=yv(P.exit.p);
-    var ecol=P.stopped?"var(--tc-red)":"var(--tc-green)", eink=P.stopped?"#ffb3b3":"#8ff0a9";
-    svg+='<line x1="'+xx.toFixed(1)+'" y1="'+padT+'" x2="'+xx.toFixed(1)+'" y2="'+(H-padB)+'" stroke="'+ecol+'" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>';
-    svg+='<polygon points="'+(xx-6).toFixed(1)+','+(xy-12)+' '+(xx+6).toFixed(1)+','+(xy-12)+' '+xx.toFixed(1)+','+(xy-1)+'" fill="'+ecol+'"/>';
-    svg+='<text x="'+xx.toFixed(1)+'" y="'+(xy-16)+'" text-anchor="middle" font-size="11" font-weight="800" fill="'+eink+'">EXIT '+minHM(P.exit.m)+'</text>';
-    // x-axis time ticks
-    var ticks=[18*60,21*60,24*60,27*60,30*60,31*60];
-    for(i=0;i<ticks.length;i++){ var m=ticks[i]; if(m<s||m>s+(N-1)*step)continue;
-      svg+='<text x="'+xm(m).toFixed(1)+'" y="'+(H-8)+'" text-anchor="middle" font-size="10" fill="#8c9bb0">'+minHM(m)+'</text>'; }
-    svg+='</svg>';
-    return svg;
-  }
+      /* ================= RENDER ================= */
+      /* -------- BTC ROAD CHART (entry + exit marked on price) -------- */
+      function minHM(m) { var h = Math.floor(m / 60) % 24, mm = ((m % 60) + 60) % 60; return (h < 10 ? "0" : "") + h + ":" + (mm < 10 ? "0" : "") + mm; }
+      function fmtK(p) { return p >= 1000 ? (Math.round(p / 100) / 10) + "k" : "" + p; }
 
-  function roadSectionHTML(){
-    return '' +
-    '<div class="tc-card" id="tc-road-card">' +
-      '<div class="tc-h2"><span class="tc-ic">🛣️</span>Your Road on BTC &mdash; where you got in &amp; out</div>' +
-      '<div class="tc-dayhint" style="margin-bottom:10px">The white line is BTC on the selected night. The green dashed rails are your two strikes &mdash; stay inside = win; a rail turning red = that leg hit the 2&times; stop. Tap any calendar night to change it.</div>' +
-      '<div style="background:#05070a;border:1px solid var(--tc-line2);border-radius:10px;padding:8px;overflow:hidden" id="tc-road-mount">'+roadSVG()+'</div>' +
-      '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--tc-muted)">' +
-        '<span><b style="color:#dce6f2">&mdash;</b> BTC price (15m)</span>' +
-        '<span><b style="color:var(--tc-green)">&#9650;</b> SELL / entry</span>' +
-        '<span><b style="color:var(--tc-green)">&#9660;</b> EXIT (red if stopped)</span>' +
-        '<span><b style="color:#7fcf97">&#8230;&#8230;</b> strike guard-rails</span>' +
-      '</div>' +
-    '</div>';
-  }
+      function roadStrike(y, price, lab, stop) {
+        var col = stop ? "var(--tc-red)" : "rgba(46,196,95,0.55)";
+        var ink = stop ? "#ffb3b3" : "#7fcf97";
+        return '<line x1="52" y1="' + y + '" x2="616" y2="' + y + '" stroke="' + col + '" stroke-width="1.4" stroke-dasharray="6 4"/>' +
+          '<text x="620" y="' + (y + 3) + '" font-size="10" font-weight="800" fill="' + ink + '">' + lab + '</text>' +
+          '<text x="620" y="' + (y + 14) + '" font-size="10" fill="' + ink + '">' + fmtK(price) + '</text>';
+      }
 
-  function rerenderRoad(){ var m=document.getElementById("tc-road-mount"); if(m) m.innerHTML=roadSVG(); }
+      function roadSVG() {
+        var ds = selected, P = PATHS[ds], c = CAL.days[ds] || {};
+        if (!P || !P.px || !P.px.length) {
+          var why = (c.v === "REST") ? "Weekend rest — no trade." : (c.v === "EMERGENCY") ? "Panic band — stood down." : "No price road recorded for this night.";
+          return '<div style="padding:28px 10px;text-align:center;color:var(--tc-muted);font-size:13px">' + why + '</div>';
+        }
+        var W = 680, H = 300, padL = 52, padR = 64, padT = 16, padB = 26;
+        var px = P.px, N = px.length, s = P.s, step = P.step || 15, i;
+        var lo = Infinity, hi = -Infinity;
+        for (i = 0; i < N; i++) { if (px[i] < lo) lo = px[i]; if (px[i] > hi) hi = px[i]; }
+        lo = Math.min(lo, P.kp, P.entry.p, P.exit.p); hi = Math.max(hi, P.kc, P.entry.p, P.exit.p);
+        var pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+        function xi(idx) { return padL + (N <= 1 ? 0 : (idx / (N - 1))) * (W - padL - padR); }
+        function xm(m) { return xi((m - s) / step); }
+        function yv(p) { return padT + (1 - (p - lo) / (hi - lo)) * (H - padT - padB); }
+        var yKc = yv(P.kc), yKp = yv(P.kp);
+        var stopCall = P.stopped && P.hurt === "CALL", stopPut = P.stopped && P.hurt === "PUT";
+        var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" width="100%" style="display:block">';
+        // safe corridor between the strikes
+        svg += '<rect x="' + padL + '" y="' + yKc.toFixed(1) + '" width="' + (W - padL - padR) + '" height="' + (yKp - yKc).toFixed(1) + '" fill="rgba(46,196,95,0.07)"/>';
+        // session-event vertical markers (context)
+        svg += '<line x1="' + xm(21.5 * 60) + '" y1="16" x2="' + xm(21.5 * 60) + '" y2="274" stroke="#ffb020" stroke-width="1" stroke-dasharray="2 5" opacity="0.4"/>';
+        svg += '<text x="' + xm(21.5 * 60) + '" y="13" text-anchor="middle" font-size="9" fill="#ffb020">London</text>';
+        svg += '<line x1="' + xm(25.5 * 60) + '" y1="16" x2="' + xm(25.5 * 60) + '" y2="274" stroke="#8c9bb0" stroke-width="1" stroke-dasharray="2 5" opacity="0.35"/>';
+        svg += '<text x="' + xm(25.5 * 60) + '" y="13" text-anchor="middle" font-size="9" fill="#8c9bb0">NY/CME</text>';
+        // strike guard-rails
+        svg += roadStrike(yKc, P.kc, "CALL", stopCall);
+        svg += roadStrike(yKp, P.kp, "PUT", stopPut);
+        // price polyline
+        var d = "";
+        for (i = 0; i < N; i++) { d += (i ? "L" : "M") + xi(i).toFixed(1) + " " + yv(px[i]).toFixed(1) + " "; }
+        svg += '<path d="' + d + '" fill="none" stroke="#dce6f2" stroke-width="2" stroke-linejoin="round"/>';
+        // ENTRY (sell)
+        var ex = xm(P.entry.m), ey = yv(P.entry.p);
+        svg += '<line x1="' + ex.toFixed(1) + '" y1="' + padT + '" x2="' + ex.toFixed(1) + '" y2="' + (H - padB) + '" stroke="var(--tc-green)" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>';
+        svg += '<polygon points="' + (ex - 6).toFixed(1) + ',' + (ey + 12) + ' ' + (ex + 6).toFixed(1) + ',' + (ey + 12) + ' ' + ex.toFixed(1) + ',' + (ey + 1) + '" fill="var(--tc-green)"/>';
+        svg += '<text x="' + ex.toFixed(1) + '" y="' + (ey + 25) + '" text-anchor="middle" font-size="11" font-weight="800" fill="#8ff0a9">SELL ' + minHM(P.entry.m) + '</text>';
+        // EXIT
+        var xx = xm(P.exit.m), xy = yv(P.exit.p);
+        var ecol = P.stopped ? "var(--tc-red)" : "var(--tc-green)", eink = P.stopped ? "#ffb3b3" : "#8ff0a9";
+        svg += '<line x1="' + xx.toFixed(1) + '" y1="' + padT + '" x2="' + xx.toFixed(1) + '" y2="' + (H - padB) + '" stroke="' + ecol + '" stroke-width="1" stroke-dasharray="3 3" opacity="0.7"/>';
+        svg += '<polygon points="' + (xx - 6).toFixed(1) + ',' + (xy - 12) + ' ' + (xx + 6).toFixed(1) + ',' + (xy - 12) + ' ' + xx.toFixed(1) + ',' + (xy - 1) + '" fill="' + ecol + '"/>';
+        svg += '<text x="' + xx.toFixed(1) + '" y="' + (xy - 16) + '" text-anchor="middle" font-size="11" font-weight="800" fill="' + eink + '">EXIT ' + minHM(P.exit.m) + '</text>';
+        // x-axis time ticks
+        var ticks = [18 * 60, 21 * 60, 24 * 60, 27 * 60, 30 * 60, 31 * 60];
+        for (i = 0; i < ticks.length; i++) {
+          var m = ticks[i]; if (m < s || m > s + (N - 1) * step) continue;
+          svg += '<text x="' + xm(m).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" fill="#8c9bb0">' + minHM(m) + '</text>';
+        }
+        svg += '</svg>';
+        return svg;
+      }
 
-  function renderAll(){
-    root.innerHTML =
-      headerHTML() +
-      gateHTML() +
-      clockSectionHTML() +
-      roadSectionHTML() +
-      planHTML() +
-      heatmapsHTML() +
-      scorecardHTML() +
-      weekHTML() +
-      ivLegendHTML() +
-      calendarHTML() +
-      '<div class="tc-foot">Pictorial trade clock · reads window.__STRANGLE_RULES &amp; window.__STRANGLE_CAL · data v'+(RULES.meta?RULES.meta.version:"?")+' updated '+(RULES.meta?RULES.meta.updated:"")+'</div>';
-    wireClock();
-    wireCalendar();
-    // if a day is selected, show detail
-    if (selected && CAL.days[selected]) showDetail(selected, false);
-  }
+      function roadSectionHTML() {
+        return '' +
+          '<div class="tc-card" id="tc-road-card">' +
+          '<div class="tc-h2"><span class="tc-ic">🛣️</span>Your Road on BTC &mdash; where you got in &amp; out</div>' +
+          '<div class="tc-dayhint" style="margin-bottom:10px">The white line is BTC on the selected night. The green dashed rails are your two strikes &mdash; stay inside = win; a rail turning red = that leg hit the 2&times; stop. Tap any calendar night to change it.</div>' +
+          '<div style="background:#05070a;border:1px solid var(--tc-line2);border-radius:10px;padding:8px;overflow:hidden" id="tc-road-mount">' + roadSVG() + '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--tc-muted)">' +
+          '<span><b style="color:#dce6f2">&mdash;</b> BTC price (15m)</span>' +
+          '<span><b style="color:var(--tc-green)">&#9650;</b> SELL / entry</span>' +
+          '<span><b style="color:var(--tc-green)">&#9660;</b> EXIT (red if stopped)</span>' +
+          '<span><b style="color:#7fcf97">&#8230;&#8230;</b> strike guard-rails</span>' +
+          '</div>' +
+          '</div>';
+      }
 
-  function rerenderClock(){
-    var mount = document.getElementById("tc-clock-mount");
-    if (mount) mount.innerHTML = clockSVG();
-    var bm = document.getElementById("tc-banner-mount");
-    if (bm) bm.innerHTML = clockBannerHTML();
-    wireClock();
-    rerenderRoad();
-  }
+      function rerenderRoad() { var m = document.getElementById("tc-road-mount"); if (m) m.innerHTML = roadSVG(); }
 
-  /* ---- clock tooltips (events + indicators) ---- */
-  function wireClock(){
-    var tip = document.getElementById("tc-tip");
-    var wrap = tip ? tip.parentElement : null;
-    if (!tip || !wrap) return;
-    function show(html, clientX, clientY){
-      var r = wrap.getBoundingClientRect();
-      tip.innerHTML = html;
-      tip.style.left = (clientX - r.left) + "px";
-      tip.style.top  = (clientY - r.top) + "px";
-      tip.classList.add("on");
-    }
-    function hide(){ tip.classList.remove("on"); }
+      function renderAll() {
+        root.innerHTML =
+          headerHTML() +
+          gateHTML() +
+          clockSectionHTML() +
+          roadSectionHTML() +
+          planHTML() +
+          heatmapsHTML() +
+          scorecardHTML() +
+          weekHTML() +
+          ivLegendHTML() +
+          calendarHTML() +
+          journeyHTML() +
+          '<div class="tc-foot">Pictorial trade clock · reads window.__STRANGLE_RULES &amp; window.__STRANGLE_CAL · data v' + (RULES.meta ? RULES.meta.version : "?") + ' updated ' + (RULES.meta ? RULES.meta.updated : "") + '</div>';
+        wireClock();
+        wireCalendar();
+        // if a day is selected, show detail
+        if (selected && CAL.days[selected]) showDetail(selected, false);
+      }
 
-    var evDots = wrap.querySelectorAll(".tc-ev-dot, .tc-ev-ic");
-    evDots.forEach(function(el){
-      var idx = +el.getAttribute("data-ev");
-      var ev = RULES.events[idx];
-      var html = '<div class="tt">'+evIcon(ev)+' '+esc(ev.name)+'</div>' +
-                 '<div class="ts">'+istToHHMM(ev.ist)+' IST · RV avg '+ev.rvAvg+'% · '+esc(ev.risk)+' risk</div>' +
-                 '<div style="margin-top:4px">'+esc(ev.note||"")+'</div>';
-      var enter = function(e){ var pt = e.touches?e.touches[0]:e; show(html, pt.clientX, pt.clientY); };
-      el.addEventListener("mouseenter", enter);
-      el.addEventListener("mousemove", enter);
-      el.addEventListener("mouseleave", hide);
-      el.addEventListener("touchstart", function(e){ enter(e); }, {passive:true});
-      el.addEventListener("touchend", function(){ setTimeout(hide, 1800); });
-    });
+      function rerenderClock() {
+        var mount = document.getElementById("tc-clock-mount");
+        if (mount) mount.innerHTML = clockSVG();
+        var bm = document.getElementById("tc-banner-mount");
+        if (bm) bm.innerHTML = clockBannerHTML();
+        wireClock();
+        rerenderRoad();
+      }
 
-    var indDots = wrap.querySelectorAll(".tc-ind-dot");
-    indDots.forEach(function(el){
-      var idx = +el.getAttribute("data-ind");
-      var ind = RULES.indicators[idx];
-      var html = '<div class="tt">'+esc(ind.name)+' <span style="color:var(--tc-faint)">(advisory)</span></div>' +
-                 '<div class="ts">favour: '+esc(ind.favour)+' · weight '+ind.weight+'</div>' +
-                 (ind.note?'<div style="margin-top:4px">'+esc(ind.note)+'</div>':'');
-      var enter = function(e){ var pt = e.touches?e.touches[0]:e; show(html, pt.clientX, pt.clientY); };
-      el.addEventListener("mouseenter", enter);
-      el.addEventListener("mousemove", enter);
-      el.addEventListener("mouseleave", hide);
-      el.addEventListener("touchstart", function(e){ enter(e); }, {passive:true});
-      el.addEventListener("touchend", function(){ setTimeout(hide, 1800); });
-    });
-  }
+      /* ---- clock tooltips (events + indicators) ---- */
+      function wireClock() {
+        var tip = document.getElementById("tc-tip");
+        var wrap = tip ? tip.parentElement : null;
+        if (!tip || !wrap) return;
+        function show(html, clientX, clientY) {
+          var r = wrap.getBoundingClientRect();
+          tip.innerHTML = html;
+          tip.style.left = (clientX - r.left) + "px";
+          tip.style.top = (clientY - r.top) + "px";
+          tip.classList.add("on");
+        }
+        function hide() { tip.classList.remove("on"); }
 
-  /* ---- calendar clicks ---- */
-  function wireCalendar(){
-    var cells = root.querySelectorAll(".tc-cell[data-date]");
-    cells.forEach(function(el){
-      el.addEventListener("click", function(){
-        var ds = el.getAttribute("data-date");
-        selectDay(ds);
-      });
-    });
-  }
+        var evDots = wrap.querySelectorAll(".tc-ev-dot, .tc-ev-ic");
+        evDots.forEach(function (el) {
+          var idx = +el.getAttribute("data-ev");
+          var ev = RULES.events[idx];
+          var html = '<div class="tt">' + evIcon(ev) + ' ' + esc(ev.name) + '</div>' +
+            '<div class="ts">' + istToHHMM(ev.ist) + ' IST · RV avg ' + ev.rvAvg + '% · ' + esc(ev.risk) + ' risk</div>' +
+            '<div style="margin-top:4px">' + esc(ev.note || "") + '</div>';
+          var enter = function (e) { var pt = e.touches ? e.touches[0] : e; show(html, pt.clientX, pt.clientY); };
+          el.addEventListener("mouseenter", enter);
+          el.addEventListener("mousemove", enter);
+          el.addEventListener("mouseleave", hide);
+          el.addEventListener("touchstart", function (e) { enter(e); }, { passive: true });
+          el.addEventListener("touchend", function () { setTimeout(hide, 1800); });
+        });
 
-  function selectDay(ds){
-    selected = ds;
-    // update sel highlight
-    root.querySelectorAll(".tc-cell.sel").forEach(function(e){ e.classList.remove("sel"); });
-    var cell = root.querySelector('.tc-cell[data-date="'+ds+'"]');
-    if (cell) cell.classList.add("sel");
-    rerenderClock();
-    showDetail(ds, true);
-    // scroll to clock on mobile
-    if (window.innerWidth < 760){
-      var card = document.getElementById("tc-clock-card");
-      if (card) card.scrollIntoView({behavior:"smooth", block:"start"});
-    }
-  }
+        var indDots = wrap.querySelectorAll(".tc-ind-dot");
+        indDots.forEach(function (el) {
+          var idx = +el.getAttribute("data-ind");
+          var ind = RULES.indicators[idx];
+          var html = '<div class="tt">' + esc(ind.name) + ' <span style="color:var(--tc-faint)">(advisory)</span></div>' +
+            '<div class="ts">favour: ' + esc(ind.favour) + ' · weight ' + ind.weight + '</div>' +
+            (ind.note ? '<div style="margin-top:4px">' + esc(ind.note) + '</div>' : '');
+          var enter = function (e) { var pt = e.touches ? e.touches[0] : e; show(html, pt.clientX, pt.clientY); };
+          el.addEventListener("mouseenter", enter);
+          el.addEventListener("mousemove", enter);
+          el.addEventListener("mouseleave", hide);
+          el.addEventListener("touchstart", function (e) { enter(e); }, { passive: true });
+          el.addEventListener("touchend", function () { setTimeout(hide, 1800); });
+        });
+      }
 
-  function showDetail(ds, scroll){
-    var panel = document.getElementById("tc-detail");
-    if (!panel) return;
-    panel.innerHTML = detailHTML(ds);
-    panel.classList.remove("hide");
-  }
+      /* ---- calendar clicks ---- */
+      function wireCalendar() {
+        var cells = root.querySelectorAll(".tc-cell[data-date]");
+        cells.forEach(function (el) {
+          el.addEventListener("click", function () {
+            var ds = el.getAttribute("data-date");
+            selectDay(ds);
+          });
+        });
+      }
 
-  renderAll();
-})();
-</script>
+      function selectDay(ds) {
+        selected = ds;
+        // update sel highlight
+        root.querySelectorAll(".tc-cell.sel").forEach(function (e) { e.classList.remove("sel"); });
+        var cell = root.querySelector('.tc-cell[data-date="' + ds + '"]');
+        if (cell) cell.classList.add("sel");
+        rerenderClock();
+        showDetail(ds, true);
+        // scroll to clock on mobile
+        if (window.innerWidth < 760) {
+          var card = document.getElementById("tc-clock-card");
+          if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+
+      function showDetail(ds, scroll) {
+        var panel = document.getElementById("tc-detail");
+        if (!panel) return;
+        panel.innerHTML = detailHTML(ds);
+        panel.classList.remove("hide");
+      }
+
+      renderAll();
+    })();
+  </script>
 </body>
+
 </html>

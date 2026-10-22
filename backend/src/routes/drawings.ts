@@ -16,7 +16,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/drawings - List drawings
-  fastify.get('/', { schema: { querystring: drawingsQuery } }, async (request, reply) => {
+  fastify.get('/', { schema: { querystring: drawingsQuery } }, async (request) => {
     const { symbol = 'BTCUSDT' } = request.query as { symbol?: string };
 
     const drawings = await db

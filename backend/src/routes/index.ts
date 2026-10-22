@@ -10,6 +10,7 @@ import { deltaRoutes } from './delta.js';
 import { migrationRoutes } from './migration.js';
 import { telemetryRoutes } from './telemetry.js';
 import { marketGatewayRoutes } from './mkt.js';
+import { macroStressRoutes } from './macro-stress.js';
 
 /**
  * Primary API v1 Router Registration
@@ -28,4 +29,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(migrationRoutes, { prefix: '/migration' });
   await fastify.register(telemetryRoutes, { prefix: '/telemetry' });
   await fastify.register(marketGatewayRoutes, { prefix: '/mkt' });
+  await fastify.register(macroStressRoutes, { prefix: '/macro' });
 };

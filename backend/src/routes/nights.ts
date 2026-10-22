@@ -17,7 +17,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const nightRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/nights - List all reviews
-  fastify.get('/', { schema: { querystring: nightsQuery } }, async (request, reply) => {
+  fastify.get('/', { schema: { querystring: nightsQuery } }, async (request) => {
     const { verdict, outcome, limit = 100, offset = 0 } = request.query as {
       verdict?: string;
       outcome?: string;
@@ -45,7 +45,7 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/nights/stats - Aggregated stats for the Day & Season Coach
-  fastify.get('/stats', async (_request, reply) => {
+  fastify.get('/stats', async () => {
     const all = await db
       .select()
       .from(nightlyReviews)
