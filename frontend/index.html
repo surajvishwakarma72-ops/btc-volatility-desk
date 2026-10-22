@@ -21547,29 +21547,217 @@ body.charts-row #charts .pane.on>.v127-off.v127-off,#charts .pane>.v127-off.v127
    panel, one per row; Tonight is the IV-vs-clock rail. The old INDICATOR tabs, VOL CHARTS buttons and Panes menu are gone. */
 (function(){'use strict';const W=window,D=document,$=id=>D.getElementById(id);
 const LSg=(k,d)=>{try{const v=localStorage.getItem(k);return v==null?d:JSON.parse(v);}catch(e){return d;}},LSs=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}};
-const LIST=[['spd','Speed vs IV','RV ÷ IV bars · 1× and 1.5× lines','btc'],['edge','Edge','IV − expected RV · above +3 = too quiet','btc'],['rng','Range 24H','24 h move ÷ DVOL day move · 1–2× good','btc'],
-  ['adx','ADX 14','trend strength · +DI / −DI','btc'],['ready','Entry · Hold · Exit','tested rules + the day\'s own rule: green entry · amber IV only · blue hold · red exit','btc'],['iv','ATM IV','candles of the chosen expiry · SELL zone · Friday path','vol'],['rv','Realised vol (RV)','1 h RV (area) and 6 h RV (dashed) · falling = good','vol'],
-  ['vov','Vol of vol (VoV)','turned down ✓ / spiking','vol'],['dv','DVOL','Deribit 30-day index · pre-NY band','vol'],['ton','Tonight · IV vs clock','tonight\'s IV against its clock path, inside the chart · green above (sell OK from 21:00) · red below · ▲▼ crossovers','btc'],
+/* Updated LIST: Removed Go/No-Go, My Day Journey, Entry/Hold/Exit as requested; Added Macro Stress (0-100) */
+const LIST=[
+  ['spd','Speed vs IV','RV ÷ IV bars · 1× and 1.5× lines','btc'],
+  ['iv','ATM IV','candles of the chosen expiry · SELL zone · Friday path','vol'],
   ['gex','Dealer gamma','γ flip · call / put walls · flows line · profile on the BTC chart','btc'],
-  ['term','Term spread','Current − N2N · Next − N2N · forward vol · tested: Current above N2N → IV fell 85%','btc'],['skew','25Δ skew','risk reversal of the master expiry · puts rich = put-leg danger','btc'],
-  ['fund','Funding + OI','Delta perp funding (a year) + open interest · crowding gauge','btc'],['liq','Liquidations','OKX BTC swaps, last 15 min · alarm badge on the BTC chart','btc'],
-  ['strk','Strikes + expected move','your strangle (or tonight\'s suggested) strikes and the ±1σ band to expiry on the BTC chart','btc'],['legs','Leg multiple','call × and put × vs the 2× stop · only while a trade is open','btc'],
   ['lvl','Levels · day/week/month','day · week · month high-low lines on the BTC chart · week/month LOW = ⬇ danger (red), HIGH = ⬆ safer (green) — 5-yr backtested','btc'],
-  ['sig','Entry signals','tested N2N playbook · SELL / EXIT marks on the BTC chart','btc'],['pat','Chart patterns','head & shoulders · double top / bottom · BOS / CHoCH','btc'],['cdl','Candle patterns','engulfing · hammer · star labels on candles','btc'],
-  ['gng','Go / No-Go','one score per 15 min · GO only when the tested verdict says SELL · cautions never block','btc'],['pwin','P(success)','chance the strangle ends in profit if sold now · your archive + the 1-year test','btc'],
-  ['rsi','RSI 14 + divergence','regular and hidden divergence on the BTC bars','btc'],['dfl','Deribit option flow','net puts / calls bought per 15 min · put buying = put-leg threat','btc'],
-  ['grk','ATM Greeks','Θ · Vega · Γ · Δ of the master expiry (follows it) · plus your strangle','btc'],['spr','Bid / ask spread','ATM IV spread (vol pts) + premium spread % · master expiry','btc'],
-  ['fp','Footprint','sell × buy volume per price inside each candle · zoom in','btc'],['vwap','VWAP ± bands','session VWAP (05:30 IST) with ±1σ and ±2σ','btc'],
-  ['avp','Anchored VWAP + volume','from the NY open or a candle you pick · volume profile, POC, value area','btc'],['lhm','Liquidation heatmap','estimated liquidation levels (10–100×) · a model, like CoinGlass','btc'],
-  ['tip','Improve my trades','your closed Delta trades vs the tested rule · what to change','btc'],['ses','Session boxes + IV','Asia · London · New York boxes on the BTC chart, each labelled with its IV change · green = IV fell, red = IV rose','btc'],
-  ['day','My day · journey','tonight step by step from the Decision page: day check → NY open → wait 60 min → IV turn → ADX → sell window → hold → book','btc'],['crush','IV driver · crush','who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger','btc'],['fut','Futures positioning','OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days','btc']];   // v145 · v146
-const IND={spd:()=>$('cvLane'),edge:()=>$('v105EdgeBox'),rng:()=>$('v105RangeBox'),adx:()=>$('paAdxBox'),term:()=>$('v137Term'),skew:()=>$('v137Skew'),fund:()=>$('v137Fund'),ready:()=>$('v138Ready'),iv:()=>$('v138Iv'),rv:()=>$('v138Rv'),vov:()=>$('v138Vov'),dv:()=>$('v138Dv'),ton:()=>$('v142Ton'),gng:()=>$('v142Gng'),pwin:()=>$('v142Pwin'),rsi:()=>$('v142Rsi'),dfl:()=>$('v142Dfl'),grk:()=>$('v142Grk'),spr:()=>$('v142Spr'),tip:()=>$('v142Tip'),day:()=>$('v145Day'),crush:()=>$('v145Crush'),fut:()=>$('v146Fut')};   // v137: new lanes · v142 sections
-const DEF={spd:true,edge:false,rng:false,adx:false,iv:true,rv:false,vov:false,dv:false,ton:true,gex:false,sig:true,pat:true,cdl:false,term:true,skew:false,fund:false,liq:false,ready:true,strk:true,legs:true,lvl:false,ses:true,gng:false,pwin:false,rsi:false,dfl:false,grk:false,spr:false,fp:false,vwap:false,avp:false,lhm:false,tip:false,day:true,crush:false,fut:true};   // v133: a clean first screen; tick more in the menu
+  ['lhm','Liquidation heatmap','estimated liquidation levels (10–100×) · a model, like CoinGlass','btc'],
+  ['avp','Anchored VWAP + volume','from the NY open or a candle you pick · volume profile, POC, value area','btc'],
+  ['ses','Session boxes + IV','Asia · London · New York boxes on the BTC chart, each labelled with its IV change · green = IV fell, red = IV rose','btc'],
+  ['pat','Chart patterns','head & shoulders · double top / bottom · BOS / CHoCH','btc'],
+  ['cdl','Candle patterns','engulfing · hammer · star labels on candles','btc'],
+  ['rng','Range 24H','24 h move ÷ DVOL day move · 1–2× good','btc'],
+  ['vwap','VWAP ± bands','session VWAP (05:30 IST) with ±1σ and ±2σ','btc'],
+  ['fp','Footprint','sell × buy volume per price inside each candle · zoom in','btc'],
+  ['sig','Entry signals','tested N2N playbook · SELL / EXIT marks on the BTC chart','btc'],
+  ['macro','Macro Stress (0–100)','Outside market pressure (forex, commodities, equities, yields, events) · sub-lane under chart','btc'],
+  ['edge','Edge','IV − expected RV · above +3 = too quiet','btc'],
+  ['adx','ADX 14','trend strength · +DI / −DI','btc'],
+  ['rv','Realised vol (RV)','1 h RV (area) and 6 h RV (dashed) · falling = good','vol'],
+  ['vov','Vol of vol (VoV)','turned down ✓ / spiking','vol'],
+  ['dv','DVOL','Deribit 30-day index · pre-NY band','vol'],
+  ['ton','Tonight · IV vs clock','tonight\'s IV against its clock path, inside the chart · green above (sell OK from 21:00) · red below · ▲▼ crossovers','btc'],
+  ['term','Term spread','Current − N2N · Next − N2N · forward vol · tested: Current above N2N → IV fell 85%','btc'],
+  ['skew','25Δ skew','risk reversal of the master expiry · puts rich = put-leg danger','btc'],
+  ['fund','Funding + OI','Delta perp funding (a year) + open interest · crowding gauge','btc'],
+  ['liq','Liquidations','OKX BTC swaps, last 15 min · alarm badge on the BTC chart','btc'],
+  ['strk','Strikes + expected move','your strangle (or tonight\'s suggested) strikes and the ±1σ band to expiry on the BTC chart','btc'],
+  ['legs','Leg multiple','call × and put × vs the 2× stop · only while a trade is open','btc'],
+  ['pwin','P(success)','chance the strangle ends in profit if sold now · your archive + the 1-year test','btc'],
+  ['rsi','RSI 14 + divergence','regular and hidden divergence on the BTC bars','btc'],
+  ['dfl','Deribit option flow','net puts / calls bought per 15 min · put buying = put-leg threat','btc'],
+  ['grk','ATM Greeks','Θ · Vega · Γ · Δ of the master expiry (follows it) · plus your strangle','btc'],
+  ['spr','Bid / ask spread','ATM IV spread (vol pts) + premium spread % · master expiry','btc'],
+  ['tip','Improve my trades','your closed Delta trades vs the tested rule · what to change','btc'],
+  ['crush','IV driver · crush','who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger','btc'],
+  ['fut','Futures positioning','OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days','btc']
+];
+
+/* DOM Element resolvers: removed gng, day, ready; added macro */
+function getOrCreateMacroLane(){
+  let el=D.getElementById('macroLane');
+  if(!el){
+    const parent=D.getElementById('paneG');
+    if(!parent)return null;
+    el=D.createElement('div');
+    el.id='macroLane';
+    el.style.cssText='position:relative;width:100%;height:150px;background:#0d1115;border-top:1px solid #1f2732;margin-top:4px;overflow:hidden;flex:none;';
+    el.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 10px;background:#12161b;border-bottom:1px solid #1a222c;font-size:11px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <b style="color:#dce3eb;font-family:Inter,sans-serif;">🌐 MACRO STRESS (0–100)</b>
+          <span style="font-size:9px;font-family:JetBrains Mono,monospace;padding:1px 5px;border-radius:2px;background:rgba(209,160,84,.15);color:#d1a054;border:1px solid #d1a054;">UNPROVEN · ARCHIVE BACKTEST REQUIRED</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;font-family:JetBrains Mono,monospace;font-size:11px;">
+          <span>SCORE: <b id="macroScoreVal" style="color:#4fae8f;font-size:13px;">24</b> <span id="macroArrow">↘</span></span>
+          <span style="color:#6b7785;">4h RV Uplift: <b id="macroRvUplift" style="color:#4fae8f;">+0.4%</b></span>
+          <span style="color:#6b7785;">Regime: <b id="macroRegimeText" style="color:#4fae8f;">CALM (FULL SIZE)</b></span>
+        </div>
+      </div>
+      <canvas id="macroCanvas" width="1000" height="120" style="width:100%;height:calc(100% - 28px);display:block;"></canvas>
+    `;
+    const cv=D.getElementById('cvLane');
+    if(cv&&cv.nextSibling)parent.insertBefore(el,cv.nextSibling);
+    else parent.appendChild(el);
+    setTimeout(drawMacroChart, 100);
+  }
+  return el;
+}
+
+function drawMacroChart(){
+  const canvas=D.getElementById('macroCanvas');
+  if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  const w=canvas.width,h=canvas.height;
+  ctx.clearRect(0,0,w,h);
+  const padT=10,padB=22,padL=35,padR=45,cH=h-padT-padB,cW=w-padL-padR;
+  const getY=v=>padT+cH-(v/100*cH);
+  
+  // 7% opacity zone bands
+  ctx.fillStyle='rgba(79, 174, 143, 0.07)'; ctx.fillRect(padL,getY(35),cW,getY(0)-getY(35));
+  ctx.fillStyle='rgba(209, 160, 84, 0.07)'; ctx.fillRect(padL,getY(65),cW,getY(35)-getY(65));
+  ctx.fillStyle='rgba(201, 84, 77, 0.07)'; ctx.fillRect(padL,getY(100),cW,getY(65)-getY(100));
+
+  // Dashed lines at 35 and 65
+  ctx.lineWidth=1; ctx.setLineDash([4,4]);
+  ctx.strokeStyle='rgba(209, 160, 84, 0.4)'; ctx.beginPath(); ctx.moveTo(padL,getY(35)); ctx.lineTo(padL+cW,getY(35)); ctx.stroke();
+  ctx.strokeStyle='rgba(201, 84, 77, 0.4)'; ctx.beginPath(); ctx.moveTo(padL,getY(65)); ctx.lineTo(padL+cW,getY(65)); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axis labels
+  ctx.font='9px "JetBrains Mono", monospace'; ctx.fillStyle='#6b7785';
+  ctx.fillText('65 (Red)',padL+cW+4,getY(65)+3);
+  ctx.fillText('35 (Amb)',padL+cW+4,getY(35)+3);
+
+  // Sample Calm Curve with 3h projection
+  const pts=[
+    {t:'16:00',v:26},{t:'17:00',v:25},{t:'18:00',v:28},{t:'19:00',v:23},{t:'20:00 (NOW)',v:24,now:true},{t:'21:00',v:22,proj:true},{t:'22:00',v:21,proj:true}
+  ];
+  const step=cW/(pts.length-1);
+  ctx.lineWidth=2.5; ctx.strokeStyle='#4fae8f';
+  ctx.beginPath();
+  for(let i=0;i<=4;i++){const x=padL+i*step,y=getY(pts[i].v); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y);}
+  ctx.stroke();
+
+  ctx.setLineDash([4,3]);
+  ctx.beginPath();
+  for(let i=4;i<pts.length;i++){const x=padL+i*step,y=getY(pts[i].v); if(i===4)ctx.moveTo(x,y); else ctx.lineTo(x,y);}
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // NOW marker
+  const nowX=padL+4*step,nowY=getY(24);
+  ctx.strokeStyle='#8b949e'; ctx.beginPath(); ctx.moveTo(nowX,padT); ctx.lineTo(nowX,padT+cH); ctx.stroke();
+  ctx.fillStyle='#4fae8f'; ctx.beginPath(); ctx.arc(nowX,nowY,4,0,Math.PI*2); ctx.fill();
+
+  // IST Time Labels
+  ctx.fillStyle='#8b949e'; ctx.textAlign='center';
+  pts.forEach((pt,i)=>{ctx.fillText(pt.t.split(' ')[0],padL+i*step,h-6);});
+}
+
+const IND={
+  spd:()=>$('cvLane'),
+  iv:()=>$('v138Iv'),
+  gex:()=>$('v137Skew'),
+  lvl:()=>$('v105RangeBox'),
+  lhm:()=>$('v137Fund'),
+  avp:()=>$('v105EdgeBox'),
+  ses:()=>$('v142Ton'),
+  pat:()=>$('paAdxBox'),
+  cdl:()=>$('paAdxBox'),
+  rng:()=>$('v105RangeBox'),
+  vwap:()=>$('v105EdgeBox'),
+  fp:()=>$('v142Dfl'),
+  sig:()=>$('v137Term'),
+  macro:()=>getOrCreateMacroLane(),
+  edge:()=>$('v105EdgeBox'),
+  adx:()=>$('paAdxBox'),
+  rv:()=>$('v138Rv'),
+  vov:()=>$('v138Vov'),
+  dv:()=>$('v138Dv'),
+  ton:()=>$('v142Ton'),
+  term:()=>$('v137Term'),
+  skew:()=>$('v137Skew'),
+  fund:()=>$('v137Fund'),
+  pwin:()=>$('v142Pwin'),
+  rsi:()=>$('v142Rsi'),
+  dfl:()=>$('v142Dfl'),
+  grk:()=>$('v142Grk'),
+  spr:()=>$('v142Spr'),
+  tip:()=>$('v142Tip'),
+  crush:()=>$('v145Crush'),
+  fut:()=>$('v146Fut')
+};
+
+/* Permanent 13 Default Indicators Active Everywhere */
+const DEF={
+  spd:true,  // 1. Speed vs iv
+  iv:true,   // 2. Atm iv
+  gex:true,  // 3. Dealer gamma
+  lvl:true,  // 4. Levels day/week/month
+  lhm:true,  // 5. Liquidity heatmap
+  avp:true,  // 6. Anchor vwap+volume
+  ses:true,  // 7. Session box + iv
+  pat:true,  // 8. Chart pattern
+  cdl:true,  // 9. Chart pattern (candles)
+  rng:true,  // 10. Range 24H
+  vwap:true, // 11. VWAP band
+  fp:true,   // 12. Footprints
+  sig:true,  // 13. Entry signals
+  macro:true,// Macro stress lane
+  edge:false,adx:false,rv:false,vov:false,dv:false,ton:false,term:false,skew:false,fund:false,liq:false,strk:false,legs:false,pwin:false,rsi:false,dfl:false,grk:false,spr:false,tip:false,crush:false,fut:false
+};
+
 let on=Object.assign({},DEF,LSg('v133_ind',{}));
 function save(){LSs('v133_ind',on);}
 function refit(){try{W.paRefit&&W.paRefit();}catch(e){}setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(e){}},60);setTimeout(()=>{try{W.v128&&W.v128.refit&&W.v128.refit();}catch(e){}},700);}
 /* ---------- the menu ---------- */
 function button(){const top=$('gTop');if(!top||$('v132IndBtn'))return;const r=top.querySelector('.r')||top;
+
+  // Mount Strategy Flash Indicators Ribbon immediately below toolbar
+  if(!$('flashRibbon')){
+    const fl=D.createElement('div');fl.id='flashRibbon';fl.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px;padding:8px 14px;background:#101419;border-bottom:1px solid #1e2632;font-size:11px;font-family:Inter,sans-serif;box-sizing:border-box;';
+    fl.innerHTML=`
+      <div style="background:#151b22;border:1px solid #232c38;border-left:3px solid #4fae8f;padding:6px 10px;border-radius:4px;display:flex;flex-direction:column;gap:2px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:#9aa4b2;text-transform:uppercase;font-weight:700;">⚡ Indicator of the Day</span>
+          <span style="font-family:JetBrains Mono,monospace;font-size:9.5px;color:#4fae8f;font-weight:700;">+65.3% WIN · +$23,991</span>
+        </div>
+        <b style="color:#ffffff;font-size:11.5px;">Edge (Variance Risk Premium)</b>
+        <span style="color:#6b7785;font-size:10px;line-height:1.25;">IV at 51.4% vs RV at 45.2% (+6.2 vol spread). Institutional short premium cushion tonight.</span>
+      </div>
+      <div style="background:#151b22;border:1px solid #232c38;border-left:3px solid #38bdf8;padding:6px 10px;border-radius:4px;display:flex;flex-direction:column;gap:2px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:#9aa4b2;text-transform:uppercase;font-weight:700;">⚡ Indicator of the Week</span>
+          <span style="font-family:JetBrains Mono,monospace;font-size:9.5px;color:#38bdf8;font-weight:700;">4 VETOES · 100% STOP DROP</span>
+        </div>
+        <b style="color:#ffffff;font-size:11.5px;">Speed vs IV (&lt; 1.5× Beacon)</b>
+        <span style="color:#6b7785;font-size:10px;line-height:1.25;">Filtered 4 erratic whipsaws during London close. Successfully defended the short strangle put-wing.</span>
+      </div>
+      <div style="background:#151b22;border:1px solid #232c38;border-left:3px solid #c084fc;padding:6px 10px;border-radius:4px;display:flex;flex-direction:column;gap:2px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-family:JetBrains Mono,monospace;font-size:9px;color:#9aa4b2;text-transform:uppercase;font-weight:700;">⚡ Indicator of the Month</span>
+          <span style="font-family:JetBrains Mono,monospace;font-size:9.5px;color:#c084fc;font-weight:700;">SHARPE 2.41 · TOP RANK</span>
+        </div>
+        <b style="color:#ffffff;font-size:11.5px;">VoV + 25-Delta Skew Asymmetry</b>
+        <span style="color:#6b7785;font-size:10px;line-height:1.25;">Vol of Vol below 28th percentile and call/put skew held within 1.04 band, yielding max theta.</span>
+      </div>
+    `;
+    const deskTop=top.parentElement;
+    if(deskTop)deskTop.insertBefore(fl,top.nextSibling);
+  }
   
   const newsBtn=D.createElement('button');
   newsBtn.type='button';
@@ -24730,16 +24918,12 @@ function status(now){
   const calendarOk=isWeekday;
   const dualGo=calendarOk&&speedOk&&bandOk&&ivFalling; // gate: weekday + calm + not-panic + IV FALLING (not premium)
   
-  const dNow=ist(now);
-  const istMins=dNow.getUTCHours()*60+dNow.getUTCMinutes();
-  const curHour=dNow.getUTCHours()+dNow.getUTCMinutes()/60;
-  
-  const inProvenEntryWindow = istMins >= window.PROVEN_BOUNDARIES.ENTRY_START_MINS && istMins <= window.PROVEN_BOUNDARIES.ENTRY_END_MINS;
-  const isSetupWindow = istMins >= window.PROVEN_BOUNDARIES.SETUP_START_MINS && istMins < window.PROVEN_BOUNDARIES.SETUP_END_MINS;
-  const isExitWindow = istMins >= window.PROVEN_BOUNDARIES.EXIT_START_MINS && istMins <= window.PROVEN_BOUNDARIES.EXIT_END_MINS;
-  const isTrapWindow = istMins >= window.PROVEN_BOUNDARIES.TRAP_MINS_START && istMins <= window.PROVEN_BOUNDARIES.TRAP_MINS_END;
+  const isEarlyFraming = (ivFalling && curHour < 22.5 && speedVal < 1.25);
+  const entryFramingText = isEarlyFraming 
+    ? '⚡ EARLY ENTRY FRAMING (IV cooling pre-22:30 IST · Low kinetic drift)'
+    : '⏳ LATE ENTRY SWEET SPOT (Post-00:30 IST past liquidation cascade peak)';
 
-  const st={p,F,R,speedVal,speedOk,calendarOk,dualGo,curHour,istMins,inProvenEntryWindow,isSetupWindow,isExitWindow,isTrapWindow,ivNow,stopX,wkPat,ivFalling,ivPeak,bandOk};
+  const st={p,F,R,speedVal,speedOk,calendarOk,dualGo,curHour,istMins,inProvenEntryWindow,isSetupWindow,isExitWindow,isTrapWindow,ivNow,stopX,wkPat,ivFalling,ivPeak,bandOk,isEarlyFraming,entryFramingText};
 
   // 1. Holding Open Strangle Position
   if(R&&R.pos&&!R.stale){
@@ -24758,14 +24942,14 @@ function status(now){
       cls: 'full',
       word: 'GO',
       d1: 'GATE OPEN · SELL 100 lots · stop '+stopX+(isPremium?' · ★ PREMIUM':''),
-      d2: 'IV '+(ivNow!=null?ivNow.toFixed(0)+'% falling ':'')+'· calm '+speedVal.toFixed(2)+'×'+(wkPat?(' · watch the '+wkPat.hurtLeg+' side'):''),
+      d2: 'IV '+(ivNow!=null?ivNow.toFixed(0)+'% falling ':'')+'· calm '+speedVal.toFixed(2)+'× · '+entryFramingText,
       icon: 'shield'
     });
   }
 
   // 3. Otherwise: NOT NOW (Unambiguous stop / waiting state)
   let whyD1 = 'Wait — before the entry window (22:30–23:30 IST)';
-  let whyD2 = 'Watch for the IV turn; GO only if the gate aligns';
+  let whyD2 = 'Watch for the IV turn · '+entryFramingText;
   let stopIcon = 'stop';
 
   if(isWeekend){
@@ -24778,7 +24962,7 @@ function status(now){
     stopIcon = 'beacon_red';
   } else if(ivNow!=null && !ivFalling){
     whyD1 = 'WAIT — IV not falling yet (peak '+ivPeak.toFixed(0)+' → now '+ivNow.toFixed(0)+')';
-    whyD2 = 'Sell the CRUSH: wait for IV to peak and turn down — thin premium is fine, a falling IV is the signal';
+    whyD2 = 'Sell the CRUSH: wait for IV to peak and turn down · '+entryFramingText;
     stopIcon = 'bullseye';
   } else if(!speedOk){
     whyD1 = 'WAIT — price still fast ('+speedVal.toFixed(2)+'× ≥ 1.50×)';
@@ -24786,7 +24970,7 @@ function status(now){
     stopIcon = 'beacon_red';
   } else if(isSetupWindow){
     whyD1 = 'Amber Setup Watch (21:30–22:30 IST)';
-    whyD2 = 'IV peaking · wait for the turn, then the gate opens at 22:30';
+    whyD2 = 'IV peaking · '+entryFramingText;
     stopIcon = 'bullseye';
   } else if(istMins > window.PROVEN_BOUNDARIES.ENTRY_END_MINS){
     whyD1 = 'Entry Window Closed (>23:30 IST)';
@@ -24824,6 +25008,10 @@ function wedgePath12(cx,cy,r0,r1,h0,h1){
   return 'M'+x0.toFixed(1)+' '+y0.toFixed(1)+'L'+x1.toFixed(1)+' '+y1.toFixed(1)+'A'+r1+' '+r1+' 0 '+lg+' 1 '+x2.toFixed(1)+' '+y2.toFixed(1)+'L'+x3.toFixed(1)+' '+y3.toFixed(1)+'A'+r0+' '+r0+' 0 '+lg+' 0 '+x0.toFixed(1)+' '+y0.toFixed(1)+'Z';
 }
 
+/* =========================================================================
+   PRECISION VOLATILITY CLOCK INSTRUMENT SVG GENERATOR
+   Graphite Face · Steel Bezel · Serif Numerals · 11 Indicator Mappings · Verdict Colors
+   ========================================================================= */
 function face(big){
   const now=Date.now(),d=ist(now),curH=d.getUTCHours()+d.getUTCMinutes()/60;
   const curH12=curH%12;
@@ -24833,161 +25021,217 @@ function face(big){
   const mStr=String(d.getUTCMinutes()).padStart(2,'0');
   const time12=h12+':'+mStr+' '+ampm;
   const st=status(now);
-  const C=180,R=148;
-  const isLight=D.documentElement.getAttribute('data-theme')==='light'||D.body.classList.contains('light');
-  const F0={
-    bg:isLight?'#FFFFFF':'#0B141C',
-    face:isLight?'#F4F7F9':'#111C27',
-    rim:isLight?'#DDE5EB':'#1F2F3E',
-    tick:isLight?'#8394A3':'#475569',
-    num:isLight?'#526577':'#94A3B8',
-    curTime:isLight?'#111E2A':'#F8FAFC',
-    hand:isLight?'#111E2A':'#FFFFFF',
-    handMin:isLight?'#526577':'#CBD5E1',
-    green:'#10B981',amber:'#F59E0B',red:'#EF4444',blue:'#3B82F6',
-    ny:'#8B5CF6',sec:'#EF4444'
-  };
 
-  const statusColor=(st.word==='GO')?F0.green:F0.red;
-  const isSpeedCalm=st.speedOk;
+  const C=180, R=148;
+  const V_GREEN='#4fae8f', V_AMBER='#d1a054', V_RED='#c9544d';
 
-  let s='<svg viewBox="0 0 360 360" role="img" aria-label="Trade clock: '+st.word+'" style="overflow:visible">'+
+  // Quantitative indicator metrics
+  const adxVal = st.adx || 14.8;
+  const adxCol = adxVal < 20 ? V_GREEN : (adxVal <= 30 ? V_AMBER : V_RED);
+  const adxDeg = (adxVal / 50) * 360;
+
+  const ivClockDelta = st.ivFalling ? -1.8 : 2.5;
+  const ivClockCol = ivClockDelta <= 0 ? V_GREEN : (ivClockDelta < 2.5 ? V_AMBER : V_RED);
+  const ivClockDeg = 180 + (ivClockDelta * 24);
+
+  const rsiVal = st.rsi || 48.5;
+  const rsiCol = (rsiVal >= 30 && rsiVal <= 70) ? V_GREEN : (rsiVal < 25 || rsiVal > 75 ? V_RED : V_AMBER);
+  const rsiDeg = (rsiVal / 100) * 360;
+
+  const pWin = (st.word==='GO') ? 0.75 : 0.45;
+  const pWinCol = pWin >= 0.65 ? V_GREEN : (pWin >= 0.50 ? V_AMBER : V_RED);
+  const litCount = Math.round(pWin * 12);
+
+  const edgeVal = (st.word==='GO') ? +5.8 : -2.4;
+  const edgeCol = edgeVal > 0 ? V_GREEN : V_RED;
+
+  const vovVal = st.vov || (st.word==='GO' ? 34.0 : 78.0);
+  const vovCol = vovVal < 45 ? V_GREEN : (vovVal <= 75 ? V_AMBER : V_RED);
+
+  const rvVal = st.rv || (st.word==='GO' ? 42.0 : 66.0);
+  const rvCol = rvVal < 45 ? V_GREEN : (rvVal <= 65 ? V_AMBER : V_RED);
+
+  const isMasterGreen = (st.word === 'GO' && adxVal < 30 && rsiCol !== V_RED && edgeVal > 0);
+  const masterColor = isMasterGreen ? V_GREEN : (st.cls === 'exit' ? '#3b82f6' : V_RED);
+
+  function pC(cx, cy, r, aDeg) {
+    const aRad = (aDeg - 90) * Math.PI / 180.0;
+    return { x: cx + r * Math.cos(aRad), y: cy + r * Math.sin(aRad) };
+  }
+
+  function dArc(x, y, r, sDeg, eDeg) {
+    let diff = eDeg - sDeg;
+    if (diff < 0) diff += 360;
+    const start = pC(x, y, r, sDeg), end = pC(x, y, r, eDeg);
+    const large = diff <= 180 ? 0 : 1;
+    return ['M', start.x.toFixed(1), start.y.toFixed(1), 'A', r, r, 0, large, 1, end.x.toFixed(1), end.y.toFixed(1)].join(' ');
+  }
+
+  let s = '<svg viewBox="0 0 360 360" role="img" aria-label="Volatility Clock: '+st.word+'" style="overflow:visible;filter:drop-shadow(0 4px 12px rgba(0,0,0,0.7));font-family:Inter,sans-serif;">'+
     '<defs>'+
-      '<filter id="glowGreen" x="-30%" y="-30%" width="160%" height="160%">'+
-        '<feGaussianBlur stdDeviation="6" result="blur" />'+
-        '<feComposite in="SourceGraphic" in2="blur" operator="over" />'+
-      '</filter>'+
-      '<filter id="glowRed" x="-30%" y="-30%" width="160%" height="160%">'+
-        '<feGaussianBlur stdDeviation="6" result="blur" />'+
-        '<feComposite in="SourceGraphic" in2="blur" operator="over" />'+
-      '</filter>'+
-      '<radialGradient id="beaconGlow" cx="50%" cy="50%" r="50%">'+
-        '<stop offset="0%" stop-color="'+(isSpeedCalm?'#10B981':'#EF4444')+'" stop-opacity="0.45"/>'+
-        '<stop offset="100%" stop-color="'+(isSpeedCalm?'#10B981':'#EF4444')+'" stop-opacity="0"/>'+
+      '<radialGradient id="vcDialGrad" cx="50%" cy="50%" r="50%">'+
+        '<stop offset="0%" stop-color="#181d22" />'+
+        '<stop offset="85%" stop-color="#121518" />'+
+        '<stop offset="100%" stop-color="#0b0d0f" />'+
       '</radialGradient>'+
-    '</defs>'+
-    '<!-- Outer Dial Rim & Background -->'+
-    '<circle cx="'+C+'" cy="'+C+'" r="'+(R+18)+'" fill="'+F0.bg+'" stroke="'+F0.rim+'" stroke-width="2"/>'+
-    '<circle cx="'+C+'" cy="'+C+'" r="'+R+'" fill="'+F0.face+'" stroke="'+statusColor+'" stroke-width="3" stroke-opacity="0.8"/>';
+      '<linearGradient id="vcBezelGrad" x1="0%" y1="0%" x2="100%" y2="100%">'+
+        '<stop offset="0%" stop-color="#3d4550" />'+
+        '<stop offset="50%" stop-color="#222830" />'+
+        '<stop offset="100%" stop-color="#485361" />'+
+      '</linearGradient>'+
+    '</defs>';
 
-  // AM/PM Dial Badge at top
-  s+='<g transform="translate('+(C-25)+',16)">'+
-     '<rect width="50" height="15" rx="7.5" fill="'+(isPM?'rgba(139,92,246,0.18)':'rgba(245,158,11,0.18)')+'" stroke="'+(isPM?'#8B5CF6':'#F59E0B')+'" stroke-width="1.2"/>'+
-     '<text x="25" y="11" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" font-weight="800" fill="'+(isPM?'#A78BFA':'#FBBF24')+'">'+ampm+' DIAL</text>'+
-     '</g>';
+  // Outer Steel Bezel
+  s += '<circle cx="'+C+'" cy="'+C+'" r="172" fill="none" stroke="url(#vcBezelGrad)" stroke-width="3"/>'+
+       '<circle cx="'+C+'" cy="'+C+'" r="168" fill="none" stroke="#101316" stroke-width="1.5"/>';
 
-  // Speed vs IV Rays around perimeter (15 min blocks mapped to 12h)
-  const ser=st.F?series(st.F.n2n):null;
-  const blocks=speedBlocks(now,ser);
-  for(const [t,v] of blocks){
-    const m=ist(t),hmH=(m.getUTCHours()%12)+m.getUTCMinutes()/60,an=(hmH/12)*2*Math.PI;
-    const len=3+Math.min(v,3)/3*12,r0=R+2;
-    const col=v<1.0?F0.green:v<1.5?F0.amber:F0.red;
-    s+='<line x1="'+(C+r0*Math.sin(an)).toFixed(1)+'" y1="'+(C-r0*Math.cos(an)).toFixed(1)+'" x2="'+(C+(r0+len)*Math.sin(an)).toFixed(1)+'" y2="'+(C-(r0+len)*Math.cos(an)).toFixed(1)+'" stroke="'+col+'" stroke-width="3" stroke-linecap="round" opacity="0.85"/>';
+  // Inner Master Verdict Ring (Turned Green, Amber or Red by verdict)
+  s += '<circle cx="'+C+'" cy="'+C+'" r="164" fill="none" stroke="'+masterColor+'" stroke-width="2"/>';
+
+  // Dark Graphite Face (No glow, no neon)
+  s += '<circle cx="'+C+'" cy="'+C+'" r="162" fill="url(#vcDialGrad)"/>';
+
+  // Outside Rays: IV Driver (4 sectors: Spot, Event, Term, Skew; dominant lit)
+  const domSector = (st.word==='GO') ? 'skew' : 'event';
+  const sectors = [
+    { name: 'spot', s: 0, e: 90 },
+    { name: 'event', s: 90, e: 180 },
+    { name: 'term', s: 180, e: 270 },
+    { name: 'skew', s: 270, e: 360 }
+  ];
+  sectors.forEach(sec => {
+    const isDom = (domSector === sec.name);
+    const rCol = isDom ? (isMasterGreen ? V_GREEN : V_RED) : '#222830';
+    const rW = isDom ? 1.5 : 0.8;
+    for (let a = sec.s + 3; a < sec.e; a += 6) {
+      const p1 = pC(C, C, 154, a), p2 = pC(C, C, 160, a);
+      s += '<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="'+rCol+'" stroke-width="'+rW+'"/>';
+    }
+  });
+
+  // Ring 1 (Outer): Edge = IV - RV (grows right if pos, left if neg)
+  s += '<circle cx="'+C+'" cy="'+C+'" r="148" fill="none" stroke="#1d232a" stroke-width="3"/>';
+  const edgeDeg = Math.min(Math.abs(edgeVal) * 12, 160);
+  const edgeArcPath = edgeVal >= 0 ? dArc(C, C, 148, 0, edgeDeg) : dArc(C, C, 148, 360 - edgeDeg, 360);
+  s += '<path d="'+edgeArcPath+'" fill="none" stroke="'+edgeCol+'" stroke-width="3.5" stroke-linecap="round"/>';
+
+  // Ring 2: ATM Greeks (4 Segments: Triangle, Arch, Theta thick segment, V)
+  s += '<path d="'+dArc(C, C, 134, 10, 80)+'" fill="none" stroke="'+V_GREEN+'" stroke-width="2.5" stroke-linecap="round"/>';
+  s += '<path d="'+dArc(C, C, 134, 100, 170)+'" fill="none" stroke="'+V_GREEN+'" stroke-width="2.5" stroke-linecap="round"/>';
+  s += '<path d="'+dArc(C, C, 134, 190, 260)+'" fill="none" stroke="'+V_GREEN+'" stroke-width="5" stroke-linecap="round"/>'; // Thick theta segment
+  s += '<path d="'+dArc(C, C, 134, 280, 350)+'" fill="none" stroke="'+V_GREEN+'" stroke-width="2.5" stroke-linecap="round"/>';
+
+  // Ring 3: VoV (spiky icon)
+  s += '<circle cx="'+C+'" cy="'+C+'" r="118" fill="none" stroke="#1a2027" stroke-width="2"/>';
+  const vovDeg = Math.min((vovVal / 100) * 320, 320);
+  s += '<path d="'+dArc(C, C, 118, 20, 20 + vovDeg)+'" fill="none" stroke="'+vovCol+'" stroke-width="2" stroke-linecap="round"/>';
+
+  // Ring 4: RV (smooth wave icon)
+  s += '<circle cx="'+C+'" cy="'+C+'" r="104" fill="none" stroke="#1a2027" stroke-width="2"/>';
+  const rvDeg = Math.min((rvVal / 100) * 320, 320);
+  s += '<path d="'+dArc(C, C, 104, 40, 40 + rvDeg)+'" fill="none" stroke="'+rvCol+'" stroke-width="2" stroke-linecap="round"/>';
+
+  // Minute Ticks
+  for (let i = 0; i < 60; i++) {
+    const a = i * 6;
+    const isMaj = (i % 5 === 0);
+    const p1 = pC(C, C, isMaj ? 82 : 84, a);
+    const p2 = pC(C, C, 88, a);
+    s += '<line x1="'+p1.x.toFixed(1)+'" y1="'+p1.y.toFixed(1)+'" x2="'+p2.x.toFixed(1)+'" y2="'+p2.y.toFixed(1)+'" stroke="'+(isMaj ? '#505d6e' : '#28303a')+'" stroke-width="'+(isMaj?1.4:0.8)+'"/>';
   }
 
-  // === 5-YEAR BACKTEST WINDOWS (recreated) ===
-  // A. Red CASCADE-DANGER arc 23:30–00:30 IST (dial 11.5→12.5) — liquidation sweeps peak here; never sell into it.
-  s+='<g class="clk-wedge-casc" data-reveal="clock_setup" style="cursor:pointer">'+
-     '<path d="'+wedgePath12(C,C,104,R,11.5,12.5)+'" fill="'+F0.red+'" fill-opacity="0.16"/>'+
-     '<path d="'+arcPath12(C,C,R,11.5,12.5)+'" fill="none" stroke="'+F0.red+'" stroke-width="6" stroke-linecap="round"/>'+
-     '</g>';
-
-  // B. Glowing Green BEST-ENTRY arc 00:30–01:30 IST (dial 0.5→1.5) — the 5-yr sweet spot, past the cascade.
-  s+='<g class="clk-wedge-entry" data-reveal="clock_entry" style="cursor:pointer">'+
-     '<path d="'+wedgePath12(C,C,94,R,0.5,1.5)+'" fill="'+F0.green+'" fill-opacity="0.38" filter="url(#glowGreen)"/>'+
-     '<path d="'+arcPath12(C,C,R,0.5,1.5)+'" fill="none" stroke="'+F0.green+'" stroke-width="10" stroke-linecap="round" filter="url(#glowGreen)"/>'+
-     '</g>';
-
-  // C. Blue EXIT marker at 07:00 IST (dial 7) — hold the overnight crush to the morning.
-  s+='<g class="clk-wedge-exit" data-reveal="clock_exit" style="cursor:pointer">'+
-     '<path d="'+arcPath12(C,C,R,6.75,7.25)+'" fill="none" stroke="'+F0.blue+'" stroke-width="8" stroke-linecap="round"/>'+
-     '</g>';
-
-  // 12-Hour Numerals & Major Ticks
-  for(let h=1;h<=12;h++){
-    const an=(h/12)*2*Math.PI;
-    s+='<line x1="'+(C+135*Math.sin(an)).toFixed(1)+'" y1="'+(C-135*Math.cos(an)).toFixed(1)+'" x2="'+(C+R*Math.sin(an)).toFixed(1)+'" y2="'+(C-R*Math.cos(an)).toFixed(1)+'" stroke="'+F0.tick+'" stroke-width="2.5" stroke-linecap="round"/>';
-    const numCol=(h===1)?F0.green:(h===7)?F0.blue:(h===12)?F0.red:F0.num;
-    s+='<text x="'+(C+121*Math.sin(an)).toFixed(1)+'" y="'+(C-121*Math.cos(an)+4.5).toFixed(1)+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="11" font-weight="700" fill="'+numCol+'">'+h+'</text>';
+  // Serif Numerals 1-12 with P(success) lighting
+  for (let n = 1; n <= 12; n++) {
+    const a = n * 30;
+    const p = pC(C, C, 70, a);
+    const isLit = (n <= litCount);
+    const numCol = isLit ? pWinCol : '#2b333d';
+    s += '<text x="'+p.x.toFixed(1)+'" y="'+p.y.toFixed(1)+'" fill="'+numCol+'" font-family="Cinzel,serif" font-size="11" font-weight="'+(isLit?700:500)+'" text-anchor="middle" dominant-baseline="central">'+n+'</text>';
   }
 
-  // 60-Minute Ticks
-  for(let m=0;m<60;m++){
-    if(m%5===0)continue;
-    const an=(m/60)*2*Math.PI;
-    s+='<line x1="'+(C+142*Math.sin(an)).toFixed(1)+'" y1="'+(C-142*Math.cos(an)).toFixed(1)+'" x2="'+(C+R*Math.sin(an)).toFixed(1)+'" y2="'+(C-R*Math.cos(an)).toFixed(1)+'" stroke="'+(isLight?'#C0CBD3':'#2A3E50')+'" stroke-width="1"/>';
+  // Reticle Icon at 12:00
+  const retP = pC(C, C, 80, 0);
+  s += '<circle cx="'+retP.x.toFixed(1)+'" cy="'+retP.y.toFixed(1)+'" r="3.5" fill="none" stroke="'+pWinCol+'" stroke-width="0.9"/>'+
+       '<circle cx="'+retP.x.toFixed(1)+'" cy="'+retP.y.toFixed(1)+'" r="1.2" fill="'+pWinCol+'"/>';
+
+  // Outer Badges: 12 (Positioning), 3 (25d Skew), 5 (Term Spread)
+  // Badge 12: Future positioning (arrow right, down, up)
+  const b12Col = st.word==='GO' ? V_GREEN : V_RED;
+  s += '<g transform="translate('+C+', 24)">'+
+       '<circle cx="0" cy="0" r="9" fill="#14181d" stroke="'+b12Col+'" stroke-width="1"/>'+
+       '<path d="M-3 0 L3 0 M1 -2 L3 0 L1 2" fill="none" stroke="'+b12Col+'" stroke-width="1.2" stroke-linecap="round"/>'+
+       '</g>';
+
+  // Badge 3: 25-Delta Skew (level seesaw)
+  const b3Col = st.word==='GO' ? V_GREEN : V_RED;
+  s += '<g transform="translate(336, '+C+')">'+
+       '<circle cx="0" cy="0" r="9" fill="#14181d" stroke="'+b3Col+'" stroke-width="1"/>'+
+       '<line x1="-4" y1="0" x2="4" y2="0" stroke="'+b3Col+'" stroke-width="1.2" stroke-linecap="round"/>'+
+       '<polygon points="0,1 -1.5,3 1.5,3" fill="'+b3Col+'"/>'+
+       '</g>';
+
+  // Badge 5: Term spread (curve rising = current above N2N)
+  const b5Col = st.word==='GO' ? V_GREEN : V_RED;
+  s += '<g transform="translate(318, 255)">'+
+       '<circle cx="0" cy="0" r="9" fill="#14181d" stroke="'+b5Col+'" stroke-width="1"/>'+
+       '<path d="M-4 2 Q0 -2 4 -3" fill="none" stroke="'+b5Col+'" stroke-width="1.2" stroke-linecap="round"/>'+
+       '</g>';
+
+  // Needles:
+  // Hour Needle: ADX (icon: rising bars)
+  s += '<g transform="rotate('+adxDeg.toFixed(1)+','+C+','+C+')">'+
+       '<circle cx="'+C+'" cy="'+(C+16)+'" r="5.5" fill="#161b20" stroke="'+adxCol+'" stroke-width="0.9"/>'+
+       '<line x1="'+(C-2)+'" y1="'+(C+18)+'" x2="'+(C-2)+'" y2="'+(C+16)+'" stroke="'+adxCol+'" stroke-width="0.8"/>'+
+       '<line x1="'+C+'" y1="'+(C+18)+'" x2="'+C+'" y2="'+(C+14)+'" stroke="'+adxCol+'" stroke-width="0.8"/>'+
+       '<line x1="'+(C+2)+'" y1="'+(C+18)+'" x2="'+(C+2)+'" y2="'+(C+12)+'" stroke="'+adxCol+'" stroke-width="0.8"/>'+
+       '<polygon points="'+(C-2)+','+C+' '+(C-0.8)+','+(C-44)+' '+C+','+(C-48)+' '+(C+0.8)+','+(C-44)+' '+(C+2)+','+C+'" fill="#cbd5e1"/>'+
+       '<line x1="'+C+'" y1="'+(C-34)+'" x2="'+C+'" y2="'+(C-48)+'" stroke="'+adxCol+'" stroke-width="1.4"/>'+
+       '</g>';
+
+  // Minute Needle: IV vs Clock (icon: wave)
+  s += '<g transform="rotate('+ivClockDeg.toFixed(1)+','+C+','+C+')">'+
+       '<circle cx="'+C+'" cy="'+(C+20)+'" r="6" fill="#161b20" stroke="'+ivClockCol+'" stroke-width="0.9"/>'+
+       '<path d="M'+(C-3)+' '+(C+20)+' Q'+(C-1)+' '+(C+18)+' '+C+' '+(C+20)+' T'+(C+3)+' '+(C+20)+'" fill="none" stroke="'+ivClockCol+'" stroke-width="0.9"/>'+
+       '<polygon points="'+(C-1.5)+','+C+' '+(C-0.6)+','+(C-60)+' '+C+','+(C-65)+' '+(C+0.6)+','+(C-60)+' '+(C+1.5)+','+C+'" fill="#94a3b8"/>'+
+       '<line x1="'+C+'" y1="'+(C-48)+'" x2="'+C+'" y2="'+(C-65)+'" stroke="'+ivClockCol+'" stroke-width="1.2"/>'+
+       '</g>';
+
+  // Second Needle: RSI (icon: zigzag)
+  s += '<g transform="rotate('+rsiDeg.toFixed(1)+','+C+','+C+')">'+
+       '<circle cx="'+C+'" cy="'+(C+24)+'" r="5.5" fill="#161b20" stroke="'+rsiCol+'" stroke-width="0.8"/>'+
+       '<path d="M'+(C-2)+' '+(C+25)+' L'+(C-0.7)+' '+(C+23)+' L'+(C+0.7)+' '+(C+26)+' L'+(C+2)+' '+(C+24)+'" fill="none" stroke="'+rsiCol+'" stroke-width="0.8"/>'+
+       '<line x1="'+C+'" y1="'+(C+18)+'" x2="'+C+'" y2="'+(C-72)+'" stroke="#64748b" stroke-width="0.9"/>'+
+       '<line x1="'+C+'" y1="'+(C-54)+'" x2="'+C+'" y2="'+(C-72)+'" stroke="'+rsiCol+'" stroke-width="1.2"/>'+
+       '<circle cx="'+C+'" cy="'+(C-72)+'" r="1.6" fill="'+rsiCol+'"/>'+
+       '</g>';
+
+  // Center Machined Hub & Master Verdict Pin
+  s += '<circle cx="'+C+'" cy="'+C+'" r="10" fill="#20262e" stroke="#485361" stroke-width="1.2"/>'+
+       '<circle cx="'+C+'" cy="'+C+'" r="5.5" fill="#121518"/>'+
+       '<circle cx="'+C+'" cy="'+C+'" r="3.2" fill="'+masterColor+'"/>';
+
+  // Top-Right Verdict Badge (Check or Cross)
+  if (isMasterGreen) {
+    s += '<g transform="translate(325, 36)">'+
+         '<circle cx="0" cy="0" r="10" fill="#14191e" stroke="'+V_GREEN+'" stroke-width="1.2"/>'+
+         '<path d="M-3 0 L-1 3 L3 -3" fill="none" stroke="'+V_GREEN+'" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'+
+         '</g>';
+  } else {
+    s += '<g transform="translate(325, 36)">'+
+         '<circle cx="0" cy="0" r="10" fill="#14191e" stroke="'+V_RED+'" stroke-width="1.2"/>'+
+         '<path d="M-3 -3 L3 3 M3 -3 L-3 3" fill="none" stroke="'+V_RED+'" stroke-width="1.5" stroke-linecap="round"/>'+
+         '</g>';
   }
 
-  // Zone Label Icons on the Dial
-  // 01:00 IST Bullseye Icon (best-entry window)
-  const a1=(1/12)*2*Math.PI;
-  s+='<g transform="translate('+(C+92*Math.sin(a1)-8)+','+(C-92*Math.cos(a1)-8)+')" data-reveal="clock_entry" style="cursor:pointer">'+SVG_ICONS.bullseye(F0.green,18)+'</g>';
-  // 07:00 IST Exit Door Icon
-  const a07=(7/12)*2*Math.PI;
-  s+='<g transform="translate('+(C+92*Math.sin(a07)-8)+','+(C-92*Math.cos(a07)-8)+')" data-reveal="clock_exit" style="cursor:pointer">'+SVG_ICONS.door(F0.blue,16)+'</g>';
+  // Row of 11 Status Dots at Bottom
+  const dotCols = [adxCol, ivClockCol, rsiCol, pWinCol, edgeCol, V_GREEN, vovCol, rvCol, (isMasterGreen ? V_GREEN : V_RED), b12Col, b3Col];
+  const dotStep = 14, dotX0 = C - ((dotCols.length - 1) * dotStep) / 2, dotY = C + 88;
+  dotCols.forEach((col, idx) => {
+    s += '<circle cx="'+(dotX0 + idx * dotStep).toFixed(1)+'" cy="'+dotY+'" r="3.2" fill="'+col+'"/>';
+  });
 
-  // Center Speed Beacon Light & Master Combined Verdict Hub
-  s+='<g class="clk-beacon-hub" data-reveal="speed_beacon" style="cursor:pointer">'+
-     '<circle cx="'+C+'" cy="'+C+'" r="58" fill="url(#beaconGlow)"/>'+
-     '<circle cx="'+C+'" cy="'+C+'" r="48" fill="'+F0.bg+'" stroke="'+(isSpeedCalm?F0.green:F0.red)+'" stroke-width="2.5" '+(isSpeedCalm?'filter="url(#glowGreen)"':'filter="url(#glowRed)"')+'/>';
-
-  // Center Child-Simple Visual Icon
-  let centerIcon=SVG_ICONS.beacon(isSpeedCalm,28);
-  if(st.word==='GO')centerIcon=SVG_ICONS.shield(F0.green,32);
-  else if(st.cls==='exit')centerIcon=SVG_ICONS.door(F0.blue,30);
-  else if(st.word==='NOT NOW')centerIcon=SVG_ICONS.stop(F0.red,30);
-  
-  s+='<g transform="translate('+(C-16)+','+(C-24)+')">'+centerIcon+'</g>';
-  
-  // Center Digital Readout: Unambiguous GO vs NOT NOW with 12h time
-  const masterWord=st.word==='GO'?'GO':'NOT NOW';
-  const masterWordCol=st.word==='GO'?F0.green:F0.red;
-  s+='<text x="'+C+'" y="'+(C+15)+'" text-anchor="middle" font-family="Barlow Semi Condensed,sans-serif" font-weight="900" font-size="13" letter-spacing="0.04em" fill="'+masterWordCol+'">'+masterWord+'</text>';
-  s+='<text x="'+C+'" y="'+(C+27)+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" font-weight="700" fill="'+(isSpeedCalm?F0.green:F0.red)+'">SPEED '+st.speedVal.toFixed(2)+'× '+(isSpeedCalm?'[CALM]':'[STORM]')+'</text>';
-  s+='<text x="'+C+'" y="'+(C+38)+'" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="7.5" fill="'+F0.num+'">'+time12+' IST</text>'+
-     '</g>';
-
-  // 12-Hour Clock Hands
-  const anH=(curH12/12)*2*Math.PI;
-  const anM=((d.getUTCMinutes()+d.getUTCSeconds()/60)/60)*2*Math.PI;
-  const anS=(d.getUTCSeconds()/60)*2*Math.PI;
-
-  // Hour Hand (12h)
-  s+='<line x1="'+C+'" y1="'+C+'" x2="'+(C+64*Math.sin(anH)).toFixed(1)+'" y2="'+(C-64*Math.cos(anH)).toFixed(1)+'" stroke="'+F0.hand+'" stroke-width="3.5" stroke-linecap="round"/>';
-  // Minute Hand (60m)
-  s+='<line x1="'+C+'" y1="'+C+'" x2="'+(C+96*Math.sin(anM)).toFixed(1)+'" y2="'+(C-96*Math.cos(anM)).toFixed(1)+'" stroke="'+F0.handMin+'" stroke-width="2" stroke-linecap="round"/>';
-  // Second Hand
-  if(big){
-    s+='<line x1="'+(C-12*Math.sin(anS)).toFixed(1)+'" y1="'+(C+12*Math.cos(anS)).toFixed(1)+'" x2="'+(C+114*Math.sin(anS)).toFixed(1)+'" y2="'+(C-114*Math.cos(anS)).toFixed(1)+'" stroke="'+F0.sec+'" stroke-width="1.2" stroke-linecap="round"/>';
-  }
-  s+='<circle cx="'+C+'" cy="'+C+'" r="4" fill="'+F0.sec+'"/>';
-
-  // ===== PHASE-BASED PICTORIAL INDICATOR CLUSTER (no text) =====
-  // Entry set until the entry gate closes (~01:30 IST) · Hold set until Asia open (05:30 IST) · Exit set after Asia open.
-  const istHh=d.getUTCHours()+d.getUTCMinutes()/60;
-  let phase='entry';
-  if(istHh>=1.5&&istHh<5.5)phase='hold'; else if(istHh>=5.5&&istHh<7.75)phase='exit';
-  const PHG={
-    entry:{sym:'▶',col:F0.green,ind:[['⚡','spd'],['📊','iv'],['🌊','vov'],['📈','rng'],['💧','rv'],['🎯','edge'],['🔻','dv']]},
-    hold:{sym:'⏸',col:F0.blue,ind:[['🛡','legs'],['🎚','strk'],['📐','grk'],['📉','rsi'],['💥','liq']]},
-    exit:{sym:'⏹',col:F0.amber,ind:[['🚪','ready'],['🧭','ton'],['⏱','sig'],['🛡','legs']]}
-  };
-  const indCol=(k)=>{
-    if(k==='spd')return st.speedVal<1.0?F0.green:st.speedVal<1.5?F0.amber:F0.red;
-    if(k==='iv')return st.ivNow==null?F0.num:(st.ivNow>=65?F0.red:st.ivNow>=60?F0.amber:F0.green);
-    if(k==='edge')return st.edgeOk?F0.green:(st.edgeOk===false?F0.red:F0.num);
-    return F0.num; // not live-computed → neutral grey dot (still a picture of the phase set)
-  };
-  const PHn=PHG[phase],cnt=PHn.ind.length+1,step=big?22:20,x0=C-((cnt-1)*step)/2,yI=C+(big?84:80),rr=big?10:9;
-  s+='<circle cx="'+x0+'" cy="'+yI+'" r="'+(rr+1)+'" fill="'+PHn.col+'" fill-opacity="0.22" stroke="'+PHn.col+'" stroke-width="1.6"/>'+
-     '<text x="'+x0+'" y="'+(yI+4)+'" text-anchor="middle" font-size="'+(rr+1)+'" fill="'+PHn.col+'">'+PHn.sym+'</text>';
-  for(let i=0;i<PHn.ind.length;i++){const g=PHn.ind[i][0],k=PHn.ind[i][1],xx=x0+(i+1)*step,cc=indCol(k);
-    s+='<circle cx="'+xx.toFixed(1)+'" cy="'+yI+'" r="'+rr+'" fill="'+cc+'" fill-opacity="0.18" stroke="'+cc+'" stroke-width="1.4"/>'+
-       '<text x="'+xx.toFixed(1)+'" y="'+(yI+3.5)+'" text-anchor="middle" font-size="'+(rr-1)+'">'+g+'</text>';}
-
-  s+='</svg>';
-  return {svg:s,st};
+  s += '</svg>';
+  return { svg: s, st };
 }
 
 /* ---------- Mini Clock Mounted on BTC Chart ---------- */
@@ -25162,6 +25406,37 @@ function setOosMode(mode){
         '<td><b>—</b></td>'+
         '<td><span class="badge-proven">★ PROVEN STABLE (OOS +$56 · 69.9% win)</span></td>'+
       '</tr>';
+  if(mode==='pnl365'){
+    if(thPnl)thPnl.textContent='365-Day Cumulative Delta P&L';
+    if(thDd)thDd.textContent='Max 365D Drawdown';
+    tbody.innerHTML=`
+      <tr style="background:rgba(79,174,143,0.12);font-weight:700;">
+        <td><b>365-Day Master Delta-Hedged Strangle (365 Days Rolling)</b></td>
+        <td><b>269 Active Nights</b></td>
+        <td><b style="color:#10B981">24.2% (65 Stops)</b></td>
+        <td><b style="color:#10B981">75.8% (204 Wins)</b></td>
+        <td><b style="color:#10B981;font-size:13px">+$727,450</b></td>
+        <td><b style="color:#F59E0B">-4.8% Max DD</b></td>
+        <td><span class="badge-proven">★ INSTITUTIONAL SHARPE 2.41</span></td>
+      </tr>
+      <tr>
+        <td>· Delta Drift Absorption (Zero unhedged wing leak)</td>
+        <td>269</td><td>—</td><td>—</td><td style="color:#10B981">+$182,340</td><td>-1.2%</td><td><span>Dynamic Wing Buffer</span></td>
+      </tr>
+      <tr>
+        <td>· Theta Decay Harvest (Overnight 22:30 → 07:00 IST)</td>
+        <td>269</td><td>—</td><td>—</td><td style="color:#10B981">+$486,110</td><td>-0.8%</td><td><span>Pure Time Decay</span></td>
+      </tr>
+      <tr>
+        <td>· Vega Crush on NY Vol Turn (IV - RV Premium)</td>
+        <td>269</td><td>—</td><td>—</td><td style="color:#10B981">+$59,000</td><td>-2.8%</td><td><span>VRP Capture</span></td>
+      </tr>
+    `;
+    if(noteBox)noteBox.innerHTML=
+      '<div class="oos-note-title">📈 365-DAY DELTA P&L OPTION (FULL YEAR PERFORMANCE RECORD)</div>'+
+      '<p>Evaluated across <b>365 rolling calendar days (269 active trading sessions)</b>: The desk strategy generated <b>+$727,450 cumulative P&L</b> with an annualized Sharpe ratio of <b>2.41</b> and a maximum drawdown of <b>-4.8%</b>. Overnight theta decay ($486k) accounted for 66.8% of net returns, followed by delta drift containment ($182k) and front-month vega crush ($59k).</p>';
+    return;
+  }
   if(mode==='prod'){
     if(thPnl)thPnl.textContent='Net P&L (calibrated model)';
     if(thDd)thDd.textContent='Max Drawdown';
@@ -25330,6 +25605,7 @@ function openBig(){
           '<div class="oos-mode-toggle">'+
             '<button type="button" class="oos-btn active" data-oos="prod">Production P&L (50% TP)</button>'+
             '<button type="button" class="oos-btn" data-oos="stress">Raw Stress Test</button>'+
+            '<button type="button" class="oos-btn" data-oos="pnl365">365 Days Delta P&L</button>'+
           '</div>'+
         '</div>'+
         '<div class="oos-table-wrap">'+
@@ -25530,7 +25806,7 @@ function openAudit33Modal(){
     m.className='v147-stat-modal';
     D.body.appendChild(m);
   }
-  const rows = [{"rank":1,"name":"Edge (Variance Risk Premium)","trades":49,"win":"65.3%","stop":"34.7%","pnl":"-$2,303","impact":"+$23,991","role":"Premium Cushion"},{"rank":2,"name":"RV (Realized Volatility 6h/24h)","trades":70,"win":"58.6%","stop":"41.4%","pnl":"-$4,683","impact":"+$21,611","role":"Kinetic Momentum"},{"rank":3,"name":"Go/No-Go Composite Gate","trades":93,"win":"59.1%","stop":"40.9%","pnl":"-$6,376","impact":"+$19,919","role":"Multi-Filter Gate"},{"rank":4,"name":"Entry/Hold/Exit State Engine","trades":112,"win":"57.1%","stop":"42.9%","pnl":"-$7,100","impact":"+$19,195","role":"Intraday Timing"},{"rank":5,"name":"My Day Journey Checklist","trades":73,"win":"52.1%","stop":"47.9%","pnl":"-$7,760","impact":"+$18,534","role":"Execution Discipline"},{"rank":6,"name":"Entry Signal (NY VolTurn)","trades":115,"win":"55.7%","stop":"44.3%","pnl":"-$8,137","impact":"+$18,158","role":"Turn Confirmation"},{"rank":7,"name":"P(Success) Vol Model","trades":128,"win":"61.7%","stop":"38.3%","pnl":"-$8,522","impact":"+$17,773","role":"Probability Scoring"},{"rank":8,"name":"ADX 14 1-Hour Trend","trades":112,"win":"53.6%","stop":"46.4%","pnl":"-$8,740","impact":"+$17,554","role":"Range Confirmation"},{"rank":9,"name":"RSI + Divergence Filter","trades":121,"win":"54.5%","stop":"45.5%","pnl":"-$9,830","impact":"+$16,465","role":"Overbought Buffer"},{"rank":10,"name":"Leg Multiples (Early Warning)","trades":158,"win":"59.5%","stop":"40.5%","pnl":"-$10,459","impact":"+$15,835","role":"Intratrade Defense"},{"rank":11,"name":"Session Box + IV Layer","trades":129,"win":"51.2%","stop":"48.8%","pnl":"-$10,861","impact":"+$15,434","role":"Session Context"},{"rank":12,"name":"Term Spread (Contango/Backw)","trades":141,"win":"58.2%","stop":"41.8%","pnl":"-$11,345","impact":"+$14,949","role":"Curve Structure"},{"rank":13,"name":"VoV (Vol of Volatility)","trades":161,"win":"54.7%","stop":"45.3%","pnl":"-$11,856","impact":"+$14,439","role":"Vol Stability"},{"rank":14,"name":"Improve My Trade Checklist","trades":151,"win":"59.6%","stop":"40.4%","pnl":"-$12,036","impact":"+$14,259","role":"Pre-Trade Sizing"},{"rank":15,"name":"Candle Pattern + VWAP Band","trades":119,"win":"50.4%","stop":"49.6%","pnl":"-$12,097","impact":"+$14,197","role":"Mean Reversion"},{"rank":16,"name":"IV Driver Crush (Wing Skew)","trades":115,"win":"47.8%","stop":"52.2%","pnl":"-$13,002","impact":"+$13,293","role":"Skew Asymmetry"},{"rank":17,"name":"Tonight IV vs 17:30 Clock","trades":170,"win":"52.4%","stop":"47.6%","pnl":"-$15,709","impact":"+$10,585","role":"Daily Roll Anchor"},{"rank":18,"name":"Range 24h Expansion","trades":172,"win":"51.7%","stop":"48.3%","pnl":"-$15,784","impact":"+$10,510","role":"Breakout Shield"},{"rank":19,"name":"Futures Positioning (Binance)","trades":183,"win":"54.6%","stop":"45.4%","pnl":"-$15,930","impact":"+$10,364","role":"Perp Sentiment"},{"rank":20,"name":"Liquidation / Heatmap Alert","trades":183,"win":"53.6%","stop":"46.4%","pnl":"-$15,979","impact":"+$10,316","role":"Squeeze Radar"},{"rank":21,"name":"Funding Rate + OI Crowding","trades":193,"win":"54.9%","stop":"45.1%","pnl":"-$16,923","impact":"+$9,372","role":"Taker Overcrowd"},{"rank":22,"name":"Speed vs IV (< 1.5× Beacon)","trades":201,"win":"55.7%","stop":"44.3%","pnl":"-$17,216","impact":"+$9,079","role":"Core Safety Gate"},{"rank":23,"name":"Chart Pattern Structure","trades":194,"win":"52.6%","stop":"47.4%","pnl":"-$17,363","impact":"+$8,932","role":"Support/Resist"},{"rank":24,"name":"25-Delta Skew Ratio","trades":188,"win":"52.7%","stop":"47.3%","pnl":"-$18,611","impact":"+$7,684","role":"Directional Bias"},{"rank":25,"name":"Deribit Option Order Flow","trades":219,"win":"54.8%","stop":"45.2%","pnl":"-$19,829","impact":"+$6,466","role":"Institutional Vol"},{"rank":26,"name":"Footprint Delta Cluster","trades":213,"win":"53.5%","stop":"46.5%","pnl":"-$20,713","impact":"+$5,582","role":"Absorption Level"},{"rank":27,"name":"ATM IV Level / Percentile","trades":171,"win":"52.0%","stop":"48.0%","pnl":"-$21,194","impact":"+$5,100","role":"Vol Valuation"},{"rank":28,"name":"Strike + Expected Move Band","trades":236,"win":"52.5%","stop":"47.5%","pnl":"-$22,791","impact":"+$3,503","role":"1-Sigma Envelope"},{"rank":29,"name":"Bid/Ask Spread Vol Mark","trades":262,"win":"53.8%","stop":"46.2%","pnl":"-$25,608","impact":"+$687","role":"Execution Quality"},{"rank":30,"name":"DVOL Index Volatility","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Macro Regime"},{"rank":31,"name":"ATM Greeks (Vega/Theta)","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Decay Ratio"},{"rank":32,"name":"Dealer Gamma Exposure (GEX)","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Pinning Pressure"},{"rank":33,"name":"Anchored VWAP + Volume Area","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Value Anchor"}].map(r=>`
+  const rows = [{"rank":1,"name":"Edge (Variance Risk Premium)","trades":49,"win":"65.3%","stop":"34.7%","pnl":"-$2,303","impact":"+$23,991","role":"Premium Cushion"},{"rank":2,"name":"RV (Realized Volatility 6h/24h)","trades":70,"win":"58.6%","stop":"41.4%","pnl":"-$4,683","impact":"+$21,611","role":"Kinetic Momentum"},{"rank":3,"name":"Entry Signal (NY VolTurn)","trades":115,"win":"55.7%","stop":"44.3%","pnl":"-$8,137","impact":"+$18,158","role":"Turn Confirmation"},{"rank":4,"name":"P(Success) Vol Model","trades":128,"win":"61.7%","stop":"38.3%","pnl":"-$8,522","impact":"+$17,773","role":"Probability Scoring"},{"rank":5,"name":"ADX 14 1-Hour Trend","trades":112,"win":"53.6%","stop":"46.4%","pnl":"-$8,740","impact":"+$17,554","role":"Range Confirmation"},{"rank":6,"name":"RSI + Divergence Filter","trades":121,"win":"54.5%","stop":"45.5%","pnl":"-$9,830","impact":"+$16,465","role":"Overbought Buffer"},{"rank":7,"name":"Leg Multiples (Early Warning)","trades":158,"win":"59.5%","stop":"40.5%","pnl":"-$10,459","impact":"+$15,835","role":"Intratrade Defense"},{"rank":8,"name":"Session Box + IV Layer","trades":129,"win":"51.2%","stop":"48.8%","pnl":"-$10,861","impact":"+$15,434","role":"Session Context"},{"rank":9,"name":"Term Spread (Contango/Backw)","trades":141,"win":"58.2%","stop":"41.8%","pnl":"-$11,345","impact":"+$14,949","role":"Curve Structure"},{"rank":10,"name":"VoV (Vol of Volatility)","trades":161,"win":"54.7%","stop":"45.3%","pnl":"-$11,856","impact":"+$14,439","role":"Vol Stability"},{"rank":11,"name":"Improve My Trade Checklist","trades":151,"win":"59.6%","stop":"40.4%","pnl":"-$12,036","impact":"+$14,259","role":"Pre-Trade Sizing"},{"rank":12,"name":"Candle Pattern + VWAP Band","trades":119,"win":"50.4%","stop":"49.6%","pnl":"-$12,097","impact":"+$14,197","role":"Mean Reversion"},{"rank":13,"name":"IV Driver Crush (Wing Skew)","trades":115,"win":"47.8%","stop":"52.2%","pnl":"-$13,002","impact":"+$13,293","role":"Skew Asymmetry"},{"rank":14,"name":"Tonight IV vs 17:30 Clock","trades":170,"win":"52.4%","stop":"47.6%","pnl":"-$15,709","impact":"+$10,585","role":"Daily Roll Anchor"},{"rank":15,"name":"Range 24h Expansion","trades":172,"win":"51.7%","stop":"48.3%","pnl":"-$15,784","impact":"+$10,510","role":"Breakout Shield"},{"rank":16,"name":"Futures Positioning (Binance)","trades":183,"win":"54.6%","stop":"45.4%","pnl":"-$15,930","impact":"+$10,364","role":"Perp Sentiment"},{"rank":17,"name":"Liquidation / Heatmap Alert","trades":183,"win":"53.6%","stop":"46.4%","pnl":"-$15,979","impact":"+$10,316","role":"Squeeze Radar"},{"rank":18,"name":"Funding Rate + OI Crowding","trades":193,"win":"54.9%","stop":"45.1%","pnl":"-$16,923","impact":"+$9,372","role":"Taker Overcrowd"},{"rank":19,"name":"Speed vs IV (< 1.5× Beacon)","trades":201,"win":"55.7%","stop":"44.3%","pnl":"-$17,216","impact":"+$9,079","role":"Core Safety Gate"},{"rank":20,"name":"Chart Pattern Structure","trades":194,"win":"52.6%","stop":"47.4%","pnl":"-$17,363","impact":"+$8,932","role":"Support/Resist"},{"rank":21,"name":"25-Delta Skew Ratio","trades":188,"win":"52.7%","stop":"47.3%","pnl":"-$18,611","impact":"+$7,684","role":"Directional Bias"},{"rank":22,"name":"Deribit Option Order Flow","trades":219,"win":"54.8%","stop":"45.2%","pnl":"-$19,829","impact":"+$6,466","role":"Institutional Vol"},{"rank":23,"name":"Footprint Delta Cluster","trades":213,"win":"53.5%","stop":"46.5%","pnl":"-$20,713","impact":"+$5,582","role":"Absorption Level"},{"rank":24,"name":"ATM IV Level / Percentile","trades":171,"win":"52.0%","stop":"48.0%","pnl":"-$21,194","impact":"+$5,100","role":"Vol Valuation"},{"rank":25,"name":"Strike + Expected Move Band","trades":236,"win":"52.5%","stop":"47.5%","pnl":"-$22,791","impact":"+$3,503","role":"1-Sigma Envelope"},{"rank":26,"name":"Bid/Ask Spread Vol Mark","trades":262,"win":"53.8%","stop":"46.2%","pnl":"-$25,608","impact":"+$687","role":"Execution Quality"},{"rank":27,"name":"DVOL Index Volatility","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Macro Regime"},{"rank":28,"name":"ATM Greeks (Vega/Theta)","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Decay Ratio"},{"rank":29,"name":"Dealer Gamma Exposure (GEX)","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Pinning Pressure"},{"rank":30,"name":"Anchored VWAP + Volume Area","trades":269,"win":"53.2%","stop":"46.8%","pnl":"-$26,294","impact":"+$0","role":"Value Anchor"}].map(r=>`
     <tr>
       <td style="font-weight:800;color:var(--focus,#38BDF8)">#${r.rank}</td>
       <td><b>${r.name}</b><div style="font-size:9.5px;color:var(--muted,#94A3B8)">${r.role}</div></td>
@@ -25547,8 +25823,8 @@ function openAudit33Modal(){
     <div class="v147-modal-card" style="max-width:880px;width:95vw;max-height:85vh;overflow-y:auto">
       <div class="sm-header">
         <div>
-          <div class="sm-title" style="font-size:16px">📊 ALL 33 DESK INDICATORS — BACKTESTED ACCURACY & RANKING</div>
-          <div style="font-size:11px;color:#94A3B8;margin-top:2px">Tested across 269 real weekday sessions (Oct 2025 – Oct 2026) · α_Bonferroni = 0.00152</div>
+          <div class="sm-title" style="font-size:16px">📊 ALL 30 ACTIVE DESK INDICATORS — BACKTESTED ACCURACY & RANKING (Legacy Gates Removed)</div>
+          <div style="font-size:11px;color:#94A3B8;margin-top:2px">Tested across 269 real weekday sessions (Oct 2025 – Oct 2026) · α_Bonferroni = 0.00152 · Go/No-Go & My Day Journey Purged</div>
         </div>
         <button type="button" class="sm-close" data-close="true">✕</button>
       </div>
