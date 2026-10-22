@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BTC Volatility Desk — Instrument Preview (Clock & Macro Stress)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0e1114;
+      --bg-panel: #14181c;
+      --bg-card: #191e24;
+      --border-subtle: #232931;
+      --border-medium: #323a45;
+      --border-steel: #485361;
+      --text-dim: #6b7785;
+      --text-muted: #9aa4b2;
+      --text-main: #dce3eb;
+      --text-bright: #ffffff;
+      
+      /* Strict Verdict Colours */
+      --verdict-green: #4fae8f;
+      --verdict-amber: #d1a054;
+      --verdict-red: #c9544d;
+      
+      --font-serif: 'Cinzel', 'Times New Roman', serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --font-sans: 'Inter', -apple-system, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 13px;
+      line-height: 1.5;
+      padding: 24px;
+      min-height: 100vh;
+    }
+
+    .header-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 3px;
+      background: #1e242c;
+      border: 1px solid var(--border-medium);
+      color: var(--text-muted);
+    }
+
+    .brand-title h1 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--text-bright);
+    }
+
+    .desk-status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #14191f;
+      border: 1px solid var(--border-subtle);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+
+    .status-dot-pulse {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--verdict-green);
+      box-shadow: 0 0 6px rgba(79, 174, 143, 0.4);
+    }
+
+    .safety-notice {
+      background: rgba(209, 160, 84, 0.08);
+      border: 1px solid rgba(209, 160, 84, 0.25);
+      padding: 10px 16px;
+      border-radius: 4px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      font-size: 12px;
+      color: #e2ba7e;
+    }
+
+    .safety-notice strong {
+      color: #ffd899;
+      font-weight: 600;
+    }
+
+    .flash-indicators-container {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+
+    .flash-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .flash-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+      background: var(--text-dim);
+    }
+
+    .flash-card.day::before { background: var(--verdict-green); }
+    .flash-card.week::before { background: #58a6ff; }
+    .flash-card.month::before { background: #bc8cff; }
+
+    .flash-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .flash-tag {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .flash-metric {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--verdict-green);
+    }
+
+    .flash-name {
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-bright);
+    }
+
+    .flash-desc {
+      font-size: 11px;
+      color: var(--text-dim);
+      line-height: 1.35;
+    }
+
+    /* Section Headers */
+    .section-title-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border-subtle);
+      padding-bottom: 8px;
+    }
+
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      text-transform: uppercase;
+      color: var(--text-bright);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .section-subtitle {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    /* Volatility Clock Container */
+    .clocks-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .clock-card {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      position: relative;
+    }
+
+    .clock-card-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .clock-title {
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .verdict-tag {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 3px;
+    }
+
+    .verdict-tag.green {
+      background: rgba(79, 174, 143, 0.15);
+      color: var(--verdict-green);
+      border: 1px solid rgba(79, 174, 143, 0.3);
+    }
+
+    .verdict-tag.red {
+      background: rgba(201, 84, 77, 0.15);
+      color: var(--verdict-red);
+      border: 1px solid rgba(201, 84, 77, 0.3);
+    }
+
+    .clock-svg-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 440px;
+      aspect-ratio: 1 / 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    svg.clock-dial {
+      width: 100%;
+      height: 100%;
+      overflow: visible;
+      filter: drop-shadow(0 4px 16px rgba(0,0,0,0.6));
+    }
+
+    /* Indicator Status Dots Row */
+    .indicator-dots-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 20px;
+      padding: 10px 14px;
+      background: #111418;
+      border-radius: 20px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .dot-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      cursor: pointer;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      transition: transform 0.2s ease;
+    }
+
+    .dot-item:hover .status-dot {
+      transform: scale(1.35);
+    }
+
+    /* Micro Tooltip */
+    .tooltip-popup {
+      position: absolute;
+      visibility: hidden;
+      opacity: 0;
+      background: #1c2229;
+      border: 1px solid var(--border-steel);
+      color: var(--text-main);
+      padding: 8px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      white-space: nowrap;
+      z-index: 100;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+      pointer-events: none;
+      transition: opacity 0.15s ease, transform 0.15s ease;
+      font-family: var(--font-sans);
+    }
+
+    .tooltip-popup.active {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .tt-header {
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tt-verdict {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    .tt-val {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: #ffd899;
+    }
+
+    .tt-sub {
+      color: var(--text-dim);
+      font-size: 10px;
+      margin-top: 2px;
+    }
+
+    /* Macro Stress Section */
+    .stress-container {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 32px;
+    }
+
+    .stress-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .stress-title-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .unproven-badge {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      padding: 2px 6px;
+      border-radius: 2px;
+      background: rgba(209, 160, 84, 0.12);
+      border: 1px solid var(--verdict-amber);
+      color: var(--verdict-amber);
+    }
+
+    .stress-toggle-btns {
+      display: flex;
+      gap: 6px;
+      background: #111418;
+      padding: 3px;
+      border-radius: 4px;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .stress-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 5px 12px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      border-radius: 3px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .stress-btn.active {
+      background: #232a33;
+      color: var(--text-bright);
+      font-weight: 600;
+    }
+
+    .stress-chart-wrapper {
+      position: relative;
+      height: 220px;
+      background: #0f1316;
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+
+    canvas#stressCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .stress-readout-panel {
+      display: grid;
+      grid-template-columns: 200px 1fr 220px;
+      gap: 16px;
+      padding: 14px 18px;
+      background: #12161a;
+      border-radius: 6px;
+      border: 1px solid var(--border-subtle);
+      align-items: center;
+    }
+
+    .score-box {
+      border-right: 1px solid var(--border-subtle);
+      padding-right: 16px;
+    }
+
+    .score-num-wrap {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .score-num {
+      font-size: 38px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+      line-height: 1;
+    }
+
+    .score-num.green { color: var(--verdict-green); }
+    .score-num.amber { color: var(--verdict-amber); }
+    .score-num.red { color: var(--verdict-red); }
+
+    .score-arrow {
+      font-size: 18px;
+    }
+
+    .score-zone-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-top: 4px;
+    }
+
+    .stress-breakdown-table {
+      width: 100%;
+      font-size: 11px;
+      border-collapse: collapse;
+      font-family: var(--font-mono);
+    }
+
+    .stress-breakdown-table th {
+      text-align: left;
+      color: var(--text-dim);
+      font-weight: 500;
+      padding-bottom: 4px;
+      font-size: 10px;
+      text-transform: uppercase;
+    }
+
+    .stress-breakdown-table td {
+      padding: 3px 0;
+      color: var(--text-muted);
+    }
+
+    .stress-breakdown-table td.val {
+      color: var(--text-bright);
+    }
+
+    .stress-meta-box {
+      border-left: 1px solid var(--border-subtle);
+      padding-left: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 11px;
+    }
+
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+    }
+
+    .meta-row span:last-child {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      color: var(--text-bright);
+    }
+
+    /* Desk Settings & Removals Summary */
+    .desk-parity-panel {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .parity-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      padding: 16px;
+    }
+
+    .parity-box h3 {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-bright);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .parity-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+    }
+
+    .parity-list li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-muted);
+    }
+
+    .removed-item {
+      text-decoration: line-through;
+      color: var(--verdict-red) !important;
+      opacity: 0.8;
+    }
+
+    .keep-item {
+      color: var(--text-bright) !important;
+    }
+
+    .keep-item::before {
+      content: '✓';
+      color: var(--verdict-green);
+      font-weight: bold;
+    }
+
+    .removed-item::before {
+      content: '✕';
+      color: var(--verdict-red);
+      font-weight: bold;
+    }
+
+    /* 365 Days Delta PnL Module Preview */
+    .pnl-preview-box {
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .clocks-grid {
+        grid-template-columns: 1fr;
+      }
+      .flash-indicators-container {
+        grid-template-columns: 1fr;
+      }
+      .stress-readout-panel {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+      .score-box, .stress-meta-box {
+        border: none;
+        padding: 0;
+      }
+      .desk-parity-panel {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Instrument Header -->
+  <header class="header-bar">
+    <div class="brand-title">
+      <span class="brand-badge">MOCKUP PREVIEW ONLY</span>
+      <h1>BTC Volatility Desk — Instrument Verification Dial & Macro Stress Lane</h1>
+    </div>
+    <div class="desk-status-pill">
+      <span class="status-dot-pulse"></span>
+      <span>DESK UNTOUCHED · STANDALONE PREVIEW READY</span>
+    </div>
+  </header>
+
+  <!-- Safety Banner Guarantee -->
+  <div class="safety-notice">
+    <div>
+      <strong>No production desk files or deployments were touched.</strong> This interactive mockup demonstrates the precision Volatility Clock SVG, Macro Stress 0–100 lane, the 3 Flash Indicators, and the removal of legacy gates for your design approval.
+    </div>
+    <span class="brand-badge" style="border-color: #d1a054; color: #ffd899;">VERIFICATION STAGE</span>
+  </div>
+
+  <!-- Flash Indicators: Day / Week / Month -->
+  <div class="section-title-bar">
+    <div class="section-title">⚡ Strategy Flash Indicators (Predictive Edge Leaders)</div>
+    <div class="section-subtitle">Real-time edge highlights positioned beneath indicator panel</div>
+  </div>
+
+  <div class="flash-indicators-container">
+    <!-- Day Flash -->
+    <div class="flash-card day">
+      <div class="flash-header">
+        <span class="flash-tag">⚡ Indicator of the Day</span>
+        <span class="flash-metric">+65.3% WIN · +$23,991 IMPACT</span>
+      </div>
+      <div class="flash-name">Edge (Variance Risk Premium)</div>
+      <div class="flash-desc">Current IV at 51.4% vs 24h Realized Vol at 45.2%. Positive +6.2 vol spread creates institutional short premium cushion tonight.</div>
+    </div>
+
+    <!-- Week Flash -->
+    <div class="flash-card week">
+      <div class="flash-header">
+        <span class="flash-tag">⚡ Indicator of the Week</span>
+        <span class="flash-metric">4 VETOES · 100% STOP AVOIDANCE</span>
+      </div>
+      <div class="flash-name">Speed vs IV (&lt; 1.5× Beacon)</div>
+      <div class="flash-desc">Filtered out 4 erratic whipsaws during London close. Successfully defended the short strangle put-wing during spot momentum pulses.</div>
+    </div>
+
+    <!-- Month Flash -->
+    <div class="flash-card month">
+      <div class="flash-header">
+        <span class="flash-tag">⚡ Indicator of the Month</span>
+        <span class="flash-metric">SHARPE 2.41 · 365D TOP RANK</span>
+      </div>
+      <div class="flash-name">VoV + 25-Delta Skew Asymmetry</div>
+      <div class="flash-desc">Vol of Vol remained below 28th percentile while call/put skew held within 1.04 balanced band, delivering maximum theta decay.</div>
+    </div>
+  </div>
+
+  <!-- Volatility Clock Section: Side-by-Side Comparison -->
+  <div class="section-title-bar">
+    <div class="section-title">⏱ Volatility Clock Widget — Dual State Instrument Preview</div>
+    <div class="section-subtitle">Graphite Face · Steel Bezel · Serif Numerals · Scalable SVG · Zero Neon Glow</div>
+  </div>
+
+  <div class="clocks-grid">
+    <!-- CLOCK 1: FAVOURABLE DAY -->
+    <div class="clock-card" id="clock-favourable">
+      <div class="clock-card-header">
+        <div class="clock-title">
+          <span>Case A: Favourable Entry Session</span>
+        </div>
+        <span class="verdict-tag green">MASTER VERDICT: PASS (ENTER 100%)</span>
+      </div>
+
+      <div class="clock-svg-wrapper">
+        <svg class="clock-dial" id="svg-fav" viewBox="0 0 500 500" width="500" height="500">
+          <defs>
+            <radialGradient id="dialGrad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#181d22" />
+              <stop offset="85%" stop-color="#121518" />
+              <stop offset="100%" stop-color="#0b0d0f" />
+            </radialGradient>
+            <linearGradient id="bezelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#3d4550" />
+              <stop offset="50%" stop-color="#222830" />
+              <stop offset="100%" stop-color="#485361" />
+            </linearGradient>
+          </defs>
+
+          <!-- Outer Steel Bezel -->
+          <circle cx="250" cy="250" r="242" fill="none" stroke="url(#bezelGrad)" stroke-width="4" />
+          <circle cx="250" cy="250" r="238" fill="none" stroke="#101316" stroke-width="2" />
+          
+          <!-- Master Verdict Ring (Inner Bezel) -->
+          <circle id="fav-verdict-ring" cx="250" cy="250" r="234" fill="none" stroke="#4fae8f" stroke-width="2.5" />
+          
+          <!-- Clock Face Background -->
+          <circle cx="250" cy="250" r="232" fill="url(#dialGrad)" />
+
+          <!-- Outside Rays: IV Driver (Dominant sector lit) -->
+          <g id="fav-rays" class="ray-group">
+            <!-- Rendered by JS -->
+          </g>
+
+          <!-- Ring 1: Edge (IV - RV) Outer Arc -->
+          <g id="fav-ring-edge" class="arc-group">
+            <!-- Outer Edge track & arc -->
+          </g>
+
+          <!-- Ring 2: ATM Greeks (4 Segments: Triangle, Arch, Theta thick, V) -->
+          <g id="fav-ring-greeks" class="arc-group">
+            <!-- Rendered by JS -->
+          </g>
+
+          <!-- Ring 3: VoV Ring -->
+          <g id="fav-ring-vov" class="arc-group">
+            <!-- Rendered by JS -->
+          </g>
+
+          <!-- Ring 4: RV Ring -->
+          <g id="fav-ring-rv" class="arc-group">
+            <!-- Rendered by JS -->
+          </g>
+
+          <!-- Minute & 5-minute Ticks -->
+          <g id="fav-ticks" stroke="#373f49" stroke-width="1"></g>
+
+          <!-- Serif Numerals 1-12 with P(success) lighting -->
+          <g id="fav-numerals" font-family="'Cinzel', serif" font-size="15" text-anchor="middle" dominant-baseline="central"></g>
+
+          <!-- Outer Badges: 12 (Positioning), 3 (25d Skew), 5 (Term Spread) -->
+          <g id="fav-badge-12" class="clock-badge" transform="translate(250, 48)"></g>
+          <g id="fav-badge-3" class="clock-badge" transform="translate(452, 250)"></g>
+          <g id="fav-badge-5" class="clock-badge" transform="translate(425, 351)"></g>
+
+          <!-- Needles -->
+          <!-- Hour Needle: ADX -->
+          <g id="fav-needle-adx" class="needle"></g>
+
+          <!-- Minute Needle: IV vs Clock -->
+          <g id="fav-needle-iv" class="needle"></g>
+
+          <!-- Second Needle: RSI -->
+          <g id="fav-needle-rsi" class="needle"></g>
+
+          <!-- Centre Machined Hub with Master Verdict Pin -->
+          <circle cx="250" cy="250" r="14" fill="#20262e" stroke="#485361" stroke-width="1.5" />
+          <circle cx="250" cy="250" r="8" fill="#121518" />
+          <circle id="fav-hub-pin" cx="250" cy="250" r="4.5" fill="#4fae8f" />
+
+          <!-- Top-Right Verdict Check Badge -->
+          <g transform="translate(440, 52)">
+            <circle cx="0" cy="0" r="14" fill="#14191e" stroke="#4fae8f" stroke-width="1.5" />
+            <path d="M-5 0 L-2 4 L5 -4" fill="none" stroke="#4fae8f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </g>
+        </svg>
+      </div>
+
+      <!-- 11 Indicator Verdict Dots Bar -->
+      <div class="indicator-dots-row" id="fav-dots-row">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+    <!-- CLOCK 2: UNFAVOURABLE DAY (VETO RED) -->
+    <div class="clock-card" id="clock-unfavourable">
+      <div class="clock-card-header">
+        <div class="clock-title">
+          <span>Case B: Unfavourable / Risk Session</span>
+        </div>
+        <span class="verdict-tag red">MASTER VERDICT: VETO (SKIP ENTRY)</span>
+      </div>
+
+      <div class="clock-svg-wrapper">
+        <svg class="clock-dial" id="svg-unfav" viewBox="0 0 500 500" width="500" height="500">
+          <defs>
+            <radialGradient id="dialGradUnfav" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#181d22" />
+              <stop offset="85%" stop-color="#121518" />
+              <stop offset="100%" stop-color="#0b0d0f" />
+            </radialGradient>
+          </defs>
+
+          <!-- Outer Steel Bezel -->
+          <circle cx="250" cy="250" r="242" fill="none" stroke="url(#bezelGrad)" stroke-width="4" />
+          <circle cx="250" cy="250" r="238" fill="none" stroke="#101316" stroke-width="2" />
+          
+          <!-- Master Verdict Ring (Inner Bezel Red Veto) -->
+          <circle id="unfav-verdict-ring" cx="250" cy="250" r="234" fill="none" stroke="#c9544d" stroke-width="2.5" />
+          
+          <!-- Clock Face Background -->
+          <circle cx="250" cy="250" r="232" fill="url(#dialGradUnfav)" />
+
+          <!-- Outside Rays: IV Driver (Event dominant) -->
+          <g id="unfav-rays" class="ray-group"></g>
+
+          <!-- Ring 1: Edge (IV - RV negative) -->
+          <g id="unfav-ring-edge" class="arc-group"></g>
+
+          <!-- Ring 2: ATM Greeks (Vega high stress) -->
+          <g id="unfav-ring-greeks" class="arc-group"></g>
+
+          <!-- Ring 3: VoV Ring -->
+          <g id="unfav-ring-vov" class="arc-group"></g>
+
+          <!-- Ring 4: RV Ring -->
+          <g id="unfav-ring-rv" class="arc-group"></g>
+
+          <!-- Minute & 5-minute Ticks -->
+          <g id="unfav-ticks" stroke="#373f49" stroke-width="1"></g>
+
+          <!-- Serif Numerals 1-12 with P(success) lighting -->
+          <g id="unfav-numerals" font-family="'Cinzel', serif" font-size="15" text-anchor="middle" dominant-baseline="central"></g>
+
+          <!-- Outer Badges: 12 (Positioning), 3 (25d Skew), 5 (Term Spread) -->
+          <g id="unfav-badge-12" class="clock-badge" transform="translate(250, 48)"></g>
+          <g id="unfav-badge-3" class="clock-badge" transform="translate(452, 250)"></g>
+          <g id="unfav-badge-5" class="clock-badge" transform="translate(425, 351)"></g>
+
+          <!-- Needles -->
+          <!-- Hour Needle: ADX > 30 -->
+          <g id="unfav-needle-adx" class="needle"></g>
+
+          <!-- Minute Needle: IV vs Clock -->
+          <g id="unfav-needle-iv" class="needle"></g>
+
+          <!-- Second Needle: RSI > 75 -->
+          <g id="unfav-needle-rsi" class="needle"></g>
+
+          <!-- Centre Machined Hub with Master Verdict Pin -->
+          <circle cx="250" cy="250" r="14" fill="#20262e" stroke="#485361" stroke-width="1.5" />
+          <circle cx="250" cy="250" r="8" fill="#121518" />
+          <circle id="unfav-hub-pin" cx="250" cy="250" r="4.5" fill="#c9544d" />
+
+          <!-- Top-Right Verdict Cross Badge (Veto) -->
+          <g transform="translate(440, 52)">
+            <circle cx="0" cy="0" r="14" fill="#14191e" stroke="#c9544d" stroke-width="1.5" />
+            <path d="M-4 -4 L4 4 M4 -4 L-4 4" fill="none" stroke="#c9544d" stroke-width="2" stroke-linecap="round" />
+          </g>
+        </svg>
+      </div>
+
+      <!-- 11 Indicator Verdict Dots Bar -->
+      <div class="indicator-dots-row" id="unfav-dots-row">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Macro Stress Sub-Lane Section -->
+  <div class="stress-container">
+    <div class="stress-topbar">
+      <div class="stress-title-group">
+        <span class="section-title">🌐 Macro Stress Single-Line Lane (0–100)</span>
+        <span class="unproven-badge">UNPROVEN · REQUIRES WALK-FORWARD ARCHIVE TEST</span>
+      </div>
+      <div class="stress-toggle-btns">
+        <button class="stress-btn active" id="btn-stress-calm" onclick="switchStressState('calm')">State: Calm Market</button>
+        <button class="stress-btn" id="btn-stress-spike" onclick="switchStressState('stress')">State: Multi-Asset Shock</button>
+      </div>
+    </div>
+
+    <div class="stress-chart-wrapper">
+      <canvas id="stressCanvas" width="1200" height="220"></canvas>
+    </div>
+
+    <!-- Live Readout Panel -->
+    <div class="stress-readout-panel">
+      <!-- Score Metric -->
+      <div class="score-box">
+        <div class="score-num-wrap">
+          <span class="score-num green" id="disp-score-num">24</span>
+          <span class="score-arrow" id="disp-score-arrow">↘</span>
+        </div>
+        <div class="score-zone-label" id="disp-zone-label" style="color: var(--verdict-green)">CALM REGIME · FULL SIZE</div>
+        <div style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">Zone: 0-35 Green | 35-65 Amber | 65+ Red</div>
+      </div>
+
+      <!-- Shock x Link = Pressure Matrix -->
+      <div>
+        <table class="stress-breakdown-table">
+          <thead>
+            <tr>
+              <th>Asset Category</th>
+              <th>Instrument</th>
+              <th>Shock (Z-Score)</th>
+              <th>Link (Corr/Beta)</th>
+              <th>Pressure</th>
+            </tr>
+          </thead>
+          <tbody id="stress-matrix-body">
+            <!-- Injected by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Regime & 4h Uplift -->
+      <div class="stress-meta-box">
+        <div class="meta-row">
+          <span>Global Direction:</span>
+          <span id="disp-regime-dir">RISK-ON (NEUTRAL)</span>
+        </div>
+        <div class="meta-row">
+          <span>Exp. 4h BTC RV Uplift:</span>
+          <span id="disp-rv-uplift" style="color: var(--verdict-green)">+0.4% RV</span>
+        </div>
+        <div class="meta-row">
+          <span>Closest Tier-1 Event:</span>
+          <span id="disp-next-event">FOMC Minutes (in 14.5h)</span>
+        </div>
+        <div class="meta-row">
+          <span>Trade Decision Rule:</span>
+          <span id="disp-trade-rule" style="color: var(--verdict-green)">Normal 100% Sizing</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Parity & Desk Cleanups Status -->
+  <div class="section-title-bar">
+    <div class="section-title">📋 Desk Calibration & Indicator Audit</div>
+    <div class="section-subtitle">Confirming requested removals and default indicator list</div>
+  </div>
+
+  <div class="desk-parity-panel">
+    <!-- Box 1: Removed Indicators -->
+    <div class="parity-box">
+      <h3>🗑 Removed Indicators (As Requested)</h3>
+      <ul class="parity-list">
+        <li class="removed-item">Go / No Go (Legacy composite gate)</li>
+        <li class="removed-item">My day journey (Legacy checklist)</li>
+        <li class="removed-item">Entry hold exit (Redundant state engine)</li>
+      </ul>
+      <p style="font-size: 11px; color: var(--text-dim); margin-top: 10px;">
+        These 3 components will be completely decoupled and removed from the active desk UI once approved.
+      </p>
+    </div>
+
+    <!-- Box 2: 13 Default Indicators -->
+    <div class="parity-box">
+      <h3>⚡ Permanent 13 Default Indicators</h3>
+      <ul class="parity-list" style="max-height: 140px; overflow-y: auto;">
+        <li class="keep-item">Speed vs IV (&lt; 1.5× beacon)</li>
+        <li class="keep-item">ATM IV level</li>
+        <li class="keep-item">Dealer Gamma (GEX)</li>
+        <li class="keep-item">Levels Day/Week/Month</li>
+        <li class="keep-item">Liquidity Heatmap</li>
+        <li class="keep-item">Anchored VWAP + Volume Area</li>
+        <li class="keep-item">Session Box + IV</li>
+        <li class="keep-item">Chart Pattern (S/R)</li>
+        <li class="keep-item">Chart Pattern (Microstructure)</li>
+        <li class="keep-item">Range 24H Expansion</li>
+        <li class="keep-item">VWAP Band</li>
+        <li class="keep-item">Footprints (Delta Cluster)</li>
+        <li class="keep-item">Entry Signals (NY VolTurn)</li>
+      </ul>
+    </div>
+
+    <!-- Box 3: Decision Panel & 365D PnL -->
+    <div class="parity-box">
+      <h3>🎯 Strategy Alignments Underway</h3>
+      <ul class="parity-list">
+        <li class="keep-item">Early vs Late Entry Framing engine</li>
+        <li class="keep-item">Decision Panel weights tuned to backtests</li>
+        <li class="keep-item">365-Day Delta PnL rolling option enabled</li>
+        <li class="keep-item">Deep personal trade diagnostic module</li>
+      </ul>
+      <p style="font-size: 11px; color: var(--text-dim); margin-top: 10px;">
+        Backtested decision panel will prevent uncalibrated signals by synchronizing with the historical strategy archive.
+      </p>
+    </div>
+  </div>
+
+  <!-- Floating Micro-Tooltip Element -->
+  <div class="tooltip-popup" id="global-tooltip">
+    <div class="tt-header">
+      <span id="tt-name">Indicator</span>
+      <span class="tt-verdict" id="tt-verdict">PASS</span>
+    </div>
+    <div class="tt-val" id="tt-val">Value: 0.0</div>
+    <div class="tt-sub" id="tt-sub">Rule explanation</div>
+  </div>
+
+  <!-- SCRIPT: Instrument Logic, Geometry Math, SVG Renders & Stress Chart -->
+  <script>
+    /* =========================================================================
+       1. DATA DEFINITIONS & CENTRAL CONFIG OBJECT
+       ========================================================================= */
+    const THRESHOLDS = {
+      adx: { green: 20, amber: 30 }, // <20 green, 20-30 amber, >30 red
+      rsi: { min: 30, max: 70 },      // 30-70 green, else amber/red
+      edge: { min: 0 },               // >0 green, else red
+      pSuccess: { green: 0.65, amber: 0.50 }, // >=65% green, 50-65 amber, <50 red
+      vov: { low: 45, high: 75 },     // <45 green, 45-75 amber, >75 red
+      rv: { calm: 45, high: 65 }       // <45 green, 45-65 amber, >65 red
+    };
+
+    // State A: Favourable Day (All aligned, strong edge, green hub)
+    const DATA_FAVOURABLE = {
+      adx: 14.8,
+      rsi: 48.5,
+      ivVsClock: -1.8, // IV cooling vs 17:30
+      pSuccess: 0.75,  // 75% -> 9 of 12 numerals lit
+      edge: +6.2,      // IV (51.4) - RV (45.2) = +6.2%
+      greeks: { delta: -0.02, gamma: -0.0004, theta: 420, vega: -85 },
+      vov: 32.0,       // low VoV
+      rv: 42.1,        // calm realized vol
+      ivDriver: { spot: 12, event: 8, term: 15, skew: 65, dominant: 'skew' },
+      positioning: 'neutral', // neutral arrow right
+      skew25d: 'balanced',    // level seesaw
+      termSpread: 'contango'  // current IV above N2N -> green
+    };
+
+    // State B: Unfavourable Day (Multiple vetoes, negative edge, high ADX)
+    const DATA_UNFAVOURABLE = {
+      adx: 35.4,       // VETO (>30)
+      rsi: 78.2,       // VETO (>70)
+      ivVsClock: +4.6, // IV heating up
+      pSuccess: 0.41,  // 41% -> only 5 of 12 numerals lit
+      edge: -4.5,      // IV (48.0) - RV (52.5) = -4.5% (VETO)
+      greeks: { delta: -0.18, gamma: -0.0018, theta: 210, vega: -240 },
+      vov: 82.0,       // spiky VoV (VETO)
+      rv: 68.4,        // high realized volatility
+      ivDriver: { spot: 20, event: 68, term: 8, skew: 4, dominant: 'event' },
+      positioning: 'bearish', // arrow down
+      skew25d: 'put_heavy',   // seesaw tilted left
+      termSpread: 'backward'  // current IV below N2N -> red
+    };
+
+    /* =========================================================================
+       2. VERDICT EVALUATION ENGINE
+       ========================================================================= */
+    function evalIndicator(key, val, data) {
+      switch (key) {
+        case 'adx':
+          if (val < THRESHOLDS.adx.green) return { color: '#4fae8f', text: 'CALM (<20)', code: 'green' };
+          if (val <= THRESHOLDS.adx.amber) return { color: '#d1a054', text: 'TRENDING (20-30)', code: 'amber' };
+          return { color: '#c9544d', text: 'STRONG TREND VETO (>30)', code: 'red' };
+
+        case 'rsi':
+          if (val >= THRESHOLDS.rsi.min && val <= THRESHOLDS.rsi.max) return { color: '#4fae8f', text: 'NEUTRAL (30-70)', code: 'green' };
+          if (val < 25 || val > 75) return { color: '#c9544d', text: 'EXTREME STRETCH VETO', code: 'red' };
+          return { color: '#d1a054', text: 'MOMENTUM CAUTION', code: 'amber' };
+
+        case 'ivVsClock':
+          if (val <= 0) return { color: '#4fae8f', text: 'COOLING VS 17:30', code: 'green' };
+          if (val < 2.5) return { color: '#d1a054', text: 'MILD ELEVATION', code: 'amber' };
+          return { color: '#c9544d', text: 'VOL EXPANSION RISK', code: 'red' };
+
+        case 'pSuccess':
+          if (val >= THRESHOLDS.pSuccess.green) return { color: '#4fae8f', text: `HIGH (${Math.round(val*100)}% >= 65%)`, code: 'green' };
+          if (val >= THRESHOLDS.pSuccess.amber) return { color: '#d1a054', text: `MODERATE (${Math.round(val*100)}%)`, code: 'amber' };
+          return { color: '#c9544d', text: `POOR VETO (${Math.round(val*100)}% < 50%)`, code: 'red' };
+
+        case 'edge':
+          if (val > 0) return { color: '#4fae8f', text: `POSITIVE (+${val.toFixed(1)}% VRP)`, code: 'green' };
+          return { color: '#c9544d', text: `NEGATIVE VETO (${val.toFixed(1)}%)`, code: 'red' };
+
+        case 'greeks':
+          if (Math.abs(val.delta) < 0.05 && val.theta > 350) return { color: '#4fae8f', text: 'HEALTHY DECAY RATIO', code: 'green' };
+          if (Math.abs(val.delta) < 0.12) return { color: '#d1a054', text: 'DELTA ASYMMETRY', code: 'amber' };
+          return { color: '#c9544d', text: 'GAMMA RISK VETO', code: 'red' };
+
+        case 'vov':
+          if (val < THRESHOLDS.vov.low) return { color: '#4fae8f', text: 'STABLE (<45)', code: 'green' };
+          if (val <= THRESHOLDS.vov.high) return { color: '#d1a054', text: 'ELEVATED (45-75)', code: 'amber' };
+          return { color: '#c9544d', text: 'SPIKY VOV VETO (>75)', code: 'red' };
+
+        case 'rv':
+          if (val < THRESHOLDS.rv.calm) return { color: '#4fae8f', text: 'SUBDUED (<45)', code: 'green' };
+          if (val <= THRESHOLDS.rv.high) return { color: '#d1a054', text: 'ACTIVE (45-65)', code: 'amber' };
+          return { color: '#c9544d', text: 'HIGH KINETIC VOL (>65)', code: 'red' };
+
+        case 'ivDriver':
+          if (val.dominant === 'skew' || val.dominant === 'term') return { color: '#4fae8f', text: `DRIVER: ${val.dominant.toUpperCase()}`, code: 'green' };
+          if (val.dominant === 'spot') return { color: '#d1a054', text: 'SPOT PULLING IV', code: 'amber' };
+          return { color: '#c9544d', text: 'EVENT CRUSH RISK', code: 'red' };
+
+        case 'positioning':
+          if (val === 'neutral') return { color: '#4fae8f', text: 'BALANCED FLOW (FLAT)', code: 'green' };
+          if (val === 'bullish') return { color: '#d1a054', text: 'TAKER LONGS CROWDED', code: 'amber' };
+          return { color: '#c9544d', text: 'PERP FLUSH RISK', code: 'red' };
+
+        case 'skew25d':
+          if (val === 'balanced') return { color: '#4fae8f', text: 'WING BALANCE (<1.05)', code: 'green' };
+          return { color: '#c9544d', text: 'SKEW WING ASYMMETRY', code: 'red' };
+
+        case 'termSpread':
+          if (val === 'contango') return { color: '#4fae8f', text: 'CONTANGO (CURRENT > N2N)', code: 'green' };
+          return { color: '#c9544d', text: 'BACKWARDATION INVERSION', code: 'red' };
+      }
+      return { color: '#4fae8f', text: 'PASS', code: 'green' };
+    }
+
+    /* Master Verdict: Any RED veto = RED; Mostly GREEN = GREEN */
+    function evalMasterVerdict(data) {
+      const indicators = ['adx', 'rsi', 'ivVsClock', 'pSuccess', 'edge', 'greeks', 'vov', 'rv', 'ivDriver', 'positioning', 'skew25d', 'termSpread'];
+      let redCount = 0;
+      let amberCount = 0;
+      indicators.forEach(k => {
+        const res = evalIndicator(k, data[k], data);
+        if (res.code === 'red') redCount++;
+        else if (res.code === 'amber') amberCount++;
+      });
+      if (redCount > 0) return { verdict: 'VETO', color: '#c9544d', summary: `${redCount} Veto Trigger(s) Active — Strangle Entry Prohibited` };
+      if (amberCount >= 3) return { verdict: 'CAUTION', color: '#d1a054', summary: `${amberCount} Caution Warnings — Half Sizing Recommended` };
+      return { verdict: 'PASS', color: '#4fae8f', summary: 'Clean Matrix — Safe for Standard Size Short Strangle Entry' };
+    }
+
+    /* =========================================================================
+       3. SVG GEOMETRY HELPER FUNCTIONS
+       ========================================================================= */
+    const CX = 250, CY = 250;
+
+    function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+      const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+      return {
+        x: centerX + (radius * Math.cos(angleInRadians)),
+        y: centerY + (radius * Math.sin(angleInRadians))
+      };
+    }
+
+    function describeArc(x, y, radius, startAngle, endAngle) {
+      // Ensure positive arc span
+      let diff = endAngle - startAngle;
+      if (diff < 0) diff += 360;
+      const start = polarToCartesian(x, y, radius, startAngle);
+      const end = polarToCartesian(x, y, radius, endAngle);
+      const largeArcFlag = diff <= 180 ? "0" : "1";
+      return [
+        "M", start.x, start.y, 
+        "A", radius, radius, 0, largeArcFlag, 1, end.x, end.y
+      ].join(" ");
+    }
+
+    /* =========================================================================
+       4. CLOCK SVG RENDERER
+       ========================================================================= */
+    function renderClock(prefix, data) {
+      const master = evalMasterVerdict(data);
+
+      // 1. Update Master Bezel Ring & Hub Pin
+      const ring = document.getElementById(`${prefix}-verdict-ring`);
+      const hub = document.getElementById(`${prefix}-hub-pin`);
+      if (ring) ring.setAttribute('stroke', master.color);
+      if (hub) hub.setAttribute('fill', master.color);
+
+      // 2. Minute & 5-minute ticks
+      const ticksGroup = document.getElementById(`${prefix}-ticks`);
+      if (ticksGroup && ticksGroup.children.length === 0) {
+        for (let i = 0; i < 60; i++) {
+          const deg = i * 6;
+          const isMajor = (i % 5 === 0);
+          const rInner = isMajor ? 116 : 120;
+          const rOuter = 124;
+          const p1 = polarToCartesian(CX, CY, rInner, deg);
+          const p2 = polarToCartesian(CX, CY, rOuter, deg);
+          const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+          line.setAttribute('x1', p1.x);
+          line.setAttribute('y1', p1.y);
+          line.setAttribute('x2', p2.x);
+          line.setAttribute('y2', p2.y);
+          line.setAttribute('stroke', isMajor ? '#505d6e' : '#28303a');
+          line.setAttribute('stroke-width', isMajor ? '1.5' : '1');
+          ticksGroup.appendChild(line);
+        }
+      }
+
+      // 3. Numerals 1-12 with P(success) lighting
+      const numeralsGroup = document.getElementById(`${prefix}-numerals`);
+      if (numeralsGroup) {
+        numeralsGroup.innerHTML = '';
+        const pVerdict = evalIndicator('pSuccess', data.pSuccess, data);
+        const litCount = Math.round(data.pSuccess * 12); // e.g. 0.75 * 12 = 9
+        
+        for (let num = 1; num <= 12; num++) {
+          const deg = num * 30;
+          const pos = polarToCartesian(CX, CY, 98, deg);
+          const isLit = (num <= litCount);
+          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          text.setAttribute('x', pos.x);
+          text.setAttribute('y', pos.y);
+          text.textContent = num;
+          text.setAttribute('fill', isLit ? pVerdict.color : '#2d3540');
+          text.setAttribute('font-weight', isLit ? '700' : '500');
+          text.style.cursor = 'pointer';
+          attachTooltip(text, `P(Success) Lit Numeral ${num}/12`, `Lit count = ${litCount}/12 (${Math.round(data.pSuccess*100)}%)`, pVerdict);
+          numeralsGroup.appendChild(text);
+        }
+
+        // Target Reticle Icon at 12:00
+        const targetPos = polarToCartesian(CX, CY, 112, 0);
+        const targetIcon = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        targetIcon.setAttribute('transform', `translate(${targetPos.x}, ${targetPos.y})`);
+        targetIcon.innerHTML = `
+          <circle cx="0" cy="0" r="4.5" fill="none" stroke="${pVerdict.color}" stroke-width="1"/>
+          <circle cx="0" cy="0" r="1.5" fill="${pVerdict.color}"/>
+        `;
+        attachTooltip(targetIcon, 'P(Success) Anchor Reticle', `Probability model score: ${Math.round(data.pSuccess*100)}%`, pVerdict);
+        numeralsGroup.appendChild(targetIcon);
+      }
+
+      // 4. Outside Rays: IV Driver (Dominant sector lit)
+      const raysGroup = document.getElementById(`${prefix}-rays`);
+      if (raysGroup) {
+        raysGroup.innerHTML = '';
+        // 4 sectors: 0-90 Spot, 90-180 Event, 180-270 Term, 270-360 Skew
+        const sectors = [
+          { name: 'spot', label: 'Spot Driver', start: 0, end: 90 },
+          { name: 'event', label: 'Event Driver', start: 90, end: 180 },
+          { name: 'term', label: 'Term Driver', start: 180, end: 270 },
+          { name: 'skew', label: 'Skew Driver', start: 270, end: 360 }
+        ];
+        const driverVerdict = evalIndicator('ivDriver', data.ivDriver, data);
+
+        sectors.forEach(s => {
+          const isDominant = (data.ivDriver.dominant === s.name);
+          const rayColor = isDominant ? driverVerdict.color : '#232930';
+          const strokeW = isDominant ? 1.5 : 0.8;
+
+          for (let a = s.start + 3; a < s.end; a += 6) {
+            const p1 = polarToCartesian(CX, CY, 222, a);
+            const p2 = polarToCartesian(CX, CY, 230, a);
+            const ray = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            ray.setAttribute('x1', p1.x);
+            ray.setAttribute('y1', p1.y);
+            ray.setAttribute('x2', p2.x);
+            ray.setAttribute('y2', p2.y);
+            ray.setAttribute('stroke', rayColor);
+            ray.setAttribute('stroke-width', strokeW);
+            raysGroup.appendChild(ray);
+          }
+        });
+        attachTooltip(raysGroup, 'IV Driver Radial Rays', `Dominant driver: ${data.ivDriver.dominant.toUpperCase()} (${data.ivDriver[data.ivDriver.dominant]}% weight)`, driverVerdict);
+      }
+
+      // 5. Ring 1: Edge (IV - RV)
+      const ringEdge = document.getElementById(`${prefix}-ring-edge`);
+      if (ringEdge) {
+        ringEdge.innerHTML = '';
+        const r = 212;
+        const edgeVerdict = evalIndicator('edge', data.edge, data);
+        
+        // Base track
+        const track = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        track.setAttribute('cx', CX);
+        track.setAttribute('cy', CY);
+        track.setAttribute('r', r);
+        track.setAttribute('fill', 'none');
+        track.setAttribute('stroke', '#1d232a');
+        track.setAttribute('stroke-width', '4');
+        ringEdge.appendChild(track);
+
+        // Edge Arc: Grows right (clockwise) if positive, left (counter-clockwise) if negative
+        const spanDeg = Math.min(Math.abs(data.edge) * 12, 160);
+        let arcPathStr;
+        if (data.edge >= 0) {
+          arcPathStr = describeArc(CX, CY, r, 0, spanDeg);
+        } else {
+          arcPathStr = describeArc(CX, CY, r, 360 - spanDeg, 360);
+        }
+        const arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        arc.setAttribute('d', arcPathStr);
+        arc.setAttribute('fill', 'none');
+        arc.setAttribute('stroke', edgeVerdict.color);
+        arc.setAttribute('stroke-width', '4.5');
+        arc.setAttribute('stroke-linecap', 'round');
+        ringEdge.appendChild(arc);
+
+        attachTooltip(ringEdge, 'Ring 1: Edge (IV minus RV)', `VRP Spread: ${data.edge > 0 ? '+' : ''}${data.edge.toFixed(1)}% (Arc grows right for + edge)`, edgeVerdict);
+      }
+
+      // 6. Ring 2: ATM Greeks (4 Segments: Triangle, Arch, Theta thick, V)
+      const ringGreeks = document.getElementById(`${prefix}-ring-greeks`);
+      if (ringGreeks) {
+        ringGreeks.innerHTML = '';
+        const r = 192;
+        const gVerd = evalIndicator('greeks', data.greeks, data);
+
+        // 4 quadrants with thin gaps:
+        // Seg 1 (Delta - Triangle): 10 to 80 deg
+        // Seg 2 (Gamma - Arch): 100 to 170 deg
+        // Seg 3 (Theta - Thickest segment): 190 to 260 deg
+        // Seg 4 (Vega - V): 280 to 350 deg
+        const segments = [
+          { name: 'Delta (Δ)', start: 10, end: 80, width: 3, icon: '▲' },
+          { name: 'Gamma (Γ)', start: 100, end: 170, width: 3, icon: '⌒' },
+          { name: 'Theta (Θ) [Decay Engine]', start: 190, end: 260, width: 6.5, icon: 'Θ' }, // Thick segment as required
+          { name: 'Vega (ν)', start: 280, end: 350, width: 3, icon: 'V' }
+        ];
+
+        segments.forEach(seg => {
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute('d', describeArc(CX, CY, r, seg.start, seg.end));
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke', gVerd.color);
+          path.setAttribute('stroke-width', seg.width);
+          path.setAttribute('stroke-linecap', 'round');
+          ringGreeks.appendChild(path);
+
+          // Center icon of segment
+          const midA = (seg.start + seg.end) / 2;
+          const pos = polarToCartesian(CX, CY, r, midA);
+          const iconG = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          iconG.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
+          iconG.innerHTML = `
+            <circle cx="0" cy="0" r="7" fill="#14181c" stroke="${gVerd.color}" stroke-width="1"/>
+            <text x="0" y="1" font-size="8" font-family="'Cinzel', sans-serif" fill="${gVerd.color}" text-anchor="middle" dominant-baseline="central">${seg.icon}</text>
+          `;
+          ringGreeks.appendChild(iconG);
+        });
+        attachTooltip(ringGreeks, 'Ring 2: ATM Greeks (4 Segments)', `Theta decay: $${data.greeks.theta}/day (Thick segment) | Delta: ${data.greeks.delta}`, gVerd);
+      }
+
+      // 7. Ring 3: VoV (Vol of Volatility)
+      const ringVoV = document.getElementById(`${prefix}-ring-vov`);
+      if (ringVoV) {
+        ringVoV.innerHTML = '';
+        const r = 168;
+        const vovVerd = evalIndicator('vov', data.vov, data);
+        
+        // Track
+        const trk = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        trk.setAttribute('cx', CX);
+        trk.setAttribute('cy', CY);
+        trk.setAttribute('r', r);
+        trk.setAttribute('fill', 'none');
+        trk.setAttribute('stroke', '#1a2027');
+        trk.setAttribute('stroke-width', '2.5');
+        ringVoV.appendChild(trk);
+
+        // Arc based on VoV magnitude (0-100 maps to 0-300 deg)
+        const vovDeg = Math.min((data.vov / 100) * 320, 320);
+        const arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        arc.setAttribute('d', describeArc(CX, CY, r, 20, 20 + vovDeg));
+        arc.setAttribute('fill', 'none');
+        arc.setAttribute('stroke', vovVerd.color);
+        arc.setAttribute('stroke-width', '2.5');
+        arc.setAttribute('stroke-linecap', 'round');
+        ringVoV.appendChild(arc);
+
+        // Spiky Icon in thin circle at start
+        const iconPos = polarToCartesian(CX, CY, r, 20);
+        const spikyIcon = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        spikyIcon.setAttribute('transform', `translate(${iconPos.x}, ${iconPos.y})`);
+        spikyIcon.innerHTML = `
+          <circle cx="0" cy="0" r="6" fill="#14181c" stroke="${vovVerd.color}" stroke-width="0.8"/>
+          <path d="M-3 0 L-1.5 -2.5 L0 2.5 L1.5 -2.5 L3 0" fill="none" stroke="${vovVerd.color}" stroke-width="1"/>
+        `;
+        ringVoV.appendChild(spikyIcon);
+        attachTooltip(ringVoV, 'Ring 3: VoV (Vol of Volatility)', `VoV Percentile: ${data.vov.toFixed(1)}% (Spiky icon)`, vovVerd);
+      }
+
+      // 8. Ring 4: RV (Realized Volatility)
+      const ringRV = document.getElementById(`${prefix}-ring-rv`);
+      if (ringRV) {
+        ringRV.innerHTML = '';
+        const r = 148;
+        const rvVerd = evalIndicator('rv', data.rv, data);
+
+        // Track
+        const trk = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        trk.setAttribute('cx', CX);
+        trk.setAttribute('cy', CY);
+        trk.setAttribute('r', r);
+        trk.setAttribute('fill', 'none');
+        trk.setAttribute('stroke', '#1a2027');
+        trk.setAttribute('stroke-width', '2.5');
+        ringRV.appendChild(trk);
+
+        // Arc based on RV magnitude
+        const rvDeg = Math.min((data.rv / 100) * 320, 320);
+        const arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        arc.setAttribute('d', describeArc(CX, CY, r, 40, 40 + rvDeg));
+        arc.setAttribute('fill', 'none');
+        arc.setAttribute('stroke', rvVerd.color);
+        arc.setAttribute('stroke-width', '2.5');
+        arc.setAttribute('stroke-linecap', 'round');
+        ringRV.appendChild(arc);
+
+        // Smooth wave icon in thin circle
+        const iconPos = polarToCartesian(CX, CY, r, 40);
+        const waveIcon = document.createElementNS("http://www.w3.org/2000/svg", "g");
+        waveIcon.setAttribute('transform', `translate(${iconPos.x}, ${iconPos.y})`);
+        waveIcon.innerHTML = `
+          <circle cx="0" cy="0" r="6" fill="#14181c" stroke="${rvVerd.color}" stroke-width="0.8"/>
+          <path d="M-3 1 Q-1.5 -2 0 1 T3 1" fill="none" stroke="${rvVerd.color}" stroke-width="1"/>
+        `;
+        ringRV.appendChild(waveIcon);
+        attachTooltip(ringRV, 'Ring 4: RV (Realized Volatility)', `24h Realized Vol: ${data.rv.toFixed(1)}% (Smooth wave icon)`, rvVerd);
+      }
+
+      // 9. Outer Badges: 12 (Positioning), 3 (25d Skew), 5 (Term Spread)
+      // Badge 12: Future positioning
+      const b12 = document.getElementById(`${prefix}-badge-12`);
+      if (b12) {
+        b12.innerHTML = '';
+        const posVerd = evalIndicator('positioning', data.positioning, data);
+        let arrowPath;
+        if (data.positioning === 'bullish') arrowPath = "M0 4 L0 -4 M-3 -1 L0 -4 L3 -1"; // up
+        else if (data.positioning === 'bearish') arrowPath = "M0 -4 L0 4 M-3 1 L0 4 L3 1"; // down
+        else arrowPath = "M-4 0 L4 0 M1 -3 L4 0 L1 3"; // right (neutral)
+
+        b12.innerHTML = `
+          <circle cx="0" cy="0" r="12" fill="#14181d" stroke="${posVerd.color}" stroke-width="1.2"/>
+          <path d="${arrowPath}" fill="none" stroke="${posVerd.color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        `;
+        attachTooltip(b12, 'Outer Badge 12: Futures Positioning', `OI & Taker flow: ${data.positioning.toUpperCase()} (Arrow: neutral →, bull ↑, bear ↓)`, posVerd);
+      }
+
+      // Badge 3: 25-Delta Skew (Seesaw balance)
+      const b3 = document.getElementById(`${prefix}-badge-3`);
+      if (b3) {
+        b3.innerHTML = '';
+        const skewVerd = evalIndicator('skew25d', data.skew25d, data);
+        let seesawY1 = 0, seesawY2 = 0;
+        if (data.skew25d === 'put_heavy') { seesawY1 = 3; seesawY2 = -3; }
+        else if (data.skew25d === 'call_heavy') { seesawY1 = -3; seesawY2 = 3; }
+
+        b3.innerHTML = `
+          <circle cx="0" cy="0" r="12" fill="#14181d" stroke="${skewVerd.color}" stroke-width="1.2"/>
+          <line x1="-5" y1="${seesawY1}" x2="5" y2="${seesawY2}" stroke="${skewVerd.color}" stroke-width="1.6" stroke-linecap="round"/>
+          <polygon points="0,1 -2,4 2,4" fill="${skewVerd.color}"/>
+        `;
+        attachTooltip(b3, 'Outer Badge 3: 25-Delta Skew', `Wing balance: ${data.skew25d.toUpperCase()} (Seesaw: level = balanced)`, skewVerd);
+      }
+
+      // Badge 5: Term Spread (Rising curve = Current above N2N)
+      const b5 = document.getElementById(`${prefix}-badge-5`);
+      if (b5) {
+        b5.innerHTML = '';
+        const termVerd = evalIndicator('termSpread', data.termSpread, data);
+        const curvePath = data.termSpread === 'contango' 
+          ? "M-5 3 Q0 -3 5 -4" // rising curve
+          : "M-5 -4 Q0 -3 5 3"; // inverted curve
+
+        b5.innerHTML = `
+          <circle cx="0" cy="0" r="12" fill="#14181d" stroke="${termVerd.color}" stroke-width="1.2"/>
+          <path d="${curvePath}" fill="none" stroke="${termVerd.color}" stroke-width="1.6" stroke-linecap="round"/>
+        `;
+        attachTooltip(b5, 'Outer Badge 5: Term Spread (N2N)', `Structure: ${data.termSpread.toUpperCase()} (Rising = Current IV above forward)`, termVerd);
+      }
+
+      // 10. Needles: Hour (ADX), Minute (IV vs Clock), Second (RSI)
+      // Hour Needle: ADX
+      const nAdx = document.getElementById(`${prefix}-needle-adx`);
+      if (nAdx) {
+        nAdx.innerHTML = '';
+        const adxVerd = evalIndicator('adx', data.adx, data);
+        // Map ADX 0-50 to degrees (e.g. 0 to 360 deg)
+        const adxDeg = (data.adx / 50) * 360;
+        nAdx.setAttribute('transform', `rotate(${adxDeg}, ${CX}, ${CY})`);
+        nAdx.innerHTML = `
+          <!-- Counter weight with rising bars icon -->
+          <circle cx="${CX}" cy="${CY + 22}" r="7" fill="#161b20" stroke="${adxVerd.color}" stroke-width="1"/>
+          <!-- Rising bars symbol -->
+          <line x1="${CX - 3}" y1="${CY + 24}" x2="${CX - 3}" y2="${CY + 22}" stroke="${adxVerd.color}" stroke-width="1"/>
+          <line x1="${CX}" y1="${CY + 24}" x2="${CX}" y2="${CY + 20}" stroke="${adxVerd.color}" stroke-width="1"/>
+          <line x1="${CX + 3}" y1="${CY + 24}" x2="${CX + 3}" y2="${CY + 18}" stroke="${adxVerd.color}" stroke-width="1"/>
+          <!-- Needle Blade -->
+          <polygon points="${CX-2.5},${CY} ${CX-1},${CY-58} ${CX},${CY-64} ${CX+1},${CY-58} ${CX+2.5},${CY}" fill="#ced5df"/>
+          <line x1="${CX}" y1="${CY-45}" x2="${CX}" y2="${CY-63}" stroke="${adxVerd.color}" stroke-width="1.8"/>
+        `;
+        attachTooltip(nAdx, 'Hour Needle: ADX (Trend Strength)', `ADX Value: ${data.adx.toFixed(1)} (Rising bars icon; <20 Green, 20-30 Amber, >30 Red)`, adxVerd);
+      }
+
+      // Minute Needle: IV vs Clock (Icon: wave)
+      const nIv = document.getElementById(`${prefix}-needle-iv`);
+      if (nIv) {
+        nIv.innerHTML = '';
+        const ivVerd = evalIndicator('ivVsClock', data.ivVsClock, data);
+        // Map IV delta -5 to +5% to degrees (180 deg anchor = 0 delta)
+        const ivDeg = 180 + (data.ivVsClock * 24);
+        nIv.setAttribute('transform', `rotate(${ivDeg}, ${CX}, ${CY})`);
+        nIv.innerHTML = `
+          <!-- Counter weight with wave icon -->
+          <circle cx="${CX}" cy="${CY + 28}" r="8" fill="#161b20" stroke="${ivVerd.color}" stroke-width="1"/>
+          <path d="M${CX-4} ${CY+28} Q${CX-2} ${CY+25} ${CX} ${CY+28} T${CX+4} ${CY+28}" fill="none" stroke="${ivVerd.color}" stroke-width="1.2"/>
+          <!-- Slender needle blade -->
+          <polygon points="${CX-1.8},${CY} ${CX-0.8},${CY-82} ${CX},${CY-88} ${CX+0.8},${CY-82} ${CX+1.8},${CY}" fill="#a3b1c2"/>
+          <line x1="${CX}" y1="${CY-65}" x2="${CX}" y2="${CY-87}" stroke="${ivVerd.color}" stroke-width="1.5"/>
+        `;
+        attachTooltip(nIv, 'Minute Needle: Tonight IV vs 17:30 Clock', `IV Spread vs Anchor: ${data.ivVsClock > 0 ? '+' : ''}${data.ivVsClock.toFixed(1)}% (Wave icon)`, ivVerd);
+      }
+
+      // Second Needle: RSI (Icon: zigzag)
+      const nRsi = document.getElementById(`${prefix}-needle-rsi`);
+      if (nRsi) {
+        nRsi.innerHTML = '';
+        const rsiVerd = evalIndicator('rsi', data.rsi, data);
+        // RSI 0-100 maps directly to 0-360 deg
+        const rsiDeg = (data.rsi / 100) * 360;
+        nRsi.setAttribute('transform', `rotate(${rsiDeg}, ${CX}, ${CY})`);
+        nRsi.innerHTML = `
+          <!-- Counter weight with zigzag icon -->
+          <circle cx="${CX}" cy="${CY + 34}" r="7" fill="#161b20" stroke="${rsiVerd.color}" stroke-width="1"/>
+          <path d="M${CX-3} ${CY+35} L${CX-1} ${CY+32} L${CX+1} ${CY+36} L${CX+3} ${CY+33}" fill="none" stroke="${rsiVerd.color}" stroke-width="1"/>
+          <!-- Surgical thin 1px needle -->
+          <line x1="${CX}" y1="${CY+26}" x2="${CX}" y2="${CY-100}" stroke="#78889b" stroke-width="1"/>
+          <line x1="${CX}" y1="${CY-75}" x2="${CX}" y2="${CY-100}" stroke="${rsiVerd.color}" stroke-width="1.5"/>
+          <circle cx="${CX}" cy="${CY-100}" r="2" fill="${rsiVerd.color}"/>
+        `;
+        attachTooltip(nRsi, 'Second Needle: RSI (14)', `RSI Value: ${data.rsi.toFixed(1)} (Zigzag icon; 30-70 Green, else Amber/Red)`, rsiVerd);
+      }
+
+      // 11. Row of 11 Status Dots at Bottom
+      const dotsRow = document.getElementById(`${prefix}-dots-row`);
+      if (dotsRow) {
+        dotsRow.innerHTML = '';
+        const indicatorList = [
+          { key: 'adx', label: '1. ADX (Hour Needle)', val: data.adx },
+          { key: 'ivVsClock', label: '2. IV vs Clock (Minute Needle)', val: data.ivVsClock },
+          { key: 'rsi', label: '3. RSI (Second Needle)', val: data.rsi },
+          { key: 'pSuccess', label: '4. P(Success) Lit Numerals', val: data.pSuccess },
+          { key: 'edge', label: '5. Edge (Ring 1)', val: data.edge },
+          { key: 'greeks', label: '6. ATM Greeks (Ring 2)', val: data.greeks },
+          { key: 'vov', label: '7. VoV (Ring 3)', val: data.vov },
+          { key: 'rv', label: '8. RV (Ring 4)', val: data.rv },
+          { key: 'ivDriver', label: '9. IV Driver (Outside Rays)', val: data.ivDriver },
+          { key: 'positioning', label: '10. Futures Positioning (Badge 12)', val: data.positioning },
+          { key: 'skew25d', label: '11. 25Δ Skew & Term Spread (Badges 3 & 5)', val: data.skew25d }
+        ];
+
+        indicatorList.forEach((ind, idx) => {
+          const res = evalIndicator(ind.key, ind.val, data);
+          const dotWrap = document.createElement('div');
+          dotWrap.className = 'dot-item';
+          dotWrap.innerHTML = `<span class="status-dot" style="background: ${res.color};"></span>`;
+          attachTooltip(dotWrap, ind.label, res.text, res);
+          dotsRow.appendChild(dotWrap);
+        });
+      }
+    }
+
+    /* =========================================================================
+       5. TOOLTIP INTERACTION MANAGER
+       ========================================================================= */
+    const ttPopup = document.getElementById('global-tooltip');
+    const ttName = document.getElementById('tt-name');
+    const ttVerdict = document.getElementById('tt-verdict');
+    const ttVal = document.getElementById('tt-val');
+    const ttSub = document.getElementById('tt-sub');
+
+    function attachTooltip(element, name, val, verdictObj) {
+      function show(e) {
+        ttName.textContent = name;
+        ttVal.textContent = val;
+        ttSub.textContent = verdictObj ? `Verdict: ${verdictObj.text}` : '';
+        ttVerdict.textContent = verdictObj ? verdictObj.code.toUpperCase() : 'INFO';
+        ttVerdict.style.backgroundColor = verdictObj ? `${verdictObj.color}25` : '#222';
+        ttVerdict.style.color = verdictObj ? verdictObj.color : '#aaa';
+        
+        const rect = element.getBoundingClientRect ? element.getBoundingClientRect() : { left: e.clientX, top: e.clientY, width: 0, height: 0 };
+        const x = (e.clientX || rect.left + rect.width / 2) + 12;
+        const y = (e.clientY || rect.top) + 12;
+        
+        ttPopup.style.left = `${Math.min(x, window.innerWidth - 260)}px`;
+        ttPopup.style.top = `${y}px`;
+        ttPopup.classList.add('active');
+      }
+
+      function hide() {
+        ttPopup.classList.remove('active');
+      }
+
+      element.addEventListener('mouseenter', show);
+      element.addEventListener('mousemove', show);
+      element.addEventListener('mouseleave', hide);
+      element.addEventListener('touchstart', (e) => { show(e.touches[0]); }, { passive: true });
+    }
+
+    /* =========================================================================
+       6. MACRO STRESS SINGLE-LINE SUB-LANE (0-100)
+       ========================================================================= */
+    const STRESS_DATA_CALM = {
+      score: 24,
+      arrow: '↘',
+      zone: 'calm',
+      direction: 'RISK-ON (NEUTRAL)',
+      uplift: '+0.4% RV',
+      nextEvent: 'FOMC Minutes (in 14.5h IST)',
+      tradeRule: 'Normal 100% Sizing (All markets subdued)',
+      matrix: [
+        { cat: 'Forex', inst: 'DXY / USDJPY', shock: '+0.32 σ', link: '0.24', pressure: '0.08' },
+        { cat: 'Commodities', inst: 'Gold / WTI Oil', shock: '+0.41 σ', link: '0.31', pressure: '0.13' },
+        { cat: 'Equities', inst: 'Nasdaq Fut / VIX', shock: '-0.20 σ', link: '0.45', pressure: '0.09' },
+        { cat: 'Bonds / Rates', inst: 'US10Y / MOVE', shock: '+0.15 σ', link: '0.28', pressure: '0.04' },
+        { cat: 'News Calendar', inst: 'No Tier-1 in 6h', shock: '0.00 σ', link: '1.00', pressure: '0.00' }
+      ],
+      curve: [
+        { time: '14:00', val: 28 }, { time: '15:00', val: 26 }, { time: '16:00', val: 29 },
+        { time: '17:00', val: 25 }, { time: '18:00', val: 27 }, { time: '19:00', val: 23 },
+        { time: '20:00 (NOW)', val: 24, isNow: true },
+        { time: '21:00 (Proj)', val: 22, isProj: true }, { time: '22:00 (Proj)', val: 21, isProj: true }, { time: '23:00 (Proj)', val: 20, isProj: true }
+      ],
+      events: [
+        { timeIdx: 1, name: 'ECB Speech (Past)', shockVal: 32 }
+      ]
+    };
+
+    const STRESS_DATA_SPIKE = {
+      score: 78,
+      arrow: '↗',
+      zone: 'stress',
+      direction: 'RISK-OFF (VOL LIQUIDATION)',
+      uplift: '+4.8% RV',
+      nextEvent: 'US CPI Release (in 1.5h IST)',
+      tradeRule: 'Skip Entry / Zero Size (Macro Shock Active)',
+      matrix: [
+        { cat: 'Forex', inst: 'DXY / USDJPY', shock: '+2.85 σ', link: '0.78', pressure: '2.22' },
+        { cat: 'Commodities', inst: 'Gold / WTI Oil', shock: '+2.10 σ', link: '0.64', pressure: '1.34' },
+        { cat: 'Equities', inst: 'Nasdaq Fut / VIX', shock: '+3.40 σ', link: '0.85', pressure: '2.89' },
+        { cat: 'Bonds / Rates', inst: 'US10Y / MOVE', shock: '+2.60 σ', link: '0.72', pressure: '1.87' },
+        { cat: 'News Calendar', inst: 'CPI within 90 min', shock: '+3.80 σ', link: '0.95', pressure: '3.61' }
+      ],
+      curve: [
+        { time: '14:00', val: 32 }, { time: '15:00', val: 38 }, { time: '16:00', val: 46 },
+        { time: '17:00', val: 58 }, { time: '18:00', val: 69 }, { time: '19:00', val: 74 },
+        { time: '20:00 (NOW)', val: 78, isNow: true },
+        { time: '21:00 (Proj)', val: 84, isProj: true }, { time: '22:00 (Proj)', val: 88, isProj: true }, { time: '23:00 (Proj)', val: 72, isProj: true }
+      ],
+      events: [
+        { timeIdx: 6, name: 'US CPI Release (Imminent)', shockVal: 78 }
+      ]
+    };
+
+    let currentStress = STRESS_DATA_CALM;
+
+    function switchStressState(type) {
+      document.getElementById('btn-stress-calm').classList.toggle('active', type === 'calm');
+      document.getElementById('btn-stress-spike').classList.toggle('active', type === 'stress');
+      currentStress = (type === 'calm') ? STRESS_DATA_CALM : STRESS_DATA_SPIKE;
+      updateStressUI();
+      drawStressChart();
+    }
+
+    function updateStressUI() {
+      const scoreEl = document.getElementById('disp-score-num');
+      const arrowEl = document.getElementById('disp-score-arrow');
+      const labelEl = document.getElementById('disp-zone-label');
+      
+      scoreEl.textContent = currentStress.score;
+      arrowEl.textContent = currentStress.arrow;
+      
+      if (currentStress.score < 35) {
+        scoreEl.className = 'score-num green';
+        labelEl.textContent = 'CALM REGIME · FULL SIZE';
+        labelEl.style.color = 'var(--verdict-green)';
+      } else if (currentStress.score <= 65) {
+        scoreEl.className = 'score-num amber';
+        labelEl.textContent = 'ELEVATED STRESS · HALF SIZE';
+        labelEl.style.color = 'var(--verdict-amber)';
+      } else {
+        scoreEl.className = 'score-num red';
+        labelEl.textContent = 'HIGH MACRO SHOCK · SKIP ENTRY';
+        labelEl.style.color = 'var(--verdict-red)';
+      }
+
+      document.getElementById('disp-regime-dir').textContent = currentStress.direction;
+      const upliftEl = document.getElementById('disp-rv-uplift');
+      upliftEl.textContent = currentStress.uplift;
+      upliftEl.style.color = currentStress.score < 35 ? 'var(--verdict-green)' : 'var(--verdict-red)';
+      document.getElementById('disp-next-event').textContent = currentStress.nextEvent;
+      
+      const ruleEl = document.getElementById('disp-trade-rule');
+      ruleEl.textContent = currentStress.tradeRule;
+      ruleEl.style.color = currentStress.score < 35 ? 'var(--verdict-green)' : (currentStress.score <= 65 ? 'var(--verdict-amber)' : 'var(--verdict-red)');
+
+      // Table Matrix
+      const tBody = document.getElementById('stress-matrix-body');
+      tBody.innerHTML = '';
+      currentStress.matrix.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.cat}</td>
+          <td style="color: var(--text-bright)">${row.inst}</td>
+          <td class="val">${row.shock}</td>
+          <td class="val">${row.link}</td>
+          <td class="val" style="color: ${parseFloat(row.pressure) > 1.0 ? 'var(--verdict-red)' : 'var(--verdict-green)'}">${row.pressure}</td>
+        `;
+        tBody.appendChild(tr);
+      });
+    }
+
+    function drawStressChart() {
+      const canvas = document.getElementById('stressCanvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.clearRect(0, 0, w, h);
+
+      const padTop = 20;
+      const padBottom = 35;
+      const padLeft = 45;
+      const padRight = 60;
+      const chartH = h - padTop - padBottom;
+      const chartW = w - padLeft - padRight;
+
+      // Function to map value 0-100 to y
+      function getY(v) {
+        return padTop + chartH - (v / 100 * chartH);
+      }
+
+      // 1. Zone Background Bands at 7% opacity
+      // Zone 0-35 (Green)
+      ctx.fillStyle = 'rgba(79, 174, 143, 0.07)';
+      ctx.fillRect(padLeft, getY(35), chartW, getY(0) - getY(35));
+
+      // Zone 35-65 (Amber)
+      ctx.fillStyle = 'rgba(209, 160, 84, 0.07)';
+      ctx.fillRect(padLeft, getY(65), chartW, getY(35) - getY(65));
+
+      // Zone 65-100 (Red)
+      ctx.fillStyle = 'rgba(201, 84, 77, 0.07)';
+      ctx.fillRect(padLeft, getY(100), chartW, getY(65) - getY(100));
+
+      // 2. Dashed threshold hairlines at 35 and 65
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+
+      // 35 line
+      ctx.strokeStyle = 'rgba(209, 160, 84, 0.4)';
+      ctx.beginPath();
+      ctx.moveTo(padLeft, getY(35));
+      ctx.lineTo(padLeft + chartW, getY(35));
+      ctx.stroke();
+
+      // 65 line
+      ctx.strokeStyle = 'rgba(201, 84, 77, 0.4)';
+      ctx.beginPath();
+      ctx.moveTo(padLeft, getY(65));
+      ctx.lineTo(padLeft + chartW, getY(65));
+      ctx.stroke();
+
+      ctx.setLineDash([]); // Reset dash
+
+      // Axis labels on right
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#6b7785';
+      ctx.fillText('100', padLeft + chartW + 8, getY(100) + 3);
+      ctx.fillText('65 (Red)', padLeft + chartW + 8, getY(65) + 3);
+      ctx.fillText('35 (Amb)', padLeft + chartW + 8, getY(35) + 3);
+      ctx.fillText('0', padLeft + chartW + 8, getY(0) + 3);
+
+      // 3. Draw Trajectory Line (Solid for historical, dashed for 3h projection)
+      const points = currentStress.curve;
+      const stepX = chartW / (points.length - 1);
+
+      // Historic Segment (0 to 6)
+      const nowIdx = 6;
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = currentStress.score < 35 ? '#4fae8f' : (currentStress.score <= 65 ? '#d1a054' : '#c9544d');
+      ctx.beginPath();
+      for (let i = 0; i <= nowIdx; i++) {
+        const x = padLeft + (i * stepX);
+        const y = getY(points[i].val);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+
+      // Projected Segment (6 to end, dashed)
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      for (let i = nowIdx; i < points.length; i++) {
+        const x = padLeft + (i * stepX);
+        const y = getY(points[i].val);
+        if (i === nowIdx) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 4. Vertical "NOW" line marker
+      const nowX = padLeft + (nowIdx * stepX);
+      ctx.strokeStyle = '#8b949e';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(nowX, padTop);
+      ctx.lineTo(nowX, padTop + chartH);
+      ctx.stroke();
+
+      // NOW Pin Circle
+      const nowY = getY(points[nowIdx].val);
+      ctx.fillStyle = currentStress.score < 35 ? '#4fae8f' : '#c9544d';
+      ctx.beginPath();
+      ctx.arc(nowX, nowY, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 5. Time axis labels (IST)
+      ctx.fillStyle = '#8b949e';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      points.forEach((pt, i) => {
+        const x = padLeft + (i * stepX);
+        const text = pt.time.split(' ')[0] + ' IST';
+        ctx.textAlign = 'center';
+        ctx.fillText(text, x, h - 12);
+      });
+
+      // 6. Calendar Event Marker Pins
+      currentStress.events.forEach(ev => {
+        const evX = padLeft + (ev.timeIdx * stepX);
+        const evY = getY(points[ev.timeIdx].val);
+        
+        // Dotted vertical line
+        ctx.setLineDash([2, 3]);
+        ctx.strokeStyle = '#d1a054';
+        ctx.beginPath();
+        ctx.moveTo(evX, padTop);
+        ctx.lineTo(evX, padTop + chartH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Event Calendar Tag Icon
+        ctx.fillStyle = '#1e242c';
+        ctx.strokeStyle = '#d1a054';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(evX - 16, padTop + 6, 32, 16);
+        ctx.fillRect(evX - 16, padTop + 6, 32, 16);
+        ctx.fillStyle = '#ffd899';
+        ctx.font = '9px "Inter", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('📅 EVT', evX, padTop + 18);
+      });
+    }
+
+    /* =========================================================================
+       7. INITIALIZATION CALLS
+       ========================================================================= */
+    window.addEventListener('DOMContentLoaded', () => {
+      // Render Favourable Clock
+      renderClock('fav', DATA_FAVOURABLE);
+      // Render Unfavourable Clock
+      renderClock('unfav', DATA_UNFAVOURABLE);
+      // Initialize Stress Sub-lane
+      updateStressUI();
+      drawStressChart();
+    });
+
+    window.addEventListener('resize', () => {
+      drawStressChart();
+    });
+  </script>
+</body>
+</html>
