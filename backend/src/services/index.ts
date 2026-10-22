@@ -1,14 +1,15 @@
-import { alertService } from './alert-service.js';
 import { binanceWorker } from './binance-market-worker.js';
 import { deribitWorker } from './deribit-flow-worker.js';
 import { deltaWorker } from './delta-market-worker.js';
 import { recalibrationScheduler } from './recalibration-scheduler.js';
+import { macroStressWorker } from './macro-stress-worker.js';
 
 export { alertService } from './alert-service.js';
 export { binanceWorker } from './binance-market-worker.js';
 export { deribitWorker } from './deribit-flow-worker.js';
 export { deltaWorker } from './delta-market-worker.js';
 export { recalibrationScheduler } from './recalibration-scheduler.js';
+export { macroStressWorker } from './macro-stress-worker.js';
 
 /**
  * Background Ingestion & Alert Workers Lifecycle Manager
@@ -25,6 +26,7 @@ export class WorkerManager {
     deribitWorker.start(60_000); // Poll Deribit flow every 60s
     deltaWorker.start();
     recalibrationScheduler.start(); // Daily Bonferroni & 50/50 OOS re-validation
+    macroStressWorker.start(); // 5-minute outside market pressure recording
   }
 
   stopAll() {
@@ -34,6 +36,7 @@ export class WorkerManager {
     deribitWorker.stop();
     deltaWorker.stop();
     recalibrationScheduler.stop();
+    macroStressWorker.stop();
   }
 
   getStatus() {
@@ -55,6 +58,12 @@ export class WorkerManager {
         spotPrice: deltaWorker.currentSpotPrice,
         openInterest: deltaWorker.currentOi,
         lastTickTime: deltaWorker.lastTickTime,
+      },
+      macroStress: {
+        score: macroStressWorker.getSnapshot().score,
+        zone: macroStressWorker.getSnapshot().zone,
+        direction: macroStressWorker.getSnapshot().direction,
+        status: macroStressWorker.getSnapshot().status,
       },
       aggregated: {
         spotPrice: spot,

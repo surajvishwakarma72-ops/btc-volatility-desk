@@ -151,7 +151,7 @@ function nyHeatmap(cfg: SimConfig) {
   for (let d = 1; d <= 5; d++) {
     const avgs = OFFS.map((o) => mean(pnl[d][o]));
     const best = Math.max(...avgs);
-    const cells = OFFS.map((o, i) => { const v = avgs[i]; const s = (i === avgs.indexOf(best) ? '*' : '') + (v >= 0 ? '+' : '') + f1(v); return s.padStart(8); });
+    const cells = OFFS.map((_o, i) => { const v = avgs[i]; const s = (i === avgs.indexOf(best) ? '*' : '') + (v >= 0 ? '+' : '') + f1(v); return s.padStart(8); });
     console.log('  ' + DOW[d].padEnd(7) + ' ' + cells.join(''));
   }
   console.log('\n   Win% by entry time:');
@@ -202,7 +202,7 @@ function nyHeatmapExtra(cfg: SimConfig) {
     for (const r of rows) {
       const avgs = OFFS.map((o) => mean(cells.filter((c) => r.test(c) && c.off === o).map((c) => c.pnl)));
       const bi = avgs.indexOf(Math.max(...avgs));
-      console.log('  ' + r.key.padEnd(9) + OFFS.map((o, i) => ((i === bi ? '★' : '') + (avgs[i] >= 0 ? '+' : '') + f1(avgs[i])).padStart(8)).join(''));
+      console.log('  ' + r.key.padEnd(9) + OFFS.map((_o, i) => ((i === bi ? '★' : '') + (avgs[i] >= 0 ? '+' : '') + f1(avgs[i])).padStart(8)).join(''));
     }
     console.log('   Stop% by entry time:');
     console.log(colhead);

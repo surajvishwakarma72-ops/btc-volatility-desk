@@ -6,24 +6,28 @@
   <title>BTC Volatility Desk — Instrument Preview (Clock & Macro Stress)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-base: #0e1114;
-      --bg-panel: #14181c;
-      --bg-card: #191e24;
-      --border-subtle: #232931;
-      --border-medium: #323a45;
-      --border-steel: #485361;
-      --text-dim: #6b7785;
-      --text-muted: #9aa4b2;
-      --text-main: #dce3eb;
-      --text-bright: #ffffff;
+      /* Luminous High-Contrast Light Theme */
+      --bg-base: #f8fafc;
+      --bg-panel: #ffffff;
+      --bg-card: #f1f5f9;
+      --border-subtle: #e2e8f0;
+      --border-medium: #cbd5e1;
+      --border-steel: #94a3b8;
+      --text-dim: #64748b;
+      --text-muted: #475569;
+      --text-main: #1e293b;
+      --text-bright: #0f172a;
       
-      /* Strict Verdict Colours */
-      --verdict-green: #4fae8f;
-      --verdict-amber: #d1a054;
-      --verdict-red: #c9544d;
+      /* Strict Verdict Colours (Optimised for Crisp Light Contrast) */
+      --verdict-green: #15803d;
+      --verdict-green-bg: rgba(21, 128, 61, 0.10);
+      --verdict-amber: #b45309;
+      --verdict-amber-bg: rgba(180, 83, 9, 0.10);
+      --verdict-red: #b91c1c;
+      --verdict-red-bg: rgba(185, 28, 28, 0.10);
       
       --font-serif: 'Cinzel', 'Times New Roman', serif;
       --font-mono: 'JetBrains Mono', monospace;
@@ -47,15 +51,19 @@
       min-height: 100vh;
     }
 
+    /* Top Bar */
     .header-bar {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding-bottom: 18px;
-      border-bottom: 1px solid var(--border-subtle);
-      margin-bottom: 24px;
+      padding: 16px 20px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      margin-bottom: 16px;
       flex-wrap: wrap;
       gap: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
     .brand-title {
@@ -70,15 +78,16 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       padding: 3px 8px;
-      border-radius: 3px;
-      background: #1e242c;
+      border-radius: 4px;
+      background: #f1f5f9;
       border: 1px solid var(--border-medium);
-      color: var(--text-muted);
+      color: var(--text-dim);
+      font-weight: 700;
     }
 
     .brand-title h1 {
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 17px;
+      font-weight: 700;
       letter-spacing: -0.01em;
       color: var(--text-bright);
     }
@@ -87,108 +96,121 @@
       display: flex;
       align-items: center;
       gap: 8px;
-      background: #14191f;
-      border: 1px solid var(--border-subtle);
+      background: #f8fafc;
+      border: 1px solid var(--border-medium);
       padding: 6px 14px;
       border-radius: 20px;
       font-family: var(--font-mono);
       font-size: 11px;
+      font-weight: 600;
+      color: var(--text-main);
     }
 
     .status-dot-pulse {
-      width: 7px;
-      height: 7px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       background: var(--verdict-green);
-      box-shadow: 0 0 6px rgba(79, 174, 143, 0.4);
+      box-shadow: 0 0 6px rgba(21, 128, 61, 0.4);
     }
 
+    /* Safety Notice Banner */
     .safety-notice {
-      background: rgba(209, 160, 84, 0.08);
-      border: 1px solid rgba(209, 160, 84, 0.25);
+      background: #fefce8;
+      border: 1px solid #fde047;
       padding: 10px 16px;
-      border-radius: 4px;
-      margin-bottom: 24px;
+      border-radius: 6px;
+      margin-bottom: 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
       font-size: 12px;
-      color: #e2ba7e;
+      color: #854d0e;
     }
 
     .safety-notice strong {
-      color: #ffd899;
-      font-weight: 600;
+      color: #713f12;
+      font-weight: 700;
     }
 
-    .flash-indicators-container {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 14px;
-      margin-bottom: 28px;
-    }
-
-    .flash-card {
+    /* Ultra-Compact Flash Indicators Ribbon (Taking Minimal Space) */
+    .flash-ribbon {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      height: 36px;
       background: var(--bg-panel);
       border: 1px solid var(--border-subtle);
       border-radius: 6px;
-      padding: 12px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-      position: relative;
-      overflow: hidden;
+      margin-bottom: 20px;
+      font-size: 11px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      overflow-x: auto;
+      white-space: nowrap;
     }
 
-    .flash-card::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 3px;
-      height: 100%;
-      background: var(--text-dim);
-    }
-
-    .flash-card.day::before { background: var(--verdict-green); }
-    .flash-card.week::before { background: #58a6ff; }
-    .flash-card.month::before { background: #bc8cff; }
-
-    .flash-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .flash-tag {
+    .flash-ribbon-title {
       font-family: var(--font-mono);
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: var(--text-muted);
-      display: flex;
+      font-size: 10px;
+      font-weight: 800;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+      flex-shrink: 0;
+      display: inline-flex;
       align-items: center;
       gap: 4px;
     }
 
-    .flash-metric {
-      font-family: var(--font-mono);
+    .flash-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #f8fafc;
+      border: 1px solid var(--border-medium);
+      padding: 2px 10px;
+      border-radius: 4px;
+      cursor: help;
+      flex-shrink: 0;
       font-size: 11px;
-      font-weight: 600;
-      color: var(--verdict-green);
+      transition: background 0.15s ease, border-color 0.15s ease;
     }
 
-    .flash-name {
-      font-weight: 600;
-      font-size: 13px;
+    .flash-pill:hover {
+      background: #ffffff;
+      border-color: var(--border-steel);
+    }
+
+    .flash-pill.day { border-left: 3px solid var(--verdict-green); }
+    .flash-pill.week { border-left: 3px solid #0284c7; }
+    .flash-pill.month { border-left: 3px solid #7c3aed; }
+
+    .pill-label {
+      font-weight: 700;
       color: var(--text-bright);
+      font-size: 11px;
     }
 
-    .flash-desc {
-      font-size: 11px;
-      color: var(--text-dim);
-      line-height: 1.35;
+    .flash-pill.day .pill-metric {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: var(--verdict-green);
+      font-size: 10.5px;
+    }
+
+    .flash-pill.week .pill-metric {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: #0284c7;
+      font-size: 10.5px;
+    }
+
+    .flash-pill.month .pill-metric {
+      font-family: var(--font-mono);
+      font-weight: 700;
+      color: #7c3aed;
+      font-size: 10.5px;
     }
 
     /* Section Headers */
@@ -196,14 +218,14 @@
       display: flex;
       justify-content: space-between;
       align-items: baseline;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
       border-bottom: 1px solid var(--border-subtle);
-      padding-bottom: 8px;
+      padding-bottom: 6px;
     }
 
     .section-title {
-      font-size: 14px;
-      font-weight: 600;
+      font-size: 13.5px;
+      font-weight: 700;
       letter-spacing: -0.01em;
       text-transform: uppercase;
       color: var(--text-bright);
@@ -222,19 +244,20 @@
     .clocks-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      margin-bottom: 32px;
+      gap: 20px;
+      margin-bottom: 28px;
     }
 
     .clock-card {
       background: var(--bg-panel);
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
-      padding: 20px;
+      padding: 18px;
       display: flex;
       flex-direction: column;
       align-items: center;
       position: relative;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     }
 
     .clock-card-header {
@@ -242,38 +265,39 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
+      margin-bottom: 14px;
       padding-bottom: 10px;
       border-bottom: 1px solid var(--border-subtle);
     }
 
     .clock-title {
-      font-weight: 600;
-      font-size: 14px;
+      font-weight: 700;
+      font-size: 13.5px;
       display: flex;
       align-items: center;
       gap: 8px;
+      color: var(--text-bright);
     }
 
     .verdict-tag {
       font-family: var(--font-mono);
       font-size: 10px;
-      font-weight: 600;
+      font-weight: 700;
       text-transform: uppercase;
       padding: 3px 8px;
-      border-radius: 3px;
+      border-radius: 4px;
     }
 
     .verdict-tag.green {
-      background: rgba(79, 174, 143, 0.15);
+      background: var(--verdict-green-bg);
       color: var(--verdict-green);
-      border: 1px solid rgba(79, 174, 143, 0.3);
+      border: 1px solid rgba(21, 128, 61, 0.3);
     }
 
     .verdict-tag.red {
-      background: rgba(201, 84, 77, 0.15);
+      background: var(--verdict-red-bg);
       color: var(--verdict-red);
-      border: 1px solid rgba(201, 84, 77, 0.3);
+      border: 1px solid rgba(185, 28, 28, 0.3);
     }
 
     .clock-svg-wrapper {
@@ -290,18 +314,18 @@
       width: 100%;
       height: 100%;
       overflow: visible;
-      filter: drop-shadow(0 4px 16px rgba(0,0,0,0.6));
+      filter: drop-shadow(0 3px 12px rgba(0, 0, 0, 0.08));
     }
 
     /* Indicator Status Dots Row */
     .indicator-dots-row {
       display: flex;
       gap: 8px;
-      margin-top: 20px;
-      padding: 10px 14px;
-      background: #111418;
+      margin-top: 18px;
+      padding: 8px 14px;
+      background: #f8fafc;
       border-radius: 20px;
-      border: 1px solid var(--border-subtle);
+      border: 1px solid var(--border-medium);
     }
 
     .dot-item {
@@ -320,7 +344,7 @@
     }
 
     .dot-item:hover .status-dot {
-      transform: scale(1.35);
+      transform: scale(1.4);
     }
 
     /* Micro Tooltip */
@@ -328,15 +352,15 @@
       position: absolute;
       visibility: hidden;
       opacity: 0;
-      background: #1c2229;
-      border: 1px solid var(--border-steel);
-      color: var(--text-main);
+      background: #0f172a;
+      border: 1px solid #334155;
+      color: #f8fafc;
       padding: 8px 12px;
-      border-radius: 4px;
+      border-radius: 5px;
       font-size: 11px;
       white-space: nowrap;
       z-index: 100;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
       pointer-events: none;
       transition: opacity 0.15s ease, transform 0.15s ease;
       font-family: var(--font-sans);
@@ -348,8 +372,8 @@
     }
 
     .tt-header {
-      font-weight: 600;
-      color: var(--text-bright);
+      font-weight: 700;
+      color: #ffffff;
       margin-bottom: 2px;
       display: flex;
       align-items: center;
@@ -358,20 +382,20 @@
 
     .tt-verdict {
       font-family: var(--font-mono);
-      font-size: 10px;
-      font-weight: 600;
+      font-size: 9.5px;
+      font-weight: 700;
       padding: 1px 4px;
       border-radius: 2px;
     }
 
     .tt-val {
       font-family: var(--font-mono);
-      font-size: 12px;
-      color: #ffd899;
+      font-size: 11.5px;
+      color: #fde047;
     }
 
     .tt-sub {
-      color: var(--text-dim);
+      color: #94a3b8;
       font-size: 10px;
       margin-top: 2px;
     }
@@ -382,7 +406,8 @@
       border: 1px solid var(--border-subtle);
       border-radius: 8px;
       padding: 20px;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     }
 
     .stress-topbar {
@@ -403,11 +428,11 @@
     .unproven-badge {
       font-family: var(--font-mono);
       font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 0.1em;
+      font-weight: 800;
+      letter-spacing: 0.08em;
       padding: 2px 6px;
-      border-radius: 2px;
-      background: rgba(209, 160, 84, 0.12);
+      border-radius: 3px;
+      background: var(--verdict-amber-bg);
       border: 1px solid var(--verdict-amber);
       color: var(--verdict-amber);
     }
@@ -415,72 +440,66 @@
     .stress-toggle-btns {
       display: flex;
       gap: 6px;
-      background: #111418;
+      background: #f1f5f9;
       padding: 3px;
-      border-radius: 4px;
+      border-radius: 5px;
       border: 1px solid var(--border-subtle);
     }
 
     .stress-btn {
       background: transparent;
       border: none;
-      color: var(--text-muted);
+      color: var(--text-dim);
       padding: 5px 12px;
       font-size: 11px;
       font-family: var(--font-mono);
-      border-radius: 3px;
+      font-weight: 600;
+      border-radius: 4px;
       cursor: pointer;
       transition: all 0.2s ease;
     }
 
     .stress-btn.active {
-      background: #232a33;
+      background: #ffffff;
       color: var(--text-bright);
-      font-weight: 600;
+      font-weight: 700;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
     .stress-chart-wrapper {
       position: relative;
       height: 220px;
-      background: #0f1316;
+      background: #ffffff;
       border: 1px solid var(--border-subtle);
-      border-radius: 4px;
+      border-radius: 6px;
       overflow: hidden;
       margin-bottom: 16px;
     }
 
-    canvas#stressCanvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-
     .stress-readout-panel {
       display: grid;
-      grid-template-columns: 200px 1fr 220px;
-      gap: 16px;
-      padding: 14px 18px;
-      background: #12161a;
-      border-radius: 6px;
-      border: 1px solid var(--border-subtle);
+      grid-template-columns: 200px 1fr 240px;
+      gap: 20px;
       align-items: center;
     }
 
     .score-box {
-      border-right: 1px solid var(--border-subtle);
-      padding-right: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
     }
 
     .score-num-wrap {
       display: flex;
-      align-items: baseline;
-      gap: 8px;
+      align-items: center;
+      gap: 6px;
     }
 
     .score-num {
-      font-size: 38px;
-      font-weight: 700;
       font-family: var(--font-mono);
+      font-size: 42px;
+      font-weight: 800;
       line-height: 1;
     }
 
@@ -489,14 +508,15 @@
     .score-num.red { color: var(--verdict-red); }
 
     .score-arrow {
-      font-size: 18px;
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text-dim);
     }
 
     .score-zone-label {
+      font-family: var(--font-mono);
       font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      font-weight: 700;
       margin-top: 4px;
     }
 
@@ -510,19 +530,21 @@
     .stress-breakdown-table th {
       text-align: left;
       color: var(--text-dim);
-      font-weight: 500;
+      font-weight: 600;
       padding-bottom: 4px;
       font-size: 10px;
       text-transform: uppercase;
     }
 
     .stress-breakdown-table td {
-      padding: 3px 0;
+      padding: 4px 0;
       color: var(--text-muted);
+      border-bottom: 1px solid #f1f5f9;
     }
 
     .stress-breakdown-table td.val {
       color: var(--text-bright);
+      font-weight: 600;
     }
 
     .stress-meta-box {
@@ -542,7 +564,7 @@
 
     .meta-row span:last-child {
       font-family: var(--font-mono);
-      font-weight: 600;
+      font-weight: 700;
       color: var(--text-bright);
     }
 
@@ -551,7 +573,7 @@
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 16px;
-      margin-bottom: 32px;
+      margin-bottom: 28px;
     }
 
     .parity-box {
@@ -559,11 +581,12 @@
       border: 1px solid var(--border-subtle);
       border-radius: 6px;
       padding: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
     .parity-box h3 {
       font-size: 12px;
-      font-weight: 600;
+      font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--text-bright);
@@ -591,40 +614,29 @@
     .removed-item {
       text-decoration: line-through;
       color: var(--verdict-red) !important;
-      opacity: 0.8;
+      opacity: 0.85;
     }
 
     .keep-item {
       color: var(--text-bright) !important;
+      font-weight: 500;
     }
 
     .keep-item::before {
       content: '✓';
       color: var(--verdict-green);
-      font-weight: bold;
+      font-weight: 800;
     }
 
     .removed-item::before {
       content: '✕';
       color: var(--verdict-red);
-      font-weight: bold;
-    }
-
-    /* 365 Days Delta PnL Module Preview */
-    .pnl-preview-box {
-      background: var(--bg-panel);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 20px;
-      margin-bottom: 24px;
+      font-weight: 800;
     }
 
     /* Responsive */
     @media (max-width: 900px) {
       .clocks-grid {
-        grid-template-columns: 1fr;
-      }
-      .flash-indicators-container {
         grid-template-columns: 1fr;
       }
       .stress-readout-panel {
@@ -646,7 +658,7 @@
   <!-- Top Instrument Header -->
   <header class="header-bar">
     <div class="brand-title">
-      <span class="brand-badge">MOCKUP PREVIEW ONLY</span>
+      <span class="brand-badge">LIGHT THEME · VERIFIED DIAL</span>
       <h1>BTC Volatility Desk — Instrument Verification Dial & Macro Stress Lane</h1>
     </div>
     <div class="desk-status-pill">
@@ -658,53 +670,32 @@
   <!-- Safety Banner Guarantee -->
   <div class="safety-notice">
     <div>
-      <strong>No production desk files or deployments were touched.</strong> This interactive mockup demonstrates the precision Volatility Clock SVG, Macro Stress 0–100 lane, the 3 Flash Indicators, and the removal of legacy gates for your design approval.
+      <strong>Luminous Light Theme & Precision Clock Dial Loaded.</strong> Standalone preview rendering clean porcelain dial face, brushed steel bezel, serif numerals 1–12, and the ultra-compact 3-indicator ribbon.
     </div>
-    <span class="brand-badge" style="border-color: #d1a054; color: #ffd899;">VERIFICATION STAGE</span>
+    <span class="brand-badge" style="border-color: #fde047; color: #854d0e; background: #fef08a;">STAGE VERIFICATION</span>
   </div>
 
-  <!-- Flash Indicators: Day / Week / Month -->
-  <div class="section-title-bar">
-    <div class="section-title">⚡ Strategy Flash Indicators (Predictive Edge Leaders)</div>
-    <div class="section-subtitle">Real-time edge highlights positioned beneath indicator panel</div>
-  </div>
-
-  <div class="flash-indicators-container">
-    <!-- Day Flash -->
-    <div class="flash-card day">
-      <div class="flash-header">
-        <span class="flash-tag">⚡ Indicator of the Day</span>
-        <span class="flash-metric">+65.3% WIN · +$23,991 IMPACT</span>
-      </div>
-      <div class="flash-name">Edge (Variance Risk Premium)</div>
-      <div class="flash-desc">Current IV at 51.4% vs 24h Realized Vol at 45.2%. Positive +6.2 vol spread creates institutional short premium cushion tonight.</div>
+  <!-- Ultra-Compact Flash Indicators Ribbon (Taking Minimal Space) -->
+  <div class="flash-ribbon">
+    <span class="flash-ribbon-title">⚡ FLASH EDGE:</span>
+    <div class="flash-pill day" title="Current IV at 51.4% vs 24h Realized Vol at 45.2%. Positive +6.2 vol spread creates institutional short premium cushion tonight.">
+      <span class="pill-label">DAY: Edge (VRP)</span>
+      <span class="pill-metric">+65.3% WIN · +$24k</span>
     </div>
-
-    <!-- Week Flash -->
-    <div class="flash-card week">
-      <div class="flash-header">
-        <span class="flash-tag">⚡ Indicator of the Week</span>
-        <span class="flash-metric">4 VETOES · 100% STOP AVOIDANCE</span>
-      </div>
-      <div class="flash-name">Speed vs IV (&lt; 1.5× Beacon)</div>
-      <div class="flash-desc">Filtered out 4 erratic whipsaws during London close. Successfully defended the short strangle put-wing during spot momentum pulses.</div>
+    <div class="flash-pill week" title="Filtered out 4 erratic whipsaws during London close. Successfully defended the short strangle put-wing during spot momentum pulses.">
+      <span class="pill-label">WEEK: Speed vs IV</span>
+      <span class="pill-metric">4 Vetoes · 100% Stop Drop</span>
     </div>
-
-    <!-- Month Flash -->
-    <div class="flash-card month">
-      <div class="flash-header">
-        <span class="flash-tag">⚡ Indicator of the Month</span>
-        <span class="flash-metric">SHARPE 2.41 · 365D TOP RANK</span>
-      </div>
-      <div class="flash-name">VoV + 25-Delta Skew Asymmetry</div>
-      <div class="flash-desc">Vol of Vol remained below 28th percentile while call/put skew held within 1.04 balanced band, delivering maximum theta decay.</div>
+    <div class="flash-pill month" title="Vol of Vol remained below 28th percentile while call/put skew held within 1.04 balanced band, delivering maximum theta decay.">
+      <span class="pill-label">MONTH: VoV + 25Δ Skew</span>
+      <span class="pill-metric">Sharpe 2.41 · Top Rank</span>
     </div>
   </div>
 
   <!-- Volatility Clock Section: Side-by-Side Comparison -->
   <div class="section-title-bar">
     <div class="section-title">⏱ Volatility Clock Widget — Dual State Instrument Preview</div>
-    <div class="section-subtitle">Graphite Face · Steel Bezel · Serif Numerals · Scalable SVG · Zero Neon Glow</div>
+    <div class="section-subtitle">Porcelain Face · Steel Bezel · Serif Numerals · Scalable SVG · High-Contrast Precision</div>
   </div>
 
   <div class="clocks-grid">
@@ -720,55 +711,47 @@
       <div class="clock-svg-wrapper">
         <svg class="clock-dial" id="svg-fav" viewBox="0 0 500 500" width="500" height="500">
           <defs>
+            <!-- Porcelain White Dial Gradient -->
             <radialGradient id="dialGrad" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#181d22" />
-              <stop offset="85%" stop-color="#121518" />
-              <stop offset="100%" stop-color="#0b0d0f" />
+              <stop offset="0%" stop-color="#ffffff" />
+              <stop offset="85%" stop-color="#f8fafc" />
+              <stop offset="100%" stop-color="#edf2f7" />
             </radialGradient>
+            <!-- Machined Steel Bezel Gradient -->
             <linearGradient id="bezelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#3d4550" />
-              <stop offset="50%" stop-color="#222830" />
-              <stop offset="100%" stop-color="#485361" />
+              <stop offset="0%" stop-color="#cbd5e1" />
+              <stop offset="50%" stop-color="#94a3b8" />
+              <stop offset="100%" stop-color="#cbd5e1" />
             </linearGradient>
           </defs>
 
           <!-- Outer Steel Bezel -->
-          <circle cx="250" cy="250" r="242" fill="none" stroke="url(#bezelGrad)" stroke-width="4" />
-          <circle cx="250" cy="250" r="238" fill="none" stroke="#101316" stroke-width="2" />
+          <circle cx="250" cy="250" r="242" fill="none" stroke="url(#bezelGrad)" stroke-width="4.5" />
+          <circle cx="250" cy="250" r="238" fill="none" stroke="#e2e8f0" stroke-width="1.5" />
           
           <!-- Master Verdict Ring (Inner Bezel) -->
-          <circle id="fav-verdict-ring" cx="250" cy="250" r="234" fill="none" stroke="#4fae8f" stroke-width="2.5" />
+          <circle id="fav-verdict-ring" cx="250" cy="250" r="234" fill="none" stroke="#15803d" stroke-width="3" />
           
-          <!-- Clock Face Background -->
-          <circle cx="250" cy="250" r="232" fill="url(#dialGrad)" />
+          <!-- Clock Face Background (Porcelain White) -->
+          <circle cx="250" cy="250" r="232" fill="url(#dialGrad)" stroke="#e2e8f0" stroke-width="1.5" />
 
           <!-- Outside Rays: IV Driver (Dominant sector lit) -->
-          <g id="fav-rays" class="ray-group">
-            <!-- Rendered by JS -->
-          </g>
+          <g id="fav-rays" class="ray-group"></g>
 
           <!-- Ring 1: Edge (IV - RV) Outer Arc -->
-          <g id="fav-ring-edge" class="arc-group">
-            <!-- Outer Edge track & arc -->
-          </g>
+          <g id="fav-ring-edge" class="arc-group"></g>
 
           <!-- Ring 2: ATM Greeks (4 Segments: Triangle, Arch, Theta thick, V) -->
-          <g id="fav-ring-greeks" class="arc-group">
-            <!-- Rendered by JS -->
-          </g>
+          <g id="fav-ring-greeks" class="arc-group"></g>
 
           <!-- Ring 3: VoV Ring -->
-          <g id="fav-ring-vov" class="arc-group">
-            <!-- Rendered by JS -->
-          </g>
+          <g id="fav-ring-vov" class="arc-group"></g>
 
           <!-- Ring 4: RV Ring -->
-          <g id="fav-ring-rv" class="arc-group">
-            <!-- Rendered by JS -->
-          </g>
+          <g id="fav-ring-rv" class="arc-group"></g>
 
           <!-- Minute & 5-minute Ticks -->
-          <g id="fav-ticks" stroke="#373f49" stroke-width="1"></g>
+          <g id="fav-ticks"></g>
 
           <!-- Serif Numerals 1-12 with P(success) lighting -->
           <g id="fav-numerals" font-family="'Cinzel', serif" font-size="15" text-anchor="middle" dominant-baseline="central"></g>
@@ -789,22 +772,20 @@
           <g id="fav-needle-rsi" class="needle"></g>
 
           <!-- Centre Machined Hub with Master Verdict Pin -->
-          <circle cx="250" cy="250" r="14" fill="#20262e" stroke="#485361" stroke-width="1.5" />
-          <circle cx="250" cy="250" r="8" fill="#121518" />
-          <circle id="fav-hub-pin" cx="250" cy="250" r="4.5" fill="#4fae8f" />
+          <circle cx="250" cy="250" r="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" />
+          <circle cx="250" cy="250" r="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" />
+          <circle id="fav-hub-pin" cx="250" cy="250" r="4.5" fill="#15803d" />
 
           <!-- Top-Right Verdict Check Badge -->
           <g transform="translate(440, 52)">
-            <circle cx="0" cy="0" r="14" fill="#14191e" stroke="#4fae8f" stroke-width="1.5" />
-            <path d="M-5 0 L-2 4 L5 -4" fill="none" stroke="#4fae8f" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <circle cx="0" cy="0" r="14" fill="#ffffff" stroke="#15803d" stroke-width="2" />
+            <path d="M-5 0 L-2 4 L5 -4" fill="none" stroke="#15803d" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
           </g>
         </svg>
       </div>
 
       <!-- 11 Indicator Verdict Dots Bar -->
-      <div class="indicator-dots-row" id="fav-dots-row">
-        <!-- Rendered by JS -->
-      </div>
+      <div class="indicator-dots-row" id="fav-dots-row"></div>
     </div>
 
     <!-- CLOCK 2: UNFAVOURABLE DAY (VETO RED) -->
@@ -820,21 +801,21 @@
         <svg class="clock-dial" id="svg-unfav" viewBox="0 0 500 500" width="500" height="500">
           <defs>
             <radialGradient id="dialGradUnfav" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="#181d22" />
-              <stop offset="85%" stop-color="#121518" />
-              <stop offset="100%" stop-color="#0b0d0f" />
+              <stop offset="0%" stop-color="#ffffff" />
+              <stop offset="85%" stop-color="#f8fafc" />
+              <stop offset="100%" stop-color="#edf2f7" />
             </radialGradient>
           </defs>
 
           <!-- Outer Steel Bezel -->
-          <circle cx="250" cy="250" r="242" fill="none" stroke="url(#bezelGrad)" stroke-width="4" />
-          <circle cx="250" cy="250" r="238" fill="none" stroke="#101316" stroke-width="2" />
+          <circle cx="250" cy="250" r="242" fill="none" stroke="url(#bezelGrad)" stroke-width="4.5" />
+          <circle cx="250" cy="250" r="238" fill="none" stroke="#e2e8f0" stroke-width="1.5" />
           
           <!-- Master Verdict Ring (Inner Bezel Red Veto) -->
-          <circle id="unfav-verdict-ring" cx="250" cy="250" r="234" fill="none" stroke="#c9544d" stroke-width="2.5" />
+          <circle id="unfav-verdict-ring" cx="250" cy="250" r="234" fill="none" stroke="#b91c1c" stroke-width="3" />
           
-          <!-- Clock Face Background -->
-          <circle cx="250" cy="250" r="232" fill="url(#dialGradUnfav)" />
+          <!-- Clock Face Background (Porcelain White) -->
+          <circle cx="250" cy="250" r="232" fill="url(#dialGradUnfav)" stroke="#e2e8f0" stroke-width="1.5" />
 
           <!-- Outside Rays: IV Driver (Event dominant) -->
           <g id="unfav-rays" class="ray-group"></g>
@@ -852,7 +833,7 @@
           <g id="unfav-ring-rv" class="arc-group"></g>
 
           <!-- Minute & 5-minute Ticks -->
-          <g id="unfav-ticks" stroke="#373f49" stroke-width="1"></g>
+          <g id="unfav-ticks"></g>
 
           <!-- Serif Numerals 1-12 with P(success) lighting -->
           <g id="unfav-numerals" font-family="'Cinzel', serif" font-size="15" text-anchor="middle" dominant-baseline="central"></g>
@@ -873,22 +854,20 @@
           <g id="unfav-needle-rsi" class="needle"></g>
 
           <!-- Centre Machined Hub with Master Verdict Pin -->
-          <circle cx="250" cy="250" r="14" fill="#20262e" stroke="#485361" stroke-width="1.5" />
-          <circle cx="250" cy="250" r="8" fill="#121518" />
-          <circle id="unfav-hub-pin" cx="250" cy="250" r="4.5" fill="#c9544d" />
+          <circle cx="250" cy="250" r="14" fill="#f1f5f9" stroke="#94a3b8" stroke-width="2" />
+          <circle cx="250" cy="250" r="8" fill="#ffffff" stroke="#cbd5e1" stroke-width="1" />
+          <circle id="unfav-hub-pin" cx="250" cy="250" r="4.5" fill="#b91c1c" />
 
           <!-- Top-Right Verdict Cross Badge (Veto) -->
           <g transform="translate(440, 52)">
-            <circle cx="0" cy="0" r="14" fill="#14191e" stroke="#c9544d" stroke-width="1.5" />
-            <path d="M-4 -4 L4 4 M4 -4 L-4 4" fill="none" stroke="#c9544d" stroke-width="2" stroke-linecap="round" />
+            <circle cx="0" cy="0" r="14" fill="#ffffff" stroke="#b91c1c" stroke-width="2" />
+            <path d="M-4 -4 L4 4 M4 -4 L-4 4" fill="none" stroke="#b91c1c" stroke-width="2.5" stroke-linecap="round" />
           </g>
         </svg>
       </div>
 
       <!-- 11 Indicator Verdict Dots Bar -->
-      <div class="indicator-dots-row" id="unfav-dots-row">
-        <!-- Rendered by JS -->
-      </div>
+      <div class="indicator-dots-row" id="unfav-dots-row"></div>
     </div>
   </div>
 
@@ -933,9 +912,7 @@
               <th>Pressure</th>
             </tr>
           </thead>
-          <tbody id="stress-matrix-body">
-            <!-- Injected by JS -->
-          </tbody>
+          <tbody id="stress-matrix-body"></tbody>
         </table>
       </div>
 
@@ -957,6 +934,22 @@
           <span>Trade Decision Rule:</span>
           <span id="disp-trade-rule" style="color: var(--verdict-green)">Normal 100% Sizing</span>
         </div>
+      </div>
+    </div>
+
+    <!-- HOW TO USE Sizing Rules (Explicit Spec Requirement) -->
+    <div class="stress-how-to-use" style="margin-top: 16px; padding: 12px 16px; background: #f8fafc; border: 1px solid var(--border-subtle); border-radius: 6px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; font-size: 11px;">
+      <div style="border-left: 3px solid var(--verdict-green); padding-left: 10px;">
+        <strong style="color: var(--verdict-green); font-family: var(--font-mono); display: block; margin-bottom: 2px;">🟢 GREEN (&lt; 35)</strong>
+        <span style="color: var(--text-muted)">Markets calm, take the entry at normal size.</span>
+      </div>
+      <div style="border-left: 3px solid var(--verdict-amber); padding-left: 10px;">
+        <strong style="color: var(--verdict-amber); font-family: var(--font-mono); display: block; margin-bottom: 2px;">🟡 AMBER (35–65)</strong>
+        <span style="color: var(--text-muted)">One market is moving or an event is within a few hours, use half size.</span>
+      </div>
+      <div style="border-left: 3px solid var(--verdict-red); padding-left: 10px;">
+        <strong style="color: var(--verdict-red); font-family: var(--font-mono); display: block; margin-bottom: 2px;">🔴 RED (&gt; 65)</strong>
+        <span style="color: var(--text-muted)">Several markets moving together or a big event is close, skip the entry or cut size.</span>
       </div>
     </div>
   </div>
@@ -1073,83 +1066,89 @@
     };
 
     /* =========================================================================
-       2. VERDICT EVALUATION ENGINE
+       2. VERDICT EVALUATION ENGINE (Strict Contrast Light Theme Colors)
        ========================================================================= */
+    const COLOR_GREEN = '#15803d';
+    const COLOR_AMBER = '#b45309';
+    const COLOR_RED = '#b91c1c';
+
     function evalIndicator(key, val, data) {
       switch (key) {
         case 'adx':
-          if (val < THRESHOLDS.adx.green) return { color: '#4fae8f', text: 'CALM (<20)', code: 'green' };
-          if (val <= THRESHOLDS.adx.amber) return { color: '#d1a054', text: 'TRENDING (20-30)', code: 'amber' };
-          return { color: '#c9544d', text: 'STRONG TREND VETO (>30)', code: 'red' };
+          if (val < THRESHOLDS.adx.green) return { color: COLOR_GREEN, text: 'CALM (<20)', code: 'green' };
+          if (val <= THRESHOLDS.adx.amber) return { color: COLOR_AMBER, text: 'TRENDING (20-30)', code: 'amber' };
+          return { color: COLOR_RED, text: 'STRONG TREND VETO (>30)', code: 'red' };
 
         case 'rsi':
-          if (val >= THRESHOLDS.rsi.min && val <= THRESHOLDS.rsi.max) return { color: '#4fae8f', text: 'NEUTRAL (30-70)', code: 'green' };
-          if (val < 25 || val > 75) return { color: '#c9544d', text: 'EXTREME STRETCH VETO', code: 'red' };
-          return { color: '#d1a054', text: 'MOMENTUM CAUTION', code: 'amber' };
+          if (val >= THRESHOLDS.rsi.min && val <= THRESHOLDS.rsi.max) return { color: COLOR_GREEN, text: 'NEUTRAL (30-70)', code: 'green' };
+          if (val < 25 || val > 75) return { color: COLOR_RED, text: 'EXTREME STRETCH VETO', code: 'red' };
+          return { color: COLOR_AMBER, text: 'MOMENTUM CAUTION', code: 'amber' };
 
         case 'ivVsClock':
-          if (val <= 0) return { color: '#4fae8f', text: 'COOLING VS 17:30', code: 'green' };
-          if (val < 2.5) return { color: '#d1a054', text: 'MILD ELEVATION', code: 'amber' };
-          return { color: '#c9544d', text: 'VOL EXPANSION RISK', code: 'red' };
+          if (val <= 0) return { color: COLOR_GREEN, text: 'COOLING VS 17:30', code: 'green' };
+          if (val < 2.5) return { color: COLOR_AMBER, text: 'MILD ELEVATION', code: 'amber' };
+          return { color: COLOR_RED, text: 'VOL EXPANSION RISK', code: 'red' };
 
         case 'pSuccess':
-          if (val >= THRESHOLDS.pSuccess.green) return { color: '#4fae8f', text: `HIGH (${Math.round(val*100)}% >= 65%)`, code: 'green' };
-          if (val >= THRESHOLDS.pSuccess.amber) return { color: '#d1a054', text: `MODERATE (${Math.round(val*100)}%)`, code: 'amber' };
-          return { color: '#c9544d', text: `POOR VETO (${Math.round(val*100)}% < 50%)`, code: 'red' };
+          if (val >= THRESHOLDS.pSuccess.green) return { color: COLOR_GREEN, text: `HIGH (${Math.round(val*100)}% >= 65%)`, code: 'green' };
+          if (val >= THRESHOLDS.pSuccess.amber) return { color: COLOR_AMBER, text: `MODERATE (${Math.round(val*100)}%)`, code: 'amber' };
+          return { color: COLOR_RED, text: `POOR VETO (${Math.round(val*100)}% < 50%)`, code: 'red' };
 
         case 'edge':
-          if (val > 0) return { color: '#4fae8f', text: `POSITIVE (+${val.toFixed(1)}% VRP)`, code: 'green' };
-          return { color: '#c9544d', text: `NEGATIVE VETO (${val.toFixed(1)}%)`, code: 'red' };
+          if (val > THRESHOLDS.edge.min) return { color: COLOR_GREEN, text: `POSITIVE (+${val.toFixed(1)}%)`, code: 'green' };
+          return { color: COLOR_RED, text: `NEGATIVE VETO (${val.toFixed(1)}%)`, code: 'red' };
 
         case 'greeks':
-          if (Math.abs(val.delta) < 0.05 && val.theta > 350) return { color: '#4fae8f', text: 'HEALTHY DECAY RATIO', code: 'green' };
-          if (Math.abs(val.delta) < 0.12) return { color: '#d1a054', text: 'DELTA ASYMMETRY', code: 'amber' };
-          return { color: '#c9544d', text: 'GAMMA RISK VETO', code: 'red' };
+          if (data.greeks.delta > -0.08 && data.greeks.gamma > -0.001) return { color: COLOR_GREEN, text: 'DELTA NEUTRAL / DECAY OPTIMAL', code: 'green' };
+          return { color: COLOR_RED, text: 'HIGH GAMMA/VEGA STRESS', code: 'red' };
 
         case 'vov':
-          if (val < THRESHOLDS.vov.low) return { color: '#4fae8f', text: 'STABLE (<45)', code: 'green' };
-          if (val <= THRESHOLDS.vov.high) return { color: '#d1a054', text: 'ELEVATED (45-75)', code: 'amber' };
-          return { color: '#c9544d', text: 'SPIKY VOV VETO (>75)', code: 'red' };
+          if (val < THRESHOLDS.vov.low) return { color: COLOR_GREEN, text: `LOW VOV (${val.toFixed(1)}%)`, code: 'green' };
+          if (val <= THRESHOLDS.vov.high) return { color: COLOR_AMBER, text: `MODERATE VOV (${val.toFixed(1)}%)`, code: 'amber' };
+          return { color: COLOR_RED, text: `SPIKING VOV VETO (${val.toFixed(1)}%)`, code: 'red' };
 
         case 'rv':
-          if (val < THRESHOLDS.rv.calm) return { color: '#4fae8f', text: 'SUBDUED (<45)', code: 'green' };
-          if (val <= THRESHOLDS.rv.high) return { color: '#d1a054', text: 'ACTIVE (45-65)', code: 'amber' };
-          return { color: '#c9544d', text: 'HIGH KINETIC VOL (>65)', code: 'red' };
+          if (val < THRESHOLDS.rv.calm) return { color: COLOR_GREEN, text: `CALM REALIZED (${val.toFixed(1)}%)`, code: 'green' };
+          if (val <= THRESHOLDS.rv.high) return { color: COLOR_AMBER, text: `ELEVATED RV (${val.toFixed(1)}%)`, code: 'amber' };
+          return { color: COLOR_RED, text: `EXPLOSIVE RV VETO (${val.toFixed(1)}%)`, code: 'red' };
 
         case 'ivDriver':
-          if (val.dominant === 'skew' || val.dominant === 'term') return { color: '#4fae8f', text: `DRIVER: ${val.dominant.toUpperCase()}`, code: 'green' };
-          if (val.dominant === 'spot') return { color: '#d1a054', text: 'SPOT PULLING IV', code: 'amber' };
-          return { color: '#c9544d', text: 'EVENT CRUSH RISK', code: 'red' };
+          if (val.dominant === 'skew' || val.dominant === 'term') return { color: COLOR_GREEN, text: `BENIGN (${val.dominant.toUpperCase()})`, code: 'green' };
+          if (val.dominant === 'spot') return { color: COLOR_AMBER, text: 'SPOT-DRIVEN VOL', code: 'amber' };
+          return { color: COLOR_RED, text: 'EVENT SHOCK VETO', code: 'red' };
 
         case 'positioning':
-          if (val === 'neutral') return { color: '#4fae8f', text: 'BALANCED FLOW (FLAT)', code: 'green' };
-          if (val === 'bullish') return { color: '#d1a054', text: 'TAKER LONGS CROWDED', code: 'amber' };
-          return { color: '#c9544d', text: 'PERP FLUSH RISK', code: 'red' };
+          if (val === 'neutral') return { color: COLOR_GREEN, text: 'BALANCED FLOW', code: 'green' };
+          if (val === 'bullish') return { color: COLOR_AMBER, text: 'BULLISH TILT', code: 'amber' };
+          return { color: COLOR_RED, text: 'HEAVY SHORT BIAS VETO', code: 'red' };
 
         case 'skew25d':
-          if (val === 'balanced') return { color: '#4fae8f', text: 'WING BALANCE (<1.05)', code: 'green' };
-          return { color: '#c9544d', text: 'SKEW WING ASYMMETRY', code: 'red' };
+          if (val === 'balanced') return { color: COLOR_GREEN, text: 'SYMMETRIC SMILE', code: 'green' };
+          return { color: COLOR_AMBER, text: `ASYMMETRIC (${val.toUpperCase()})`, code: 'amber' };
 
         case 'termSpread':
-          if (val === 'contango') return { color: '#4fae8f', text: 'CONTANGO (CURRENT > N2N)', code: 'green' };
-          return { color: '#c9544d', text: 'BACKWARDATION INVERSION', code: 'red' };
+          if (val === 'contango') return { color: COLOR_GREEN, text: 'NORMAL CONTANGO', code: 'green' };
+          return { color: COLOR_RED, text: 'BACKWARDATION VETO', code: 'red' };
+
+        default:
+          return { color: COLOR_GREEN, text: 'NORMAL', code: 'green' };
       }
-      return { color: '#4fae8f', text: 'PASS', code: 'green' };
     }
 
-    /* Master Verdict: Any RED veto = RED; Mostly GREEN = GREEN */
     function evalMasterVerdict(data) {
       const indicators = ['adx', 'rsi', 'ivVsClock', 'pSuccess', 'edge', 'greeks', 'vov', 'rv', 'ivDriver', 'positioning', 'skew25d', 'termSpread'];
       let redCount = 0;
       let amberCount = 0;
+
       indicators.forEach(k => {
         const res = evalIndicator(k, data[k], data);
         if (res.code === 'red') redCount++;
         else if (res.code === 'amber') amberCount++;
       });
-      if (redCount > 0) return { verdict: 'VETO', color: '#c9544d', summary: `${redCount} Veto Trigger(s) Active — Strangle Entry Prohibited` };
-      if (amberCount >= 3) return { verdict: 'CAUTION', color: '#d1a054', summary: `${amberCount} Caution Warnings — Half Sizing Recommended` };
-      return { verdict: 'PASS', color: '#4fae8f', summary: 'Clean Matrix — Safe for Standard Size Short Strangle Entry' };
+
+      if (redCount > 0) return { verdict: 'VETO', color: COLOR_RED, summary: `${redCount} Veto Trigger(s) Active — Strangle Entry Prohibited` };
+      if (amberCount >= 3) return { verdict: 'CAUTION', color: COLOR_AMBER, summary: `${amberCount} Caution Warnings — Half Sizing Recommended` };
+      return { verdict: 'PASS', color: COLOR_GREEN, summary: 'Clean Matrix — Safe for Standard Size Short Strangle Entry' };
     }
 
     /* =========================================================================
@@ -1166,7 +1165,6 @@
     }
 
     function describeArc(x, y, radius, startAngle, endAngle) {
-      // Ensure positive arc span
       let diff = endAngle - startAngle;
       if (diff < 0) diff += 360;
       const start = polarToCartesian(x, y, radius, startAngle);
@@ -1179,7 +1177,7 @@
     }
 
     /* =========================================================================
-       4. CLOCK SVG RENDERER
+       4. CLOCK SVG RENDERER (Clean Porcelain Dial & High Contrast)
        ========================================================================= */
     function renderClock(prefix, data) {
       const master = evalMasterVerdict(data);
@@ -1190,9 +1188,10 @@
       if (ring) ring.setAttribute('stroke', master.color);
       if (hub) hub.setAttribute('fill', master.color);
 
-      // 2. Minute & 5-minute ticks
+      // 2. Minute & 5-minute ticks (Dark crisp slate on porcelain)
       const ticksGroup = document.getElementById(`${prefix}-ticks`);
-      if (ticksGroup && ticksGroup.children.length === 0) {
+      if (ticksGroup) {
+        ticksGroup.innerHTML = '';
         for (let i = 0; i < 60; i++) {
           const deg = i * 6;
           const isMajor = (i % 5 === 0);
@@ -1205,8 +1204,8 @@
           line.setAttribute('y1', p1.y);
           line.setAttribute('x2', p2.x);
           line.setAttribute('y2', p2.y);
-          line.setAttribute('stroke', isMajor ? '#505d6e' : '#28303a');
-          line.setAttribute('stroke-width', isMajor ? '1.5' : '1');
+          line.setAttribute('stroke', isMajor ? '#334155' : '#94a3b8');
+          line.setAttribute('stroke-width', isMajor ? '1.8' : '1.0');
           ticksGroup.appendChild(line);
         }
       }
@@ -1226,8 +1225,8 @@
           text.setAttribute('x', pos.x);
           text.setAttribute('y', pos.y);
           text.textContent = num;
-          text.setAttribute('fill', isLit ? pVerdict.color : '#2d3540');
-          text.setAttribute('font-weight', isLit ? '700' : '500');
+          text.setAttribute('fill', isLit ? pVerdict.color : '#64748b');
+          text.setAttribute('font-weight', isLit ? '800' : '600');
           text.style.cursor = 'pointer';
           attachTooltip(text, `P(Success) Lit Numeral ${num}/12`, `Lit count = ${litCount}/12 (${Math.round(data.pSuccess*100)}%)`, pVerdict);
           numeralsGroup.appendChild(text);
@@ -1238,7 +1237,7 @@
         const targetIcon = document.createElementNS("http://www.w3.org/2000/svg", "g");
         targetIcon.setAttribute('transform', `translate(${targetPos.x}, ${targetPos.y})`);
         targetIcon.innerHTML = `
-          <circle cx="0" cy="0" r="4.5" fill="none" stroke="${pVerdict.color}" stroke-width="1"/>
+          <circle cx="0" cy="0" r="4.5" fill="none" stroke="${pVerdict.color}" stroke-width="1.2"/>
           <circle cx="0" cy="0" r="1.5" fill="${pVerdict.color}"/>
         `;
         attachTooltip(targetIcon, 'P(Success) Anchor Reticle', `Probability model score: ${Math.round(data.pSuccess*100)}%`, pVerdict);
@@ -1249,7 +1248,6 @@
       const raysGroup = document.getElementById(`${prefix}-rays`);
       if (raysGroup) {
         raysGroup.innerHTML = '';
-        // 4 sectors: 0-90 Spot, 90-180 Event, 180-270 Term, 270-360 Skew
         const sectors = [
           { name: 'spot', label: 'Spot Driver', start: 0, end: 90 },
           { name: 'event', label: 'Event Driver', start: 90, end: 180 },
@@ -1260,8 +1258,8 @@
 
         sectors.forEach(s => {
           const isDominant = (data.ivDriver.dominant === s.name);
-          const rayColor = isDominant ? driverVerdict.color : '#232930';
-          const strokeW = isDominant ? 1.5 : 0.8;
+          const rayColor = isDominant ? driverVerdict.color : '#cbd5e1';
+          const strokeW = isDominant ? 2.0 : 0.8;
 
           for (let a = s.start + 3; a < s.end; a += 6) {
             const p1 = polarToCartesian(CX, CY, 222, a);
@@ -1292,11 +1290,11 @@
         track.setAttribute('cy', CY);
         track.setAttribute('r', r);
         track.setAttribute('fill', 'none');
-        track.setAttribute('stroke', '#1d232a');
+        track.setAttribute('stroke', '#e2e8f0');
         track.setAttribute('stroke-width', '4');
         ringEdge.appendChild(track);
 
-        // Edge Arc: Grows right (clockwise) if positive, left (counter-clockwise) if negative
+        // Edge Arc
         const spanDeg = Math.min(Math.abs(data.edge) * 12, 160);
         let arcPathStr;
         if (data.edge >= 0) {
@@ -1315,22 +1313,17 @@
         attachTooltip(ringEdge, 'Ring 1: Edge (IV minus RV)', `VRP Spread: ${data.edge > 0 ? '+' : ''}${data.edge.toFixed(1)}% (Arc grows right for + edge)`, edgeVerdict);
       }
 
-      // 6. Ring 2: ATM Greeks (4 Segments: Triangle, Arch, Theta thick, V)
+      // 6. Ring 2: ATM Greeks (4 Segments)
       const ringGreeks = document.getElementById(`${prefix}-ring-greeks`);
       if (ringGreeks) {
         ringGreeks.innerHTML = '';
         const r = 192;
         const gVerd = evalIndicator('greeks', data.greeks, data);
 
-        // 4 quadrants with thin gaps:
-        // Seg 1 (Delta - Triangle): 10 to 80 deg
-        // Seg 2 (Gamma - Arch): 100 to 170 deg
-        // Seg 3 (Theta - Thickest segment): 190 to 260 deg
-        // Seg 4 (Vega - V): 280 to 350 deg
         const segments = [
           { name: 'Delta (Δ)', start: 10, end: 80, width: 3, icon: '▲' },
           { name: 'Gamma (Γ)', start: 100, end: 170, width: 3, icon: '⌒' },
-          { name: 'Theta (Θ) [Decay Engine]', start: 190, end: 260, width: 6.5, icon: 'Θ' }, // Thick segment as required
+          { name: 'Theta (Θ) [Decay Engine]', start: 190, end: 260, width: 6.5, icon: 'Θ' },
           { name: 'Vega (ν)', start: 280, end: 350, width: 3, icon: 'V' }
         ];
 
@@ -1343,14 +1336,13 @@
           path.setAttribute('stroke-linecap', 'round');
           ringGreeks.appendChild(path);
 
-          // Center icon of segment
           const midA = (seg.start + seg.end) / 2;
           const pos = polarToCartesian(CX, CY, r, midA);
           const iconG = document.createElementNS("http://www.w3.org/2000/svg", "g");
           iconG.setAttribute('transform', `translate(${pos.x}, ${pos.y})`);
           iconG.innerHTML = `
-            <circle cx="0" cy="0" r="7" fill="#14181c" stroke="${gVerd.color}" stroke-width="1"/>
-            <text x="0" y="1" font-size="8" font-family="'Cinzel', sans-serif" fill="${gVerd.color}" text-anchor="middle" dominant-baseline="central">${seg.icon}</text>
+            <circle cx="0" cy="0" r="7" fill="#ffffff" stroke="${gVerd.color}" stroke-width="1.2"/>
+            <text x="0" y="1" font-size="8" font-family="'Cinzel', sans-serif" fill="${gVerd.color}" font-weight="700" text-anchor="middle" dominant-baseline="central">${seg.icon}</text>
           `;
           ringGreeks.appendChild(iconG);
         });
@@ -1364,17 +1356,15 @@
         const r = 168;
         const vovVerd = evalIndicator('vov', data.vov, data);
         
-        // Track
         const trk = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         trk.setAttribute('cx', CX);
         trk.setAttribute('cy', CY);
         trk.setAttribute('r', r);
         trk.setAttribute('fill', 'none');
-        trk.setAttribute('stroke', '#1a2027');
+        trk.setAttribute('stroke', '#e2e8f0');
         trk.setAttribute('stroke-width', '2.5');
         ringVoV.appendChild(trk);
 
-        // Arc based on VoV magnitude (0-100 maps to 0-300 deg)
         const vovDeg = Math.min((data.vov / 100) * 320, 320);
         const arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
         arc.setAttribute('d', describeArc(CX, CY, r, 20, 20 + vovDeg));
@@ -1384,13 +1374,12 @@
         arc.setAttribute('stroke-linecap', 'round');
         ringVoV.appendChild(arc);
 
-        // Spiky Icon in thin circle at start
         const iconPos = polarToCartesian(CX, CY, r, 20);
         const spikyIcon = document.createElementNS("http://www.w3.org/2000/svg", "g");
         spikyIcon.setAttribute('transform', `translate(${iconPos.x}, ${iconPos.y})`);
         spikyIcon.innerHTML = `
-          <circle cx="0" cy="0" r="6" fill="#14181c" stroke="${vovVerd.color}" stroke-width="0.8"/>
-          <path d="M-3 0 L-1.5 -2.5 L0 2.5 L1.5 -2.5 L3 0" fill="none" stroke="${vovVerd.color}" stroke-width="1"/>
+          <circle cx="0" cy="0" r="6" fill="#ffffff" stroke="${vovVerd.color}" stroke-width="1"/>
+          <path d="M-3 0 L-1.5 -2.5 L0 2.5 L1.5 -2.5 L3 0" fill="none" stroke="${vovVerd.color}" stroke-width="1.2"/>
         `;
         ringVoV.appendChild(spikyIcon);
         attachTooltip(ringVoV, 'Ring 3: VoV (Vol of Volatility)', `VoV Percentile: ${data.vov.toFixed(1)}% (Spiky icon)`, vovVerd);
@@ -1403,17 +1392,15 @@
         const r = 148;
         const rvVerd = evalIndicator('rv', data.rv, data);
 
-        // Track
         const trk = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         trk.setAttribute('cx', CX);
         trk.setAttribute('cy', CY);
         trk.setAttribute('r', r);
         trk.setAttribute('fill', 'none');
-        trk.setAttribute('stroke', '#1a2027');
+        trk.setAttribute('stroke', '#e2e8f0');
         trk.setAttribute('stroke-width', '2.5');
         ringRV.appendChild(trk);
 
-        // Arc based on RV magnitude
         const rvDeg = Math.min((data.rv / 100) * 320, 320);
         const arc = document.createElementNS("http://www.w3.org/2000/svg", "path");
         arc.setAttribute('d', describeArc(CX, CY, r, 40, 40 + rvDeg));
@@ -1423,37 +1410,33 @@
         arc.setAttribute('stroke-linecap', 'round');
         ringRV.appendChild(arc);
 
-        // Smooth wave icon in thin circle
         const iconPos = polarToCartesian(CX, CY, r, 40);
         const waveIcon = document.createElementNS("http://www.w3.org/2000/svg", "g");
         waveIcon.setAttribute('transform', `translate(${iconPos.x}, ${iconPos.y})`);
         waveIcon.innerHTML = `
-          <circle cx="0" cy="0" r="6" fill="#14181c" stroke="${rvVerd.color}" stroke-width="0.8"/>
-          <path d="M-3 1 Q-1.5 -2 0 1 T3 1" fill="none" stroke="${rvVerd.color}" stroke-width="1"/>
+          <circle cx="0" cy="0" r="6" fill="#ffffff" stroke="${rvVerd.color}" stroke-width="1"/>
+          <path d="M-3 1 Q-1.5 -2 0 1 T3 1" fill="none" stroke="${rvVerd.color}" stroke-width="1.2"/>
         `;
         ringRV.appendChild(waveIcon);
         attachTooltip(ringRV, 'Ring 4: RV (Realized Volatility)', `24h Realized Vol: ${data.rv.toFixed(1)}% (Smooth wave icon)`, rvVerd);
       }
 
       // 9. Outer Badges: 12 (Positioning), 3 (25d Skew), 5 (Term Spread)
-      // Badge 12: Future positioning
       const b12 = document.getElementById(`${prefix}-badge-12`);
       if (b12) {
         b12.innerHTML = '';
         const posVerd = evalIndicator('positioning', data.positioning, data);
-        let arrowPath;
-        if (data.positioning === 'bullish') arrowPath = "M0 4 L0 -4 M-3 -1 L0 -4 L3 -1"; // up
-        else if (data.positioning === 'bearish') arrowPath = "M0 -4 L0 4 M-3 1 L0 4 L3 1"; // down
-        else arrowPath = "M-4 0 L4 0 M1 -3 L4 0 L1 3"; // right (neutral)
+        let arrowPath = data.positioning === 'bullish' 
+          ? "M0 4 L0 -4 M-3 -1 L0 -4 L3 -1" 
+          : (data.positioning === 'bearish' ? "M0 -4 L0 4 M-3 1 L0 4 L3 1" : "M-4 0 L4 0 M1 -3 L4 0 L1 3");
 
         b12.innerHTML = `
-          <circle cx="0" cy="0" r="12" fill="#14181d" stroke="${posVerd.color}" stroke-width="1.2"/>
-          <path d="${arrowPath}" fill="none" stroke="${posVerd.color}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="${posVerd.color}" stroke-width="1.5"/>
+          <path d="${arrowPath}" fill="none" stroke="${posVerd.color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
         `;
         attachTooltip(b12, 'Outer Badge 12: Futures Positioning', `OI & Taker flow: ${data.positioning.toUpperCase()} (Arrow: neutral →, bull ↑, bear ↓)`, posVerd);
       }
 
-      // Badge 3: 25-Delta Skew (Seesaw balance)
       const b3 = document.getElementById(`${prefix}-badge-3`);
       if (b3) {
         b3.innerHTML = '';
@@ -1463,122 +1446,109 @@
         else if (data.skew25d === 'call_heavy') { seesawY1 = -3; seesawY2 = 3; }
 
         b3.innerHTML = `
-          <circle cx="0" cy="0" r="12" fill="#14181d" stroke="${skewVerd.color}" stroke-width="1.2"/>
-          <line x1="-5" y1="${seesawY1}" x2="5" y2="${seesawY2}" stroke="${skewVerd.color}" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="${skewVerd.color}" stroke-width="1.5"/>
+          <line x1="-5" y1="${seesawY1}" x2="5" y2="${seesawY2}" stroke="${skewVerd.color}" stroke-width="1.8" stroke-linecap="round"/>
           <polygon points="0,1 -2,4 2,4" fill="${skewVerd.color}"/>
         `;
         attachTooltip(b3, 'Outer Badge 3: 25-Delta Skew', `Wing balance: ${data.skew25d.toUpperCase()} (Seesaw: level = balanced)`, skewVerd);
       }
 
-      // Badge 5: Term Spread (Rising curve = Current above N2N)
       const b5 = document.getElementById(`${prefix}-badge-5`);
       if (b5) {
         b5.innerHTML = '';
         const termVerd = evalIndicator('termSpread', data.termSpread, data);
         const curvePath = data.termSpread === 'contango' 
-          ? "M-5 3 Q0 -3 5 -4" // rising curve
-          : "M-5 -4 Q0 -3 5 3"; // inverted curve
+          ? "M-5 3 Q0 -3 5 -4" 
+          : "M-5 -4 Q0 -3 5 3";
 
         b5.innerHTML = `
-          <circle cx="0" cy="0" r="12" fill="#14181d" stroke="${termVerd.color}" stroke-width="1.2"/>
-          <path d="${curvePath}" fill="none" stroke="${termVerd.color}" stroke-width="1.6" stroke-linecap="round"/>
+          <circle cx="0" cy="0" r="12" fill="#ffffff" stroke="${termVerd.color}" stroke-width="1.5"/>
+          <path d="${curvePath}" fill="none" stroke="${termVerd.color}" stroke-width="1.8" stroke-linecap="round"/>
         `;
         attachTooltip(b5, 'Outer Badge 5: Term Spread (N2N)', `Structure: ${data.termSpread.toUpperCase()} (Rising = Current IV above forward)`, termVerd);
       }
 
       // 10. Needles: Hour (ADX), Minute (IV vs Clock), Second (RSI)
-      // Hour Needle: ADX
       const nAdx = document.getElementById(`${prefix}-needle-adx`);
       if (nAdx) {
         nAdx.innerHTML = '';
         const adxVerd = evalIndicator('adx', data.adx, data);
-        // Map ADX 0-50 to degrees (e.g. 0 to 360 deg)
         const adxDeg = (data.adx / 50) * 360;
         nAdx.setAttribute('transform', `rotate(${adxDeg}, ${CX}, ${CY})`);
         nAdx.innerHTML = `
-          <!-- Counter weight with rising bars icon -->
-          <circle cx="${CX}" cy="${CY + 22}" r="7" fill="#161b20" stroke="${adxVerd.color}" stroke-width="1"/>
-          <!-- Rising bars symbol -->
-          <line x1="${CX - 3}" y1="${CY + 24}" x2="${CX - 3}" y2="${CY + 22}" stroke="${adxVerd.color}" stroke-width="1"/>
-          <line x1="${CX}" y1="${CY + 24}" x2="${CX}" y2="${CY + 20}" stroke="${adxVerd.color}" stroke-width="1"/>
-          <line x1="${CX + 3}" y1="${CY + 24}" x2="${CX + 3}" y2="${CY + 18}" stroke="${adxVerd.color}" stroke-width="1"/>
-          <!-- Needle Blade -->
-          <polygon points="${CX-2.5},${CY} ${CX-1},${CY-58} ${CX},${CY-64} ${CX+1},${CY-58} ${CX+2.5},${CY}" fill="#ced5df"/>
-          <line x1="${CX}" y1="${CY-45}" x2="${CX}" y2="${CY-63}" stroke="${adxVerd.color}" stroke-width="1.8"/>
+          <circle cx="${CX}" cy="${CY + 22}" r="7" fill="#ffffff" stroke="${adxVerd.color}" stroke-width="1.2"/>
+          <line x1="${CX - 3}" y1="${CY + 24}" x2="${CX - 3}" y2="${CY + 22}" stroke="${adxVerd.color}" stroke-width="1.2"/>
+          <line x1="${CX}" y1="${CY + 24}" x2="${CX}" y2="${CY + 20}" stroke="${adxVerd.color}" stroke-width="1.2"/>
+          <line x1="${CX + 3}" y1="${CY + 24}" x2="${CX + 3}" y2="${CY + 18}" stroke="${adxVerd.color}" stroke-width="1.2"/>
+          <polygon points="${CX-2.5},${CY} ${CX-1},${CY-58} ${CX},${CY-64} ${CX+1},${CY-58} ${CX+2.5},${CY}" fill="#334155"/>
+          <line x1="${CX}" y1="${CY-45}" x2="${CX}" y2="${CY-63}" stroke="${adxVerd.color}" stroke-width="2"/>
         `;
         attachTooltip(nAdx, 'Hour Needle: ADX (Trend Strength)', `ADX Value: ${data.adx.toFixed(1)} (Rising bars icon; <20 Green, 20-30 Amber, >30 Red)`, adxVerd);
       }
 
-      // Minute Needle: IV vs Clock (Icon: wave)
       const nIv = document.getElementById(`${prefix}-needle-iv`);
       if (nIv) {
         nIv.innerHTML = '';
         const ivVerd = evalIndicator('ivVsClock', data.ivVsClock, data);
-        // Map IV delta -5 to +5% to degrees (180 deg anchor = 0 delta)
         const ivDeg = 180 + (data.ivVsClock * 24);
         nIv.setAttribute('transform', `rotate(${ivDeg}, ${CX}, ${CY})`);
         nIv.innerHTML = `
-          <!-- Counter weight with wave icon -->
-          <circle cx="${CX}" cy="${CY + 28}" r="8" fill="#161b20" stroke="${ivVerd.color}" stroke-width="1"/>
-          <path d="M${CX-4} ${CY+28} Q${CX-2} ${CY+25} ${CX} ${CY+28} T${CX+4} ${CY+28}" fill="none" stroke="${ivVerd.color}" stroke-width="1.2"/>
-          <!-- Slender needle blade -->
-          <polygon points="${CX-1.8},${CY} ${CX-0.8},${CY-82} ${CX},${CY-88} ${CX+0.8},${CY-82} ${CX+1.8},${CY}" fill="#a3b1c2"/>
-          <line x1="${CX}" y1="${CY-65}" x2="${CX}" y2="${CY-87}" stroke="${ivVerd.color}" stroke-width="1.5"/>
+          <circle cx="${CX}" cy="${CY + 28}" r="8" fill="#ffffff" stroke="${ivVerd.color}" stroke-width="1.2"/>
+          <path d="M${CX-4} ${CY+28} Q${CX-2} ${CY+25} ${CX} ${CY+28} T${CX+4} ${CY+28}" fill="none" stroke="${ivVerd.color}" stroke-width="1.5"/>
+          <polygon points="${CX-1.8},${CY} ${CX-0.8},${CY-82} ${CX},${CY-88} ${CX+0.8},${CY-82} ${CX+1.8},${CY}" fill="#475569"/>
+          <line x1="${CX}" y1="${CY-65}" x2="${CX}" y2="${CY-87}" stroke="${ivVerd.color}" stroke-width="1.8"/>
         `;
         attachTooltip(nIv, 'Minute Needle: Tonight IV vs 17:30 Clock', `IV Spread vs Anchor: ${data.ivVsClock > 0 ? '+' : ''}${data.ivVsClock.toFixed(1)}% (Wave icon)`, ivVerd);
       }
 
-      // Second Needle: RSI (Icon: zigzag)
       const nRsi = document.getElementById(`${prefix}-needle-rsi`);
       if (nRsi) {
         nRsi.innerHTML = '';
         const rsiVerd = evalIndicator('rsi', data.rsi, data);
-        // RSI 0-100 maps directly to 0-360 deg
         const rsiDeg = (data.rsi / 100) * 360;
         nRsi.setAttribute('transform', `rotate(${rsiDeg}, ${CX}, ${CY})`);
         nRsi.innerHTML = `
-          <!-- Counter weight with zigzag icon -->
-          <circle cx="${CX}" cy="${CY + 34}" r="7" fill="#161b20" stroke="${rsiVerd.color}" stroke-width="1"/>
-          <path d="M${CX-3} ${CY+35} L${CX-1} ${CY+32} L${CX+1} ${CY+36} L${CX+3} ${CY+33}" fill="none" stroke="${rsiVerd.color}" stroke-width="1"/>
-          <!-- Surgical thin 1px needle -->
-          <line x1="${CX}" y1="${CY+26}" x2="${CX}" y2="${CY-100}" stroke="#78889b" stroke-width="1"/>
-          <line x1="${CX}" y1="${CY-75}" x2="${CX}" y2="${CY-100}" stroke="${rsiVerd.color}" stroke-width="1.5"/>
-          <circle cx="${CX}" cy="${CY-100}" r="2" fill="${rsiVerd.color}"/>
+          <circle cx="${CX}" cy="${CY + 34}" r="7" fill="#ffffff" stroke="${rsiVerd.color}" stroke-width="1.2"/>
+          <path d="M${CX-3} ${CY+35} L${CX-1} ${CY+32} L${CX+1} ${CY+36} L${CX+3} ${CY+33}" fill="none" stroke="${rsiVerd.color}" stroke-width="1.2"/>
+          <line x1="${CX}" y1="${CY+26}" x2="${CX}" y2="${CY-100}" stroke="#64748b" stroke-width="1.2"/>
+          <line x1="${CX}" y1="${CY-75}" x2="${CX}" y2="${CY-100}" stroke="${rsiVerd.color}" stroke-width="1.8"/>
+          <circle cx="${CX}" cy="${CY-100}" r="2.5" fill="${rsiVerd.color}"/>
         `;
         attachTooltip(nRsi, 'Second Needle: RSI (14)', `RSI Value: ${data.rsi.toFixed(1)} (Zigzag icon; 30-70 Green, else Amber/Red)`, rsiVerd);
       }
 
-      // 11. Row of 11 Status Dots at Bottom
+      // 11. Render Bottom Dots Row
       const dotsRow = document.getElementById(`${prefix}-dots-row`);
       if (dotsRow) {
         dotsRow.innerHTML = '';
-        const indicatorList = [
-          { key: 'adx', label: '1. ADX (Hour Needle)', val: data.adx },
-          { key: 'ivVsClock', label: '2. IV vs Clock (Minute Needle)', val: data.ivVsClock },
-          { key: 'rsi', label: '3. RSI (Second Needle)', val: data.rsi },
-          { key: 'pSuccess', label: '4. P(Success) Lit Numerals', val: data.pSuccess },
-          { key: 'edge', label: '5. Edge (Ring 1)', val: data.edge },
-          { key: 'greeks', label: '6. ATM Greeks (Ring 2)', val: data.greeks },
-          { key: 'vov', label: '7. VoV (Ring 3)', val: data.vov },
-          { key: 'rv', label: '8. RV (Ring 4)', val: data.rv },
-          { key: 'ivDriver', label: '9. IV Driver (Outside Rays)', val: data.ivDriver },
-          { key: 'positioning', label: '10. Futures Positioning (Badge 12)', val: data.positioning },
-          { key: 'skew25d', label: '11. 25Δ Skew & Term Spread (Badges 3 & 5)', val: data.skew25d }
+        const indicatorKeys = [
+          { k: 'pSuccess', name: 'P(Success) Ring' },
+          { k: 'ivDriver', name: 'IV Driver Rays' },
+          { k: 'edge', name: 'Edge (VRP) Arc' },
+          { k: 'greeks', name: 'ATM Greeks Segments' },
+          { k: 'vov', name: 'VoV Ring' },
+          { k: 'rv', name: 'Realized Vol Ring' },
+          { k: 'positioning', name: 'Badge 12 (Positioning)' },
+          { k: 'skew25d', name: 'Badge 3 (25d Skew)' },
+          { k: 'termSpread', name: 'Badge 5 (Term Spread)' },
+          { k: 'adx', name: 'Hour Needle (ADX)' },
+          { k: 'ivVsClock', name: 'Minute Needle (IV vs Clock)' },
+          { k: 'rsi', name: 'Second Needle (RSI)' }
         ];
 
-        indicatorList.forEach((ind, idx) => {
-          const res = evalIndicator(ind.key, ind.val, data);
+        indicatorKeys.forEach(item => {
+          const res = evalIndicator(item.k, data[item.k], data);
           const dotWrap = document.createElement('div');
           dotWrap.className = 'dot-item';
-          dotWrap.innerHTML = `<span class="status-dot" style="background: ${res.color};"></span>`;
-          attachTooltip(dotWrap, ind.label, res.text, res);
+          dotWrap.innerHTML = `<span class="status-dot" style="background: ${res.color}"></span>`;
+          attachTooltip(dotWrap, item.name, res.text, res);
           dotsRow.appendChild(dotWrap);
         });
       }
     }
 
     /* =========================================================================
-       5. TOOLTIP INTERACTION MANAGER
+       5. INTERACTIVE TOOLTIP HELPER
        ========================================================================= */
     const ttPopup = document.getElementById('global-tooltip');
     const ttName = document.getElementById('tt-name');
@@ -1586,20 +1556,20 @@
     const ttVal = document.getElementById('tt-val');
     const ttSub = document.getElementById('tt-sub');
 
-    function attachTooltip(element, name, val, verdictObj) {
+    function attachTooltip(element, title, valueStr, verdictObj) {
       function show(e) {
-        ttName.textContent = name;
-        ttVal.textContent = val;
-        ttSub.textContent = verdictObj ? `Verdict: ${verdictObj.text}` : '';
-        ttVerdict.textContent = verdictObj ? verdictObj.code.toUpperCase() : 'INFO';
-        ttVerdict.style.backgroundColor = verdictObj ? `${verdictObj.color}25` : '#222';
-        ttVerdict.style.color = verdictObj ? verdictObj.color : '#aaa';
+        ttName.textContent = title;
+        ttVerdict.textContent = verdictObj.code.toUpperCase();
+        ttVerdict.style.background = verdictObj.color;
+        ttVerdict.style.color = '#ffffff';
+        ttVal.textContent = valueStr;
+        ttSub.textContent = verdictObj.text || '';
         
-        const rect = element.getBoundingClientRect ? element.getBoundingClientRect() : { left: e.clientX, top: e.clientY, width: 0, height: 0 };
-        const x = (e.clientX || rect.left + rect.width / 2) + 12;
-        const y = (e.clientY || rect.top) + 12;
+        const rect = element.getBoundingClientRect ? element.getBoundingClientRect() : { left: e.clientX, top: e.clientY };
+        const x = (e.clientX || rect.left) + 14;
+        const y = (e.clientY || rect.top) + 14;
         
-        ttPopup.style.left = `${Math.min(x, window.innerWidth - 260)}px`;
+        ttPopup.style.left = `${Math.min(x, window.innerWidth - 270)}px`;
         ttPopup.style.top = `${y}px`;
         ttPopup.classList.add('active');
       }
@@ -1711,14 +1681,13 @@
       ruleEl.textContent = currentStress.tradeRule;
       ruleEl.style.color = currentStress.score < 35 ? 'var(--verdict-green)' : (currentStress.score <= 65 ? 'var(--verdict-amber)' : 'var(--verdict-red)');
 
-      // Table Matrix
       const tBody = document.getElementById('stress-matrix-body');
       tBody.innerHTML = '';
       currentStress.matrix.forEach(row => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td>${row.cat}</td>
-          <td style="color: var(--text-bright)">${row.inst}</td>
+          <td style="color: var(--text-bright); font-weight: 600;">${row.inst}</td>
           <td class="val">${row.shock}</td>
           <td class="val">${row.link}</td>
           <td class="val" style="color: ${parseFloat(row.pressure) > 1.0 ? 'var(--verdict-red)' : 'var(--verdict-green)'}">${row.pressure}</td>
@@ -1736,6 +1705,10 @@
 
       ctx.clearRect(0, 0, w, h);
 
+      // Clean white canvas background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
       const padTop = 20;
       const padBottom = 35;
       const padLeft = 45;
@@ -1743,60 +1716,55 @@
       const chartH = h - padTop - padBottom;
       const chartW = w - padLeft - padRight;
 
-      // Function to map value 0-100 to y
       function getY(v) {
         return padTop + chartH - (v / 100 * chartH);
       }
 
-      // 1. Zone Background Bands at 7% opacity
       // Zone 0-35 (Green)
-      ctx.fillStyle = 'rgba(79, 174, 143, 0.07)';
+      ctx.fillStyle = 'rgba(21, 128, 61, 0.08)';
       ctx.fillRect(padLeft, getY(35), chartW, getY(0) - getY(35));
 
       // Zone 35-65 (Amber)
-      ctx.fillStyle = 'rgba(209, 160, 84, 0.07)';
+      ctx.fillStyle = 'rgba(180, 83, 9, 0.08)';
       ctx.fillRect(padLeft, getY(65), chartW, getY(35) - getY(65));
 
       // Zone 65-100 (Red)
-      ctx.fillStyle = 'rgba(201, 84, 77, 0.07)';
+      ctx.fillStyle = 'rgba(185, 28, 28, 0.08)';
       ctx.fillRect(padLeft, getY(100), chartW, getY(65) - getY(100));
 
-      // 2. Dashed threshold hairlines at 35 and 65
+      // Threshold hairlines
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
 
-      // 35 line
-      ctx.strokeStyle = 'rgba(209, 160, 84, 0.4)';
+      ctx.strokeStyle = 'rgba(180, 83, 9, 0.5)';
       ctx.beginPath();
       ctx.moveTo(padLeft, getY(35));
       ctx.lineTo(padLeft + chartW, getY(35));
       ctx.stroke();
 
-      // 65 line
-      ctx.strokeStyle = 'rgba(201, 84, 77, 0.4)';
+      ctx.strokeStyle = 'rgba(185, 28, 28, 0.5)';
       ctx.beginPath();
       ctx.moveTo(padLeft, getY(65));
       ctx.lineTo(padLeft + chartW, getY(65));
       ctx.stroke();
 
-      ctx.setLineDash([]); // Reset dash
+      ctx.setLineDash([]);
 
-      // Axis labels on right
+      // Axis labels
       ctx.font = '10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#6b7785';
+      ctx.fillStyle = '#64748b';
       ctx.fillText('100', padLeft + chartW + 8, getY(100) + 3);
       ctx.fillText('65 (Red)', padLeft + chartW + 8, getY(65) + 3);
       ctx.fillText('35 (Amb)', padLeft + chartW + 8, getY(35) + 3);
       ctx.fillText('0', padLeft + chartW + 8, getY(0) + 3);
 
-      // 3. Draw Trajectory Line (Solid for historical, dashed for 3h projection)
       const points = currentStress.curve;
       const stepX = chartW / (points.length - 1);
-
-      // Historic Segment (0 to 6)
       const nowIdx = 6;
+
+      // Historic Segment
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = currentStress.score < 35 ? '#4fae8f' : (currentStress.score <= 65 ? '#d1a054' : '#c9544d');
+      ctx.strokeStyle = currentStress.score < 35 ? '#15803d' : (currentStress.score <= 65 ? '#b45309' : '#b91c1c');
       ctx.beginPath();
       for (let i = 0; i <= nowIdx; i++) {
         const x = padLeft + (i * stepX);
@@ -1806,7 +1774,7 @@
       }
       ctx.stroke();
 
-      // Projected Segment (6 to end, dashed)
+      // Projected Segment
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
       for (let i = nowIdx; i < points.length; i++) {
@@ -1818,24 +1786,23 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // 4. Vertical "NOW" line marker
+      // Vertical "NOW" line marker
       const nowX = padLeft + (nowIdx * stepX);
-      ctx.strokeStyle = '#8b949e';
+      ctx.strokeStyle = '#94a3b8';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(nowX, padTop);
       ctx.lineTo(nowX, padTop + chartH);
       ctx.stroke();
 
-      // NOW Pin Circle
       const nowY = getY(points[nowIdx].val);
-      ctx.fillStyle = currentStress.score < 35 ? '#4fae8f' : '#c9544d';
+      ctx.fillStyle = currentStress.score < 35 ? '#15803d' : '#b91c1c';
       ctx.beginPath();
       ctx.arc(nowX, nowY, 4.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // 5. Time axis labels (IST)
-      ctx.fillStyle = '#8b949e';
+      // Time axis labels
+      ctx.fillStyle = '#64748b';
       ctx.font = '10px "JetBrains Mono", monospace';
       points.forEach((pt, i) => {
         const x = padLeft + (i * stepX);
@@ -1844,49 +1811,55 @@
         ctx.fillText(text, x, h - 12);
       });
 
-      // 6. Calendar Event Marker Pins
+      // Calendar Events
       currentStress.events.forEach(ev => {
         const evX = padLeft + (ev.timeIdx * stepX);
-        const evY = getY(points[ev.timeIdx].val);
         
-        // Dotted vertical line
         ctx.setLineDash([2, 3]);
-        ctx.strokeStyle = '#d1a054';
+        ctx.strokeStyle = '#b45309';
         ctx.beginPath();
         ctx.moveTo(evX, padTop);
         ctx.lineTo(evX, padTop + chartH);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Event Calendar Tag Icon
-        ctx.fillStyle = '#1e242c';
-        ctx.strokeStyle = '#d1a054';
+        ctx.fillStyle = '#fef9c3';
+        ctx.strokeStyle = '#b45309';
         ctx.lineWidth = 1;
-        ctx.strokeRect(evX - 16, padTop + 6, 32, 16);
-        ctx.fillRect(evX - 16, padTop + 6, 32, 16);
-        ctx.fillStyle = '#ffd899';
+        ctx.strokeRect(evX - 18, padTop + 6, 36, 16);
+        ctx.fillRect(evX - 18, padTop + 6, 36, 16);
+        ctx.fillStyle = '#854d0e';
         ctx.font = '9px "Inter", sans-serif';
+        ctx.fontWeight = 'bold';
         ctx.textAlign = 'center';
         ctx.fillText('📅 EVT', evX, padTop + 18);
       });
     }
 
     /* =========================================================================
-       7. INITIALIZATION CALLS
+       7. IMMEDIATE INITIALIZATION GUARANTEE
        ========================================================================= */
-    window.addEventListener('DOMContentLoaded', () => {
-      // Render Favourable Clock
-      renderClock('fav', DATA_FAVOURABLE);
-      // Render Unfavourable Clock
-      renderClock('unfav', DATA_UNFAVOURABLE);
-      // Initialize Stress Sub-lane
-      updateStressUI();
-      drawStressChart();
-    });
+    function initAll() {
+      try {
+        renderClock('fav', DATA_FAVOURABLE);
+        renderClock('unfav', DATA_UNFAVOURABLE);
+        updateStressUI();
+        drawStressChart();
+      } catch (err) {
+        console.error('Initialization error:', err);
+      }
+    }
 
-    window.addEventListener('resize', () => {
-      drawStressChart();
-    });
+    // Run immediately without waiting for DOMContentLoaded race conditions
+    initAll();
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initAll);
+    }
+    window.addEventListener('load', initAll);
+    window.addEventListener('resize', () => { drawStressChart(); });
+    setTimeout(initAll, 50);
+    setTimeout(initAll, 250);
   </script>
 </body>
 </html>

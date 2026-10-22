@@ -14,7 +14,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const preferenceRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/preferences - Retrieve preferences
-  fastify.get('/', async (_request, reply) => {
+  fastify.get('/', async () => {
     const prefs = await db
       .select()
       .from(userPreferences)
@@ -41,7 +41,7 @@ export const preferenceRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // PUT /api/v1/preferences - Save / update preferences
-  fastify.put('/', { schema: { body: preferencesUpdate } }, async (request, reply) => {
+  fastify.put('/', { schema: { body: preferencesUpdate } }, async (request) => {
     const body = request.body as any;
 
     const newPrefs = {

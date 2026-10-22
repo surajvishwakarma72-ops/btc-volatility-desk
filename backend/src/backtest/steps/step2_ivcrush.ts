@@ -22,7 +22,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.resolve(__dirname, '../output');
 const FIRST_DAY = '2025-10-06';
 const LAST_DAY = '2026-10-17';
-const DOW_NAME = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const mean = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 
 interface Row {

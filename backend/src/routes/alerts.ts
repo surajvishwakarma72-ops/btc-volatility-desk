@@ -16,7 +16,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/alerts/rules - List rules
-  fastify.get('/rules', async (_request, reply) => {
+  fastify.get('/rules', async () => {
     const rules = await db
       .select()
       .from(alertRules)
@@ -80,7 +80,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/alerts/history - List triggered logs and VolTurn signals
-  fastify.get('/history', { schema: { querystring: alertsHistoryQuery } }, async (request, reply) => {
+  fastify.get('/history', { schema: { querystring: alertsHistoryQuery } }, async (request) => {
     const { channel, limit = 100, offset = 0 } = request.query as {
       channel?: string;
       limit?: number;
@@ -106,7 +106,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/alerts/test - Dispatch test notification
-  fastify.post('/test', { schema: { body: alertTest } }, async (request, reply) => {
+  fastify.post('/test', { schema: { body: alertTest } }, async (request) => {
     const { alertService } = await import('../services/index.js');
     const body = (request.body as any) || {};
     const channel = body.channel || 'ntfy';
@@ -128,7 +128,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/alerts/register-device - Register or update mobile push device & sound preference
-  fastify.post('/register-device', { schema: { body: registerDevice } }, async (request, reply) => {
+  fastify.post('/register-device', { schema: { body: registerDevice } }, async (request) => {
     const { pushDevices } = await import('../db/index.js');
     const body = request.body as any;
 
@@ -177,7 +177,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/alerts/device-settings - Get latest device push & sound settings
-  fastify.get('/device-settings', async (_request, reply) => {
+  fastify.get('/device-settings', async () => {
     const { pushDevices } = await import('../db/index.js');
     const devices = await db
       .select()

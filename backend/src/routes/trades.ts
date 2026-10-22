@@ -18,7 +18,7 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  */
 export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/trades - List trades with optional status filter
-  fastify.get('/', { schema: { querystring: listQuery } }, async (request, reply) => {
+  fastify.get('/', { schema: { querystring: listQuery } }, async (request) => {
     const { status, limit = 50, offset = 0 } = request.query as {
       status?: string;
       limit?: number;
@@ -46,7 +46,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/trades/active - Get currently open strangle
-  fastify.get('/active', async (_request, reply) => {
+  fastify.get('/active', async () => {
     const active = await db
       .select()
       .from(trades)

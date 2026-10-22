@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
+import { eq, desc, and, gte, lte } from 'drizzle-orm';
 import { db, marketTimeseries, optionFlowBuckets, indicatorSnapshots } from '../db/index.js';
 import { candlesQuery, flowQuery, indicatorsQuery } from '../schemas.js';
 
@@ -14,7 +14,7 @@ import { candlesQuery, flowQuery, indicatorsQuery } from '../schemas.js';
  */
 export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   // GET /api/v1/market/candles - Historical OHLCV candles
-  fastify.get('/candles', { schema: { querystring: candlesQuery } }, async (request, reply) => {
+  fastify.get('/candles', { schema: { querystring: candlesQuery } }, async (request) => {
     const {
       symbol = 'BTCUSDT',
       interval = '1m',
@@ -53,7 +53,7 @@ export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/market/flow - 15-minute option flow buckets
-  fastify.get('/flow', { schema: { querystring: flowQuery } }, async (request, reply) => {
+  fastify.get('/flow', { schema: { querystring: flowQuery } }, async (request) => {
     const {
       symbol = 'BTC',
       from,
@@ -85,7 +85,7 @@ export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/market/indicators - 5-minute indicator snapshots
-  fastify.get('/indicators', { schema: { querystring: indicatorsQuery } }, async (request, reply) => {
+  fastify.get('/indicators', { schema: { querystring: indicatorsQuery } }, async (request) => {
     const {
       symbol = 'BTCUSDT',
       from,
@@ -117,7 +117,7 @@ export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/market/symbols - Distinct available symbols in market_timeseries
-  fastify.get('/symbols', async (_request, reply) => {
+  fastify.get('/symbols', async () => {
     const distinct = await db
       .selectDistinct({ symbol: marketTimeseries.symbol })
       .from(marketTimeseries);
@@ -129,7 +129,7 @@ export const marketRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/market/status - Real-time ingestion workers health & live prices
-  fastify.get('/status', async (_request, reply) => {
+  fastify.get('/status', async () => {
     const { workerManager } = await import('../services/index.js');
     return {
       success: true,

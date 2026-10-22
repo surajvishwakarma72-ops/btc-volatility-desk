@@ -10,18 +10,20 @@ import { runAutomatedRecalibration } from './self-testing-audit.js';
  */
 export class RecalibrationScheduler {
   private timer: NodeJS.Timeout | null = null;
+  private initialTimeout: NodeJS.Timeout | null = null;
   private intervalMs = 24 * 60 * 60 * 1000; // Daily re-validation (24 hours)
   public lastRunTime: Date | null = null;
   public lastResult: any = null;
 
   start(customIntervalMs?: number) {
-    if (this.timer) return;
+    if (this.timer || this.initialTimeout) return;
     if (customIntervalMs) this.intervalMs = customIntervalMs;
 
     console.log('[RecalibrationScheduler] Starting automated Bonferroni & 50/50 OOS re-validation worker...');
     
     // Execute initial audit run after 5 seconds on boot
-    setTimeout(() => {
+    this.initialTimeout = setTimeout(() => {
+      this.initialTimeout = null;
       this.executeAudit();
     }, 5000);
 
@@ -32,11 +34,15 @@ export class RecalibrationScheduler {
   }
 
   stop() {
+    if (this.initialTimeout) {
+      clearTimeout(this.initialTimeout);
+      this.initialTimeout = null;
+    }
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
-      console.log('[RecalibrationScheduler] Stopped automated re-validation worker.');
     }
+    console.log('[RecalibrationScheduler] Stopped automated re-validation worker.');
   }
 
   async executeAudit() {

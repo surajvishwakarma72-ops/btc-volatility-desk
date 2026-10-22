@@ -11,7 +11,7 @@
  * Run: npx tsx src/backtest/steps/session_events.ts
  */
 import { loadData } from '../data/load.js';
-import { d0, dk, DAY, HR, MIN } from '../lib/frame.js';
+import { d0, DAY, HR, MIN } from '../lib/frame.js';
 
 const FIRST = '2025-10-06', LAST = '2026-10-17';
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
