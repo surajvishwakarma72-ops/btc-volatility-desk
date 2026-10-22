@@ -6,6 +6,7 @@ export class DeltaMarketWorker {
   private ws: WebSocket | null = null;
   private isRunning: boolean = false;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private heartbeatTimeout: NodeJS.Timeout | null = null;
   private snapshotInterval: NodeJS.Timeout | null = null;
 
   public currentMarkPrice: number | null = null;
@@ -29,13 +30,22 @@ export class DeltaMarketWorker {
   stop() {
     this.isRunning = false;
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+    if (this.heartbeatTimeout) clearTimeout(this.heartbeatTimeout);
     if (this.snapshotInterval) clearInterval(this.snapshotInterval);
     if (this.ws) {
       this.ws.removeAllListeners();
-      this.ws.close();
+      try { this.ws.terminate(); } catch {}
       this.ws = null;
     }
     this.status = 'DISCONNECTED';
+  }
+
+  private resetHeartbeat() {
+    if (this.heartbeatTimeout) clearTimeout(this.heartbeatTimeout);
+    this.heartbeatTimeout = setTimeout(() => {
+      console.warn('[DeltaWorker] Stale WebSocket detected (>3m no tick), terminating for reconnect...');
+      try { this.ws?.terminate(); } catch {}
+    }, 180_000);
   }
 
   private connect() {
@@ -46,10 +56,16 @@ export class DeltaMarketWorker {
     this.status = 'RECONNECTING';
 
     try {
+      if (this.ws) {
+        this.ws.removeAllListeners();
+        try { this.ws.terminate(); } catch {}
+        this.ws = null;
+      }
       this.ws = new WebSocket(url);
 
       this.ws.on('open', () => {
         this.status = 'CONNECTED';
+        this.resetHeartbeat();
         console.log('[DeltaWorker] Connected to Delta Exchange India WebSocket.');
 
         // Subscribe to BTCUSD and options ticker channel
@@ -68,6 +84,7 @@ export class DeltaMarketWorker {
       });
 
       this.ws.on('message', async (data: WebSocket.Data) => {
+        this.resetHeartbeat();
         try {
           const payload = JSON.parse(data.toString());
           if (payload.type === 'v2/ticker' || payload.channel === 'v2/ticker') {
@@ -98,6 +115,10 @@ export class DeltaMarketWorker {
 
       this.ws.on('close', () => {
         this.status = 'DISCONNECTED';
+        if (this.heartbeatTimeout) {
+          clearTimeout(this.heartbeatTimeout);
+          this.heartbeatTimeout = null;
+        }
         if (this.isRunning) {
           console.log('[DeltaWorker] Disconnected. Reconnecting in 5s...');
           this.reconnectTimeout = setTimeout(() => this.connect(), 5000);

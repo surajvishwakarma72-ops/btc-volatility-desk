@@ -7,6 +7,7 @@ export class BinanceMarketWorker {
   private ws: WebSocket | null = null;
   private isRunning: boolean = false;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private heartbeatTimeout: NodeJS.Timeout | null = null;
   private recentBars: Bar[] = [];
   private recentCloses: number[] = [];
   private lastAlertCheck = 0;
@@ -24,12 +25,21 @@ export class BinanceMarketWorker {
   stop() {
     this.isRunning = false;
     if (this.reconnectTimeout) clearTimeout(this.reconnectTimeout);
+    if (this.heartbeatTimeout) clearTimeout(this.heartbeatTimeout);
     if (this.ws) {
       this.ws.removeAllListeners();
-      this.ws.close();
+      try { this.ws.terminate(); } catch {}
       this.ws = null;
     }
     this.status = 'DISCONNECTED';
+  }
+
+  private resetHeartbeat() {
+    if (this.heartbeatTimeout) clearTimeout(this.heartbeatTimeout);
+    this.heartbeatTimeout = setTimeout(() => {
+      console.warn('[BinanceWorker] Stale WebSocket detected (>3m no data), terminating for reconnect...');
+      try { this.ws?.terminate(); } catch {}
+    }, 180_000);
   }
 
   private connect() {
@@ -40,14 +50,21 @@ export class BinanceMarketWorker {
     this.status = 'RECONNECTING';
 
     try {
+      if (this.ws) {
+        this.ws.removeAllListeners();
+        try { this.ws.terminate(); } catch {}
+        this.ws = null;
+      }
       this.ws = new WebSocket(url);
 
       this.ws.on('open', () => {
         this.status = 'CONNECTED';
+        this.resetHeartbeat();
         console.log('[BinanceWorker] Connected to Binance 1m Kline stream.');
       });
 
       this.ws.on('message', async (data: WebSocket.Data) => {
+        this.resetHeartbeat();
         try {
           const payload = JSON.parse(data.toString());
           if (payload.e === 'kline' && payload.k) {
@@ -118,6 +135,10 @@ export class BinanceMarketWorker {
 
       this.ws.on('close', () => {
         this.status = 'DISCONNECTED';
+        if (this.heartbeatTimeout) {
+          clearTimeout(this.heartbeatTimeout);
+          this.heartbeatTimeout = null;
+        }
         if (this.isRunning) {
           console.log('[BinanceWorker] Stream disconnected. Reconnecting in 5s...');
           this.reconnectTimeout = setTimeout(() => this.connect(), 5000);

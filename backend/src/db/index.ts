@@ -5,11 +5,16 @@ import * as schema from './schema.js';
 
 const connectionString = process.env.DATABASE_URL;
 
-const needsSsl = !!connectionString &&
-  (connectionString.includes('neon.tech') || connectionString.includes('sslmode=require'));
+let normalizedConnectionString = connectionString;
+if (normalizedConnectionString && normalizedConnectionString.includes('sslmode=require') && !normalizedConnectionString.includes('uselibpqcompat')) {
+  normalizedConnectionString = normalizedConnectionString.replace('sslmode=require', 'sslmode=require&uselibpqcompat=true');
+}
+
+const needsSsl = !!normalizedConnectionString &&
+  (normalizedConnectionString.includes('neon.tech') || normalizedConnectionString.includes('sslmode=require'));
 
 export const pool = new pg.Pool({
-  connectionString,
+  connectionString: normalizedConnectionString,
   ssl: needsSsl
     ? { rejectUnauthorized: true, ca: process.env.DATABASE_CA || undefined }
     : undefined,

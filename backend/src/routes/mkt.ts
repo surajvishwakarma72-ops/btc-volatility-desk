@@ -63,9 +63,15 @@ export const marketGatewayRoutes: FastifyPluginAsync = async (fastify) => {
       // Only cache successful responses — caching a 429/503 would poison the TTL window.
       if (upstream.ok) {
         cache.set(u, { at: Date.now(), status: upstream.status, contentType, body });
-        if (cache.size > 500) {
-          const first = cache.keys().next().value;
-          if (first) cache.delete(first);
+        if (cache.size > 300) {
+          const cut = Date.now() - 60_000;
+          for (const [k, v] of cache.entries()) {
+            if (v.at < cut) cache.delete(k);
+          }
+          if (cache.size > 500) {
+            const first = cache.keys().next().value;
+            if (first) cache.delete(first);
+          }
         }
       }
       reply.header('X-Content-Type-Options', 'nosniff');

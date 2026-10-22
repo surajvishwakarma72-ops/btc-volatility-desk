@@ -52,7 +52,10 @@ export class DeribitFlowWorker {
       const start = now - 3600_000 * 2;
       const url = `https://www.deribit.com/api/v2/public/get_volatility_index_data?currency=BTC&start_timestamp=${start}&end_timestamp=${now}&resolution=60`;
       
-      const res = await fetch(url, { headers: { 'User-Agent': 'BTC-Volatility-Desk' } });
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'BTC-Volatility-Desk' },
+        signal: AbortSignal.timeout(10_000),
+      });
       if (!res.ok) return;
 
       const data = await res.json() as any;
@@ -80,7 +83,10 @@ export class DeribitFlowWorker {
   private async pollOptionsFlow() {
     try {
       const url = 'https://www.deribit.com/api/v2/public/get_last_trades_by_currency?currency=BTC&kind=option&count=50';
-      const res = await fetch(url, { headers: { 'User-Agent': 'BTC-Volatility-Desk' } });
+      const res = await fetch(url, {
+        headers: { 'User-Agent': 'BTC-Volatility-Desk' },
+        signal: AbortSignal.timeout(10_000),
+      });
       if (!res.ok) return;
 
       const json = await res.json() as any;
