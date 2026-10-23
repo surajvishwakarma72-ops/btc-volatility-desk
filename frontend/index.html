@@ -608,6 +608,8 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
     })();
   </script>
   <meta name="theme-color" content="#0B0E11">
+  <script>/* v152: one time, the desk opens as the BTC chart only; the auto layout that switched everything on when a trade opened is off (it stays available as a tick in the Indicators menu) */
+    try { if (!localStorage.getItem("v152_clean")) { localStorage.setItem("v152_clean", "1"); localStorage.setItem("v139_auto", "false"); var __on = JSON.parse(localStorage.getItem("v133_ind") || "{}"); Object.keys(__on).forEach(function (k) { __on[k] = (k === "strk" || k === "legs"); }); __on.strk = true; __on.legs = true; localStorage.setItem("v133_ind", JSON.stringify(__on)); } } catch (e) { }</script>
   <meta name="robots" content="noindex,nofollow">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -30522,6 +30524,7 @@ Signs follow Settings → Dealer positioning.`;
           // minutes: from the last cached minute (or 5 days back) to now; only the recent stretch on a top-up
           const fromM = full || !lastM ? Math.max(now - M_DAYS * 24 * HR, lastM ? lastM - 10 * MIN : 0) : lastM - 10 * MIN;
           if (full && lastM && lastM < now - M_DAYS * 24 * HR + HR) {/* cache too old, fetch everything */ }
+          if (!hArr.length) { try { merge(DV.h, await fetchRange(now - 10 * 24 * HR, now, 3600)); reindex(); } catch (e) { } }   // v152: ten days of hourly DVOL first (one request) so Risk-ADX can read within seconds on a fresh phone
           merge(DV.m, await fetchRange(fromM, now, 60));
           if (full || now - DV.hAt > 30 * MIN) {
             const lastH = hArr.length ? hArr[hArr.length - 1][0] : 0;
@@ -45293,10 +45296,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       ['ses', 'Session boxes + IV', 'Asia · London · New York boxes on the BTC chart, each labelled with its IV change · green = IV fell, red = IV rose', 'btc'],
       ['crush', 'IV driver · crush', 'who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger', 'btc'], ['fut', 'Futures positioning', 'OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days', 'btc']];   // v145 · v146
       const IND = { spd: () => $('cvLane'), edge: () => $('v105EdgeBox'), rng: () => $('v105RangeBox'), adx: () => $('paAdxBox'), term: () => $('v137Term'), skew: () => $('v137Skew'), fund: () => $('v137Fund'), iv: () => $('v138Iv'), rv: () => $('v138Rv'), vov: () => $('v138Vov'), dv: () => $('v138Dv'), ton: () => $('v142Ton'), rsi: () => $('v142Rsi'), dfl: () => $('v142Dfl'), grk: () => $('v142Grk'), spr: () => $('v142Spr'), crush: () => $('v145Crush'), fut: () => $('v146Fut'), lvl: () => null, risk: () => $('v151Risk'), macro: () => $('macroStressLane') || (W.macroStress && W.macroStress.mount ? W.macroStress.mount() : null) };   // v137: new lanes · v142 sections
-      const DEF = { spd: true, edge: false, rng: false, adx: false, iv: true, rv: false, vov: false, dv: false, ton: true, gex: false, sig: true, pat: true, cdl: false, term: true, skew: false, fund: false, liq: false, strk: true, legs: true, lvl: true, ses: true, rsi: false, dfl: false, grk: false, spr: false, fp: false, vwap: false, avp: false, lhm: false, crush: false, fut: true, macro: true, risk: true };   // v133: a clean first screen; tick more in the menu
+      const DEF = { spd: false, edge: false, rng: false, adx: false, iv: false, rv: false, vov: false, dv: false, ton: false, gex: false, sig: false, pat: false, cdl: false, term: false, skew: false, fund: false, liq: false, strk: true, legs: true, lvl: false, ses: false, rsi: false, dfl: false, grk: false, spr: false, fp: false, vwap: false, avp: false, lhm: false, crush: false, fut: false, macro: false, risk: false };   // v133: a clean first screen; tick more in the menu
       let on = Object.assign({}, DEF, LSg('v133_ind', {}));
       delete on.ready; delete on.day; delete on.gng; delete on.pwin; delete on.tip;
-      if (!Object.values(on).some(Boolean)) on = Object.assign({}, DEF);
       function save() { LSs('v133_ind', on); }
       function refit() { try { W.paRefit && W.paRefit(); } catch (e) { } setTimeout(() => { try { W.dispatchEvent(new Event('resize')); } catch (e) { } }, 60); setTimeout(() => { try { W.v128 && W.v128.refit && W.v128.refit(); } catch (e) { } }, 700); }
       /* ---------- the menu ---------- */
@@ -48395,7 +48397,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         // v150: the markers (NY, ADX ✕, 1-4) reserve a fixed pixel band above and below the plot; in a short lane that band
         // ate over half the height and squashed the candles, so it is capped at 8 px and the data fills the lane like BTC
         const mg = m => m ? { above: Math.min(m.above || 0, 8), below: Math.min(m.below || 0, 8) } : m;
-        const prov = orig => { const r = orig(); if (!r || !r.priceRange) return r; if (!(o.zoom && o.zoom !== 1) && !o.shift) return { priceRange: r.priceRange, margins: mg(r.margins) }; const lo = r.priceRange.minValue, hi = r.priceRange.maxValue, c = (lo + hi) / 2 + (o.shift || 0) * (hi - lo), h = Math.max(1e-6, (hi - lo) / 2 / (o.zoom || 1)); return { priceRange: { minValue: c - h, maxValue: c + h }, margins: mg(r.margins) }; };
+        const prov = orig => { const r = orig(); if (!r || !r.priceRange) return r; if (o.rmax && !(o.zoom && o.zoom !== 1) && !o.shift) return { priceRange: { minValue: 0, maxValue: o.rmax }, margins: mg(r.margins) }; if (!(o.zoom && o.zoom !== 1) && !o.shift) return { priceRange: r.priceRange, margins: mg(r.margins) }; const lo = r.priceRange.minValue, hi = r.priceRange.maxValue, c = (lo + hi) / 2 + (o.shift || 0) * (hi - lo), h = Math.max(1e-6, (hi - lo) / 2 / (o.zoom || 1)); return { priceRange: { minValue: c - h, maxValue: c + h }, margins: mg(r.margins) }; };
         for (const s of [o.a, o.b]) if (s) try { s.applyOptions({ autoscaleInfoProvider: prov }); } catch (e) { }
       }
       function arm(o) {
@@ -48752,13 +48754,13 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const inProvenWindow = istMins >= PROVEN_BOUNDARIES.ENTRY_START_MINS && istMins <= PROVEN_BOUNDARIES.ENTRY_END_MINS; // Strictly 22:30–23:30 IST (NY+180m point estimate, p=0.0014)
         const isSetupWindow = istMins >= PROVEN_BOUNDARIES.SETUP_START_MINS && istMins < PROVEN_BOUNDARIES.SETUP_END_MINS;  // 21:30–22:30 IST (Amber Setup Window)
         const ivOk = /^SELL/.test(v), news = !(R.evNext && now < R.evNext.ok);
-        const RK5 = W.__STRANGLE_INDRANK, RA = W.v151Risk && W.v151Risk.live ? W.v151Risk.live() : null, riskV = RA && RA.last != null ? RA.last : null, riskOk = riskV == null ? null : riskV <= 25, RMd = W.__STRANGLE_RISKMODEL, c25 = RMd ? { above25: { stop: RMd.oosAbove25.stop }, atOrBelow25: { stop: RMd.oosAtOrBelow25.stop } } : RK5 && RK5.composite, wd5 = RK5 && RK5.baseByWeekday && RK5.baseByWeekday[dw];
+        const RK5 = W.__STRANGLE_INDRANK, RA = W.v151Risk && W.v151Risk.live ? W.v151Risk.live() : null, riskV = RA && RA.last != null ? RA.last : null, RV = RA && W.v151Risk.verdict ? W.v151Risk.verdict(RA) : null, JG = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.journey, riskOk = riskV == null || !RV ? null : RV.tone === 'go', RMd = W.__STRANGLE_RISKMODEL, c25 = RMd ? { above25: { stop: RMd.oosAbove25.stop }, atOrBelow25: { stop: RMd.oosAtOrBelow25.stop } } : RK5 && RK5.composite, wd5 = RK5 && RK5.baseByWeekday && RK5.baseByWeekday[dw];
         const sizeTxt = isThu ? '0×' : dw === 5 ? '1.0× FULL · ★ PREMIUM' : '1.0× FULL';   // 5-year: Friday is the calmest night (18.6 % stopped), no night is half-size; the Risk-ADX / speed gates do the avoiding
         const checks = [
           ['Weekday · Mon–Fri, Thursday skipped', dayOk, isThu ? 'Thursday · 1-yr real prices: 83% stopped → skip' + (wd5 ? ' (5-yr model says ' + wd5.stop + '%)' : '') : isWeekend ? 'Weekend' : (wd5 ? DL[dw] + ' · 5-yr: ' + wd5.stop + '% stopped (all nights ' + RK5.baseStopPct + '%)' : DL[dw])],
           ['Speed Beacon (RV ÷ IV < 1.50× Kinetic Filter)', speedOk, speedVal != null ? speedVal.toFixed(2) + '× · ' + (speedOk ? 'Calm (<1.5×)' : 'Storm (≥1.5×)') : '—'],
           ['Timing Window (22:30–23:30 IST proven entry, p=0.0014)', inProvenWindow, inProvenWindow ? 'Proven Window (22:30–23:30 IST)' : isSetupWindow ? 'Amber Setup (21:30–22:30 IST) · Wait' : istMins > PROVEN_BOUNDARIES.ENTRY_END_MINS ? 'Entry Closed (>23:30 IST)' : 'Before NY Window'],
-          ['Risk-ADX at or below 25', riskOk, riskV != null ? riskV.toFixed(1) + (riskOk ? ' · calm' : ' · risky') + (c25 ? ' · 5-yr: ' + c25.above25.stop + '% stopped above 25 vs ' + c25.atOrBelow25.stop + '% below' : '') : 'loading'],
+          ['Risk-ADX GO · at or below 25, not rising, no New York fear holding, chart confirms 3 of 4', riskOk, riskV != null && RV ? riskV.toFixed(1) + (RV.dir ? ' ' + RV.dir : '') + (riskOk ? ' · GO' : ' · ' + RV.tone.toUpperCase() + (RV.why[0] ? ': ' + RV.why[0] : '')) + (JG ? ' · out-of-sample: GO nights stopped ' + JG.go.stop + '% vs ' + JG.notGo.stop + '% otherwise' : '') : 'loading'],
           ['IV Turn (1.5–6% off NY peak)', ivOk, R.offPct != null ? R.offPct.toFixed(1) + '% off' : '—'],
           ['News · no high-impact release before exit', news, news ? 'clear' : R.evNext.code + ' ' + hm(R.evNext.t)]];
         let w, col, why = [];
@@ -48766,7 +48768,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (isWeekend) { w = 'WAIT'; col = 'n'; why = [DL[dw] + ' night: no new entry']; }
         else if (isThu) { w = 'WAIT'; col = 'r'; why = ['Thursday: Sunday expiry, thin credit · 61.1% stopped vs 43.3% rest (p = 0.0279)']; }
         else if (!speedOk) { w = 'WAIT'; col = 'r'; why = ['Speed vs IV ' + speedVal.toFixed(2) + '× ≥ 1.5× (kinetic storm)']; }
-        else if (riskOk === false) { w = 'WAIT'; col = 'r'; why = ['Risk-ADX ' + riskV.toFixed(1) + ' is above 25' + (c25 ? ' · 5-yr: ' + c25.above25.stop + '% of such nights stopped vs ' + c25.atOrBelow25.stop + '%' : '')]; }
+        else if (riskOk === false) { w = 'WAIT'; col = 'r'; why = RV.why.length ? RV.why.slice(0, 2) : ['Risk-ADX ' + riskV.toFixed(1) + ': not confirmed']; if (JG) why.push('out-of-sample: nights that were not GO were stopped ' + JG.notGo.stop + '% vs ' + JG.go.stop + '% when GO'); }
         else if (!news) { w = 'WAIT'; col = 'r'; why = ['news: ' + R.evNext.code + ' ' + hm(R.evNext.t)]; }
         else if (isSetupWindow) { w = 'WAIT'; col = 'a'; why = ['Amber Setup Window (21:30–22:30 IST) · Await 22:30 IST proven entry trigger (NY+180m, p=0.0014)']; }
         else if (!inProvenWindow) { w = 'WAIT'; col = 'n'; why = [istMins > PROVEN_BOUNDARIES.ENTRY_END_MINS ? 'Entry window closed at 23:30 IST · Await 04:00 IST exit' : 'Outside proven 22:30–23:30 IST entry window']; }
@@ -48794,7 +48796,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         }
       }
       function watchMenu() { const m = $('v132Ind'); if (!m || m.__v139) return; m.__v139 = 1; new MutationObserver(() => { const ls = m.querySelector('.ls'); if (ls && ls.querySelector('[data-k]') && !ls.querySelector('.v139-grp')) setTimeout(groupMenu, 0); }).observe(m, { childList: true, subtree: true }); groupMenu(); }
-      const AUTO = { on: LSg('v139_auto', true), last: '' };
+      const AUTO = { on: LSg('v139_auto', false), last: '' };
       function autoLayout() { if (!AUTO.on || !W.v138 || !W.v138.preset) return; const d = decide(); const want = d.w === 'EXIT' ? 'Exit' : d.w === 'HOLD' ? 'Hold' : 'Entry'; if (AUTO.last === want) return; const first = !AUTO.last; AUTO.last = want; if (first && want === 'Entry' && LSg('v139_init', 0)) return; LSs('v139_init', 1); W.v138.preset(want); }
       /* ---------- chain: ATM Greeks + bid/ask for the master expiry ---------- */
       const CH = { e: '', at: 0, rows: null, spot: null, err: '' };
@@ -48919,6 +48921,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     ${RX && RX.last != null ? `<div class="rw"><b class="${RX.last > 50 ? 'bad' : RX.last > 25 ? 'amb' : 'ok'}">${RX.last.toFixed(1)}</b><span>${RX.d3 == null ? '' : RX.d3 >= 2 ? '↑ rising' : RX.d3 <= -2 ? '↓ falling' : '→ flat'}${RX.d3 != null ? ' (' + (RX.d3 >= 0 ? '+' : '−') + Math.abs(RX.d3).toFixed(1) + ' in 3 h)' : ''}</span><span class="s">${MX ? esc(MX.advice) : ''}</span></div>` : '<span class="s">Risk-ADX is loading (needs the chart bars).</span>'}
     <table><thead><tr><th>Risk-ADX</th><th>stopped</th><th>avg P&amp;L of credit</th><th>cases</th></tr></thead><tbody>${RMd.oosBands.map(b => `<tr><td class="s">${b.lo}–${b.hi}</td><td class="mono">${b.stop}%</td><td class="mono">${b.pnl >= 0 ? '+' : '−'}${Math.abs(b.pnl)}%</td><td class="mono s">${b.n}</td></tr>`).join('')}</tbody></table>
     <span class="s">Reading it: lower is better, but even the calmest band is stopped 16–18% of the time, so green is "less bad", not safe. The stop rate climbs step by step above 25 and passes 50% above 50.</span>
+    ${RMd.journey ? `<table><thead><tr><th>Your journey: New York fear → IV fall or crush → chart</th><th>stopped</th><th>avg P&amp;L</th><th>cases</th></tr></thead><tbody>${RMd.journey.stages.map(r => `<tr><td class="s">${esc(r.label)}</td><td class="mono">${r.stop}%</td><td class="mono">${r.pnl >= 0 ? '+' : '−'}${Math.abs(r.pnl)}%</td><td class="mono s">${r.n}</td></tr>`).join('')}${RMd.journey.confirms.map(r => `<tr><td class="s">chart confirms ${r.confirms} of 4 (IV vs speed &lt; 1, ADX &lt; 25, RV &lt; IV, edge &gt; 0)</td><td class="mono">${r.stop}%</td><td class="mono">${r.pnl >= 0 ? '+' : '−'}${Math.abs(r.pnl)}%</td><td class="mono s">${r.n}</td></tr>`).join('')}<tr><td class="s"><b>GO</b> (≤ 25, not rising, no fear holding, 3+ confirm)</td><td class="mono">${RMd.journey.go.stop}%</td><td class="mono">+${RMd.journey.go.pnl}%</td><td class="mono s">${RMd.journey.go.n}</td></tr><tr><td class="s">everything else</td><td class="mono">${RMd.journey.notGo.stop}%</td><td class="mono">+${RMd.journey.notGo.pnl}%</td><td class="mono s">${RMd.journey.notGo.n}</td></tr></tbody></table>
+    <span class="s">Your read holds up: when IV spiked at the New York open and is still near its peak, nights were stopped far more often. A real fall (IV fading with VoV falling) was calmer, but there are few such cases, so treat it as supported, not proven. A "temporary crush" (IV falling hard while VoV rises) has too few cases (${(RMd.journey.stages.find(x => x.id === 'crush') || {}).n}) to say anything, so the desk only asks you to wait for the chart there. Taking only the first GO hour each night (22:30–01:30 IST) traded ${RMd.journey.nightly.trades} of ${RMd.journey.nightly.nights} nights, ${RMd.journey.nightly.stop}% stopped, total ${RMd.journey.nightly.total} against ${(RMd.strategies[0] || {}).total} for selling every night: fewer trades, fewer stops, and a smaller total.</span>` : ''}
     <span class="s"><b>Weights used</b> (hand-set order: IV vs speed, then ATM IV, then range, then VoV; the sign is whether a high reading was riskier or safer in the data): ${Object.entries(RMd.coef.w).filter(e => e[1]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(e => { const t = Object.values(RMd.coef.w).reduce((x, y) => x + Math.abs(y), 0); return esc(RMd.names[e[0]] || e[0]) + ' ' + (e[1] > 0 ? '+' : '−') + (Math.abs(e[1]) / t * 100).toFixed(0) + '%'; }).join(' · ')}</span>
     <table><thead><tr><th>level now</th><th>falling</th><th>flat</th><th>rising</th></tr></thead><tbody>${RMd.dynamics.map(r => `<tr><td class="s">${r.level}</td>${['falling', 'flat', 'rising'].map(d => `<td class="mono">${r[d].stop}% <span class="s">(${r[d].n})</span></td>`).join('')}</tr>`).join('')}</tbody></table>
     <span class="s">Stopped % by level and the 3-hour direction. 20 falling toward 0 and 20 rising toward 25 are not the same: rising from 20–25 is stopped ${RMd.dynamics[2].rising.stop}% vs ${RMd.dynamics[2].falling.stop}% falling and ${RMd.dynamics[2].flat.stop}% steady. Very calm and still falling (0–10) is the best case at ${RMd.dynamics[0].falling.stop}%.</span>
@@ -49331,9 +49335,25 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         for (const k of m.feats) { const p = pctRaw(k, f[k]); if (p == null) { continue; } have++; const c = m.coef.w[k] * (p / 100 - 0.5); z += c; items.push({ k, v: f[k], pct: p, contrib: c }); }
         if (have < 8) return null; const c = m.calibration; return { z, score: scoreOf(z, { p5: c.p5, p70: c.p70, p100: c.p100 }), items };
       }
+      /* one reading → GO / CHECK / WAIT / DANGER. GO needs: score ≤ 25, not rising over 3 h, no NY fear spike still holding, the chart confirming (3 of 4: IV vs speed < 1, ADX < 25, RV < IV, edge > 0).
+         The backtest of exactly this rule is in data/risk_model.js (journey). 'CHECK' = calm but not confirmed yet (or IV history still loading). */
+      function stateOf(v, d3, J) {
+        const dir = d3 == null ? null : d3 >= 2 ? 'rising' : d3 <= -2 ? 'falling' : 'flat', why = [];
+        if (v > 50) why.push('Risk-ADX ' + v.toFixed(0) + ' is above 50: the danger zone');
+        else if (v > 25) why.push('Risk-ADX ' + v.toFixed(0) + ' is above 25');
+        if (dir === 'rising') why.push('Risk-ADX rising ' + d3.toFixed(1) + ' in 3 h');
+        if (J && J.stage === 'holding') why.push('New York fear: IV spiked ' + J.spike.toFixed(1) + '% and is still near its peak');
+        let tone = 'go';
+        if (v > 50 || (J && J.stage === 'holding' && J.spike >= 7)) tone = 'danger';
+        else if (v > 25 || dir === 'rising' || (J && J.stage === 'holding')) tone = 'wait';
+        else if (!J) { tone = 'check'; why.push('IV history still loading: cannot judge the New York fear yet'); }
+        else if (J.stage === 'crush') { tone = 'check'; why.push('IV is falling hard while VoV rises: a temporary crush may reverse. Wait for the chart to confirm'); }
+        else if (J.confN < 3) { tone = 'check'; why.push('Chart confirms only ' + J.confN + ' of 4 (' + J.conf.filter(c => !c.ok).map(c => c.k).join(', ') + ' not OK)'); }
+        return { tone, dir, why, J, v };
+      }
       /* B = the chart's bars ({time (IST-shifted s), high, low, close}); returns one score per bar + the latest breakdown */
       function compute(B) {
-        const m = RM(); if (!m || !B || !B.b || B.b.length < 10) return null; const DV = W.dvolStore && W.dvolStore.ready ? W.dvolStore : null;
+        const m = RM(); if (!m || !B || !B.b || B.b.length < 10) return null; const DV = W.dvolStore && W.dvolStore.h && W.dvolStore.h.size > 48 ? W.dvolStore : null;
         const hrs = [], barH = new Array(B.b.length);
         for (let j = 0; j < B.b.length; j++) {
           const b = B.b[j], t = Math.floor((b.time - ISTS) * 1000 / HR) * HR, last = hrs[hrs.length - 1];
@@ -49343,7 +49363,18 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const n = hrs.length; if (n < 30) return null;
         const C = hrs.map(x => x.c), Hh = hrs.map(x => x.hi), Ll = hrs.map(x => x.lo), lr = C.map((c, i) => i ? Math.log(c / C[i - 1]) : null);
         let adx = []; try { adx = W.paPure && W.paPure.adxOf ? W.paPure.adxOf(Hh, Ll, C, 14) : []; } catch (e) { }
-        const rsi = rsiOf(C, 14), dv = hrs.map(x => dvolAt(DV, x.t)), hourScore = new Array(n).fill(null); let parts = null;
+        const rsi = rsiOf(C, 14), dv = hrs.map(x => dvolAt(DV, x.t)), hourScore = new Array(n).fill(null), hourJ = new Array(n).fill(null); let parts = null;
+        /* the trader's journey (same rules as the backtest in fiveyear_riskadx_v2.mjs): NY fear spike → is IV really falling (VoV falling) or a temporary crush (VoV rising)? → does the chart confirm? */
+        const vovAt = (i) => { const v = []; for (let h = 6; h >= 0; h--) { const x = dv[i - h]; if (x > 0) v.push(x); } if (v.length < 5) return null; const c = []; for (let q = 1; q < v.length; q++) c.push(Math.log(v[q] / v[q - 1])); return sd(c) * 100; };
+        const journeyAt = (i, f, iv) => {
+          if (!(iv > 0) || f.spk == null) return null;
+          let pk = null; for (let h = 4; h >= 1; h--) { const x = dv[i - h]; if (x > 0 && (pk == null || x > pk)) pk = x; }
+          const x2 = dv[i - 2], spike = f.spk, fall = (pk - iv) / pk * 100, hard = x2 > 0 ? (x2 - iv) / x2 * 100 : 0, v0 = vovAt(i), v2 = vovAt(i - 2), v4 = vovAt(i - 4);
+          const vovDn = v0 != null && v2 != null && v4 != null && v0 < v2 && v2 < v4, vovUp = v0 != null && v2 != null && v0 > v2 * 1.05;
+          const stage = spike < 2 ? 'calm' : fall < 1.5 ? 'holding' : (vovDn || (hard >= 0.5 && !vovUp)) ? 'real' : (hard >= 3 && vovUp) ? 'crush' : 'mixed';
+          const conf = [['IV vs speed', f.spd < 1, f.spd], ['ADX', f.adx < 25, f.adx], ['RV', f.rv < iv, f.rv], ['Edge', f.edge > 0, f.edge]].map(([k, ok, v]) => ({ k, ok: !!ok, v }));
+          return { stage, spike, fall, hard, vovDn, vovUp, conf, confN: conf.filter(c => c.ok).length };
+        };
         for (let i = 24; i < n; i++) {
           if (hrs[i].t - hrs[i - 24].t !== 24 * HR) continue;   // a gap in the bars: no reading
           const w24 = lr.slice(i - 23, i + 1), w6 = lr.slice(i - 5, i + 1), rv24 = sd(w24) * ANN * 100, rv6 = sd(w6) * ANN * 100, iv = dv[i];
@@ -49358,15 +49389,17 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             if (ser.length >= 12) { const ch = []; for (let q = 1; q < ser.length; q++) ch.push(Math.log(ser[q] / ser[q - 1])); f.vov = sd(ch) * 100; }
             const s6 = []; for (let h = 6; h >= 0; h--) { const v = dv[i - h]; if (v > 0) s6.push(v); } if (s6.length >= 4) f.clk = iv / Math.max(...s6);
             if (dv[i - 24] > 0) f.dchg = iv - dv[i - 24];
+            { const pre = dv[i - 5]; let pk = null; for (let h = 4; h >= 1; h--) { const x = dv[i - h]; if (x > 0 && (pk == null || x > pk)) pk = x; } if (pre > 0 && pk > 0) f.spk = (pk - pre) / pre * 100; }   // NY-open style IV spike: the 4-hour peak against 5 hours ago
           }
-          const R = modelScore(f); if (!R) continue; hourScore[i] = R.score;
+          const R = modelScore(f); if (!R) continue; hourScore[i] = R.score; hourJ[i] = journeyAt(i, f, iv);
           if (i === n - 1) parts = { raw: R.z, items: R.items.sort((a, b) => b.contrib - a.contrib), priceOnly: !(iv > 0), nBack: R.items.length };
         }
         let last = null, li = -1; for (let i = n - 1; i >= 0; i--) if (hourScore[i] != null) { last = hourScore[i]; li = i; break; }
+        const hourState = hourScore.map((v, i) => v == null ? null : stateOf(v, i >= 3 && hourScore[i - 3] != null ? v - hourScore[i - 3] : null, hourJ[i]));
         let d3 = null; if (li >= 3 && hourScore[li - 3] != null) d3 = last - hourScore[li - 3];
         const LV = liveItems(), flags = LV.filter(x => x.risk >= 70);
         if (parts) { parts.d3 = d3; parts.live = LV; parts.flags = flags; parts.nLive = LV.length; }
-        return { score: barH.map(h => hourScore[h]), last, d3, parts, hours: n };
+        return { score: barH.map(h => hourScore[h]), state: barH.map(h => hourState[h]), lastState: li >= 0 ? hourState[li] : null, last, d3, parts, hours: n };
       }
       /* what the current level and 3-hour direction have meant: out-of-sample stop rate / P&L (data/risk_model.js) */
       const LEV = [[0, 10, '0–10'], [10, 20, '10–20'], [20, 25, '20–25'], [25, 40, '25–40'], [40, 1e9, '40+']];
@@ -49395,7 +49428,94 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* the same score for whoever needs it without the lane (Decision page, clock): from the chart's own bars, cached 20 s */
       const LV = { at: 0, v: null };
       function live() { if (Date.now() - LV.at < 20000) return LV.v; LV.at = Date.now(); try { const R = W.paRes && W.paRes(); LV.v = R && R.bars && R.bars.length ? compute({ b: R.bars }) : null; } catch (e) { LV.v = null; } return LV.v; }
-      W.v151Risk = { compute, live, rank, riskPct, scoreOf, meaning, modelScore, data: RK, model: RM };
+      function verdict(R) { R = R || live(); if (!R || R.last == null || !R.lastState) return null; const S = R.lastState; return Object.assign({ score: R.last, d3: R.d3 }, S); }
+      W.v151Risk = { compute, live, rank, riskPct, scoreOf, meaning, modelScore, verdict, stateOf, data: RK, model: RM };
+    })();
+  </script>
+  <script data-module="v152">
+    /* v152 (24 Oct 2026) · your own saved layouts, and Risk-ADX alerts while a strangle is open */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id);
+      const LSg = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+      const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const css = D.createElement('style'); css.textContent = `
+        .v152-layouts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line)}
+        .v152-layouts>span{font:600 11px var(--font);letter-spacing:.06em;color:var(--muted);margin-right:2px}
+        .v152-layouts button{font:600 12px var(--font);padding:5px 10px;border-radius:999px;border:1px solid var(--line2,var(--line));background:var(--panel);color:var(--text);cursor:pointer}
+        .v152-layouts button:hover{border-color:#2F7CC0;color:#2F7CC0}
+        .v152-layouts .v152-chip{display:inline-flex;gap:2px;align-items:center}
+        .v152-layouts .v152-chip button[data-del]{padding:5px 7px;color:var(--muted)}
+        .v152-layouts input{font:500 12px var(--font);padding:5px 8px;border-radius:8px;border:1px solid var(--line2,var(--line));background:var(--panel);color:var(--text);width:110px;min-width:0}
+        .v152-layouts .v152-save{background:#2F7CC0;border-color:#2F7CC0;color:#fff}
+        .v152-hold{position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);z-index:99999;display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:12px;border:2px solid;font:500 13px/1.35 var(--font);box-shadow:0 6px 24px rgba(0,0,0,.28);background:var(--panel,#fff);color:var(--text,#111)}
+        .v152-hold[hidden]{display:none}
+        .v152-hold b{display:block;font-weight:700}
+        .v152-hold span{display:block;flex:1}
+        .v152-hold button{background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:inherit}
+        .v152-hold.ok{border-color:#22A06B}.v152-hold.warn{border-color:#E0A030}.v152-hold.bad{border-color:#E05252}.v152-hold.danger{border-color:#B91C1C;background:#FDECEC;color:#7A1111}`;
+      D.head.appendChild(css);
+
+      /* ---------- saved layouts ---------- */
+      const KEY = 'v152_layouts';
+      const all = () => { const o = LSg(KEY, {}); return o && typeof o === 'object' ? o : {}; };
+      function autoOff() { try { const A = W.v139 && W.v139.state && W.v139.state().AUTO; if (A) { A.on = false; } LSs('v139_auto', false); const au = D.querySelector('#v132Ind .v139-auto input'); if (au) au.checked = false; } catch (e) { } }
+      function applyOn(map) {
+        if (!W.v132ind) return; const on = W.v132ind.state(); for (const k of Object.keys(on)) on[k] = !!map[k]; for (const k of Object.keys(map)) on[k] = !!map[k];
+        LSs('v133_ind', on); autoOff(); try { W.v132ind.apply(true); } catch (e) { }
+        setTimeout(() => { try { W.v138 && W.v138.paintAll && W.v138.paintAll(); } catch (e) { } try { W.v137 && W.v137.paintAll && W.v137.paintAll(); } catch (e) { } try { const m = $('v132Ind'), p = m && m.querySelector('input'); if (p) p.dispatchEvent(new Event('input')); } catch (e) { } }, 120);
+      }
+      function draw(row) {
+        const L = all(), names = Object.keys(L);
+        row.innerHTML = '<span>MY LAYOUTS</span><button type="button" data-chart title="Only the BTC chart">Chart only</button>' +
+          names.map(n => `<span class="v152-chip"><button type="button" data-use="${esc(n)}" title="${Object.values(L[n].on || {}).filter(Boolean).length} indicators">${esc(n)}</button><button type="button" data-del="${esc(n)}" aria-label="Delete ${esc(n)}">×</button></span>`).join('') +
+          '<input type="text" maxlength="24" placeholder="name this layout" aria-label="Layout name"><button type="button" class="v152-save" data-save>Save current</button>';
+      }
+      function ensure() {
+        const m = $('v132Ind'); if (!m || m.querySelector('.v152-layouts')) return;
+        const row = D.createElement('div'); row.className = 'v152-layouts'; draw(row);
+        const ls = m.querySelector('.ls'); if (ls) ls.before(row); else m.prepend(row);
+        row.addEventListener('click', e => {
+          const b = e.target.closest('button'); if (!b) return; e.stopPropagation();
+          if (b.dataset.chart != null) { const on = {}; for (const k of Object.keys(W.v132ind.state())) on[k] = k === 'strk' || k === 'legs'; applyOn(on); return; }
+          if (b.dataset.use) { const L = all()[b.dataset.use]; if (L) applyOn(L.on || {}); return; }
+          if (b.dataset.del) { const L = all(); delete L[b.dataset.del]; LSs(KEY, L); draw(row); return; }
+          if (b.dataset.save != null) {
+            const inp = row.querySelector('input'), L = all(); let name = (inp.value || '').trim(); if (!name) name = 'Layout ' + (Object.keys(L).length + 1);
+            L[name] = { at: Date.now(), on: Object.assign({}, W.v132ind.state()) }; LSs(KEY, L); draw(row); const ni = row.querySelector('input'); if (ni) { ni.placeholder = 'saved: ' + name; }
+          }
+        });
+        row.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); const b = row.querySelector('[data-save]'); if (b) b.click(); } e.stopPropagation(); });
+      }
+      function watch() { const m = $('v132Ind'); if (!m) return; if (!m.__v152) { m.__v152 = 1; new MutationObserver(() => { if (!m.querySelector('.v152-layouts')) setTimeout(ensure, 0); }).observe(m, { childList: true, subtree: true }); } ensure(); }
+      setInterval(watch, 1500); watch();
+
+      /* ---------- alerts while a strangle is open ---------- */
+      const HW = { rank: 0, open: false, okAt: 0 };
+      const posNow = () => { try { const R = W.v121 && W.v121.last; return R && R.pos ? R : null; } catch (e) { return null; } };
+      function banner(level, title, body) {
+        let b = $('v152Hold'); if (!b) { b = D.createElement('div'); b.id = 'v152Hold'; b.setAttribute('role', 'alert'); b.innerHTML = '<div style="flex:1"><b></b><span></span></div><button type="button" aria-label="Dismiss">×</button>'; D.body.appendChild(b); b.querySelector('button').addEventListener('click', () => { b.hidden = true; }); }
+        b.className = 'v152-hold ' + level; b.querySelector('b').textContent = title; b.querySelector('span').textContent = body; b.hidden = false;
+      }
+      function ping(level, title, body) {
+        try { navigator.vibrate && navigator.vibrate(level === 'danger' ? [220, 90, 220, 90, 420] : [320, 160, 320]); } catch (e) { }
+        try { if ('Notification' in W && Notification.permission === 'granted') new Notification(title, { body, tag: 'v152-hold', renotify: true }); } catch (e) { }
+      }
+      function check() {
+        const R = posNow(), box = $('v152Hold');
+        if (!R) { HW.rank = 0; HW.open = false; if (box && !box.hidden && !/back to GO/i.test(box.textContent)) box.hidden = true; return; }
+        if (!HW.open) { HW.open = true; HW.rank = 0; }
+        const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; if (!V) return;
+        const lg = (R.legs || []).filter(l => l.x != null), mx = lg.length ? Math.max(...lg.map(l => l.x)) : null, legTxt = mx != null ? ' Worst leg is at ' + mx.toFixed(1) + '× its entry premium (stop at 2×).' : '';
+        const rank = V.tone === 'danger' ? 3 : (V.score > 25 || (V.J && V.J.stage === 'holding')) ? 2 : V.dir === 'rising' ? 1 : 0;
+        if (rank > HW.rank) {
+          const lvl = rank === 3 ? 'danger' : rank === 2 ? 'bad' : 'warn', ttl = rank === 3 ? 'DANGER while you are short' : rank === 2 ? 'WARNING while you are short' : 'Risk-ADX is rising while you are short';
+          const body = (V.why[0] || 'Risk-ADX ' + V.score.toFixed(1)) + '.' + legTxt + (rank === 1 ? ' Not an exit signal; keep watching.' : ' In the 5-year test, exiting on the cross alone did not improve results, so check your legs and your stop rather than closing on the number.');
+          banner(lvl, ttl, body); ping(lvl, ttl, body);
+        } else if (rank === 0 && HW.rank > 0) { banner('ok', 'Risk-ADX is back to GO', 'The warning has cleared (' + V.score.toFixed(1) + ').'); setTimeout(() => { const b = $('v152Hold'); if (b && /back to GO/i.test(b.textContent)) b.hidden = true; }, 20000); }
+        HW.rank = rank;
+      }
+      setInterval(() => { try { check(); } catch (e) { } }, 20000); setTimeout(() => { try { check(); } catch (e) { } }, 8000);
+      W.v152 = { layouts: all, apply: applyOn, check, state: () => HW };
     })();
   </script>
   <script data-module="v142">
@@ -49967,14 +50087,18 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           setLeg(o, `<b>TONIGHT</b>${real != null ? `<span class="${real >= 0 ? 'g' : 'r'}">${real >= 0 ? '+' : '−'}${Math.abs(real).toFixed(2)} ${real >= 0 ? 'above clock · ' + (hIST >= 21 || hIST < 3 ? 'sell OK' : 'sell OK from 21:00') : 'below clock · wait'}</span>` : `<span class="m">${RR ? 'clock path starts once tonight has 45 min of IV' : 'loading'}</span>`}${ivN != null ? `<span>${src} IV ${ivN.toFixed(2)}%</span>` : ''}${clN != null ? `<span class="m">clock ${clN.toFixed(2)}%</span>` : ''}<span class="m">dashed = clock path · dotted = usual path · ▲▼ = crossover</span>`);
         }
         if (k === 'risk') {
-          const RR = W.v151Risk && W.v151Risk.compute(B), GR = '#22A06B', RD = '#E05252'; if (!RR) { st(o, ''); setLeg(o, '<b>RISK-ADX</b><span class="m">loading the 5-year model and price bars…</span>'); return; }
-          let mx = 55; const pts = B.b.map((bar, i) => { const v = RR.score[i]; if (v == null) return blank(B, i); if (v > mx) mx = v; vals[i] = v; return { time: bar.time, value: v, color: v > 25 ? RD : GR }; });
+          const RR = W.v151Risk && W.v151Risk.compute(B), GR = '#22A06B', RD = '#E05252', DK = '#B91C1C', AM = '#E0A030'; if (!RR) { st(o, ''); setLeg(o, '<b>RISK-ADX</b><span class="m">loading the 5-year model and price bars…</span>'); return; }
+          const COL = { go: GR, check: AM, wait: RD, danger: DK };   // green only when everything agrees; red when above 25, rising or New York fear still holding
+          let mx = 55; const pts = B.b.map((bar, i) => { const v = RR.score[i]; if (v == null) return blank(B, i); if (v > mx) mx = v; vals[i] = v; const S = RR.state && RR.state[i]; return { time: bar.time, value: v, color: S ? COL[S.tone] : (v > 25 ? RD : GR) }; });
           o.rmax = Math.min(100, Math.ceil(mx * 1.1 / 5) * 5); o.a.setData(pts);
-          const v = RR.last, d3 = RR.d3, M = v != null ? W.v151Risk.meaning(v, d3) : null, cls = v == null ? '' : v > 25 ? 'r' : 'g', P = RR.parts;
-          const arrow = d3 == null ? '' : d3 >= 2 ? '↑' : d3 <= -2 ? '↓' : '→', zone = v == null ? '' : v > 50 ? 'DANGER · do not sell' : v > 25 ? 'ABOVE 25 · wait' : 'OK to sell';
+          const V = W.v151Risk.verdict(RR), v = RR.last, d3 = RR.d3, M = v != null ? W.v151Risk.meaning(v, d3) : null, cls = !V ? '' : V.tone === 'go' ? 'g' : V.tone === 'check' ? 'a' : 'r', P = RR.parts;
+          const arrow = d3 == null ? '' : d3 >= 2 ? '↑' : d3 <= -2 ? '↓' : '→', acls = d3 == null ? 'm' : d3 >= 2 ? 'r' : d3 <= -2 ? 'g' : 'm';
+          const word = !V ? '' : V.tone === 'go' ? 'GO · fine to sell' : V.tone === 'check' ? 'CHECK · not confirmed' : V.tone === 'danger' ? 'DANGER · do not sell' : 'WAIT';
+          const J = V && V.J, sp = J ? (J.spike >= 0 ? '+' : '−') + Math.abs(J.spike).toFixed(1) + '%' : '', stg = !J ? '' : J.stage === 'calm' ? 'NY fear: none' : J.stage === 'holding' ? 'NY fear ' + sp + ': IV still near its peak' : J.stage === 'real' ? 'NY fear ' + sp + ' fading: VoV falling = real IV fall' : J.stage === 'crush' ? 'IV falling hard, VoV rising: crush may reverse' : 'NY spike ' + sp + ', mixed signals';
+          const chips = J ? J.conf.map(c => `<span class="${c.ok ? 'g' : 'r'}">${c.ok ? '✓' : '✗'} ${esc(c.k)}</span>`).join('') : '';
           const fl = P && P.flags && P.flags.length ? P.flags.map(x => ((W.v151Risk.data() && W.v151Risk.data().order.find(q => q.k === x.k)) || {}).l + ' ' + x.txt).join(' · ') : '';
           st(o, cls);
-          setLeg(o, `<b>RISK-ADX</b>${v != null ? `<span class="${cls}">${v.toFixed(1)}</span><span class="${cls}">${arrow}${d3 != null ? (d3 >= 0 ? '+' : '−') + Math.abs(d3).toFixed(1) + '/3h' : ''}</span><span class="${cls}">${zone}</span>` : '<span class="m">—</span>'}${M && M.cell ? `<span class="m">${M.cell.stop}% stopped in cases like this</span>` : M && M.band ? `<span class="m">${M.band.stop}% stopped at this level</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${(() => { const dq = P && P.items.find(x => x.k === 'dvol'); return dq && dq.v < 45 ? '<span class="a">quiet market (DVOL ' + dq.v.toFixed(0) + '): green counts for less</span>' : ''; })()}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
+          setLeg(o, `<b>RISK-ADX</b>${v != null ? `<span class="${cls}">${v.toFixed(1)}</span><span class="${acls}">${arrow}${d3 != null ? (d3 >= 0 ? '+' : '−') + Math.abs(d3).toFixed(1) + '/3h' : ''}</span><span class="${cls}">${word}</span>` : '<span class="m">—</span>'}${stg ? `<span class="${J.stage === 'holding' ? 'r' : J.stage === 'real' ? 'g' : 'm'}">${esc(stg)}</span>` : ''}${chips}${V && V.tone !== 'go' && V.why.length ? `<span class="m">${esc(V.why[0])}</span>` : ''}${M && M.cell ? `<span class="m">${M.cell.stop}% stopped in cases like this</span>` : M && M.band ? `<span class="m">${M.band.stop}% stopped at this level</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${(() => { const dq = P && P.items.find(x => x.k === 'dvol'); return dq && dq.v < 45 ? '<span class="a">quiet market (DVOL ' + dq.v.toFixed(0) + '): green counts for less</span>' : ''; })()}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
           o.meaning = M; o.last = v;
         }
         if (k === 'macro') {

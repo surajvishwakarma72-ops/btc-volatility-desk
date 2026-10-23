@@ -25,9 +25,9 @@ const dkey=(ts)=>new Date(ts).toISOString().slice(0,10);
 const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
 const sd=a=>{if(a.length<2)return null;const m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1));};
 
-const FIXEDW={spd:10,atm:8,rng:6,vov:5,rv:3,edge:3,clk:2.5,dvol:2,adx:1.5,rsi:1,rng6:1,dchg:1,r6:0.5,r24:0.5,rvr:0.5};   // FIXED=1: the user's priority order, speed > ATM IV > range > VoV
+const FIXEDW={spd:10,atm:8,spk:7,rng:6,vov:5,dchg:4,rv:3,edge:3,clk:2.5,dvol:2,adx:1.5,rsi:1,rng6:1,r6:0.5,r24:0.5,rvr:0.5};   // FIXED=1: the user's priority order, speed > ATM IV > range > VoV
 const BASE10=['spd','atm','vov','rv','rng','edge','clk','dvol','adx','rsi'];
-const FEATS=[...BASE10,'r6','r24','rng6','rvr','dchg'];   // shipped set: the 10 + trend / recent-range / IV-change terms (walk-forward AUC 0.611 → 0.62+)
+const FEATS=[...BASE10,'r6','r24','rng6','rvr','dchg','spk'];   // shipped set: the 10 + trend / recent-range / IV-change terms (walk-forward AUC 0.611 → 0.62+)
 const ORDER=[['spd','IV vs speed'],['atm','ATM IV'],['vov','VoV'],['rv','RV'],['rng','Range 24'],['edge','Edge'],['clk','Tonight IV vs clock'],['dvol','DVOL'],['skew','25Δ skew'],['adx','ADX'],['rsi','RSI'],['macro','Macro stress'],['fut','Futures positioning'],['fund','Funding / OI'],['term','Term spread'],['bidask','Bid/ask spread'],['crush','IV crush driver'],['greeks','ATM greeks']];
 function adxSeries(bars,per=14){const out=new Map();if(bars.length<per*2)return out;const sm={tr:0,p:0,n:0};let adx=0,dxCount=0,dxSum=0;for(let i=1;i<bars.length;i++){const h=bars[i].h,l=bars[i].l,pc=bars[i-1].c,ph=bars[i-1].h,pl=bars[i-1].l;const trv=Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc));const up=h-ph,dn=pl-l;const pdmv=(up>dn&&up>0)?up:0,ndmv=(dn>up&&dn>0)?dn:0;if(i<=per){sm.tr+=trv;sm.p+=pdmv;sm.n+=ndmv;continue;}sm.tr=sm.tr-sm.tr/per+trv;sm.p=sm.p-sm.p/per+pdmv;sm.n=sm.n-sm.n/per+ndmv;const pdi=100*sm.p/sm.tr,ndi=100*sm.n/sm.tr;const dx=100*Math.abs(pdi-ndi)/((pdi+ndi)||1);dxCount++;if(dxCount<per){dxSum+=dx;if(dxCount===per-1)adx=dxSum/per;}else{adx=(adx*(per-1)+dx)/per;out.set(bars[i].t,adx);}}return out;}
 function rsiSeries(bars,per=14){const out=new Map();let g=0,l=0;for(let i=1;i<bars.length;i++){const d=bars[i].c-bars[i-1].c,u=Math.max(d,0),dn=Math.max(-d,0);if(i<=per){g+=u/per;l+=dn/per;if(i<per)continue;}else{g=(g*(per-1)+u)/per;l=(l*(per-1)+dn)/per;}out.set(bars[i].t,l===0?100:100-100/(1+g/l));}return out;}
@@ -73,6 +73,7 @@ function main(){
     const h6=w.slice(-6),hi6=Math.max(...h6.map(([,b])=>b.h)),lo6=Math.min(...h6.map(([,b])=>b.l));
     return {spd:rv24/iv,atm:iv,vov,rv:rv6,rng:((hi-lo)/S.c*100)/(iv/Math.sqrt(365)),edge:iv-rv24,clk:d6.length>=4?iv/Math.max(...d6):null,dvol:iv,adx:x,rsi:r,
       r24:c0?Math.abs(Math.log(S.c/c0.c))*100/(iv/Math.sqrt(365)):null,r6:c6?Math.abs(Math.log(S.c/c6.c))*100/(iv/Math.sqrt(365*4)):null,rng6:((hi6-lo6)/S.c*100)/(iv/Math.sqrt(365*4)),rvr:rv6!=null?rv6/rv24:null,dchg:i24>0?iv-i24:null,
+      spk:(()=>{const pre=ivAt(E-5*HOUR);let pk=null;for(let h=4;h>=1;h--){const x=dh.get(E-h*HOUR);if(x>0&&(pk==null||x>pk))pk=x;}return pre>0&&pk>0?(pk-pre)/pre*100:null;})(),
       pos:(S.c-lo)/((hi-lo)||1)};
   }
   /* strangle simulated from hour E: legs 0.15Δ at DVOL, stop 2× per leg, until E+8h. returns path info */
@@ -95,6 +96,56 @@ function main(){
       samples.push({E,E0,k,wd,yr:new Date(E).getUTCFullYear(),mo:new Date(E).getUTCMonth()+1,f,fPrev,stop:s.stopped,final:s.final,sim:s});}
   }
   const base=samples.filter(s=>s.stop).length/samples.length*100;
+  /* journey features at each entry hour */
+  {
+    const iv1=(E)=>dh.get(E)>0?dh.get(E):null;
+    const vovW=(E,n)=>{const v=[];for(let h=n;h>=0;h--){const x=iv1(E-h*HOUR);if(x)v.push(x);}if(v.length<n-1)return null;const c=[];for(let i=1;i<v.length;i++)c.push(Math.log(v[i]/v[i-1]));return sd(c)*100;};
+    for(const s of samples){const E=s.E,pre=iv1(E-5*HOUR),now=iv1(E);let peak=null;for(let h=4;h>=1;h--){const x=iv1(E-h*HOUR);if(x&&(peak==null||x>peak))peak=x;}
+      if(!pre||!peak||!now){s.j=null;continue;}
+      const spike=(peak-pre)/pre*100,fall=(peak-now)/peak*100,hard=iv1(E-2*HOUR)?(iv1(E-2*HOUR)-now)/iv1(E-2*HOUR)*100:0;
+      const v0=vovW(E,6),v2=vovW(E-2*HOUR,6),v4=vovW(E-4*HOUR,6);
+      const vovDn=v0!=null&&v2!=null&&v4!=null&&v0<v2&&v2<v4, vovUp=v0!=null&&v2!=null&&v0>v2*1.05;
+      s.j={spike,fall,hard,vovDn,vovUp,v0,v2,v4,pre,peak,now};}
+  }
+  if(process.env.RELTEST){ // does ranking against the trailing N days (instead of all 5 years) keep skill in the current, calmer regime?
+    const years=[...new Set(samples.map(s=>s.yr))].sort();const W_=Number(process.env.RELTEST)||120;const sorted=samples.slice().sort((x,y)=>x.E-y.E);
+    const dirOf=(train,k)=>{const A=train.filter(s=>s.stop&&s.f[k]!=null).map(s=>s.f[k]),B=train.filter(s=>!s.stop&&s.f[k]!=null).map(s=>s.f[k]);return mean(A)>=mean(B)?1:-1;};
+    const res=[];
+    for(const y of years){if(y<2023)continue;const train=samples.filter(s=>s.yr<y),test=sorted.filter(s=>s.yr===y);if(!test.length)continue;
+      const dir=Object.fromEntries(FEATS.map(k=>[k,dirOf(train,k)]));const tabAll={};for(const k of FEATS)tabAll[k]=train.map(s=>s.f[k]).filter(x=>x!=null).sort((a,b)=>a-b);
+      let lo=0;const win=[];
+      for(const s of test){ // trailing window of earlier samples
+        const ref=sorted.filter(t=>t.E<s.E-DAY&&t.E>=s.E-W_*DAY);
+        const tabW={};for(const k of FEATS)tabW[k]=ref.map(t=>t.f[k]).filter(x=>x!=null).sort((a,b)=>a-b);
+        const sc=(tab)=>{let z=0;for(const k of FEATS){const v=s.f[k];if(v==null||!tab[k].length)continue;z+=dir[k]*(FIXEDW[k]||0)*(pctOf(tab[k],v)/100-0.5);}return z;};
+        s.zA=sc(tabAll);s.zW=ref.length>200?sc(tabW):s.zA;s.zB=(s.zA+s.zW)/2;}
+      res.push(...test);}
+    const rep=(nm,a)=>{const out=['zA','zW','zB'].map(z=>{const pos=a.filter(s=>s.stop).map(s=>s[z]),neg=a.filter(s=>!s.stop).map(s=>s[z]);return auc(pos,neg).toFixed(3);});console.log('  '+nm.padEnd(22)+'n '+String(a.length).padStart(5)+'   AUC  5y-rank '+out[0]+'   trailing-'+W_+'d '+out[1]+'   blend '+out[2]);};
+    console.log('RELATIVE RANKING TEST (hand-set weights)');rep('all OOS 2023-26',res);const lastE=sorted[sorted.length-1].E;rep('last 365 nights',res.filter(s=>s.E>=lastE-365*DAY));rep('last 120 nights',res.filter(s=>s.E>=lastE-120*DAY));rep('last 60 nights',res.filter(s=>s.E>=lastE-60*DAY));
+    const lastE2=sorted[sorted.length-1].E;
+    console.log('\nSINGLE-FEATURE AUC (0.5 = none; >0.5 = high value precedes stops), by recency');
+    const feats2=[...FEATS.map(k=>[k,s=>s.f[k]]),['spike',s=>s.j&&s.j.spike],['ivFall',s=>s.j&&s.j.fall],['iv2h',s=>s.j&&s.j.hard],['vov6',s=>s.j&&s.j.v0],['vovTrend',s=>s.j&&s.j.v0!=null&&s.j.v4?s.j.v0-s.j.v4:null]];
+    for(const [nm,fn] of feats2){const r=[];for(const days of [9999,365,120,60]){const a=sorted.filter(s=>s.yr>=2023&&s.E>=lastE2-days*DAY&&fn(s)!=null);const pos=a.filter(s=>s.stop).map(fn),neg=a.filter(s=>!s.stop).map(fn);r.push(pos.length>10&&neg.length>10?auc(pos,neg).toFixed(2):' - ');}console.log('  '+nm.padEnd(9)+' all '+r[0]+'  1y '+r[1]+'  120n '+r[2]+'  60n '+r[3]);}
+    return;}
+  if(process.env.JOURNEY){ // study: New York fear spike -> real fall or temporary crush (judged by VoV) -> does the stage predict stops?
+    const J=samples.filter(s=>s.j&&s.k===0);const st=a=>a.length?(a.filter(s=>s.stop).length/a.length*100).toFixed(1):'-',pn=a=>a.length?mean(a.map(s=>s.final)).toFixed(1):'-';
+    const show=(nm,a)=>console.log('  '+nm.padEnd(58)+' n '+String(a.length).padStart(4)+'  stopped '+String(st(a)).padStart(5)+'%  P&L '+String(pn(a)).padStart(6)+'%');
+    console.log('JOURNEY STUDY (entry 22:30 IST, all years) base',st(J)+'%, spike size distribution: p50',quant(J.map(s=>s.j.spike).sort((x,y)=>x-y),50).toFixed(2),'p75',quant(J.map(s=>s.j.spike).sort((x,y)=>x-y),75).toFixed(2),'p90',quant(J.map(s=>s.j.spike).sort((x,y)=>x-y),90).toFixed(2));
+    for(const [lo,hi] of [[-99,0.5],[0.5,2],[2,4],[4,7],[7,99]])show('NY spike '+lo+'..'+hi+'%',J.filter(s=>s.j.spike>=lo&&s.j.spike<hi));
+    const sp=s=>s.j.spike>=2;
+    show('A no spike (<2%)',J.filter(s=>!sp(s)));
+    show('B spike, IV still near peak (fall <1.5%)',J.filter(s=>sp(s)&&s.j.fall<1.5));
+    show('C spike, IV fell >=1.5%, VoV falling steadily (real fall)',J.filter(s=>sp(s)&&s.j.fall>=1.5&&s.j.vovDn));
+    show('D spike, IV fell >=1.5%, VoV rising (temporary crush)',J.filter(s=>sp(s)&&s.j.fall>=1.5&&s.j.vovUp));
+    show('E spike, IV fell >=1.5%, VoV neither',J.filter(s=>sp(s)&&s.j.fall>=1.5&&!s.j.vovDn&&!s.j.vovUp));
+    show('D2 IV falling hard last 2h (>=3%), VoV rising',J.filter(s=>s.j.hard>=3&&s.j.vovUp));
+    show('C2 IV falling last 2h (>=0.5%), VoV falling steadily',J.filter(s=>s.j.hard>=0.5&&s.j.vovDn));
+    show('VoV falling steadily (any)',J.filter(s=>s.j.vovDn));show('VoV rising (any)',J.filter(s=>s.j.vovUp));
+    const conf=s=>s.f.spd<1&&s.f.adx<25&&s.f.edge>0;
+    show('confirm: speed<1 & ADX<25 & edge>0',J.filter(conf));show('confirm fails',J.filter(s=>!conf(s)));
+    show('C + confirm',J.filter(s=>sp(s)&&s.j.fall>=1.5&&s.j.vovDn&&conf(s)));show('D + confirm',J.filter(s=>sp(s)&&s.j.fall>=1.5&&s.j.vovUp&&conf(s)));show('A + confirm',J.filter(s=>!sp(s)&&conf(s)));
+    return;}
+
   console.log(`samples ${samples.length} (${samples.filter(s=>s.k===0).length} nights × entry hours) base stop ${base.toFixed(1)}%`);
 
   /* ---------- model building from a training set ---------- */
@@ -195,14 +246,26 @@ function main(){
     exitRows.push({h,above:{n:hi.length,laterStop:sp(hi),closeNow:g(hi,r=>r.now),held:g(hi,r=>r.final)},below:{n:lo.length,laterStop:sp(lo),closeNow:g(lo,r=>r.now),held:g(lo,r=>r.final)}});
     console.log(`  +${h}h  score>25: n${String(hi.length).padStart(3)} stopped-later ${String(sp(hi)).padStart(5)}% close-now ${String(g(hi,r=>r.now)).padStart(6)}% held ${String(g(hi,r=>r.final)).padStart(6)}%   | ≤25: n${String(lo.length).padStart(3)} stopped-later ${String(sp(lo)).padStart(5)}% held ${String(g(lo,r=>r.final)).padStart(6)}%`);}
 
+  /* ---------- the trader's journey: NY fear spike -> real fall / temporary crush (VoV) -> chart confirmation -> GO ---------- */
+  const stageOf=(s)=>{const j=s.j;if(!j)return null;if(j.spike<2)return 'calm';if(j.fall<1.5)return 'holding';if(j.vovDn||j.hard>=0.5&&!j.vovUp)return 'real';if(j.hard>=3&&j.vovUp)return 'crush';return 'mixed';};
+  const confirmN=(s)=>[s.f.spd<1,s.f.adx<25,s.f.rv<s.f.atm,s.f.edge>0].filter(Boolean).length;
+  const dirOf2=(s)=>s.scPrev==null?null:(s.sc-s.scPrev>=2?'rising':s.sc-s.scPrev<=-2?'falling':'flat');
+  const isGo=(s)=>s.sc<=25&&stageOf(s)!=='holding'&&dirOf2(s)!=='rising'&&confirmN(s)>=3;
+  console.log('\nJOURNEY (OOS, all entry hours): stage -> stopped% / P&L% / n');
+  const stageRows=[];for(const [id,lab] of [['calm','no NY fear spike (<2%)'],['holding','fear spike, IV still near its peak'],['real','IV fading, VoV falling = real fall'],['crush','IV falling hard, VoV rising = temporary crush?'],['mixed','spike, mixed signals']]){const a=O.filter(x=>stageOf(x)===id);stageRows.push({id,label:lab,n:a.length,stop:st(a),pnl:pn(a)});console.log('  '+lab.padEnd(48)+' n '+String(a.length).padStart(4)+'  stopped '+String(st(a)).padStart(5)+'%  P&L '+String(pn(a)).padStart(6)+'%');}
+  const confRows=[0,1,2,3,4].map(c=>{const a=O.filter(x=>confirmN(x)===c);console.log('  chart confirms '+c+'/4 (speed<1, ADX<25, RV<IV, edge>0)  n '+a.length+'  stopped '+st(a)+'%  P&L '+pn(a)+'%');return {confirms:c,n:a.length,stop:st(a),pnl:pn(a)};});
+  const goA=O.filter(isGo),noA=O.filter(x=>!isGo(x));console.log('  GO (<=25, no fear holding, not rising, >=3/4 confirm): n '+goA.length+' stopped '+st(goA)+'% P&L '+pn(goA)+'%   NOT GO: n '+noA.length+' stopped '+st(noA)+'% P&L '+pn(noA)+'%');
+  const goN=[];for(const [E0,a] of nights){a.sort((x,y)=>x.k-y.k);const t=a.find(isGo);if(t)goN.push(t);}console.log('  first GO hour of each night (22:30-01:30 IST): trades '+goN.length+'/'+nights.size+' stopped '+st(goN)+'% avg '+pn(goN)+'% total '+goN.reduce((x,t)=>x+t.final,0).toFixed(0));
+  const journey={stages:stageRows,confirms:confRows,go:{n:goA.length,stop:st(goA),pnl:pn(goA)},notGo:{n:noA.length,stop:st(noA),pnl:pn(noA)},nightly:{trades:goN.length,nights:nights.size,stop:st(goN),avg:pn(goN),total:+goN.reduce((x,t)=>x+t.final,0).toFixed(0)}};
+
   /* ---------- write the model for the desk ---------- */
-  const names=Object.fromEntries([...ORDER.map(([k,l])=>[k,l]),['r6','6h move'],['r24','24h move'],['rng6','6h range'],['rvr','RV 6h ÷ 24h'],['dchg','IV change 24h']]);
+  const names=Object.fromEntries([...ORDER.map(([k,l])=>[k,l]),['r6','6h move'],['r24','24h move'],['rng6','6h range'],['rvr','RV 6h ÷ 24h'],['dchg','IV change 24h'],['spk','NY IV spike']]);
   /* parity check: the same model on the newest hours (compare with the desk's lane) */
   if(process.env.CHECK){const lastH=Math.floor(prices[prices.length-1][0]/HOUR)*HOUR;for(let h=7;h>=0;h--){const E=lastH-h*HOUR,f=featuresAt(E);if(!f){console.log(new Date(E).toISOString(),'no features');continue;}const z=FM.score(f);console.log(new Date(E).toISOString().slice(0,16),'score',toScore(z).toFixed(1),JSON.stringify(Object.fromEntries(Object.entries(f).map(([k,v])=>[k,v==null?null:+v.toFixed(3)]))));}}
   const out={generated:dkey(Date.now()),samples:samples.length,baseStopPct:+base.toFixed(1),span:[dkey(samples[0].E),dkey(samples[samples.length-1].E)],feats:FEATS,names,
     coef:{b:+FM.w[0].toFixed(5),w:Object.fromEntries(FEATS.map((k,i)=>[k,+FM.w[i+1].toFixed(4)]))},pct:FM.pct,calibration:cal,
     wfAuc:{old:+mean(aucOld).toFixed(3),logistic:+mean(aucNew).toFixed(3),sets:setAuc},oosBands:bandRows,oosAbove25:{n:above.length,stop:st(above),pnl:pn(above)},oosAtOrBelow25:{n:below.length,stop:st(below),pnl:pn(below)},
-    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows};
+    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey};
   const js=`window.__STRANGLE_RISKMODEL = ${JSON.stringify(out)};\n`;
   for(const rel of ['../../data/risk_model.js','../../frontend/public/data/risk_model.js'])fs.writeFileSync(P(rel),js);
   console.log('\nlogistic weights (on centred percentile rank; + = riskier):',JSON.stringify(out.coef.w),'calibration',JSON.stringify(cal));
