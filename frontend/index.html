@@ -28024,7 +28024,7 @@ Signs follow Settings → Dealer positioning.`;
           if (innerWidth <= 760) {
             // v150 phone: v133.fit sizes the panel to the screen (down to the tab bar) and the lanes to their share; the
             // ADX strip takes one lane share and the candles take what is left, so nothing needs a scroll to be seen
-            const lane = window.__v133Lane || 0;
+            const lane = window.__v133Adx || window.__v133Lane || 0;
             if (ab) { if (lane) { ab.style.setProperty('height', lane + 'px', 'important'); ab.style.setProperty('flex', '0 0 auto', 'important'); } else { ab.style.removeProperty('height'); ab.style.removeProperty('flex'); } }
             let rest = 0; for (const ch of pane.children) { if (ch === cb || ch.hidden || getComputedStyle(ch).display === 'none' || getComputedStyle(ch).position === 'absolute') continue; rest += ch.getBoundingClientRect().height; }
             const sized = !!pane.style.getPropertyValue('height'),
@@ -28049,7 +28049,8 @@ Signs follow Settings → Dealer positioning.`;
           if (FS) { volH = vOn ? clamp(Math.round(avail * FS.vol), 120, Math.round(avail * 0.45)) : 0; chartH = avail - volH; }   // v47: the indicator gets up to 40% so its candles read clearly   // v37: more of the height to the BTC chart
           // v38: a short window keeps the chart readable and scrolls instead of squashing everything into it
           const core = !FS && innerWidth >= 1025 && !!el('v22Top');   // v105.23: desktop — the BTC candles are the core; ADX is a short strip
-          let adxH = ab ? (FS ? clamp(Math.round(avail * FS.adx), 80, Math.round(avail * 0.35)) : core ? clamp(Math.round(avail * 0.15), 84, 120) : wmD ? clamp(Math.round(avail * 0.24), innerWidth > 760 && !fsMode ? 150 : 110, innerWidth > 760 && !fsMode ? 240 : 160) : clamp(Math.round(avail * 0.3), 160, 230)) : 0; chartH -= adxH;
+          const v133A = !FS && window.__v133Adx;   // v150: v133.fit gives ADX its lane share (1.4) in the desk view
+          let adxH = ab ? v133A ? v133A : (FS ? clamp(Math.round(avail * FS.adx), 80, Math.round(avail * 0.35)) : core ? clamp(Math.round(avail * 0.15), 84, 120) : wmD ? clamp(Math.round(avail * 0.24), innerWidth > 760 && !fsMode ? 150 : 110, innerWidth > 760 && !fsMode ? 240 : 160) : clamp(Math.round(avail * 0.3), 160, 230)) : 0; chartH -= adxH;
           const dk = innerWidth > 760 && !FS, MINC = FS ? 220 : pane.clientWidth < 560 ? 260 : dk ? 190 : 300, MINV = vOn ? (FS ? 120 : pane.clientWidth < 560 ? 230 : dk ? 110 : 170) : 0;   // v100: desktop chart block is one screen tall   // v67: full screen keeps every row, so tighter minimums
           // v54: when the window is short, give up indicator height first, so the chart keeps its room and the desk rail stays
           if (chartH < MINC && ab) { const take = Math.max(0, Math.min(MINC - chartH, adxH - (FS ? 80 : core ? 72 : dk ? 130 : wmD ? 100 : 96)));   /* v105.6: ADX keeps 130 px on desktop */adxH -= take; chartH += take; }   // v84: never negative (desktop ADX floor is 84, not 96)
@@ -45365,7 +45366,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const shown = Object.keys(IND).filter(k => on[k] && IND[k]()), n = shown.length, h = n <= 1 ? 190 : n === 2 ? 150 : n === 3 ? 120 : 100;
         for (const k in IND) {
           const el = IND[k](); if (!el) continue; const off = !on[k]; if (el.classList.contains('v127-off') !== off) { el.classList.toggle('v127-off', off); ch = true; }
-          if (D.body.classList.contains('v133') && innerWidth > 760) { }   // v134: v133.fit() owns the lane heights (two owners made a resize loop = the blinking)
+          if (D.body.classList.contains('v133')) { }   // v134: v133.fit() owns the lane heights (two owners made a resize loop = the blinking); v150: on phones too, now that fit() sizes them there
           else if (!off && innerWidth > 760) { const want = h + 'px'; if (el.style.getPropertyValue('height') !== want) { el.style.setProperty('height', want, 'important'); ch = true; } } else if (el.style.getPropertyValue('height')) { el.style.removeProperty('height'); ch = true; }
         }
         D.querySelectorAll('#charts .pane').forEach(p => {
@@ -46480,14 +46481,14 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const ph = Hb - hd; set(pg, 'height', ph + 'px'); set(pg, 'min-height', ph + 'px'); set(pg, 'max-height', ph + 'px');
         // lanes: an equal share of ≤ 40 % of the panel (the time-axis lane gets its axis row on top); never below a label + thin plot
         const axId = W.__v138Axis ? W.__v138Axis() : null, axX = axId && lanes.some(l => l.id === axId) ? 24 : 0;
-        // v150: ATM IV gets 1.6 lane shares and Speed vs IV 1.4, every other lane (and ADX) one; the lanes' part of the panel
+        // v150: ATM IV gets 1.6 lane shares, Speed vs IV and ADX 1.4, every other lane one; the lanes' part of the panel
         // grows with the extra shares (40 % at equal shares, at most 50 %), the candles take the rest
-        const wt = l => l.id === 'v138Iv' ? 1.6 : l.id === 'cvLane' ? 1.4 : 1, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? 1 : 0);
+        const wt = l => l.id === 'v138Iv' ? 1.6 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
         const share = nL ? Math.min(0.5, 0.4 * nW / nL) : 0.4;
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
         for (const l of lanes) { const hh = Math.round(lh * wt(l)) + (l.id === axId ? axX : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
-        W.__v133Lane = lh;   // paRefit gives the ADX strip the same share
+        W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
           if (over > 0 && over < 240 && (fit.adj || 0) < 240) { fit.adj = Math.min(240, (fit.adj || 0) + over); fit(); } else if (over <= 0 && gap > 2 && (fit.adj || 0) > 0) { fit.adj = Math.max(0, (fit.adj || 0) - gap); fit(); }
