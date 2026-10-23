@@ -31408,7 +31408,7 @@ Signs follow Settings → Dealer positioning.`;
       // their chart a moment after new data arrives
       function frame(e) {
         let n = 0; for (const r of e.series) { let d = null; try { d = r.s.data(); } catch (err) { } if (d && d.length > n) n = d.length; }
-        if (!n) return; const ts = e.chart.timeScale(), lr = ts.getVisibleLogicalRange(), w = lr ? Math.max(20, lr.to - lr.from) : 120, pad = Math.min(8, w * 0.06);
+        if (!n) return; const ts = e.chart.timeScale(), lr = ts.getVisibleLogicalRange(), w = lr ? Math.max(20, lr.to - lr.from) : 120, pad = Math.max(2, w * (window.__MIDFR || 0.38));
         try { ts.setVisibleLogicalRange({ from: n - 1 - w + pad, to: n - 1 + pad }); } catch (err) { }
       }
       function scrollAll() {
@@ -31694,7 +31694,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
           const d = s && s.data ? s.data() : null, n = d ? d.length : 0;
           if (n >= 2) {
             let g = Infinity; for (let i = Math.max(1, n - 60); i < n; i++) { const x = d[i].time - d[i - 1].time; if (x > 0 && x < g) g = x; } if (!isFinite(g)) g = 300;
-            let w = days * 86400 / g; const pad = Math.max(2, Math.min(Math.min(days, 3) * 3600 / g, w * 0.08)); if (w > n - 1 + pad) w = n - 1 + pad;
+            let w = days * 86400 / g; const pad = Math.max(2, w * (window.__MIDFR || 0.38)); if (w > n - 1 + pad) w = n - 1 + pad;
             ch.timeScale().setVisibleLogicalRange({ from: n - 1 + pad - w, to: n - 1 + pad }); return;
           }
           ch.timeScale().setVisibleRange({ from: last - days * 86400, to: last + Math.min(days, 3) * 3600 });
@@ -31740,7 +31740,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
         const coldT0 = Date.now(), coldIv = setInterval(() => {
           try {
             if (touched || Date.now() - coldT0 > 120000) { clearInterval(coldIv); return; } if (window.__lwcReg && window.__lwcReg.on) return; const m = window.paChart && window.paChart(); if (!m) return; const ts = m.timeScale(), r = ts.getVisibleLogicalRange(), s = window.__gexSeries; let n = 0; try { n = s.data().length; } catch (e) { }
-            if (r && n && r.to < n - 3) { ts.scrollToRealTime(); setTimeout(resyncPanes, 300); }
+            if (r && n && r.to < n - 3) { const w0 = Math.max(20, r.to - r.from), pad0 = w0 * (window.__MIDFR || 0.38); ts.setVisibleLogicalRange({ from: n - 1 + pad0 - w0, to: n - 1 + pad0 }); setTimeout(resyncPanes, 300); }
           } catch (e) { }
         }, 1500);
       }
@@ -42241,7 +42241,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           var nw0 = Date.now(); if (D.hidden || nw0 - last < 5000) return; if (nw0 - T0 > 90000 && nw0 - tfT > 20000) return; if (window.__lwcReg && window.__lwcReg.on) return; if (D.body.classList.contains('rp-on')) return;
           var m = window.paChart && window.paChart(), s = window.__gexSeries; if (!m || !s) return; var n = s.data().length; if (n < 10) return;
           var ts = m.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return; var w = r.to - r.from, over = r.to - (n - 1);
-          if (over > Math.max(14, w * 0.25) || (r.from < -Math.max(4, w * 0.15) && over > 4)) { var pad = Math.max(2, Math.min(12, w * 0.06)), nw = Math.min(w, n - 1 + pad); if (window.__glide) window.__glide(m, { from: n - 1 + pad - nw, to: n - 1 + pad }); else ts.setVisibleLogicalRange({ from: n - 1 + pad - nw, to: n - 1 + pad }); }
+          if (over > Math.max(14, w * 0.62) || (r.from < -Math.max(4, w * 0.15) && over > 4 && over > w * 0.45)) { var pad = Math.max(2, w * (window.__MIDFR || 0.38)), nw = Math.min(w, n - 1 + pad); if (window.__glide) window.__glide(m, { from: n - 1 + pad - nw, to: n - 1 + pad }); else ts.setVisibleLogicalRange({ from: n - 1 + pad - nw, to: n - 1 + pad }); }
         } catch (e) { }
       }
       window.__glide = function (ch, to) {
@@ -49755,6 +49755,26 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function tick() { try { if (document.hidden) return; snap(); resolve(); mine(); learn(); drift(); ST.at = Date.now(); save(); } catch (e) { console.warn('v153', e); } }
       setInterval(tick, 60000); setTimeout(tick, 20000); W.addEventListener('v133fills', () => setTimeout(tick, 500));
       W.v153 = { status, adjust, tick, state: () => ST, reset: () => { ST.snaps = []; ST.mine = []; ST.w = null; ST.ll = { n: 0, on: 0, fr: 0, recent: [] }; ST.adopt = false; ST.drift = null; save(); } };
+    })();
+  </script>
+  <script data-module="v154">
+    /* v154 (24 Oct 2026) · keep the newest candle in the middle area. The BTC chart and every lane under it (they follow its time range) show the latest
+       candle about 62 % of the way across with free space on its right, instead of pushing it against the right edge. It re-centres when new candles arrive
+       or the zoom changes, never while you are touching the chart (5 s after your last touch), and never when you have scrolled back to older candles. */
+    (function () {
+      const W = window; W.__MIDFR = 0.38; let last = 0;
+      ['pointerdown', 'touchstart', 'touchmove', 'wheel', 'pointermove'].forEach(ev => addEventListener(ev, e => { try { if (e.target && e.target.closest && e.target.closest('#chartp,#paneG')) last = Date.now(); } catch (x) { } }, { passive: true, capture: true }));
+      function tick() {
+        try {
+          if (document.hidden || Date.now() - last < 5000) return; if (W.__lwcReg && W.__lwcReg.on) return; if (document.body.classList.contains('rp-on')) return;
+          const m = W.paChart && W.paChart(), sr = W.__gexSeries; if (!m || !sr) return; const n = sr.data().length; if (n < 10) return;
+          const ts = m.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return; const w = r.to - r.from; if (!(w > 5)) return;
+          if (r.to < n - 1.5) return;                                  // you are looking at older candles: leave the view alone
+          const want = w * W.__MIDFR, over = r.to - (n - 1); if (Math.abs(over - want) <= Math.max(2, w * 0.03)) return;
+          const to = { from: n - 1 + want - w, to: n - 1 + want }; if (W.__glide) W.__glide(m, to); else ts.setVisibleLogicalRange(to);
+        } catch (e) { }
+      }
+      setInterval(tick, 1500); setTimeout(tick, 4000); W.v154 = { tick, mid: () => W.__MIDFR };
     })();
   </script>
   <script data-module="v142">
