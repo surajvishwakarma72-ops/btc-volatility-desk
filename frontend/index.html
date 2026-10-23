@@ -24960,7 +24960,9 @@ The floating P&L pill still shows the live P&L on top of everything. */
               // candle into a thin band at the top of the chart.
               let xlv = false; try { xlv = !!(JSON.parse(localStorage.getItem('pa_layer_prefs_v3') || '{}').xlv); } catch (e) { }
               if (xlv) { if (C.sig) { inc(S + 1.2 * C.sig); inc(S - 1.2 * C.sig); } inc(C.legs?.call?.K); inc(C.legs?.put?.K); }
-              const rg = Math.max(b - a, S * 0.004), near = v => v != null && v > a - rg && v < b + rg;
+              // v150: a level only stretches the scale when it sits right at the candles (within 10 % of their range); one a
+              // candle-range away left a blank band and the candles no longer filled the chart height
+              const rg = Math.max(b - a, S * 0.004), near = v => v != null && v > a - rg * 0.1 && v < b + rg * 0.1;
               for (const v of [C.G?.flip, C.G?.callWall, C.G?.putWall]) if (near(v)) inc(v);
               if (typeof lvlOn === 'function' && lvlOn()) {
                 try {
@@ -26925,7 +26927,7 @@ Signs follow Settings → Dealer positioning.`;
         el('paneG')?.classList.toggle('imp-on', on);
         try {
           S.chart.priceScale('imp').applyOptions({ scaleMargins: { top: on ? 1 - px / plot : 0.98, bottom: 0 }, visible: false });
-          S.chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.12, bottom: on ? Math.min(0.34, (px + 28) / plot) : 0.08 } });
+          S.chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.05, bottom: on ? Math.min(0.34, (px + 6) / plot) : 0.04 } });   // v150: candles fill the height, just clear of the strip
           S.series.applyOptions({ visible: on });
         } catch (e) { console.warn('impulse layout', e); }
         S.tag.hidden = !on; S.rule.hidden = !on;
@@ -42845,7 +42847,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             S.hist.createPriceLine({ price: 1, color: 'rgba(227,174,69,.85)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' }); S.hist.createPriceLine({ price: 1.5, color: 'rgba(239,83,80,.7)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' });
           } catch (e) { S.hist = null; return; }
         }
-        try { const m = ch.priceScale('right').options().scaleMargins; if (!m || m.bottom < 0.17) ch.priceScale('right').applyOptions({ scaleMargins: { top: m ? m.top : 0.12, bottom: 0.18 } }); } catch (e) { }
+        try { const m = ch.priceScale('right').options().scaleMargins; if (!m || m.bottom < 0.13) ch.priceScale('right').applyOptions({ scaleMargins: { top: m ? m.top : 0.05, bottom: 0.14 } });   // v150: just clear of the 13 % strip } catch (e) { }
         const key = c.length + '|' + c[c.length - 1].time + '|' + Math.floor(Date.now() / 60000); if (S.hkey === key) return; S.hkey = key;
         const from = Math.max(0, c.length - 600), arr = []; for (let i = from; i < c.length; i++) { const v = speedAt(c[i].time, t.pi); arr.push(v == null ? { time: c[i].time } : { time: c[i].time, value: Math.min(1.6, v), color: v > 1.5 ? 'rgba(239,83,80,.62)' : v >= 1 ? 'rgba(38,166,154,.62)' : 'rgba(140,150,160,.45)' }); }
         try { S.hist.setData(arr); } catch (e) { }
