@@ -48470,7 +48470,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function hook() { const src = W.paChart && W.paChart(); if (!src || hook.done) return; hook.done = 1; let raf = 0; src.timeScale().subscribeVisibleLogicalRangeChange(() => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; try { events(); } catch (e) { } try { strikes(); } catch (e) { } for (const o of Object.values(S.lanes)) { zones(o); if (o.vbArgs && S.bars) for (const k in o.vbArgs) try { vband(o, k, S.bars, ...o.vbArgs[k]); } catch (e) { } } }); }); }
       setTimeout(() => { paintAll(); hook(); }, 4200); setInterval(() => { if (D.hidden) return; hook(); paintAll(); legRec(); }, 20000);
       D.addEventListener('click', e => { if (e.target.closest('#v132Ind,#v132IndBtn,[data-page],#gTf,#v100Master')) setTimeout(() => { presets(); paintAll(); }, 250); }, true);
-      W.v138 = { paintAll, preset, state: () => S, __test: { ivBars, rvBars, vovBars, dvBars, ppf } };
+      W.v138 = { paintAll, preset, zones, state: () => S, __test: { ivBars, rvBars, vovBars, dvBars, ppf } };
     })();
   </script>
 
@@ -49454,7 +49454,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if ((k === 'day' || k === 'crush') && W.v145x) try { W.v145x.lane(k, o, { H, Ln, pf }); } catch (e) { console.warn('v145 lane', e); }
         if (k === 'fut' && W.v146f) try { W.v146f.lane(o, { H, Ln, pf }); } catch (e) { console.warn('v146 lane', e); }
         if (k === 'tip') { o.a = H('#22A06B', pf(0, '$')); o.a.createPriceLine({ price: 0, color: hx('#8FA3B5', .6), lineWidth: 1, lineStyle: 3, axisLabelVisible: false, title: '' }); }
-        src.timeScale().subscribeVisibleLogicalRangeChange(r => { if (!r || !o.box.clientWidth) return; try { o.ch.timeScale().setVisibleLogicalRange(r); } catch (e) { } if (o.zoneDef) zones(o); });
+        src.timeScale().subscribeVisibleLogicalRangeChange(r => { if (!r || !o.box.clientWidth) return; try { o.ch.timeScale().setVisibleLogicalRange(r); } catch (e) { } if (o.zoneDef && W.v138 && W.v138.zones) W.v138.zones(o); });
         new MutationObserver(() => setTimeout(() => { try { ch.applyOptions(chartThemeOptions()); ch.applyOptions({ watermark: { visible: false } }); } catch (e) { } paintAll(); }, 150)).observe(D.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
         if (k === 'grk' || k === 'tip' || k === 'gng' || k === 'pwin') box.addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (b) { e.stopPropagation(); S.grk = b.dataset.g; LSs('v142_grk', S.grk); paint('grk'); } });
         S.lanes[k] = o; return o;
@@ -51629,7 +51629,12 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       const dstr = t => new Date(t).toISOString().slice(0, 10);
       async function oiDay(day) {
-        const r = await fetch(`https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-${day}.zip`, { cache: 'force-cache' }); if (r.status === 404) return null; if (!r.ok) throw new Error('HTTP ' + r.status);
+        /* Binance throttles bursts (HTTP 429): back off 1.5 s, 3 s, 6 s, 12 s before counting the day as failed */
+        let r; for (let tr = 0; ; tr++) {
+          r = await fetch(`https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-${day}.zip`, { cache: 'force-cache' }); if (r.status === 404) return null;
+          if (r.ok) break; if ((r.status !== 429 && r.status < 500) || tr >= 4) throw new Error('HTTP ' + r.status);
+          await new Promise(ok => setTimeout(ok, 1500 * Math.pow(2, tr)));
+        }
         const txt = await unzipText(await r.arrayBuffer()), out = []; for (const ln of txt.split(/\r?\n/)) { const c = ln.split(','); if (c.length < 4 || !/^\d{4}-/.test(c[0])) continue; const t = Date.parse(c[0].replace(' ', 'T') + 'Z'), v = +c[2]; if (fin(t) && v > 0 && t % HR === 0) out.push([t, v]); } return out;
       }
       async function histLoad() {
@@ -51639,14 +51644,14 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const now = Date.now(), first = Math.floor((now - YEARS * 365 * DAY) / DAY) * DAY, last = Math.floor((now - 2 * DAY) / DAY) * DAY;   // the archive lags ~1 day; the API covers the last 30
           const daysHave = new Set((saved && saved.days) || []), todo = []; for (let d = first; d <= last; d += DAY) { const s = dstr(d); if (!daysHave.has(s)) todo.push(s); }
           HIST.want = Math.round((last - first) / DAY) + 1; HIST.days = HIST.want - todo.length;
-          // 1) OI archive, 6 at a time
+          // 1) OI archive, 3 at a time (6 got throttled)
           let fails = 0, i = 0; const step = async () => {
             while (i < todo.length) {
               const d = todo[i++]; try { const rows = await oiDay(d); if (rows) for (const [t, v] of rows) HIST.oi.set(t, v); daysHave.add(d); HIST.days++; } catch (e) { fails++; HIST.err = String(e.message || e); if (fails > 25) return; }
               HIST.pct = Math.round(HIST.days / HIST.want * 90); if (HIST.days % 60 === 0) { await idbSet('hist', { oi: [...HIST.oi], k: [...HIST.k], days: [...daysHave], src: HIST.src }); repaint(); }
             }
           };
-          await Promise.all([step(), step(), step(), step(), step(), step()]);
+          await Promise.all([step(), step(), step()]);
           if (fails > 25 && HIST.oi.size < 100) throw new Error('Binance archive unreachable (' + HIST.err + ')');
           HIST.src = 'Binance public archive (5-min OI) + fapi 1 h klines';
           // 2) 1 h klines (price + taker flow), 1500 per call
