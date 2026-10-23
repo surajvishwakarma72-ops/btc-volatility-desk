@@ -55777,6 +55777,40 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
   }
 }
 </style>
+<style id="v150ToolsCss">
+/* v150 · phone: the zoom / draw rail folds behind one Tools button in the chart toolbar */
+#v150ToolsBtn { display: none; }
+@media (max-width: 760px) {
+  #v150ToolsBtn { display: inline-flex; align-items: center; gap: 4px; }
+  #v150ToolsBtn[aria-expanded="true"] { background: var(--accent-soft, rgba(180, 120, 20, .14)) !important; border-color: var(--accent, #b47814) !important; }
+  #gTop .g-tools { display: none !important; }
+  body.v150-tools #gTop .g-tools { display: flex !important; }
+}
+</style>
+<script>/* v150 · Tools button: shows / hides the zoom rail on a phone; the chart takes back the row when it is folded */
+  (function () {
+    'use strict';
+    const D = document;
+    function mount() {
+      const r = D.querySelector('#gTop .r'); if (!r || !D.getElementById('gTools')) return;
+      let b = D.getElementById('v150ToolsBtn');
+      if (!b) {
+        b = D.createElement('button'); b.id = 'v150ToolsBtn'; b.type = 'button'; b.className = 'tool';
+        b.title = 'Zoom and drawing tools'; b.setAttribute('aria-controls', 'gTools');
+        b.setAttribute('aria-expanded', String(D.body.classList.contains('v150-tools')));
+        b.innerHTML = '<span aria-hidden="true">⚒</span>Tools';
+        b.addEventListener('click', () => {
+          const on = D.body.classList.toggle('v150-tools'); b.setAttribute('aria-expanded', String(on));
+          try { window.paRefit && window.paRefit(); } catch (e) { }
+        });
+      }
+      // the toolbar row is rebuilt by other modules: keep the button right after Clock
+      const at = D.getElementById('v147ClockBtn') || D.getElementById('v145Bell') || D.getElementById('v132IndBtn');
+      if (b.parentElement !== r || (at && at.parentElement === r && at.nextElementSibling !== b)) { if (at && at.parentElement === r) at.after(b); else r.appendChild(b); }
+    }
+    D.addEventListener('DOMContentLoaded', mount); setTimeout(mount, 1500); setInterval(() => { if (!D.hidden) mount(); }, 4000);
+  })();
+</script>
 
 <script data-module="v149MacroStress">
 (function() {
