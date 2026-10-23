@@ -26987,7 +26987,7 @@ Signs follow Settings → Dealer positioning.`;
         const start = (S.last - IST_S) * 1000, end = Math.min(start + tf * 1000, now); let sv = 0, sb = 0;
         for (let t = start; t < end; t += MIN) { const b = barAt(src, t); if (!b) continue; const p = barAt(src, t - MIN); sv += gk(b, p ? p.c : 0) * mdl.k; sb += mdl.base[keyOf(t)] * (t + MIN > now ? Math.max(0.02, (now - t) / MIN) : 1); }
         if (!(sb > 0)) return;
-        const x = Math.sqrt(sv / sb) / S.norm; S.raw.set(S.last, x);
+        const x = Math.sqrt(sv / sb) / S.norm; if (!Number.isFinite(x)) return; S.raw.set(S.last, x);
         try { S.series.update({ time: S.last, value: Math.max(0.14, Math.min(x, CAP)), color: palette()[stOf(x)] }); } catch (e) { }
       }
       function paintTag() {
@@ -48928,6 +48928,18 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     ${window.__STRANGLE_IMPULSE ? (() => { const IM = window.__STRANGLE_IMPULSE, rp = IM.replay || [], first = rp.find(x => x.r >= 1.5), peak = rp.reduce((m, x) => x.r > (m ? m.r : 0) ? x : m, null); return `<table><thead><tr><th>Impulse watch (${IM.days} days of 1-minute BTC)</th><th>big swing follows</th><th>vs normal</th><th>minutes</th></tr></thead><tbody>${IM.rows.map(r => `<tr><td class="s">${esc(r.name)}</td><td class="mono">${r.pct}%</td><td class="mono">×${r.lift}</td><td class="mono s">${r.n}</td></tr>`).join('')}</tbody></table><span class="s">A big swing = BTC spans ${esc(IM.bigMove)} in the next hour; ${IM.baseRate}% of all minutes are followed by one. In ${IM.episodes.n} big-candle episodes a warning (a fast impulse reading or a string of big candles) appeared in the 30 minutes before ${IM.episodes.warned} of them (${Math.round(IM.episodes.warned / IM.episodes.n * 100)}%), median lead ${IM.episodes.medianLead} minutes. The gauge now reads this live: a fast reading or two big candles in a row turns it red within seconds and sends the alert.${first ? ` <b>18 Oct 2026, 02:45 IST replay:</b> BTC was quiet (speed about ${rp[0] ? rp[0].r : ''}× normal) until ${first.ist}; the speed ratio crossed 1.5× at ${first.ist} (price ${first.price.toLocaleString('en-US')}) and reached ${peak ? peak.r : ''}× by ${peak ? peak.ist : ''}. The five minutes before it were calm, so nothing could warn earlier than about two minutes into that move.` : ''}</span>`; })() : ''}
     ${RMd.patterns && RMd.patterns.length ? (() => { const P = RMd.patterns, pick = re => P.filter(x => re.test(x.name)), cx = ((RMd.gauge.variants.V6 || {}).patCross || []); const row = x => `<tr><td class="s">${esc(x.name.trim())}</td><td class="mono">${x.stop}%</td><td class="mono">${x.pnl >= 0 ? '+' : '−'}${Math.abs(x.pnl)}%</td><td class="mono s">${x.n}</td></tr>`; return `<table><thead><tr><th>Chart pattern at the entry hour (5 years, the desk's own detectors)</th><th>stopped</th><th>avg P&amp;L</th><th>cases</th></tr></thead><tbody>${pick(/neutral|bullish \(forming|bearish \(forming|CONFIRMED|BOS|CHoCH|no directional/).map(row).join('')}${pick(/^ {4}(Rising wedge|Double top|Double bottom|Head & shoulders|Inverse head)/).map(row).join('')}</tbody></table><span class="s">${cx.length ? `<b>Chart patterns:</b> they only helped as a brake. A confirmed bearish pattern (head and shoulders, double top, rising wedge, bear flag, descending triangle or channel with its break) turned the gauge's green hours from ${(cx.find(x => x.name === 'green · all') || {}).stop}% stopped to ${(cx.find(x => x.name === 'green · + confirmed bearish pattern') || {}).stop}% (${(cx.find(x => x.name === 'green · + confirmed bearish pattern') || {}).n} cases), and it was worse than normal in 3 of 4 years. So the gauge adds 20 points and never shows green while one is confirmed (ranking skill 0.628 to 0.638). A confirmed bullish pattern was calmer (${(cx.find(x => x.name === 'green · + confirmed bullish pattern') || {}).stop}% in green hours) but I did not let it relax the gate. Pattern names are noisy: neutral and directional patterns were stopped about equally, a head and shoulders was not worse than normal, and structure breaks (BOS, CHoCH) added little.` : ''}</span>`; })() : ''}
     ${(() => { const GR = RMd.gauge && RMd.gauge.variants && RMd.gauge.variants.V10; return GR ? `<span class="s"><b>Rising line = red:</b> hours where the gauge had climbed 15+ points in 3 hours were stopped about 30% of the time against 19% when it was falling, so a rising line now turns red, held for two more hours so it does not flicker. The price of that rule: red covers about half of the entry hours (${(GR.zones.find(z => z.color === 'red') || {}).shareEntry}%), and "not red at 22:30" trades ${(GR.strategies.find(x => /^not red/.test(x.name)) || {}).trades} of ${(GR.strategies[0] || {}).nights} nights with a smaller total (${(GR.strategies.find(x => /^not red/.test(x.name)) || {}).total}) than before (4056), for a small drop in stops. Colour changes per night went from 2.1 to ${GR.flicker}.</span>` : ''; })()}
+    ${RMd.gauge && RMd.gauge.reliability ? (() => { const RL = RMd.gauge.reliability, B = RL.boot, f = a => a.join(' / '), L = RMd.gauge.learner, r90 = RL.recent[1], r30 = RL.recent[2], r180 = RL.recent[0]; return `<table><thead><tr><th>RELIABILITY · gauge level</th><th>stopped</th><th>avg P&amp;L</th><th>cases</th></tr></thead><tbody>${RL.bins.map(b => `<tr><td class="s">${b.lo}–${b.hi}</td><td class="mono">${b.stop}%</td><td class="mono">${b.pnl >= 0 ? '+' : '−'}${Math.abs(b.pnl)}%</td><td class="mono s">${b.n}</td></tr>`).join('')}</tbody></table>
+    <table><thead><tr><th>By year</th><th>ranking skill (AUC)</th><th>green stopped</th><th>red stopped</th><th>all hours</th></tr></thead><tbody>${RL.years.map(y => `<tr><td class="s">${y.year}</td><td class="mono">${y.auc}</td><td class="mono">${y.green.stop}% <span class="s">(${y.green.n})</span></td><td class="mono">${y.red.stop}% <span class="s">(${y.red.n})</span></td><td class="mono">${y.base}%</td></tr>`).join('')}</tbody></table>
+    <span class="s"><b>How reliable is it?</b> Real but modest. Re-sampling whole nights ${B.boots} times: ranking skill ${B.auc[1]} (95% range ${B.auc[0]}–${B.auc[2]}; 0.5 is no skill); green hours stopped ${B.green[1].toFixed(1)}% (${B.green[0].toFixed(1)}–${B.green[2].toFixed(1)}) against ${B.red[1].toFixed(1)}% for red (${B.red[0].toFixed(1)}–${B.red[2].toFixed(1)}); red minus green ${B.gap[1].toFixed(1)} points (${B.gap[0].toFixed(1)}–${B.gap[2].toFixed(1)}). Green was calmer than red in ${Math.round(B.pGreenBeatsRed * 100)}% of the re-samples and in every year. Waiting for the first green hour averaged +${B.firstGreenAvg[1].toFixed(1)}% of credit per trade (${B.firstGreenAvg[0].toFixed(1)}–${B.firstGreenAvg[2].toFixed(1)}) against +${B.allAvg[1].toFixed(1)}% for selling every night, on fewer nights. <b>Weak spots:</b> the middle of the scale (30–70) is flat at 20–26% stopped, so only the two ends mean much; over the last 180 days green was stopped ${r180.green.stop}% (${r180.green.n} hours) against red ${r180.red.stop}%, but over the last 90 days green ${r90.green.stop}% (${r90.green.n}) was no better than yellow ${r90.yellow.stop}%, and over the last 30 days red (${r30.red.stop}%, ${r30.red.n}) was calmer than green (${r30.green.stop}%, ${r30.green.n}): small samples in a calm month, but it is the reason the quiet learner below exists. Treat it as a filter that removes the worst hours, not as a signal that a trade will win.</span>
+    ${L ? `<span class="s"><b>Can it improve itself?</b> A small learner that updates after every full night, tested one night at a time on 2023–26 (it never saw an outcome before predicting it): logloss ${L.best.logloss} against ${L.best.frozen} for the frozen weights (${((L.best.frozen - L.best.logloss) / L.best.frozen * 100).toFixed(1)}% better), ranking ${L.best.auc} against ${L.best.frozenAuc}; a faster learner was worse. It is mostly a re-calibration of the base stop rate, not a new signal.</span>` : ''}`; })() : ''}
+    ${(() => { const DS = window.__SHADOW_BACKTEST_DATA; if (!DS || !DS.sessions) return ''; const T = DS.sessions.filter(x => x.baselineAction === 'TRADE' && x.iv > 0), BK = [[0, 20], [20, 25], [25, 30], [30, 35], [35, 40], [40, 50], [50, 99]];
+      let iv = null; try { const C = typeof desk === 'object' && desk ? desk.check : null; if (C && Number.isFinite(C.iv) && C.iv > 0) iv = C.iv < 3 ? C.iv * 100 : C.iv; } catch (e) { }
+      const rows = BK.map(([lo, hi]) => { const a = T.filter(x => x.iv >= lo && x.iv < hi), n = a.length; if (!n) return { lo, hi, n: 0 }; const st = a.filter(x => x.stoppedAt2x).length / n * 100, avg = a.reduce((t, x) => t + x.baselinePnl, 0) / n, cr = a.reduce((t, x) => t + x.cr, 0) / n; return { lo, hi, n, st, avg, cr, pct: avg / cr * 100, worst: Math.min(...a.map(x => x.baselinePnl)), wins: a.filter(x => x.baselinePnl > 0).length / n * 100 }; });
+      const cur = iv != null ? rows.find(r => iv >= r.lo && iv < r.hi) : null, ivs = T.map(x => x.iv).sort((a, b) => a - b), pctl = iv != null ? Math.round(ivs.filter(x => x <= iv).length / ivs.length * 100) : null;
+      const verdict = r => !r || !r.n ? 'no sessions at this IV in the year of data' : r.n < 15 ? 'only ' + r.n + ' sessions, too few to trust' : r.cr < 250 ? 'THIN CREDIT: about $' + Math.round(r.cr) + ' collected per BTC, small cushion for a stop' : r.st <= 8 && r.pct >= 20 ? 'GOOD: few stops and a healthy return on credit' : r.st >= 10 || r.pct < 15 ? 'CAUTION: more stops or a lower return than the better ranges' : 'OK';
+      return `<table><thead><tr><th>ATM IV at entry (your 1-year dataset, ${T.length} trades)</th><th>stopped</th><th>win</th><th>avg P&amp;L per BTC</th><th>of credit</th><th>credit</th><th>worst</th><th>n</th></tr></thead><tbody>${rows.map(r => `<tr${cur && cur === r ? ' style="font-weight:700"' : ''}><td class="s">${r.lo}–${r.hi}%${cur && cur === r ? ' ◀ now' : ''}</td>${r.n ? `<td class="mono">${r.st.toFixed(1)}%</td><td class="mono">${r.wins.toFixed(0)}%</td><td class="mono">$${Math.round(r.avg)}</td><td class="mono">${r.pct.toFixed(0)}%</td><td class="mono">$${Math.round(r.cr)}</td><td class="mono">$${Math.round(r.worst)}</td><td class="mono s">${r.n}</td>` : '<td class="s" colspan="7">no sessions</td>'}</tr>`).join('')}</tbody></table>
+      <span class="s"><b>ATM IV today:</b> ${iv != null ? iv.toFixed(1) + '%' : 'not read yet'}${pctl != null ? ' (' + (100 - pctl) + '% of your sessions had a higher IV' + (pctl <= 10 ? ': a very low-IV day' : pctl >= 90 ? ': a very high-IV day' : '') + ')' : ''}. ${cur && cur.n ? 'In this range the history shows ' + cur.st.toFixed(1) + '% stopped over ' + cur.n + ' sessions, an average result of $' + Math.round(cur.avg) + ' per BTC (' + cur.pct.toFixed(0) + '% of a $' + Math.round(cur.cr) + ' credit), the worst $' + Math.round(cur.worst) + ': ' + verdict(cur) + '.' : iv != null ? verdict(cur) + '.' : ''} Scale the dollars to your lot size. This is one year and a few sessions per range, so read it as a guide: lower IV means a thinner credit and the same stop risk, higher IV pays more but a stop costs more. The gauge still decides the hour; use this to decide whether the day is worth trading.</span>`; })()}
+    ${(() => { const SS = W.v153 && W.v153.status ? W.v153.status() : null; if (!SS) return ''; const f = c => { const o = SS.live[c], b = SS.blended[c], m = SS.mine[c]; return `<tr><td class="s">${c}</td><td class="mono">${o.n ? o.stop + '% (' + o.n + ')' : 'none yet'}</td><td class="mono">${b == null ? '—' : b + '%'}</td><td class="mono">${m.n ? m.loss + ' loss of ' + m.n + ', avg ' + (m.avg >= 0 ? '+' : '−') + Math.abs(m.avg) + '%' : 'none yet'}</td></tr>`; }; return `<table><thead><tr><th>Quiet learner · live market and your trades</th><th>stopped since it started</th><th>blended with 5 years</th><th>your own trades</th></tr></thead><tbody>${['green', 'yellow', 'red'].map(f).join('')}</tbody></table><span class="s"><b>Learner status:</b> ${SS.snaps} entry-hour snapshots, ${SS.resolved} resolved against the real BTC path (${SS.nights} nights), ${SS.learned} learned from. ${SS.adopt ? 'It is beating the frozen weights over the last 40 samples, so it now nudges the level by up to ±10 points.' : SS.learned < 40 ? 'It needs about 40 resolved samples (roughly ten nights) before it is allowed to change anything; until then it only watches.' : 'It is not yet better than the frozen weights, so it changes nothing.'} ${SS.drift ? 'Last ' + SS.drift.n + ' green hours: ' + SS.drift.k + ' stopped (5-year rate ' + SS.drift.exp + '%)' + (SS.drift.bad ? '. That is too many, so green is shown as yellow until it recovers.' : '. Within the normal range.') : 'Needs 8 resolved green hours before it can judge whether green is holding up.'} It only ever sees the nights the desk was open for; it never changes vetoes, sessions or red.</span>`; })()}
     ${GM && RMd.gauge.momentum ? `<span class="s"><b>Momentum</b> (your idea: lift the line fast when indicators accelerate, drop it fast when they are spent): tested and not used to move the line. With it the ranking got worse (AUC ${GM.auc} against ${GZ.auc}); hours where momentum alone pushed the line to red were stopped ${RMd.gauge.momentum[1].stop}% (${RMd.gauge.momentum[1].n} cases) against about 23% for all hours, and hours where it released the line to green were stopped ${RMd.gauge.momentum[0].stop}% (${RMd.gauge.momentum[0].n} cases). The legend still shows "momentum building / exhausting" as information.</span>` : ''}
     ${(() => { const R = GZ.recent || []; return R.length ? `<table><thead><tr><th>Last 30 nights</th><th>22:30 colour</th><th>22:30 result</th><th>first green hour</th></tr></thead><tbody>${R.map(r => `<tr><td class="s">${r.date}</td><td class="mono">${r.c0 || '—'} ${r.L0 != null ? r.L0 : ''}</td><td class="mono">${r.stop0 ? 'STOPPED' : (r.pnl0 >= 0 ? '+' : '−') + Math.abs(r.pnl0 || 0) + '%'}</td><td class="mono">${r.firstGreen == null ? 'none' : '+' + r.firstGreen + 'h ' + (r.stopG ? 'STOPPED' : (r.pnlG >= 0 ? '+' : '−') + Math.abs(r.pnlG) + '%')}</td></tr>`).join('')}</tbody></table>` : ''; })()}
     ${(() => { const SL = W.v152 && W.v152.shadow ? W.v152.shadow() : []; return SL.length ? `<table><thead><tr><th>Your own log: gauge at 22:30 IST</th><th>colour</th><th>level</th></tr></thead><tbody>${SL.slice(0, 14).map(r => `<tr><td class="s">${r.d}</td><td class="mono">${r.c}</td><td class="mono">${r.L}</td></tr>`).join('')}</tbody></table>` : '<span class="s">From tonight the desk logs the gauge colour at 22:30 IST every weekday, so real evidence builds up here.</span>'; })()}`; })() : ''}
@@ -49350,7 +49362,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       /* one reading → GO / CHECK / WAIT / DANGER. GO needs: score ≤ 25, not rising over 3 h, no NY fear spike still holding, the chart confirming (3 of 4: IV vs speed < 1, ADX < 25, RV < IV, edge > 0).
          The backtest of exactly this rule is in data/risk_model.js (journey). 'CHECK' = calm but not confirmed yet (or IV history still loading). */
-      const PAT_CACHE = new Map();
+      const PAT_CACHE = new Map(); let LASTCTX = null;
       const GAW = { spd: 16, model: 8, fear: 7, rise: 4, vov: 5, rv: 3, edge: 3, adx: 1.5 }, GAWT = 47.5, GAPRIM = ['spd', 'model', 'fear', 'rise', 'vov'];
       function stateOf(v, d3, J) {
         const dir = d3 == null ? null : d3 >= 2 ? 'rising' : d3 <= -2 ? 'falling' : 'flat', why = [];
@@ -49459,6 +49471,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const dir = dL == null ? null : dL >= 5 ? 'rising' : dL <= -5 ? 'falling' : 'flat';
           return { tone: color === 'green' ? 'go' : color === 'red' ? (gL >= 80 ? 'danger' : 'wait') : 'check', color, L: gL, raw, dir, dL, why, failing, soft, J, v, rr, burst, phase, rising, pat: patBear[i] ? patTxt[i] : null };
         });
+        LASTCTX = { hrs, dv, n };
         let d3 = null; if (li >= 3 && hourScore[li - 3] != null) d3 = last - hourScore[li - 3];
         const LV = liveItems(), flags = LV.filter(x => x.risk >= 70);
         if (parts) { parts.d3 = d3; parts.live = LV; parts.flags = flags; parts.nLive = LV.length; }
@@ -49525,7 +49538,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (!out.level && !I.gate) { out.level = 1; out.text = 'GATE SHUT: BTC was fast ' + (I.wait ? 'under ' + I.wait + ' min ago' : 'minutes ago'); }
         return out;
       }
-      function verdict(R) {
+      function verdict(R, raw) {
         R = R || live(); if (!R || R.last == null || !R.lastState) return null; const S = Object.assign({ score: R.last, d3: R.d3 }, R.lastState), imp = impWatch(); S.imp = imp;
         if (imp.level > 0) {
           const floor = imp.level >= 3 ? 90 : imp.level === 2 ? 75 : 55; S.L = Math.max(S.L, floor);
@@ -49533,9 +49546,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           S.why = [imp.text].concat(S.why.filter(x => x !== imp.text)); if (imp.level >= 2) { S.burst = imp.level >= 3 ? 'huge' : (S.burst || 'big'); S.rr = S.rr || 0; }
           if (imp.level >= 2 && !S.failing.includes('impulse')) S.failing = S.failing.concat('impulse');
         }
+        S.L0 = S.L; if (!raw) { try { W.v153 && W.v153.adjust && W.v153.adjust(S); } catch (e) { } }
         return S;
       }
-      W.v151Risk = { compute, live, rank, impWatch, riskPct, scoreOf, meaning, modelScore, verdict, stateOf, data: RK, model: RM };
+      W.v151Risk = { compute, live, rank, impWatch, hist: () => LASTCTX, riskPct, scoreOf, meaning, modelScore, verdict, stateOf, data: RK, model: RM };
     })();
   </script>
   <script data-module="v152">
@@ -49651,6 +49665,96 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       setInterval(impTick, 4000);
       setInterval(() => { try { check(); } catch (e) { } }, 20000); setTimeout(() => { try { check(); } catch (e) { } }, 8000);
       W.v152 = { layouts: all, apply: applyOn, check, state: () => HW, shadow: () => LSg(SKEY, []) };
+    })();
+  </script>
+  <script data-module="v153">
+    /* v153 (24 Oct 2026) · the quiet learner. It watches the live market and your own trades and nudges the Entry Gauge, within hard limits:
+       - at every entry hour it stores the gauge's checks; 8 hours later it replays the same short strangle on the BTC bars it has seen (0.15Δ legs at DVOL, 2× stop per leg) and records stopped or not
+       - your real Delta trades are matched to the snapshot taken at your entry (colour, level) and kept as your own record
+       - a small logistic learner (the prior is fitted on 2021-22, update rate 0.01) learns after each full night; it is only used once it beats the frozen prior over the last 40 samples,
+         and then it moves the level by at most ±10 points; it can never relax a veto, the session lock or red
+       - if the last 20 green hours were stopped far more than the 5-year rate, green is shown as yellow until it recovers
+       5-year prequential test of exactly this learner: backend/scripts/fiveyear_riskadx_v2.mjs (gauge.learner). Nothing here places orders or changes your settings. */
+    (function () {
+      const W = window, HR = 3600000, DAY = 86400000, YR = 365 * DAY, KEY = 'v153_learn';
+      const LSg = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+      const ST = Object.assign({ v: 1, snaps: [], mine: [], w: null, ll: { n: 0, on: 0, fr: 0, recent: [] }, adopt: false, drift: null, at: 0 }, LSg(KEY, {}));
+      const save = () => { ST.snaps = ST.snaps.slice(-600); ST.mine = ST.mine.slice(-200); ST.ll.recent = ST.ll.recent.slice(-60); LSs(KEY, ST); };
+      const cfg = () => { const g = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge; return g && g.learner && g.learner.w0 ? g.learner : null; };
+      const sig = z => 1 / (1 + Math.exp(-z)), dot = (w, x) => { let z = w[0]; for (let i = 0; i < x.length; i++) z += w[i + 1] * x[i]; return z; }, cl01 = x => Math.max(0, Math.min(1, x));
+      const loss = (p, y) => -(y ? Math.log(Math.max(1e-6, p)) : Math.log(Math.max(1e-6, 1 - p)));
+      const ncdf = x => { const t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989423 * Math.exp(-x * x / 2), p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; };
+      function ninv(p) { const a = [-39.6968302866538, 220.946098424521, -275.928510446969, 138.357751867269, -30.6647980661472, 2.50662827745924], b = [-54.4760987982241, 161.585836858041, -155.698979859887, 66.8013118877197, -13.2806815528857], c = [-0.00778489400243029, -0.322396458041136, -2.40075827716184, -2.54973253934373, 4.37466414146497, 2.93816398269878], d = [0.00778469570904146, 0.32246712907004, 2.445134137143, 3.75440866190742]; const pl = 0.02425, ph = 1 - pl; let q, r; if (p < pl) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); } if (p <= ph) { q = p - 0.5; r = q * q; return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1); } q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+      function bs(S, K, T, sig_, cp) { if (T <= 0 || sig_ <= 0) return Math.max(cp === 'c' ? S - K : K - S, 0); const v = sig_ * Math.sqrt(T), d1 = (Math.log(S / K) + 0.5 * sig_ * sig_ * T) / v, d2 = d1 - v; return cp === 'c' ? S * ncdf(d1) - K * ncdf(d2) : K * ncdf(-d2) - S * ncdf(-d1); }
+      const strikeK = (S, T, sg, delta, cp) => { const v = sg * Math.sqrt(T), d1 = ninv(cp === 'c' ? delta : 1 - delta); return S * Math.exp(0.5 * sg * sg * T - d1 * v); };
+      const lxOf = V => { const q = V && V.soft; return q ? [q.spd, q.model, q.fear, q.rise, q.vov, q.rv, q.edge, q.adx, V.pat ? 1 : 0, V.rr == null ? 0 : cl01((V.rr - 1.5) / 1.5)] : null; };
+
+      function snap() {
+        const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict(null, true) : null, c = cfg(); if (!V || !c || V.phase !== 'entry') return;
+        const slot = Math.floor(Date.now() / HR) * HR; if (ST.snaps.some(s => s.t === slot)) return;
+        const ctx = W.v151Risk.hist && W.v151Risk.hist(); if (!ctx) return; const i = ctx.n - 1, dvv = ctx.dv[i], spot = ctx.hrs[i] && ctx.hrs[i].c, lx = lxOf(V); if (!(dvv > 0 && spot > 0 && lx)) return;
+        if (!ST.w) ST.w = c.w0.slice();
+        ST.snaps.push({ t: slot, night: Math.floor((slot - 17 * HR) / DAY) * DAY + 17 * HR, c: V.color, L: +V.L.toFixed(1), lx: lx.map(x => +x.toFixed(3)), dv: dvv, spot, pf: +sig(dot(c.w0, lx)).toFixed(4), po: +sig(dot(ST.w, lx)).toFixed(4), res: null, lrn: false });
+      }
+      function sim(sn) {
+        const P = W.paRes && W.paRes(); if (!P || !P.bars || !P.bars.length) return null; const bars = P.bars, t0 = sn.t, t1 = t0 + 8 * HR;
+        const first = bars[0].time * 1000 - 19800000, last = bars[bars.length - 1].time * 1000 - 19800000; if (first > t0 || last < t1 - 10 * 60000) return null;   // the chart's bars do not cover the 8 hours
+        const iv = sn.dv / 100, S0 = sn.spot, T0 = 3 / 365, Kc = strikeK(S0, T0, iv, 0.15, 'c'), Kp = strikeK(S0, T0, iv, 0.15, 'p'), c0 = bs(S0, Kc, T0, iv, 'c'), p0 = bs(S0, Kp, T0, iv, 'p'); if (!(c0 > 0 || p0 > 0)) return null; const cr = c0 + p0;
+        let stopped = false, pnl = null, lastC = S0;
+        for (const b of bars) {
+          const tm = b.time * 1000 - 19800000; if (tm <= t0 || tm > t1) continue; const T = Math.max(T0 - (tm - t0) / YR, 1 / 365 / 24); lastC = b.close;
+          if (bs(b.high, Kc, T, iv, 'c') >= 2 * c0) { stopped = true; pnl = (cr - (2 * c0 + bs(b.close, Kp, T, iv, 'p'))) / cr * 100; break; }
+          if (bs(b.low, Kp, T, iv, 'p') >= 2 * p0) { stopped = true; pnl = (cr - (bs(b.close, Kc, T, iv, 'c') + 2 * p0)) / cr * 100; break; }
+        }
+        if (!stopped) { const T = Math.max(T0 - 8 * HR / YR, 1 / 365 / 24); pnl = (cr - (bs(lastC, Kc, T, iv, 'c') + bs(lastC, Kp, T, iv, 'p'))) / cr * 100; }
+        return { stopped, pnl: +pnl.toFixed(1) };
+      }
+      function resolve() {
+        const now = Date.now(); for (const s of ST.snaps) { if (s.res || now < s.t + 8 * HR + 15 * 60000) continue; const r = sim(s); if (r) s.res = r; else if (now > s.t + 110 * HR) s.res = { skip: true }; }
+      }
+      function mine() {
+        const P = W.v133 && W.v133.state ? W.v133.state() : null; if (!P || !P.rows) return;
+        for (const r of P.rows) {
+          if (r.open || !r.first || !(r.credit > 0) || ST.mine.some(m => m.t === r.first)) continue;
+          const sn = ST.snaps.filter(s => s.t <= r.first + 30 * 60000 && s.t >= r.first - 90 * 60000).sort((a, b) => Math.abs(a.t - r.first) - Math.abs(b.t - r.first))[0]; if (!sn) continue;
+          ST.mine.push({ t: r.first, c: sn.c, L: sn.L, lx: sn.lx, credit: +r.credit.toFixed(2), pnl: +r.pnl.toFixed(2), pct: +(r.pnl / r.credit * 100).toFixed(1), loss: r.pnl < 0, lrn: false });
+        }
+      }
+      function learn() {
+        const c = cfg(); if (!c) return; if (!ST.w) ST.w = c.w0.slice(); const lr = (c.best && c.best.lr) || 0.01, byN = new Map();
+        for (const s of ST.snaps) { let a = byN.get(s.night); if (!a) { a = []; byN.set(s.night, a); } a.push(s); }
+        for (const a of byN.values()) {
+          if (!a.every(s => s.res) || !a.some(s => !s.lrn)) continue; const use = a.filter(s => !s.lrn && !s.res.skip);
+          for (const s of use) { const y = s.res.stopped ? 1 : 0; ST.ll.n++; ST.ll.on += loss(s.po, y); ST.ll.fr += loss(s.pf, y); ST.ll.recent.push({ on: loss(s.po, y), fr: loss(s.pf, y) }); }
+          for (const s of use) { const y = s.res.stopped ? 1 : 0, g = y - s.po; ST.w[0] += lr * g; for (let i = 0; i < s.lx.length; i++) ST.w[i + 1] += lr * g * s.lx[i]; }
+          for (const s of a) s.lrn = true;
+        }
+        for (const m of ST.mine) { if (m.lrn) continue; const y = m.loss ? 1 : 0, p = sig(dot(ST.w, m.lx)), g = y - p; ST.w[0] += lr * g; for (let i = 0; i < m.lx.length; i++) ST.w[i + 1] += lr * g * m.lx[i]; m.lrn = true; }
+        const rc = ST.ll.recent.slice(-40); ST.adopt = rc.length >= 40 && (rc.reduce((t, x) => t + x.on, 0) / rc.length) < (rc.reduce((t, x) => t + x.fr, 0) / rc.length) - 0.005;
+      }
+      function binomTail(n, k, p) { let t = 0; for (let i = k; i <= n; i++) { let c = 1; for (let j = 0; j < i; j++) c = c * (n - j) / (j + 1); t += c * Math.pow(p, i) * Math.pow(1 - p, n - i); } return t; }
+      function drift() {
+        const g = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V10, z = g && g.zones.find(q => q.color === 'green'), p0 = z ? z.stop / 100 : 0.13;
+        const a = ST.snaps.filter(s => s.res && s.res.stopped != null && s.c === 'green').slice(-20), k = a.filter(s => s.res.stopped).length; ST.drift = a.length >= 8 ? { n: a.length, k, p: +binomTail(a.length, k, p0).toFixed(4), exp: z ? z.stop : 13, bad: binomTail(a.length, k, p0) < 0.05 && k / a.length > 2 * p0 } : null;
+      }
+      function adjust(S) {
+        try {
+          if (!S) return; const c = cfg(); const lx = lxOf(S);
+          if (ST.adopt && ST.w && c && lx) { const d = Math.max(-10, Math.min(10, 200 * (sig(dot(ST.w, lx)) - sig(dot(c.w0, lx))))); if (Math.abs(d) >= 0.5) { S.learn = +d.toFixed(1); S.L = Math.max(0, Math.min(100, S.L + d)); if (S.L >= 66 && S.color !== 'red') { S.color = 'red'; S.tone = 'wait'; } } }
+          if (ST.drift && ST.drift.bad && S.color === 'green') { S.color = 'yellow'; S.tone = 'check'; S.why.unshift('Green has been underperforming lately: ' + ST.drift.k + ' of the last ' + ST.drift.n + ' green hours were stopped (5-year rate ' + ST.drift.exp + '%)'); S.driftHold = true; }
+        } catch (e) { }
+      }
+      function status() {
+        const c = cfg(), done = ST.snaps.filter(s => s.res && s.res.stopped != null), by = col => { const a = done.filter(s => s.c === col), k = a.filter(s => s.res.stopped).length; return { n: a.length, stop: a.length ? +(k / a.length * 100).toFixed(1) : null }; };
+        const g = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V10, pr = col => { const z = g && g.zones.find(q => q.color === col); return z ? z.stop : null; };
+        const blend = col => { const o = by(col), p = pr(col); if (p == null) return null; const m = 60; return +(((o.stop == null ? 0 : o.stop * o.n) + p * m) / ((o.n || 0) + m)).toFixed(1); };
+        const mineBy = col => { const a = ST.mine.filter(m => m.c === col); return { n: a.length, loss: a.filter(m => m.loss).length, avg: a.length ? +(a.reduce((t, m) => t + m.pct, 0) / a.length).toFixed(1) : null }; };
+        const rc = ST.ll.recent.slice(-40);
+        return { snaps: ST.snaps.length, resolved: done.length, nights: new Set(done.map(s => s.night)).size, learned: ST.ll.n, adopt: ST.adopt, drift: ST.drift, live: { green: by('green'), yellow: by('yellow'), red: by('red') }, blended: { green: blend('green'), yellow: blend('yellow'), red: blend('red') }, mine: { green: mineBy('green'), yellow: mineBy('yellow'), red: mineBy('red'), n: ST.mine.length }, recentLoss: rc.length ? { n: rc.length, on: +(rc.reduce((t, x) => t + x.on, 0) / rc.length).toFixed(4), fr: +(rc.reduce((t, x) => t + x.fr, 0) / rc.length).toFixed(4) } : null, ready: !!c };
+      }
+      function tick() { try { if (document.hidden) return; snap(); resolve(); mine(); learn(); drift(); ST.at = Date.now(); save(); } catch (e) { console.warn('v153', e); } }
+      setInterval(tick, 60000); setTimeout(tick, 20000); W.addEventListener('v133fills', () => setTimeout(tick, 500));
+      W.v153 = { status, adjust, tick, state: () => ST, reset: () => { ST.snaps = []; ST.mine = []; ST.w = null; ST.ll = { n: 0, on: 0, fr: 0, recent: [] }; ST.adopt = false; ST.drift = null; save(); } };
     })();
   </script>
   <script data-module="v142">

@@ -445,6 +445,64 @@ function main(){
     mm('V2 green and V3 green',s=>s.g_V3&&s.g_V2&&s.g_V3.color==='green'&&s.g_V2.color==='green'),
     mm('V2 red and V3 red',s=>s.g_V3&&s.g_V2&&s.g_V3.color==='red'&&s.g_V2.color==='red'),
     mm('V2 green but V3 not green (momentum held it back)',s=>s.g_V3&&s.g_V2&&s.g_V2.color==='green'&&s.g_V3.color!=='green')];}
+  /* ---------- RELIABILITY of the shipped gauge (V10): calibration, stability by year, bootstrap confidence intervals ---------- */
+  const reliability=(()=>{
+    const K='g_V10',W=O.filter(s=>s[K]),pct=x=>+(x*100).toFixed(1);
+    const L=s=>s[K].L,col=s=>s[K].color;
+    // calibration: gauge level in 10-point bins -> how often a leg was stopped
+    const bins=[];for(let lo=0;lo<100;lo+=10){const a=W.filter(s=>L(s)>=lo&&L(s)<lo+10+(lo===90?1:0));bins.push({lo,hi:lo+10,n:a.length,stop:a.length?pct(a.filter(s=>s.stop).length/a.length):null,pnl:a.length?+mean(a.map(s=>s.final)).toFixed(1):null});}
+    // by year
+    const years=[2023,2024,2025,2026].map(y=>{const a=W.filter(s=>s.yr===y),g=a.filter(s=>col(s)==='green'),r=a.filter(s=>col(s)==='red');return {year:y,n:a.length,auc:+auc(a.filter(s=>s.stop).map(L),a.filter(s=>!s.stop).map(L)).toFixed(3),green:{n:g.length,stop:g.length?pct(g.filter(s=>s.stop).length/g.length):null},red:{n:r.length,stop:r.length?pct(r.filter(s=>s.stop).length/r.length):null},base:pct(a.filter(s=>s.stop).length/a.length)};});
+    // bootstrap over NIGHTS (5-minute-free: every night is resampled whole, so the hours of one night stay together)
+    const byNight=new Map();for(const s of W){let a=byNight.get(s.E0);if(!a){a=[];byNight.set(s.E0,a);}a.push(s);}
+    const keys=[...byNight.keys()];let seed=12345;const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+    const BN=500,m={auc:[],green:[],red:[],gap:[],firstGreenStop:[],firstGreenAvg:[],allAvg:[],notRedStop:[]};
+    for(let b=0;b<BN;b++){const samp=[];const picked=[];for(let i=0;i<keys.length;i++){const k=keys[(rnd()*keys.length)|0];picked.push(k);for(const s of byNight.get(k))samp.push(s);}
+      const pos=samp.filter(s=>s.stop).map(L),neg=samp.filter(s=>!s.stop).map(L);if(pos.length<20||neg.length<20)continue;m.auc.push(auc(pos,neg));
+      const g=samp.filter(s=>col(s)==='green'),r=samp.filter(s=>col(s)==='red');if(g.length<20||r.length<20)continue;const gs=g.filter(s=>s.stop).length/g.length*100,rs=r.filter(s=>s.stop).length/r.length*100;m.green.push(gs);m.red.push(rs);m.gap.push(rs-gs);
+      const fg=[],nr=[],al=[];for(const k of picked){const a=byNight.get(k).slice().sort((x,y)=>x.k-y.k);const f=a.find(x=>col(x)==='green');if(f)fg.push(f);const z=a.find(x=>x.k===0);if(z){al.push(z);if(col(z)!=='red')nr.push(z);}}
+      if(fg.length>10){m.firstGreenStop.push(fg.filter(s=>s.stop).length/fg.length*100);m.firstGreenAvg.push(mean(fg.map(s=>s.final)));}m.allAvg.push(mean(al.map(s=>s.final)));if(nr.length>10)m.notRedStop.push(nr.filter(s=>s.stop).length/nr.length*100);}
+    const ci=a=>{a.sort((x,y)=>x-y);return [+quant(a,2.5).toFixed(3),+quant(a,50).toFixed(3),+quant(a,97.5).toFixed(3)];};
+    const boot={auc:ci(m.auc),green:ci(m.green),red:ci(m.red),gap:ci(m.gap),firstGreenStop:ci(m.firstGreenStop),firstGreenAvg:ci(m.firstGreenAvg),allAvg:ci(m.allAvg),notRedStop:ci(m.notRedStop),pGreenBeatsRed:+(m.gap.filter(x=>x>0).length/m.gap.length).toFixed(3),pAucAbove55:+(m.auc.filter(x=>x>0.55).length/m.auc.length).toFixed(3),boots:m.gap.length};
+    // the last 90 and 30 nights, same rules
+    const lastE=Math.max(...keys),win=(d)=>{const a=W.filter(s=>s.E0>lastE-d*DAY),g=a.filter(s=>col(s)==='green'),r=a.filter(s=>col(s)==='red'),y=a.filter(s=>col(s)==='yellow'),f=x=>x.length?pct(x.filter(s=>s.stop).length/x.length):null;return {days:d,n:a.length,green:{n:g.length,stop:f(g)},yellow:{n:y.length,stop:f(y)},red:{n:r.length,stop:f(r)},base:f(a)};};
+    const r90=win(90),r30=win(30),r180=win(180);
+    console.log('RELIABILITY of the shipped gauge (V10), out-of-sample 2023-26');
+    for(const b of bins)console.log('  level '+String(b.lo).padStart(2)+'-'+String(b.hi).padEnd(3)+' n '+String(b.n).padStart(4)+'  stopped '+String(b.stop).padStart(5)+'%  avg P&L '+String(b.pnl).padStart(5)+'%');
+    for(const y of years)console.log('  '+y.year+'  AUC '+y.auc+'  green '+y.green.stop+'% (n'+y.green.n+')  red '+y.red.stop+'% (n'+y.red.n+')  all '+y.base+'%');
+    console.log('  bootstrap ('+boot.boots+' resamples of whole nights): AUC '+boot.auc.join(' / ')+'  green stopped '+boot.green.join(' / ')+'  red stopped '+boot.red.join(' / ')+'  red-minus-green '+boot.gap.join(' / '));
+    console.log('  P(green is calmer than red) '+boot.pGreenBeatsRed+'   P(AUC > 0.55) '+boot.pAucAbove55+'   first-green stopped '+boot.firstGreenStop.join(' / ')+'  avg P&L first-green '+boot.firstGreenAvg.join(' / ')+' vs sell-every-night '+boot.allAvg.join(' / ')+'  not-red stopped '+boot.notRedStop.join(' / '));
+    console.log('  last 180/90/30 days: '+[r180,r90,r30].map(w=>w.days+'d green '+w.green.stop+'%(n'+w.green.n+') yellow '+w.yellow.stop+'%(n'+w.yellow.n+') red '+w.red.stop+'%(n'+w.red.n+') all '+w.base+'%').join(' | '));
+    return {bins,years,boot,recent:[r180,r90,r30]};
+  })();
+  /* ---------- SELF-LEARNING test: can a small online learner improve the gauge as live outcomes arrive? (prequential: every prediction is made BEFORE its outcome is seen) ---------- */
+  const learner=(()=>{
+    const FN=['spd','model','fear','rise','vov','rv','edge','adx','bear','burst'];
+    const cl01=x=>Math.max(0,Math.min(1,x));
+    const feat=(s)=>{const F=FMforYear(s.yr<2023?2023:s.yr);const b=gaugeBase(s.E,F,s.yr<2023?2023:s.yr);if(!b)return null;return [...['spd','model','fear','rise','vov','rv','edge','adx'].map(k=>b.soft[k]),b.bear?1:0,b.rr==null?0:cl01((b.rr-1.5)/1.5)];};
+    const all=samples.slice().sort((a,b)=>a.E-b.E);for(const s of all)s.lx=feat(s);const ok=all.filter(s=>s.lx);
+    const sig=z=>1/(1+Math.exp(-z)),dot=(w,x)=>{let z=w[0];for(let i=0;i<x.length;i++)z+=w[i+1]*x[i];return z;};
+    const train=ok.filter(s=>s.yr<2023),test=ok.filter(s=>s.yr>=2023);
+    const w0=fitLogit(train.map(s=>s.lx),train.map(s=>s.stop?1:0),3);
+    const ll=(p,y)=>-(y?Math.log(Math.max(1e-6,p)):Math.log(Math.max(1e-6,1-p)));
+    const run=(lr,lam)=>{const w=w0.slice();const P=[],Y=[],Pf=[],yrs=[];let lls=0,llf=0,n=0;const cum=[];
+      const nightsL=[];{let cur=null;for(const s of test){if(!cur||cur.E0!==s.E0){cur={E0:s.E0,a:[]};nightsL.push(cur);}cur.a.push(s);}}
+      for(const nt of nightsL){const pend=[];   // all of a night's entry hours are predicted first; the night's outcome only arrives next morning, then the learner updates
+        for(const s of nt.a){const z=dot(w,s.lx),p=sig(z),pf=sig(dot(w0,s.lx)),y=s.stop?1:0;P.push(p);Pf.push(pf);Y.push(y);yrs.push(s.yr);lls+=ll(p,y);llf+=ll(pf,y);n++;pend.push([s,p,y]);if(n%200===0)cum.push({n,online:+(lls/n).toFixed(4),frozen:+(llf/n).toFixed(4)});}
+        for(const [s,p,y] of pend){const g=y-p;w[0]+=lr*g;for(let i=0;i<s.lx.length;i++)w[i+1]+=lr*(g*s.lx[i]-lam*(w[i+1]-w0[i+1]));}}
+      const a=(pp)=>auc(pp.filter((_,i)=>Y[i]).map(x=>x),pp.filter((_,i)=>!Y[i]).map(x=>x));
+      return {lr,lam,logloss:+(lls/n).toFixed(4),frozenLogloss:+(llf/n).toFixed(4),auc:+a(P).toFixed(3),frozenAuc:+a(Pf).toFixed(3),n,cum,weights:w.map(x=>+x.toFixed(3))};};
+    console.log('SELF-LEARNING (prequential, 2023-26): a logistic learner starts from the weights fitted on 2021-22 and updates after every outcome');
+    const res=[];for(const lr of [0.005,0.01,0.02,0.05,0.1])for(const lam of [0,0.5]){const r=run(lr,lam);res.push(r);console.log('  lr '+lr+' lam '+lam+'  logloss online '+r.logloss+' vs frozen '+r.frozenLogloss+'   AUC online '+r.auc+' vs frozen '+r.frozenAuc);}
+    const best=res.slice().sort((a,b)=>a.logloss-b.logloss)[0];console.log('  best: lr '+best.lr+' lam '+best.lam+'  learning curve (logloss after n samples): '+best.cum.filter((_,i)=>i%4===0).map(c=>c.n+': '+c.online+'/'+c.frozen).join('  '));
+    console.log('  prior weights (bias, '+FN.join(', ')+'): '+w0.map(x=>x.toFixed(2)).join(' '));
+    // a base-rate-only learner (does the gauge add anything beyond "the stop rate has been X lately")?
+    let base=0,nb=0,llb=0;for(const s of test){const p=nb?base/nb:0.23;llb+=ll(Math.min(0.95,Math.max(0.05,p)),s.stop?1:0);base+=s.stop?1:0;nb++;}
+    console.log('  for reference, logloss of "just the running stop rate": '+(llb/nb).toFixed(4));
+    return {features:FN,w0:w0.map(x=>+x.toFixed(4)),runs:res.map(r=>({lr:r.lr,lam:r.lam,logloss:r.logloss,frozen:r.frozenLogloss,auc:r.auc,frozenAuc:r.frozenAuc})),best:{lr:best.lr,lam:best.lam,logloss:best.logloss,frozen:best.frozenLogloss,auc:best.auc,frozenAuc:best.frozenAuc,cum:best.cum},baseLogloss:+(llb/nb).toFixed(4),trainN:train.length,testN:test.length};
+  })();
+  gauge.learner=learner;
+  gauge.reliability=reliability;
   gauge.weights=GW;gauge.note='red >= 66; green = L < 34 and the main checks pass; yellow otherwise. Rises at once (faster when momentum builds), falls after two better hours (at once when momentum is spent).';
   delete gauge._V3;
 
