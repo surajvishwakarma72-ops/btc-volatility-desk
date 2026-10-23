@@ -576,7 +576,15 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       }
       function start(j) {
         lowActive++; var done = function () { lowActive--; var h = host[j.h]; if (h) h.a--; st.call(W, flushLow, 0); };
-        F(j.u, j.o).then(function (r) { done(); j.res(r); }, function (e) { done(); j.rej(e); });
+        viaGw(j.u, j.o, j.u0, j.rw).then(function (r) { done(); j.res(r); }, function (e) { done(); j.rej(e); });
+      }
+      /* gateway call: one retry after 700 ms on a 429 / 5xx or a dropped connection, then the direct upstream URL */
+      function viaGw(input, init, u0, rw) {
+        var viaG = rw !== u0, sig = init && init.signal;
+        return F(input, init).then(function (r) {
+          if (viaG && (r.status === 429 || r.status >= 500) && !(sig && sig.aborted)) return new Promise(function (ok) { st.call(W, ok, 700); }).then(function () { return F(input, init); });
+          return r;
+        }).catch(function (err) { if (viaG && !(sig && sig.aborted)) return F(u0, init); throw err; });
       }
       P.lowQueue = function () { return { queued: LOW.length, active: lowActive, ready: P.ready }; };
       var GW_HOSTS = { 'api.india.delta.exchange': ['/v2/products', '/v2/tickers', '/v2/history/candles', '/v2/l2orderbook/', '/v2/trades/'], 'www.deribit.com': ['/api/v2/public/'], 'fapi.binance.com': ['/fapi/', '/futures/data/'], 'api.binance.com': ['/api/v3/'], 'data-api.binance.vision': ['/api/v3/'], 'data.binance.vision': ['/data/'], 'www.okx.com': ['/api/v5/public/', '/api/v5/rubik/'], 'cryptocurrency.cv': ['/api/'], 'api.llama.fi': ['/hacks'] };
@@ -584,9 +592,10 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       if (F) W.fetch = function (input, init) {
         var u0 = typeof input === 'string' ? input : (input && input.url) || '';
         var rw = gwRewrite(u0); if (rw !== u0) { input = rw; } var u = rw, uLow = rw !== u0 ? u0 : rw; // slow-lane + priority classified on the ORIGINAL url (the rewritten /api/v1/mkt?u= is %2F-encoded)
-        if (!u || (init && init.method && init.method !== 'GET') || !isLow(uLow)) return F(input, init).catch(function(err){if(rw!==u0)return F(u0,init);throw err;});
+        if (!u || (init && init.method && init.method !== 'GET') || !isLow(uLow)) return viaGw(input, init, u0, rw);
         return new Promise(function (res, rej) {
-          var j = { u: input, o: init, res: res, rej: function(e){if(rw!==u0){F(u0,init).then(res,rej);}else rej(e);}, dead: false, p: prio(uLow), h: hostOf(input), at: Date.now() }, sig = init && init.signal;
+          // the lane's per-site limit counts the real upstream (Delta, Deribit, Binance ...), not the one gateway path
+          var j = { u: input, u0: u0, rw: rw, o: init, res: res, rej: rej, dead: false, p: prio(uLow), h: hostOf(uLow), at: Date.now() }, sig = init && init.signal;
           if (sig) {
             if (sig.aborted) { rej(new DOMException('Aborted', 'AbortError')); return; }
             sig.addEventListener('abort', function () { if (!j.dead && LOW.indexOf(j) >= 0) { j.dead = true; P.lowAborted = (P.lowAborted || 0) + 1; rej(new DOMException('Aborted', 'AbortError')); } }, { once: true });
@@ -20925,6 +20934,8 @@ The floating P&L pill still shows the live P&L on top of everything. */
       try { return await getJSONNow(url, timeoutMs); } finally { netDone(gotLow); }
     }
     async function getJSONNow(url, timeoutMs) {
+      // history calls wait in the slow lane before they leave (that wait is counted by this timer): give them the extra room
+      if (/history|get_volatility_index_data|klines/.test(url)) timeoutMs += 12000;
       const controller = new AbortController(), to = setTimeout(() => controller.abort(), timeoutMs);
       try {
         const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: controller.signal });
@@ -22572,7 +22583,10 @@ The floating P&L pill still shows the live P&L on top of everything. */
     async function getHistory(symbol, res, start, end) {
       const rs = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600 }[res] || 300, step = rs * 1900, out = new Map();
       for (let s = start; s < end; s += step) {
-        const j = await getJSON(`${API}/v2/history/candles?resolution=${res}&symbol=${encodeURIComponent(symbol)}&start=${s}&end=${Math.min(end, s + step)}`, 15000);
+        const hu = `${API}/v2/history/candles?resolution=${res}&symbol=${encodeURIComponent(symbol)}&start=${s}&end=${Math.min(end, s + step)}`;
+        let j; for (let tr = 0; ; tr++) {   // a dropped or slow chunk is retried (1.2 s, 2.4 s) before the whole history gives up
+          try { j = await getJSON(hu, 15000); break; } catch (err) { if (tr >= 2) throw err; await new Promise(r => setTimeout(r, 1200 * (tr + 1))); }
+        }
         for (const c of (Array.isArray(j.result) ? j.result : [])) {
           let t = Number(c.time); if (t > 1e14) t = Math.floor(t / 1e6); else if (t > 1e11) t = Math.floor(t / 1e3);
           const o = N(c.open), cl = N(c.close);
@@ -25807,7 +25821,12 @@ Signs follow Settings → Dealer positioning.`;
       async function dvolRange(from, to, res) {
         const out = new Map(); let end = Math.floor(to);
         for (let g = 0; g < 40 && end > from; g++) {
-          const j = await getJSONNow(`${DERIBIT_API}/get_volatility_index_data?currency=BTC&start_timestamp=${Math.floor(from)}&end_timestamp=${end}&resolution=${res}`, 20000);
+          let j = null, lastErr = null;
+          for (let tr = 0; tr < 3 && !j; tr++) {
+            try { j = await getJSONNow(`${DERIBIT_API}/get_volatility_index_data?currency=BTC&start_timestamp=${Math.floor(from)}&end_timestamp=${end}&resolution=${res}`, 20000); }
+            catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 1000 * (tr + 1))); }
+          }
+          if (!j) { if (out.size) break; throw lastErr; }
           const d = j?.result?.data || []; for (const r of d) if (Number.isFinite(+r[4])) out.set(+r[0], +r[4]);
           const c = +j?.result?.continuation; if (!c || !d.length || c >= end) break; end = c;
         }
@@ -30471,7 +30490,12 @@ Signs follow Settings → Dealer positioning.`;
       async function fetchRange(from, to, res) {
         const out = []; let end = Math.floor(to);
         for (let g = 0; g < 80 && end > from; g++) {
-          const j = await getJSONNow(`${DERIBIT_API}/get_volatility_index_data?currency=BTC&start_timestamp=${Math.floor(from)}&end_timestamp=${end}&resolution=${res}`, 20000);
+          let j = null, lastErr = null;
+          for (let tr = 0; tr < 3 && !j; tr++) {   // retry a failed page; if the newest pages are in, keep them (the older stretch is topped up by backfill)
+            try { j = await getJSONNow(`${DERIBIT_API}/get_volatility_index_data?currency=BTC&start_timestamp=${Math.floor(from)}&end_timestamp=${end}&resolution=${res}`, 20000); }
+            catch (e) { lastErr = e; await new Promise(r => setTimeout(r, 1000 * (tr + 1))); }
+          }
+          if (!j) { if (out.length) break; throw lastErr; }
           const d = j?.result?.data || [];
           for (const r of d) { const t = +r[0], o = +r[1], h = +r[2], l = +r[3], c = +r[4]; if (t > 0 && c > 0) out.push([t, o > 0 ? o : c, h > 0 ? h : c, l > 0 ? l : c, c]); }
           const c = +j?.result?.continuation; if (!c || !d.length || c >= end) break; end = c;
