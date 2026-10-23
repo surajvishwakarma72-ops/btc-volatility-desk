@@ -25,6 +25,7 @@ const dkey=(ts)=>new Date(ts).toISOString().slice(0,10);
 const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
 const sd=a=>{if(a.length<2)return null;const m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1));};
 
+const FIXEDW={spd:10,atm:8,rng:6,vov:5,rv:3,edge:3,clk:2.5,dvol:2,adx:1.5,rsi:1,rng6:1,dchg:1,r6:0.5,r24:0.5,rvr:0.5};   // FIXED=1: the user's priority order, speed > ATM IV > range > VoV
 const BASE10=['spd','atm','vov','rv','rng','edge','clk','dvol','adx','rsi'];
 const FEATS=[...BASE10,'r6','r24','rng6','rvr','dchg'];   // shipped set: the 10 + trend / recent-range / IV-change terms (walk-forward AUC 0.611 → 0.62+)
 const ORDER=[['spd','IV vs speed'],['atm','ATM IV'],['vov','VoV'],['rv','RV'],['rng','Range 24'],['edge','Edge'],['clk','Tonight IV vs clock'],['dvol','DVOL'],['skew','25Δ skew'],['adx','ADX'],['rsi','RSI'],['macro','Macro stress'],['fut','Futures positioning'],['fund','Funding / OI'],['term','Term spread'],['bidask','Bid/ask spread'],['crush','IV crush driver'],['greeks','ATM greeks']];
@@ -101,7 +102,12 @@ function main(){
     const FEATS=F;
     const tab={};for(const k of FEATS){const v=train.map(s=>s.f[k]).filter(x=>x!=null).sort((a,b)=>a-b);tab[k]=v;}
     const toX=(f)=>FEATS.map(k=>f[k]==null?0:(pctOf(tab[k],f[k])/100-0.5));   // centred percentile rank, missing = typical
-    const X=train.map(s=>toX(s.f)),y=train.map(s=>s.stop?1:0),w=fitLogit(X,y,3);
+    const X=train.map(s=>toX(s.f)),y=train.map(s=>s.stop?1:0);
+    let w;
+    if(process.env.FIXED){ // hand-set priority weights; only the direction (riskier when high or low) comes from the training data
+      const dir=FEATS.map(k=>{const A=train.filter(s=>s.stop&&s.f[k]!=null).map(s=>s.f[k]),B=train.filter(s=>!s.stop&&s.f[k]!=null).map(s=>s.f[k]);return mean(A)>=mean(B)?1:-1;});
+      w=[0,...FEATS.map((k,i)=>dir[i]*(FIXEDW[k]||0))];
+    } else w=fitLogit(X,y,3);
     const pct=Object.fromEntries(FEATS.map(k=>[k,Array.from({length:21},(_,i)=>+quant(tab[k],i*5).toFixed(4))]));
     // old scorer (A): signed weights by mean gap, equal-ish — kept for the comparison
     return {tab,toX,w,pct,score:(f)=>{const x=toX(f);let z=w[0];for(let j=0;j<x.length;j++)z+=w[j+1]*x[j];return z;}};
