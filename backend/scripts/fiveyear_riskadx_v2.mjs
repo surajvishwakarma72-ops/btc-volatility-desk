@@ -96,6 +96,28 @@ function main(){
       samples.push({E,E0,k,wd,yr:new Date(E).getUTCFullYear(),mo:new Date(E).getUTCMonth()+1,f,fPrev,stop:s.stopped,final:s.final,sim:s});}
   }
   const base=samples.filter(s=>s.stop).length/samples.length*100;
+  const sessions=(()=>{ // which hours of the day are sellable, and can a big move be seen coming?
+    const hrs=[];for(let d=Math.ceil(first/DAY)*DAY;d<last-DAY;d+=DAY){const wd=new Date(d).getUTCDay();if(wd<1||wd>5)continue;for(let h=0;h<24;h++){const E=d+h*HOUR;const s=sim(E);if(!s)continue;const f=featuresAt(E);hrs.push({E,h,wd,s,f});}}
+    console.log('SESSIONS: entry at each UTC hour (IST = UTC+5:30), Mon-Fri, 8h hold, per-leg 2x stop');
+    const tab=[],det=[];for(let h=0;h<24;h++){const a=hrs.filter(x=>x.h===h);const stp=a.filter(x=>x.s.stopped).length/a.length*100,avg=mean(a.map(x=>x.s.final)),tot=a.reduce((t,x)=>t+x.s.final,0);tab.push({utc:h,ist:((h*60+330)%1440/60).toFixed(1),n:a.length,stop:+stp.toFixed(1),avg:+avg.toFixed(1)});}
+    for(const r of tab)console.log('  UTC '+String(r.utc).padStart(2)+'  IST '+r.ist.padStart(4)+'  n '+r.n+'  stopped '+String(r.stop).padStart(5)+'%  avg P&L '+String(r.avg).padStart(5)+'%');
+    // big move precursors: stop within the first 3 h of the hold
+    const rangeAvg=(E)=>{let t=0,n=0;for(let k=1;k<=24;k++){const b=byT.get(E-k*HOUR);if(b){t+=(b.h-b.l)/b.c;n++;}}return n?t/n:null;};
+    const bar=(E)=>byT.get(E-HOUR);// the hour that just closed
+    const base3=hrs.filter(x=>x.s.mk.length>=3).map(x=>x.s.mk.find(m=>m.h<=3&&m.stopped)?1:0);
+    const b3=mean(base3)*100;console.log('\nBIG-MOVE DETECTORS: P(a leg is stopped within 3 h of the entry hour) all hours base '+b3.toFixed(1)+'%');
+    const test=(nm,fn,filter)=>{const a=hrs.filter(x=>x.f&&(!filter||filter(x))&&fn(x));const base=hrs.filter(x=>!filter||filter(x));const p=(arr)=>arr.length?arr.filter(x=>x.s.mk.find(m=>m.h<=3&&m.stopped)).length/arr.length*100:null;console.log('  '+nm.padEnd(58)+' n '+String(a.length).padStart(5)+'  stopped<=3h '+String(p(a)?.toFixed(1)).padStart(5)+'%  (base '+p(base).toFixed(1)+'%)  lift x'+(p(a)/p(base)).toFixed(2));det.push({name:nm,scope:filter?'entry hours':'all hours',n:a.length,stop3h:+p(a).toFixed(1),base:+p(base).toFixed(1),lift:+(p(a)/p(base)).toFixed(2)});};
+    const ra=(x)=>{const b=bar(x.E),av=rangeAvg(x.E);return b&&av?((b.h-b.l)/b.c)/av:null;};
+    for(const [lab,flt] of [['ALL HOURS',null],['ENTRY HOURS 22:30-01:30 IST (17-20 UTC)',x=>x.h>=17&&x.h<=20]]){console.log(' '+lab);
+      test('last hour range >= 2x its 24h average',x=>ra(x)>=2,flt);test('last hour range >= 3x its 24h average',x=>ra(x)>=3,flt);
+      test('6h range expanding: rng6 >= 1.5 and last hour range >= 1.5x',x=>x.f.rng6>=1.5&&ra(x)>=1.5,flt);
+      test('squeeze then break: rng6 <= 0.5 two hours ago, last hour >= 2x',x=>{const f2=featuresAt(x.E-2*HOUR);return f2&&f2.rng6<=0.5&&ra(x)>=2;},flt);
+      test('RV ratio rv6/rv24 >= 1.3',x=>x.f.rvr>=1.3,flt);
+      test('IV up >= 1.5% over 2 h',x=>{const a=ivAt(x.E),b=ivAt(x.E-2*HOUR);return a&&b&&(a-b)/b*100>=1.5;},flt);
+      test('speed (RV24/IV) >= 1.5',x=>x.f.spd>=1.5,flt);
+      test('NOTHING unusual: speed<1, range<1.5x, rvr<1.1',x=>x.f.spd<1&&ra(x)<1.5&&x.f.rvr<1.1,flt);}
+    return {hours:tab,detectors:det};})();
+
   /* journey features at each entry hour */
   {
     const iv1=(E)=>dh.get(E)>0?dh.get(E):null;
@@ -278,15 +300,37 @@ function main(){
       if(f2&&iv2&&now){const ivCh=(now-iv2)/iv2*100;
         const b=[f.rvr!=null&&f2.rvr!=null&&f.rvr>f2.rvr*1.15,f.rng6>f2.rng6*1.2,ivCh>=0.7,vovUp];build=b.filter(Boolean).length/4;
         const hot=(f2.rvr!=null&&f2.rvr>1.0)||f2.rng6>1.2,e=[f.rvr!=null&&f2.rvr!=null&&f.rvr<f2.rvr*0.85,f.rng6<f2.rng6*0.8,ivCh<=-0.7];exhaust=hot?e.filter(Boolean).length/3:0;}
-      out={E,sc,stage,ok,failW,veto:stage==='holding'||f.spd>=1.5||sc>50,spd:f.spd,build,exhaust,primPass:PRIM.every(k=>ok[k]),secFail:SEC.filter(k=>!ok[k]).length,allPass:failW===0};}
+      const cl=x=>Math.max(0,Math.min(1,x));
+      const soft={spd:cl((f.spd-0.9)/0.2),model:cl((sc-20)/10),fear:(stage==='holding'||stage==='unknown')?1:0,rise:scp==null?0:cl((sc-scp-1)/2),vov:(stage==='crush'||(vovUp&&spike>=2))?1:0,rv:cl((f.rv/f.atm-0.9)/0.2),edge:cl((1-f.edge)/2),adx:cl((f.adx-22)/6)};
+      let ra=null;{const b1=byT.get(E-HOUR);let t=0,n=0;for(let k=1;k<=24;k++){const b=byT.get(E-k*HOUR);if(b){t+=(b.h-b.l)/b.c;n++;}}if(b1&&n)ra=((b1.h-b1.l)/b1.c)/(t/n);}
+      out={soft,rr:ra,spike,E,sc,stage,ok,failW,veto:stage==='holding'||f.spd>=1.5||sc>50,spd:f.spd,build,exhaust,primPass:PRIM.every(k=>ok[k]),secFail:SEC.filter(k=>!ok[k]).length,allPass:failW===0};}
     gMemo.set(key,out);return out;
   }
   const VARIANTS={
     V0:{name:'V0 plain (floor 34, green = every check)',mom:false,floor:true,tol:false},
     V1:{name:'V1 = V0 + momentum',mom:true,floor:true,tol:false},
     V2:{name:'V2 continuous, green = 5 main checks + at most 1 minor',mom:false,floor:false,tol:true},
-    V3:{name:'V3 = V2 + momentum',mom:true,floor:false,tol:true}};
+    V3:{name:'V3 = V2 + momentum',mom:true,floor:false,tol:true},
+    V5:{name:'V5 smooth: soft checks, EMA, hysteresis, 2-hour confirmation for green',soft:true,burst:false},
+    V6:{name:'V6 = V5 + big-move burst (hour range >= 2x: +15, >= 3x: red)',soft:true,burst:true}};
+  function gaugeSeriesSoft(E0,F,yr,V){
+    const out=[];let L=null,state='yellow',gcnt=0;
+    for(let h=-6;h<=10;h++){const b=gaugeBase(E0+h*HOUR,F,yr);if(!b)continue;
+      let failS=0;for(const k of Object.keys(GW))failS+=GW[k]*b.soft[k];
+      let raw=100*(0.65*failS/GWT+0.35*Math.min(1,b.sc/50));
+      if(V.burst&&b.rr!=null){if(b.rr>=3)raw=Math.max(raw,80);else if(b.rr>=2)raw+=15;}
+      if(b.veto)raw=Math.max(raw,80);raw=Math.min(100,raw);
+      L=L==null?raw:L+(raw-L)*(raw>L?0.7:0.3);
+      const primOK=PRIM.every(k=>b.soft[k]<0.5)&&!b.veto,minorBad=SEC.filter(k=>b.soft[k]>=0.5).length;
+      if(state==='red'){if(L<55)state='yellow';}else if(L>=66)state='red';
+      if(state==='green'){if(L>42||!primOK)state='yellow';gcnt=0;}
+      else if(state==='yellow'){if(L<30&&primOK&&minorBad<=1){gcnt++;if(gcnt>=2){state='green';gcnt=0;}}else gcnt=0;}
+      else gcnt=0;
+      out.push({E:b.E,h,L,raw,sc:b.sc,stage:b.stage,build:b.build,exhaust:b.exhaust,color:state});}
+    return out;
+  }
   function gaugeSeries(E0,F,yr,V){
+    if(V.soft)return gaugeSeriesSoft(E0,F,yr,V);
     const out=[];let L=null,better=0;
     for(let h=-6;h<=10;h++){const b=gaugeBase(E0+h*HOUR,F,yr);if(!b)continue;
       let raw=100*(0.65*b.failW/GWT+0.35*Math.min(1,b.sc/50));
@@ -306,10 +350,11 @@ function main(){
     for(const [E0,a] of nights){const yr=a[0].yr;const F=FMforYear(yr);const S=gaugeSeries(E0,F,yr,V);if(!S.length)continue;gSeries.set(E0,S);for(const p of S){share[p.color]++;share.n++;}for(const s of a){const p=S.find(q=>q.E===s.E);s['g_'+vk]=p||null;if(p){entry[p.color]++;entry.n++;}}}
     const G=O.filter(s=>s['g_'+vk]);const gk=(s)=>s['g_'+vk];
     const zones=['red','yellow','green'].map(c=>{const a=G.filter(s=>gk(s).color===c);return {color:c,n:a.length,stop:st(a),pnl:pn(a),shareAll:+(share[c]/share.n*100).toFixed(1),shareEntry:+(entry[c]/entry.n*100).toFixed(1)};});
+    let chg=0,nn=0;for(const [E0,S] of gSeries){let c=0;for(let i=1;i<S.length;i++)if(S[i].color!==S[i-1].color)c++;chg+=c;nn++;}const flick=+(chg/nn).toFixed(2);
     const aucAll=auc(G.filter(s=>s.stop).map(s=>gk(s).L),G.filter(s=>!s.stop).map(s=>gk(s).L));
     const split=(fn)=>{const a=G.filter(fn);const g=a.filter(s=>gk(s).color==='green'),r=a.filter(s=>gk(s).color==='red');return {n:a.length,green:{n:g.length,stop:st(g)},red:{n:r.length,stop:st(r)},auc:+auc(a.filter(s=>s.stop).map(s=>gk(s).L),a.filter(s=>!s.stop).map(s=>gk(s).L)).toFixed(3)};};
     const tr=split(s=>s.yr<=2024),va=split(s=>s.yr>=2025);
-    console.log('\n=== '+V.name+' ===  AUC '+aucAll.toFixed(3)+'   tune(2023-24) green '+tr.green.stop+'% (n'+tr.green.n+') red '+tr.red.stop+'% (n'+tr.red.n+') AUC '+tr.auc+'   validate(2025-26) green '+va.green.stop+'% (n'+va.green.n+') red '+va.red.stop+'% (n'+va.red.n+') AUC '+va.auc);
+    console.log('\n=== '+V.name+' ===  colour changes per night '+flick+'  AUC '+aucAll.toFixed(3)+'   tune(2023-24) green '+tr.green.stop+'% (n'+tr.green.n+') red '+tr.red.stop+'% (n'+tr.red.n+') AUC '+tr.auc+'   validate(2025-26) green '+va.green.stop+'% (n'+va.green.n+') red '+va.red.stop+'% (n'+va.red.n+') AUC '+va.auc);
     for(const z of zones)console.log('  '+z.color.padEnd(7)+' n '+String(z.n).padStart(4)+'  stopped '+String(z.stop).padStart(5)+'%  P&L '+String(z.pnl).padStart(6)+'%  share of all hours '+z.shareAll+'%  of entry hours '+z.shareEntry+'%');
     const res=[];const rep2=(name,pick,arr)=>{const T=[];for(const [E0,a] of (arr||nights)){a.sort((x,y)=>x.k-y.k);const t=pick(a);if(t)T.push(t);}const tot=T.reduce((x,t)=>x+t.final,0);const r={name,nights:(arr||nights).size,trades:T.length,stop:T.length?st(T):null,avg:T.length?pn(T):null,total:+tot.toFixed(0)};res.push(r);console.log('  '+name.padEnd(46)+' trades '+String(r.trades).padStart(3)+'/'+r.nights+'  stopped '+String(r.stop).padStart(5)+'%  avg '+String(r.avg).padStart(5)+'%  total '+String(r.total).padStart(6));return T;};
     rep2('first green hour 22:30-01:30',a=>a.find(x=>gk(x)&&gk(x).color==='green'));
@@ -317,8 +362,8 @@ function main(){
     const lastE0=Math.max(...nights.keys()),n30=new Map([...nights].filter(([E0])=>E0>lastE0-30*DAY));
     const r30a=rep2('  last 30 days: first green hour',a=>a.find(x=>gk(x)&&gk(x).color==='green'),n30);
     rep2('  last 30 days: not red at 22:30',a=>{const s=a.find(x=>x.k===0);return s&&gk(s)&&gk(s).color!=='red'?s:null;},n30);
-    gauge.variants[vk]={name:V.name,auc:+aucAll.toFixed(3),tune:tr,validate:va,zones,strategies:res};
-    if(vk==='V3'||vk==='V2'){gauge.variants[vk].recent=[...n30].sort((x,y)=>x[0]-y[0]).map(([E0,a])=>{a.sort((x,y)=>x.k-y.k);const s0=a.find(x=>x.k===0),fg=a.find(x=>gk(x)&&gk(x).color==='green');return {date:dkey(E0),c0:s0&&gk(s0)?gk(s0).color:null,L0:s0&&gk(s0)?+gk(s0).L.toFixed(0):null,stop0:s0?!!s0.stop:null,pnl0:s0?+s0.final.toFixed(1):null,firstGreen:fg?fg.k:null,stopG:fg?!!fg.stop:null,pnlG:fg?+fg.final.toFixed(1):null};});}
+    gauge.variants[vk]={name:V.name,flicker:flick,auc:+aucAll.toFixed(3),tune:tr,validate:va,zones,strategies:res};
+    if(vk==='V3'||vk==='V2'||vk==='V5'||vk==='V6'){gauge.variants[vk].recent=[...n30].sort((x,y)=>x[0]-y[0]).map(([E0,a])=>{a.sort((x,y)=>x.k-y.k);const s0=a.find(x=>x.k===0),fg=a.find(x=>gk(x)&&gk(x).color==='green');return {date:dkey(E0),c0:s0&&gk(s0)?gk(s0).color:null,L0:s0&&gk(s0)?+gk(s0).L.toFixed(0):null,stop0:s0?!!s0.stop:null,pnl0:s0?+s0.final.toFixed(1):null,firstGreen:fg?fg.k:null,stopG:fg?!!fg.stop:null,pnlG:fg?+fg.final.toFixed(1):null};});}
     gauge.variants[vk].series=null;
     if(vk==='V3')gauge._V3=gSeries;
   }
@@ -340,7 +385,7 @@ function main(){
   const out={generated:dkey(Date.now()),samples:samples.length,baseStopPct:+base.toFixed(1),span:[dkey(samples[0].E),dkey(samples[samples.length-1].E)],feats:FEATS,names,
     coef:{b:+FM.w[0].toFixed(5),w:Object.fromEntries(FEATS.map((k,i)=>[k,+FM.w[i+1].toFixed(4)]))},pct:FM.pct,calibration:cal,
     wfAuc:{old:+mean(aucOld).toFixed(3),logistic:+mean(aucNew).toFixed(3),sets:setAuc},oosBands:bandRows,oosAbove25:{n:above.length,stop:st(above),pnl:pn(above)},oosAtOrBelow25:{n:below.length,stop:st(below),pnl:pn(below)},
-    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey,gauge};
+    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey,gauge,sessions};
   const js=`window.__STRANGLE_RISKMODEL = ${JSON.stringify(out)};\n`;
   if(!process.env.NOWRITE)for(const rel of ['../../data/risk_model.js','../../frontend/public/data/risk_model.js'])fs.writeFileSync(P(rel),js);
   console.log('\nlogistic weights (on centred percentile rank; + = riskier):',JSON.stringify(out.coef.w),'calibration',JSON.stringify(cal));

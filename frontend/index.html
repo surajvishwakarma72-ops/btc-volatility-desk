@@ -46515,7 +46515,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const axId = W.__v138Axis ? W.__v138Axis() : null, axX = axId && lanes.some(l => l.id === axId) ? 24 : 0;
         // v150: ATM IV gets 2.2 lane shares, Speed vs IV and ADX 1.4, every other lane one; the lanes' part of the panel
         // grows with the extra shares (33 % at equal shares, at most 48 %), the candles take the rest
-        const wt = l => l.id === 'v138Iv' ? 2.2 : l.id === 'v151Risk' ? 1.8 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
+        const wt = l => l.id === 'v138Iv' ? 2.2 : l.id === 'v151Risk' ? 3.2 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
         const share = nL ? Math.min(0.48, 0.33 * nW / nL) : 0.33;
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
@@ -48754,13 +48754,13 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const inProvenWindow = istMins >= PROVEN_BOUNDARIES.ENTRY_START_MINS && istMins <= PROVEN_BOUNDARIES.ENTRY_END_MINS; // Strictly 22:30–23:30 IST (NY+180m point estimate, p=0.0014)
         const isSetupWindow = istMins >= PROVEN_BOUNDARIES.SETUP_START_MINS && istMins < PROVEN_BOUNDARIES.SETUP_END_MINS;  // 21:30–22:30 IST (Amber Setup Window)
         const ivOk = /^SELL/.test(v), news = !(R.evNext && now < R.evNext.ok);
-        const RK5 = W.__STRANGLE_INDRANK, RA = W.v151Risk && W.v151Risk.live ? W.v151Risk.live() : null, riskV = RA && RA.last != null ? RA.last : null, RV = RA && W.v151Risk.verdict ? W.v151Risk.verdict(RA) : null, JG = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.journey, GZV = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V2, riskOk = riskV == null || !RV ? null : RV.tone === 'go', RMd = W.__STRANGLE_RISKMODEL, c25 = RMd ? { above25: { stop: RMd.oosAbove25.stop }, atOrBelow25: { stop: RMd.oosAtOrBelow25.stop } } : RK5 && RK5.composite, wd5 = RK5 && RK5.baseByWeekday && RK5.baseByWeekday[dw];
+        const RK5 = W.__STRANGLE_INDRANK, RA = W.v151Risk && W.v151Risk.live ? W.v151Risk.live() : null, riskV = RA && RA.last != null ? RA.last : null, RV = RA && W.v151Risk.verdict ? W.v151Risk.verdict(RA) : null, JG = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.journey, GZV = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V6, riskOk = riskV == null || !RV ? null : RV.phase !== 'entry' ? null : RV.tone === 'go', RMd = W.__STRANGLE_RISKMODEL, c25 = RMd ? { above25: { stop: RMd.oosAbove25.stop }, atOrBelow25: { stop: RMd.oosAtOrBelow25.stop } } : RK5 && RK5.composite, wd5 = RK5 && RK5.baseByWeekday && RK5.baseByWeekday[dw];
         const sizeTxt = isThu ? '0×' : dw === 5 ? '1.0× FULL · ★ PREMIUM' : '1.0× FULL';   // 5-year: Friday is the calmest night (18.6 % stopped), no night is half-size; the Risk-ADX / speed gates do the avoiding
         const checks = [
           ['Weekday · Mon–Fri, Thursday skipped', dayOk, isThu ? 'Thursday · 1-yr real prices: 83% stopped → skip' + (wd5 ? ' (5-yr model says ' + wd5.stop + '%)' : '') : isWeekend ? 'Weekend' : (wd5 ? DL[dw] + ' · 5-yr: ' + wd5.stop + '% stopped (all nights ' + RK5.baseStopPct + '%)' : DL[dw])],
           ['Speed Beacon (RV ÷ IV < 1.50× Kinetic Filter)', speedOk, speedVal != null ? speedVal.toFixed(2) + '× · ' + (speedOk ? 'Calm (<1.5×)' : 'Storm (≥1.5×)') : '—'],
           ['Timing Window (22:30–23:30 IST proven entry, p=0.0014)', inProvenWindow, inProvenWindow ? 'Proven Window (22:30–23:30 IST)' : isSetupWindow ? 'Amber Setup (21:30–22:30 IST) · Wait' : istMins > PROVEN_BOUNDARIES.ENTRY_END_MINS ? 'Entry Closed (>23:30 IST)' : 'Before NY Window'],
-          ['Entry Gauge: GO', riskOk, RV ? RV.L.toFixed(0) + (RV.dir ? ' ' + RV.dir : '') + (riskOk ? ' · main checks agree' : ' · ' + RV.color.toUpperCase() + (RV.why[0] ? ': waiting for ' + RV.why[0] : '')) + (GZV ? ' · 5-yr out-of-sample: green hours stopped ' + (GZV.zones.find(z => z.color === 'green') || {}).stop + '% vs red ' + (GZV.zones.find(z => z.color === 'red') || {}).stop + '%' : '') : 'loading'],
+          ['Entry Gauge: GO', riskOk, RV ? RV.L.toFixed(0) + (RV.dir ? ' ' + RV.dir : '') + (RV.phase !== 'entry' ? ' · ' + (RV.phase === 'hold' ? 'holding hours' : 'no entry in this session (entry window 22:30-01:30 IST)') + (RV.burst ? ' · BIG MOVE ' + RV.rr.toFixed(1) + '×' : '') : riskOk ? ' · main checks agree' : ' · ' + RV.color.toUpperCase() + (RV.why[0] ? ': waiting for ' + RV.why[0] : '')) + (GZV ? ' · 5-yr out-of-sample: green hours stopped ' + (GZV.zones.find(z => z.color === 'green') || {}).stop + '% vs red ' + (GZV.zones.find(z => z.color === 'red') || {}).stop + '%' : '') : 'loading'],
           ['IV Turn (1.5–6% off NY peak)', ivOk, R.offPct != null ? R.offPct.toFixed(1) + '% off' : '—'],
           ['News · no high-impact release before exit', news, news ? 'clear' : R.evNext.code + ' ' + hm(R.evNext.t)]];
         let w, col, why = [];
@@ -48919,9 +48919,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const RMd = W.__STRANGLE_RISKMODEL, RX = W.v151Risk && W.v151Risk.live ? W.v151Risk.live() : null, MX = RX && RX.last != null && W.v151Risk.meaning ? W.v151Risk.meaning(RX.last, RX.d3) : null;
         const riskCard = RMd ? `<div class="c"><span class="l">ENTRY GAUGE · WHAT THE LINE MEANS (out-of-sample 2023→${RMd.span[1].slice(0, 4)}: each year scored by a model fitted only on earlier years)</span>
     ${(() => { const GV = RX && RX.lastState; return GV ? `<div class="rw"><b class="${GV.color === 'green' ? 'ok' : GV.color === 'red' ? 'bad' : 'amb'}">${GV.L.toFixed(0)}</b><span>${GV.color === 'green' ? 'GO' : GV.color === 'red' ? 'WAIT' : 'CHECK'}${GV.dir ? ' · ' + (GV.dir === 'rising' ? '↑ rising' : GV.dir === 'falling' ? '↓ falling' : '→ flat') : ''} · momentum ${GV.mom}</span><span class="s">${GV.failing.length ? 'waiting for: ' + esc(GV.why.join(' · ')) : 'every check agrees'}</span></div>` : '<span class="s">The gauge is loading (needs the chart bars and DVOL history).</span>'; })()}
-    ${RMd.gauge && RMd.gauge.variants && RMd.gauge.variants.V2 ? (() => { const GZ = RMd.gauge.variants.V2, GM = RMd.gauge.variants.V3, A = RMd.strategies[0] || {}; return `<table><thead><tr><th>Gauge colour at the entry hour</th><th>stopped</th><th>avg P&amp;L</th><th>of entry hours</th><th>cases</th></tr></thead><tbody>${GZ.zones.map(z => `<tr><td class="s">${z.color === 'green' ? 'GREEN · GO' : z.color === 'red' ? 'RED · WAIT' : 'YELLOW · CHECK'}</td><td class="mono">${z.stop}%</td><td class="mono">${z.pnl >= 0 ? '+' : '−'}${Math.abs(z.pnl)}%</td><td class="mono">${z.shareEntry}%</td><td class="mono s">${z.n}</td></tr>`).join('')}</tbody></table>
+    ${RMd.gauge && RMd.gauge.variants && RMd.gauge.variants.V6 ? (() => { const GZ = RMd.gauge.variants.V6, GM = RMd.gauge.variants.V3, A = RMd.strategies[0] || {}; return `<table><thead><tr><th>Gauge colour at the entry hour</th><th>stopped</th><th>avg P&amp;L</th><th>of entry hours</th><th>cases</th></tr></thead><tbody>${GZ.zones.map(z => `<tr><td class="s">${z.color === 'green' ? 'GREEN · GO' : z.color === 'red' ? 'RED · WAIT' : 'YELLOW · CHECK'}</td><td class="mono">${z.stop}%</td><td class="mono">${z.pnl >= 0 ? '+' : '−'}${Math.abs(z.pnl)}%</td><td class="mono">${z.shareEntry}%</td><td class="mono s">${z.n}</td></tr>`).join('')}</tbody></table>
     <table><thead><tr><th>Rule tested, ${A.nights} nights</th><th>trades</th><th>stopped</th><th>avg</th><th>total</th></tr></thead><tbody><tr><td class="s">sell every night at 22:30 IST</td><td class="mono">${A.trades}</td><td class="mono">${A.stop}%</td><td class="mono">${A.avg}%</td><td class="mono">${A.total}</td></tr>${GZ.strategies.filter(x => /^(first green|not red)/.test(x.name)).map(x => `<tr><td class="s">${esc(x.name)}</td><td class="mono">${x.trades}</td><td class="mono">${x.stop}%</td><td class="mono">${x.avg}%</td><td class="mono">${x.total}</td></tr>`).join('')}${GZ.strategies.filter(x => /last 30 days/.test(x.name)).map(x => `<tr><td class="s">${esc(x.name.trim())}</td><td class="mono">${x.trades}/${x.nights}</td><td class="mono">${x.stop}%</td><td class="mono">${x.avg}%</td><td class="mono">${x.total}</td></tr>`).join('')}</tbody></table>
     <span class="s">Green hours were stopped ${GZ.zones.find(z => z.color === 'green').stop}% of the time against ${GZ.zones.find(z => z.color === 'red').stop}% for red, so the line separates good from bad hours, but skill is modest (AUC ${GZ.auc}; 0.5 would be no skill; the plain risk model scores ${RMd.wfAuc.logistic}). Waiting for the first green hour trades fewer nights and gives a smaller total than selling every night; "not red at 22:30" keeps most of the total with fewer stops. The last 30 days were a calm month where selling every night also did well, so it proves little either way.</span>
+    ${RMd.sessions ? (() => { const H = RMd.sessions.hours, g = (a, b) => { const r = H.filter(x => a <= b ? x.utc >= a && x.utc <= b : x.utc >= a || x.utc <= b), n = r.reduce((t, x) => t + x.n, 0); return { stop: (r.reduce((t, x) => t + x.stop * x.n, 0) / n).toFixed(1), avg: (r.reduce((t, x) => t + x.avg * x.n, 0) / n).toFixed(1) }; }, rows = [['22:30–02:30', 'your entry window', g(17, 20)], ['02:30–11:30', 'quiet hours, outside your plan', g(21, 5)], ['11:30–19:30', 'late Asia, London, early New York: do not sell', g(6, 13)], ['19:30–22:30', 'New York open and peak: the fear is still forming', g(14, 16)]]; return `<table><thead><tr><th>Entry hour (IST)</th><th>stopped</th><th>avg P&amp;L</th></tr></thead><tbody>${rows.map(r => `<tr><td class="s">${r[0]} · ${r[1]}</td><td class="mono">${r[2].stop}%</td><td class="mono">${r[2].avg}%</td></tr>`).join('')}</tbody></table><span class="s">Why the line is grey outside the entry window: entries between 11:30 and 22:30 IST were stopped far more often. The gauge only shows GO, CHECK or WAIT from 22:30 IST (and while a trade is held).</span>`; })() : ''}
+    ${RMd.sessions ? `<table><thead><tr><th>Big-move signal (entry hours)</th><th>stopped within 3 h</th><th>vs normal</th><th>cases</th></tr></thead><tbody>${RMd.sessions.detectors.filter(d => d.scope === 'entry hours' && !/squeeze|NOTHING/.test(d.name)).map(d => `<tr><td class="s">${esc(d.name)}</td><td class="mono">${d.stop3h}%</td><td class="mono">×${d.lift}</td><td class="mono s">${d.n}</td></tr>`).join('')}</tbody></table><span class="s">Normal is ${(RMd.sessions.detectors.find(d => d.scope === 'entry hours') || {}).base}% stopped within 3 hours. These signals show a big move that is already starting; speed above 1.5 and a one-hour range of 3× normal are the strongest. Nothing I tested predicts a move before it starts (a squeeze-then-break test found only 2 cases), so the gauge raises the line when the move is visible, it does not forecast it.</span>` : ''}
     ${GM && RMd.gauge.momentum ? `<span class="s"><b>Momentum</b> (your idea: lift the line fast when indicators accelerate, drop it fast when they are spent): tested and not used to move the line. With it the ranking got worse (AUC ${GM.auc} against ${GZ.auc}); hours where momentum alone pushed the line to red were stopped ${RMd.gauge.momentum[1].stop}% (${RMd.gauge.momentum[1].n} cases) against about 23% for all hours, and hours where it released the line to green were stopped ${RMd.gauge.momentum[0].stop}% (${RMd.gauge.momentum[0].n} cases). The legend still shows "momentum building / exhausting" as information.</span>` : ''}
     ${(() => { const R = GZ.recent || []; return R.length ? `<table><thead><tr><th>Last 30 nights</th><th>22:30 colour</th><th>22:30 result</th><th>first green hour</th></tr></thead><tbody>${R.map(r => `<tr><td class="s">${r.date}</td><td class="mono">${r.c0 || '—'} ${r.L0 != null ? r.L0 : ''}</td><td class="mono">${r.stop0 ? 'STOPPED' : (r.pnl0 >= 0 ? '+' : '−') + Math.abs(r.pnl0 || 0) + '%'}</td><td class="mono">${r.firstGreen == null ? 'none' : '+' + r.firstGreen + 'h ' + (r.stopG ? 'STOPPED' : (r.pnlG >= 0 ? '+' : '−') + Math.abs(r.pnlG) + '%')}</td></tr>`).join('')}</tbody></table>` : ''; })()}
     ${(() => { const SL = W.v152 && W.v152.shadow ? W.v152.shadow() : []; return SL.length ? `<table><thead><tr><th>Your own log: gauge at 22:30 IST</th><th>colour</th><th>level</th></tr></thead><tbody>${SL.slice(0, 14).map(r => `<tr><td class="s">${r.d}</td><td class="mono">${r.c}</td><td class="mono">${r.L}</td></tr>`).join('')}</tbody></table>` : '<span class="s">From tonight the desk logs the gauge colour at 22:30 IST every weekday, so real evidence builds up here.</span>'; })()}`; })() : ''}
@@ -49403,30 +49405,33 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           if (i === n - 1) parts = { raw: R.z, items: R.items.sort((a, b) => b.contrib - a.contrib), priceOnly: !(iv > 0), nBack: R.items.length };
         }
         let last = null, li = -1; for (let i = n - 1; i >= 0; i--) if (hourScore[i] != null) { last = hourScore[i]; li = i; break; }
-        /* ENTRY GAUGE (rules and weights exactly as in backend/scripts/fiveyear_riskadx_v2.mjs, variant V2): the share of failed checks, weighted by your priority order,
-           blended with the risk model. Rises at once; falls only after two better hours in a row. Green needs the five main checks and at most one minor one. */
-        let gL = null, gBetter = 0; const gHist = new Array(n).fill(null);
-        const lt = (a, b) => a != null && b != null && a < b;
+        /* ENTRY GAUGE (variant V6 of backend/scripts/fiveyear_riskadx_v2.mjs): soft checks weighted by your priority order (IV vs speed first), blended with the risk model,
+           a big-move burst term, asymmetric smoothing (rises fast, falls slowly) and a colour state machine: red from 66 (back to yellow under 55), green only after two hours under 30
+           with the five main checks passing (back to yellow over 42). Session: the colour only counts in the entry window; the other hours are grey. */
+        let gL = null, gState = 'yellow', gCnt = 0; const gHist = new Array(n).fill(null), cl = x => Math.max(0, Math.min(1, x));
+        const rangeOf = j => hrs[j] && hrs[j].c > 0 ? (hrs[j].hi - hrs[j].lo) / hrs[j].c : null;
         const hourState = hourScore.map((v, i) => {
           const f = hourF[i]; if (v == null || !f) return null; const J = hourJ[i], scp = i >= 3 ? hourScore[i - 3] : null, stage = J ? J.stage : 'unknown', spike = J ? J.spike : 0;
-          const ok = { spd: lt(f.spd, 1), model: v <= 25, fear: !!J && stage !== 'holding', rise: scp == null || v - scp < 2, vov: !(stage === 'crush' || (J && J.vovUp && spike >= 2)), rv: lt(f.rv, f.atm), edge: f.edge != null && f.edge > 0, adx: lt(f.adx, 25) };
-          let failW = 0; for (const k in GAW) if (!ok[k]) failW += GAW[k];
+          const soft = { spd: f.spd == null ? 1 : cl((f.spd - 0.9) / 0.2), model: cl((v - 20) / 10), fear: (stage === 'holding' || stage === 'unknown') ? 1 : 0, rise: scp == null ? 0 : cl((v - scp - 1) / 2), vov: (stage === 'crush' || (J && J.vovUp && spike >= 2)) ? 1 : 0, rv: (f.rv == null || !(f.atm > 0)) ? 1 : cl((f.rv / f.atm - 0.9) / 0.2), edge: f.edge == null ? 1 : cl((1 - f.edge) / 2), adx: f.adx == null ? 1 : cl((f.adx - 22) / 6) };
+          let failS = 0; for (const k in GAW) failS += GAW[k] * soft[k];
+          let rr = null; { let t = 0, c = 0; for (let q = 1; q <= 24; q++) { const r = rangeOf(i - q); if (r != null) { t += r; c++; } } const last = rangeOf(i - 1); if (c && last != null) rr = last / (t / c); if (i === n - 1 && c) { const cur = rangeOf(i); if (cur != null) rr = Math.max(rr || 0, cur / (t / c)); } }
           const veto = stage === 'holding' || (f.spd != null && f.spd >= 1.5) || v > 50;
-          let raw = 100 * (0.65 * failW / GAWT + 0.35 * Math.min(1, v / 50)); if (veto) raw = Math.max(raw, 80);
-          if (gL == null || raw >= gL) { gL = raw; gBetter = 0; } else { gBetter++; if (gBetter >= 2) gL = raw; }
-          const failing = Object.keys(GAW).filter(k => !ok[k]), prim = GAPRIM.every(k => ok[k]), minor = failing.filter(k => !GAPRIM.includes(k)).length;
-          const color = gL >= 66 ? 'red' : (gL < 34 && prim && minor <= 1 && !veto) ? 'green' : 'yellow';
+          let raw = 100 * (0.65 * failS / GAWT + 0.35 * Math.min(1, v / 50)); if (rr != null) { if (rr >= 3) raw = Math.max(raw, 80); else if (rr >= 2) raw += 15; } if (veto) raw = Math.max(raw, 80); raw = Math.min(100, raw);
+          gL = gL == null ? raw : gL + (raw - gL) * (raw > gL ? 0.7 : 0.3);
+          const primOK = GAPRIM.every(k => soft[k] < 0.5) && !veto, minorBad = ['rv', 'edge', 'adx'].filter(k => soft[k] >= 0.5).length;
+          if (gState === 'red') { if (gL < 55) gState = 'yellow'; } else if (gL >= 66) gState = 'red';
+          if (gState === 'green') { if (gL > 42 || !primOK) gState = 'yellow'; gCnt = 0; } else if (gState === 'yellow') { if (gL < 30 && primOK && minorBad <= 1) { gCnt++; if (gCnt >= 2) { gState = 'green'; gCnt = 0; } } else gCnt = 0; } else gCnt = 0;
+          const color = gState, failing = Object.keys(GAW).filter(k => soft[k] >= 0.5);
           const why = failing.map(k => ({
             spd: 'IV vs speed ' + (f.spd != null ? f.spd.toFixed(2) : '—') + ' (needs below 1)', model: 'risk model ' + v.toFixed(0) + ' (needs 25 or lower)',
             fear: !J ? 'IV history still loading: cannot judge the New York fear' : 'NY fear: IV spiked ' + spike.toFixed(1) + '% and is still near its peak', rise: 'risk model rising +' + (v - scp).toFixed(1) + ' in 3 h',
             vov: stage === 'crush' ? 'IV falling hard while VoV rises (possible temporary crush)' : 'VoV rising after the New York spike', rv: 'RV above IV', edge: 'edge below zero', adx: 'ADX ' + (f.adx != null ? f.adx.toFixed(0) : '—') + ' (needs below 25)'
           }[k]));
-          /* momentum of the indicators (information only: in the 5-year test using it to move the line made the ranking worse) */
-          let build = 0, exhaust = 0; const f2 = hourF[i - 2], iv2 = dv[i - 2];
-          if (f2 && iv2 > 0 && dv[i] > 0) { const ivCh = (dv[i] - iv2) / iv2 * 100; build = [f.rvr != null && f2.rvr != null && f.rvr > f2.rvr * 1.15, f.rng6 > f2.rng6 * 1.2, ivCh >= 0.7, !!(J && J.vovUp)].filter(Boolean).length / 4; const hot = (f2.rvr != null && f2.rvr > 1) || f2.rng6 > 1.2; exhaust = hot ? [f.rvr != null && f2.rvr != null && f.rvr < f2.rvr * 0.85, f.rng6 < f2.rng6 * 0.8, ivCh <= -0.7].filter(Boolean).length / 3 : 0; }
+          const burst = rr == null ? null : rr >= 3 ? 'huge' : rr >= 2 ? 'big' : null; if (burst) why.unshift('BIG MOVE: the last hour moved ' + rr.toFixed(1) + '× its normal range');
+          const uh = new Date(hrs[i].t).getUTCHours(), phase = uh >= 17 && uh <= 20 ? 'entry' : (uh >= 21 || uh <= 1) ? 'hold' : (uh >= 13 && uh <= 16) ? 'ny' : 'closed';   // hour start, UTC: 17-20 = 22:30-02:30 IST
           gHist[i] = gL; const L3 = i >= 3 ? gHist[i - 3] : null, dL = L3 != null ? gL - L3 : null;
           const dir = dL == null ? null : dL >= 5 ? 'rising' : dL <= -5 ? 'falling' : 'flat';
-          return { tone: color === 'green' ? 'go' : color === 'red' ? (gL >= 80 ? 'danger' : 'wait') : 'check', color, L: gL, raw, dir, dL, why, failing, ok, J, v, mom: build >= 0.5 ? 'building' : exhaust >= 2 / 3 ? 'exhausting' : 'steady', build, exhaust };
+          return { tone: color === 'green' ? 'go' : color === 'red' ? (gL >= 80 ? 'danger' : 'wait') : 'check', color, L: gL, raw, dir, dL, why, failing, soft, J, v, rr, burst, phase };
         });
         let d3 = null; if (li >= 3 && hourScore[li - 3] != null) d3 = last - hourScore[li - 3];
         const LV = liveItems(), flags = LV.filter(x => x.risk >= 70);
@@ -49549,7 +49554,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const R = posNow(), box = $('v152Hold');
         if (!R) { HW.rank = 0; HW.open = false; if (box && !box.hidden && !/back to GO/i.test(box.textContent)) box.hidden = true; return; }
         const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; if (!V) return;
-        const rank = V.color === 'red' ? (V.L >= 80 ? 3 : 2) : V.color === 'yellow' ? 1 : 0;
+        const rank = V.burst === 'huge' ? 3 : V.color === 'red' ? Math.max(V.L >= 80 ? 3 : 2, V.burst ? 2 : 0) : V.burst ? 2 : V.color === 'yellow' ? 1 : 0;
         if (!HW.open) { HW.open = true; HW.rank = Math.min(rank, 1); }   // already yellow when the trade opens is not a new warning; red is
         const lg = (R.legs || []).filter(l => l.x != null), mx = lg.length ? Math.max(...lg.map(l => l.x)) : null, legTxt = mx != null ? ' Worst leg is at ' + mx.toFixed(1) + '× its entry premium (stop at 2×).' : '';
         if (rank > HW.rank) {
@@ -49648,7 +49653,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (k === 'spr') { o.a = H('#6FA0D8', pf(2, ' pt')); o.b = Ln('#B48CF0', 2, pf(1, '%'), 'left'); }
         if (k === 'ton') { o.c = Ln(hx('#8FA3B5', .9), 1, pf(2, '%')); o.c.applyOptions({ lineStyle: 2, lastValueVisible: true, title: 'clock' }); o.v = Ln(hx('#8FA3B5', .45), 1, pf(2, '%')); o.v.applyOptions({ lineStyle: 3, lastValueVisible: false }); o.a = Ln('#22A06B', 2, pf(2, '%')); o.a.applyOptions({ crosshairMarkerVisible: true }); }
         if (k === 'risk') {
-          o.a = Ln('#22A06B', 2.2, pf(0)); o.rmax = 100;
+          o.a = Ln('#22A06B', 3.5, pf(0)); o.rmax = 100; o.prim = new Prim(sc => drawGauge(o, sc), 'bottom'); o.a.attachPrimitive(o.prim);
           o.a.applyOptions({ priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: o.rmax } }) });
           o.a.createPriceLine({ price: 100, color: 'rgba(224, 82, 82, 1)', lineWidth: 3, lineStyle: 0, axisLabelVisible: false, title: '' }); o.a.createPriceLine({ price: 0, color: 'rgba(34, 160, 107, 1)', lineWidth: 3, lineStyle: 0, axisLabelVisible: false, title: '' }); o.a.createPriceLine({ price: 66, color: 'rgba(224, 82, 82, 0.8)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '▲ WAIT' }); o.a.createPriceLine({ price: 34, color: 'rgba(34, 160, 107, 0.8)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '▼ GO' });
         }
@@ -49910,6 +49915,19 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         }
         return out.sort((p, q) => p.i - q.i);
       }
+      /* the gauge lane: a red WAIT zone at the top, a yellow CHECK band, a green GO zone at the bottom, and grey cover over the hours where selling is not allowed */
+      function drawGauge(o, sc) {
+        const ctx = sc.context, hr = sc.horizontalPixelRatio, vr = sc.verticalPixelRatio, W_ = sc.bitmapSize.width, y = v => { const c = o.a.priceToCoordinate(v); return c == null ? null : c * vr; };
+        const y100 = y(100), y66 = y(66), y34 = y(34), y0 = y(0); if ([y100, y66, y34, y0].some(v => v == null)) return;
+        const fill = (a, b, c) => { ctx.fillStyle = c; ctx.fillRect(0, a, W_, b - a); };
+        fill(y100, y66, 'rgba(224,82,82,.16)'); fill(y66, y34, 'rgba(224,160,48,.09)'); fill(y34, y0, 'rgba(34,160,107,.18)');
+        ctx.font = '700 ' + Math.round(11 * hr) + 'px system-ui,sans-serif'; ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(185,28,28,.85)'; ctx.fillText('WAIT · DO NOT SELL', 8 * hr, y100 + 6 * vr);
+        ctx.textBaseline = 'bottom'; ctx.fillStyle = 'rgba(21,128,61,.95)'; ctx.fillText('SELL ZONE · GO', 8 * hr, y0 - 6 * vr);
+        const ts = o.ch && o.ch.timeScale ? o.ch.timeScale() : null; if (!ts || !o.runs) return;
+        for (const r of o.runs) { const ca = ts.logicalToCoordinate(r.i0), cb = ts.logicalToCoordinate(r.i1); if (ca == null || cb == null) continue; const bw = r.i1 > r.i0 ? Math.abs(cb - ca) / (r.i1 - r.i0) : 2, xa = ca - bw / 2, xb = cb + bw / 2; const x0 = Math.max(0, xa * hr), x1 = Math.min(W_, xb * hr); if (x1 <= x0) continue;
+          ctx.fillStyle = 'rgba(120,130,142,.30)'; ctx.fillRect(x0, y100, x1 - x0, y0 - y100);
+          if (x1 - x0 > 90 * hr) { ctx.fillStyle = 'rgba(70,80,92,.9)'; ctx.textBaseline = 'middle'; ctx.fillText(r.phase === 'ny' ? 'NY OPEN · NO ENTRY YET' : 'NO ENTRY · ASIA / LONDON', x0 + 8 * hr, (y100 + y0) / 2); } }
+      }
       function drawDiv(o, sc) {
         if (!o.div || !o.div.length) return; const ts = o.ch.timeScale(), ctx = sc.context, hr = sc.horizontalPixelRatio, vr = sc.verticalPixelRatio; ctx.lineWidth = Math.max(1.5, 1.5 * hr);
         for (const d of o.div) {
@@ -50132,18 +50150,24 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           setLeg(o, `<b>TONIGHT</b>${real != null ? `<span class="${real >= 0 ? 'g' : 'r'}">${real >= 0 ? '+' : '−'}${Math.abs(real).toFixed(2)} ${real >= 0 ? 'above clock · ' + (hIST >= 21 || hIST < 3 ? 'sell OK' : 'sell OK from 21:00') : 'below clock · wait'}</span>` : `<span class="m">${RR ? 'clock path starts once tonight has 45 min of IV' : 'loading'}</span>`}${ivN != null ? `<span>${src} IV ${ivN.toFixed(2)}%</span>` : ''}${clN != null ? `<span class="m">clock ${clN.toFixed(2)}%</span>` : ''}<span class="m">dashed = clock path · dotted = usual path · ▲▼ = crossover</span>`);
         }
         if (k === 'risk') {
-          const RR = W.v151Risk && W.v151Risk.compute(B), GR = '#22A06B', RD = '#E05252', DK = '#B91C1C', AM = '#E0A030'; if (!RR) { st(o, ''); setLeg(o, '<b>ENTRY GAUGE</b><span class="m">loading the 5-year model and price bars…</span>'); return; }
-          o.rmax = 100;   // fixed 0-100 axis: WAIT at the top, GO at the bottom
-          const pts = B.b.map((bar, i) => { const S = RR.state && RR.state[i]; if (!S) return blank(B, i); vals[i] = S.L; return { time: bar.time, value: S.L, color: S.color === 'green' ? GR : S.color === 'red' ? (S.L >= 80 ? DK : RD) : AM }; });
-          o.a.setData(pts);
-          const V = W.v151Risk.verdict(RR), cls = !V ? '' : V.color === 'green' ? 'g' : V.color === 'red' ? 'r' : 'a', P = RR.parts, RMg = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V2;
+          const RR = W.v151Risk && W.v151Risk.compute(B), GR = '#22A06B', RD = '#E05252', DK = '#B91C1C', AM = '#E0A030', GY = '#9AA7B4'; if (!RR) { st(o, ''); setLeg(o, '<b>ENTRY GAUGE</b><span class="m">loading the 5-year model and price bars…</span>'); return; }
+          o.rmax = 100;   // fixed 0-100 axis: WAIT zone at the top, GO zone at the bottom
+          const runs = []; let cur = null;
+          const pts = B.b.map((bar, i) => {
+            const S = RR.state && RR.state[i]; if (!S) return blank(B, i); vals[i] = S.L;
+            const live = S.phase === 'entry' || S.phase === 'hold', col = !live ? GY : S.color === 'green' ? GR : S.color === 'red' ? (S.L >= 80 ? DK : RD) : AM;
+            if (!live) { if (cur && cur.phase === S.phase) cur.i1 = i; else { cur = { i0: i, i1: i, phase: S.phase }; runs.push(cur); } } else cur = null;
+            return { time: bar.time, value: S.L, color: col };
+          });
+          o.runs = runs; o.a.setData(pts); try { o.prim && o.prim.req(); } catch (e) { }
+          const V = W.v151Risk.verdict(RR), live = V && (V.phase === 'entry' || V.phase === 'hold'), cls = !V ? '' : !live ? 'm' : V.color === 'green' ? 'g' : V.color === 'red' ? 'r' : 'a', P = RR.parts, RMg = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V6;
           const arrow = !V || V.dL == null ? '' : V.dir === 'rising' ? '↑' : V.dir === 'falling' ? '↓' : '→', acls = !V || V.dL == null ? 'm' : V.dir === 'rising' ? 'r' : V.dir === 'falling' ? 'g' : 'm';
-          const word = !V ? '' : V.color === 'green' ? 'GO · fine to sell' : V.color === 'red' ? (V.L >= 80 ? 'WAIT · danger' : 'WAIT') : 'CHECK · not all agree';
+          const base = !V ? '' : V.color === 'green' ? 'GO' : V.color === 'red' ? 'WAIT' : 'CHECK', word = !V ? '' : V.phase === 'entry' ? base : V.phase === 'hold' ? 'HOLDING · ' + base : V.phase === 'ny' ? 'NO ENTRY · NY fear read' : 'NO ENTRY · session';
           const J = V && V.J, sp = J ? (J.spike >= 0 ? '+' : '−') + Math.abs(J.spike).toFixed(1) + '%' : '', stg = !J ? '' : J.stage === 'calm' ? 'NY fear: none' : J.stage === 'holding' ? 'NY fear ' + sp + ': IV still near its peak' : J.stage === 'real' ? 'NY fear ' + sp + ' fading: VoV falling = real IV fall' : J.stage === 'crush' ? 'IV falling hard, VoV rising: crush may reverse' : 'NY spike ' + sp + ', mixed signals';
-          const zs = RMg && V ? (RMg.zones.find(z => z.color === V.color) || null) : null;
+          const zs = RMg && V && live ? (RMg.zones.find(z => z.color === V.color) || null) : null;
           const fl = P && P.flags && P.flags.length ? P.flags.map(x => ((W.v151Risk.data() && W.v151Risk.data().order.find(q => q.k === x.k)) || {}).l + ' ' + x.txt).join(' · ') : '';
           st(o, cls);
-          setLeg(o, `<b>ENTRY GAUGE</b>${V ? `<span class="${cls}">${V.L.toFixed(0)} ${V.color === 'green' ? 'GO' : V.color === 'red' ? 'WAIT' : 'CHECK'}</span><span class="${acls}">${arrow}${V.dL != null ? (V.dL >= 0 ? '+' : '−') + Math.abs(V.dL).toFixed(0) + '/3h' : ''}</span><span class="${cls}">${word}</span>` : '<span class="m">—</span>'}${V && V.failing.length ? `<span class="m">waiting for: ${esc(V.why.slice(0, 2).join(' · '))}${V.why.length > 2 ? ' +' + (V.why.length - 2) : ''}</span>` : ''}${stg ? `<span class="${J.stage === 'holding' ? 'r' : J.stage === 'real' ? 'g' : 'm'}">${esc(stg)}</span>` : ''}${V && V.mom !== 'steady' ? `<span class="${V.mom === 'building' ? 'r' : 'g'}">momentum ${V.mom}</span>` : ''}${zs ? `<span class="m">${zs.stop}% stopped in ${zs.color} hours (5-yr, out-of-sample)</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
+          setLeg(o, `<b>ENTRY GAUGE</b>${V ? `<span class="${cls}">${V.L.toFixed(0)} ${word}</span><span class="${acls}">${arrow}${V.dL != null ? (V.dL >= 0 ? '+' : '−') + Math.abs(V.dL).toFixed(0) + '/3h' : ''}</span>` : '<span class="m">—</span>'}${V && V.burst ? `<span class="r">BIG MOVE · last hour ${V.rr.toFixed(1)}× normal range</span>` : ''}${V && V.phase === 'entry' && V.failing.length ? `<span class="m">waiting for: ${esc(V.why.filter(x => !/^BIG MOVE/.test(x)).slice(0, 2).join(' · '))}</span>` : ''}${stg ? `<span class="${J.stage === 'holding' ? 'r' : J.stage === 'real' ? 'g' : 'm'}">${esc(stg)}</span>` : ''}${zs ? `<span class="m">${zs.stop}% stopped in ${zs.color} hours (5-yr, out-of-sample)</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
           o.last = V ? V.L : null; o.meaning = null;
         }
         if (k === 'macro') {
