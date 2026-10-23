@@ -481,6 +481,7 @@
   <script src="data/entry_times.js"></script>
   <script src="data/indicator_rank_dynamic.js"></script>
   <script src="data/risk_model.js"></script>
+  <script src="data/impulse_study.js"></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <script id="v105_17Early">/* v105.17 · smooth + fast start (runs before every other script).
@@ -48924,6 +48925,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     <span class="s">Green hours were stopped ${GZ.zones.find(z => z.color === 'green').stop}% of the time against ${GZ.zones.find(z => z.color === 'red').stop}% for red, so the line separates good from bad hours, but skill is modest (AUC ${GZ.auc}; 0.5 would be no skill; the plain risk model scores ${RMd.wfAuc.logistic}). Waiting for the first green hour trades fewer nights and gives a smaller total than selling every night; "not red at 22:30" keeps most of the total with fewer stops. The last 30 days were a calm month where selling every night also did well, so it proves little either way.</span>
     ${RMd.sessions ? (() => { const H = RMd.sessions.hours, g = (a, b) => { const r = H.filter(x => a <= b ? x.utc >= a && x.utc <= b : x.utc >= a || x.utc <= b), n = r.reduce((t, x) => t + x.n, 0); return { stop: (r.reduce((t, x) => t + x.stop * x.n, 0) / n).toFixed(1), avg: (r.reduce((t, x) => t + x.avg * x.n, 0) / n).toFixed(1) }; }, rows = [['22:30–02:30', 'your entry window', g(17, 20)], ['02:30–11:30', 'quiet hours, outside your plan', g(21, 5)], ['11:30–19:30', 'late Asia, London, early New York: do not sell', g(6, 13)], ['19:30–22:30', 'New York open and peak: the fear is still forming', g(14, 16)]]; return `<table><thead><tr><th>Entry hour (IST)</th><th>stopped</th><th>avg P&amp;L</th></tr></thead><tbody>${rows.map(r => `<tr><td class="s">${r[0]} · ${r[1]}</td><td class="mono">${r[2].stop}%</td><td class="mono">${r[2].avg}%</td></tr>`).join('')}</tbody></table><span class="s">Why the line is grey outside the entry window: entries between 11:30 and 22:30 IST were stopped far more often. The gauge only shows GO, CHECK or WAIT from 22:30 IST (and while a trade is held).</span>`; })() : ''}
     ${RMd.sessions ? `<table><thead><tr><th>Big-move signal (entry hours)</th><th>stopped within 3 h</th><th>vs normal</th><th>cases</th></tr></thead><tbody>${RMd.sessions.detectors.filter(d => d.scope === 'entry hours' && !/squeeze|NOTHING/.test(d.name)).map(d => `<tr><td class="s">${esc(d.name)}</td><td class="mono">${d.stop3h}%</td><td class="mono">×${d.lift}</td><td class="mono s">${d.n}</td></tr>`).join('')}</tbody></table><span class="s">Normal is ${(RMd.sessions.detectors.find(d => d.scope === 'entry hours') || {}).base}% stopped within 3 hours. These signals show a big move that is already starting; speed above 1.5 and a one-hour range of 3× normal are the strongest. Nothing I tested predicts a move before it starts (a squeeze-then-break test found only 2 cases), so the gauge raises the line when the move is visible, it does not forecast it.</span>` : ''}
+    ${window.__STRANGLE_IMPULSE ? (() => { const IM = window.__STRANGLE_IMPULSE, rp = IM.replay || [], first = rp.find(x => x.r >= 1.5), peak = rp.reduce((m, x) => x.r > (m ? m.r : 0) ? x : m, null); return `<table><thead><tr><th>Impulse watch (${IM.days} days of 1-minute BTC)</th><th>big swing follows</th><th>vs normal</th><th>minutes</th></tr></thead><tbody>${IM.rows.map(r => `<tr><td class="s">${esc(r.name)}</td><td class="mono">${r.pct}%</td><td class="mono">×${r.lift}</td><td class="mono s">${r.n}</td></tr>`).join('')}</tbody></table><span class="s">A big swing = BTC spans ${esc(IM.bigMove)} in the next hour; ${IM.baseRate}% of all minutes are followed by one. In ${IM.episodes.n} big-candle episodes a warning (a fast impulse reading or a string of big candles) appeared in the 30 minutes before ${IM.episodes.warned} of them (${Math.round(IM.episodes.warned / IM.episodes.n * 100)}%), median lead ${IM.episodes.medianLead} minutes. The gauge now reads this live: a fast reading or two big candles in a row turns it red within seconds and sends the alert.${first ? ` <b>18 Oct 2026, 02:45 IST replay:</b> BTC was quiet (speed about ${rp[0] ? rp[0].r : ''}× normal) until ${first.ist}; the speed ratio crossed 1.5× at ${first.ist} (price ${first.price.toLocaleString('en-US')}) and reached ${peak ? peak.r : ''}× by ${peak ? peak.ist : ''}. The five minutes before it were calm, so nothing could warn earlier than about two minutes into that move.` : ''}</span>`; })() : ''}
     ${GM && RMd.gauge.momentum ? `<span class="s"><b>Momentum</b> (your idea: lift the line fast when indicators accelerate, drop it fast when they are spent): tested and not used to move the line. With it the ranking got worse (AUC ${GM.auc} against ${GZ.auc}); hours where momentum alone pushed the line to red were stopped ${RMd.gauge.momentum[1].stop}% (${RMd.gauge.momentum[1].n} cases) against about 23% for all hours, and hours where it released the line to green were stopped ${RMd.gauge.momentum[0].stop}% (${RMd.gauge.momentum[0].n} cases). The legend still shows "momentum building / exhausting" as information.</span>` : ''}
     ${(() => { const R = GZ.recent || []; return R.length ? `<table><thead><tr><th>Last 30 nights</th><th>22:30 colour</th><th>22:30 result</th><th>first green hour</th></tr></thead><tbody>${R.map(r => `<tr><td class="s">${r.date}</td><td class="mono">${r.c0 || '—'} ${r.L0 != null ? r.L0 : ''}</td><td class="mono">${r.stop0 ? 'STOPPED' : (r.pnl0 >= 0 ? '+' : '−') + Math.abs(r.pnl0 || 0) + '%'}</td><td class="mono">${r.firstGreen == null ? 'none' : '+' + r.firstGreen + 'h ' + (r.stopG ? 'STOPPED' : (r.pnlG >= 0 ? '+' : '−') + Math.abs(r.pnlG) + '%')}</td></tr>`).join('')}</tbody></table>` : ''; })()}
     ${(() => { const SL = W.v152 && W.v152.shadow ? W.v152.shadow() : []; return SL.length ? `<table><thead><tr><th>Your own log: gauge at 22:30 IST</th><th>colour</th><th>level</th></tr></thead><tbody>${SL.slice(0, 14).map(r => `<tr><td class="s">${r.d}</td><td class="mono">${r.c}</td><td class="mono">${r.L}</td></tr>`).join('')}</tbody></table>` : '<span class="s">From tonight the desk logs the gauge colour at 22:30 IST every weekday, so real evidence builds up here.</span>'; })()}`; })() : ''}
@@ -49465,8 +49467,51 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* the same score for whoever needs it without the lane (Decision page, clock): from the chart's own bars, cached 20 s */
       const LV = { at: 0, v: null };
       function live() { if (Date.now() - LV.at < 20000) return LV.v; LV.at = Date.now(); try { const R = W.paRes && W.paRes(); LV.v = R && R.bars && R.bars.length ? compute({ b: R.bars }) : null; } catch (e) { LV.v = null; } return LV.v; }
-      function verdict(R) { R = R || live(); if (!R || R.last == null || !R.lastState) return null; const S = R.lastState; return Object.assign({ score: R.last, d3: R.d3 }, S); }
-      W.v151Risk = { compute, live, rank, riskPct, scoreOf, meaning, modelScore, verdict, stateOf, data: RK, model: RM };
+      /* IMPULSE WATCH: the desk's impulse meter (BTC speed over 5 minutes against normal for this hour, minute by minute) plus a string of big 5-minute candles,
+         fed straight into the gauge so it reacts in seconds, not at the next hourly bar. Thresholds and hit rates: backend/scripts/impulse_study.mjs (data/impulse_study.js) */
+      function impWatch() {
+        const out = { ok: false, level: 0, text: '', chips: [] };
+        let I = null; try { I = W.impulseRead ? W.impulseRead() : null; } catch (e) { } if (!I || !I.ok) return out;
+        Object.assign(out, { ok: true, r: I.r, st: I.st, dir: I.dir, oneWay: !!I.oneWay, gate: I.gate, wait: I.wait });
+        const way = I.dir > 0 ? 'up' : I.dir < 0 ? 'down' : '';
+        let string = null, big = null;
+        try {
+          const src = W.rvIndexBars && W.rvIndexBars(); if (src && src.bars && src.bars.size > 300) {
+            const M5 = 300000, curK = Math.floor(Date.now() / M5) * M5, c5 = new Map();
+            for (const b of [...src.bars.values()].sort((a, b) => a.t - b.t).slice(-420)) { const k = Math.floor(b.t / M5) * M5; let c = c5.get(k); if (!c) { c = { t: k, o: b.o, h: b.h, l: b.l, c: b.c, n: 0 }; c5.set(k, c); } if (b.h > c.h) c.h = b.h; if (b.l < c.l) c.l = b.l; c.c = b.c; c.n++; }
+            const all = [...c5.values()].sort((a, b) => a.t - b.t), done = all.filter(c => c.t < curK && c.n >= 4), cur = all.find(c => c.t === curK);
+            if (done.length > 26) {
+              const rg = done.slice(-25, -1).map(c => c.h - c.l).sort((a, b) => a - b), med = rg[rg.length >> 1] || 0;
+              if (med > 0) {
+                const a = done[done.length - 2], b = done[done.length - 1], da = Math.sign(a.c - a.o), db = Math.sign(b.c - b.o), now = Date.now();
+                if ((a.h - a.l) >= 2 * med && (b.h - b.l) >= 2 * med && da === db && da !== 0 && now - b.t < 15 * 60000) string = { dir: db, x: Math.min(a.h - a.l, b.h - b.l) / med };
+                const lastBig = [b, a].find(c => (c.h - c.l) >= 3 * med && now - c.t < 15 * 60000); if (lastBig) big = { x: (lastBig.h - lastBig.l) / med, dir: Math.sign(lastBig.c - lastBig.o) };
+                if (cur && (cur.h - cur.l) >= 3 * med) big = { x: (cur.h - cur.l) / med, dir: Math.sign(cur.c - cur.o), forming: true };
+              }
+            }
+          }
+        } catch (e) { }
+        out.string = string; out.big = big;
+        const wd = d => d > 0 ? ' up' : d < 0 ? ' down' : '';
+        if (I.st >= 3) { out.level = 3; out.text = 'IMPULSE: BTC is moving ' + I.r.toFixed(1) + '× faster than normal' + (way ? ', ' + way : '') + (I.oneWay ? ', one way' : ''); }
+        else if (I.st === 2) { out.level = 2; out.text = 'FAST: BTC is moving ' + I.r.toFixed(1) + '× faster than normal' + (way ? ', ' + way : ''); }
+        if (string && out.level < 2) { out.level = 2; out.text = 'TWO BIG CANDLES IN A ROW' + wd(string.dir) + ' (each ' + string.x.toFixed(1) + '× the usual 5-minute range)'; }
+        else if (big && out.level < 2) { out.level = 2; out.text = (big.forming ? 'BIG CANDLE FORMING' : 'BIG CANDLE') + wd(big.dir) + ' (' + big.x.toFixed(1) + '× the usual 5-minute range)'; }
+        if (!out.level && I.r >= 1.5) { out.level = 1; out.text = 'SPEED RISING: ' + I.r.toFixed(1) + '× normal for this hour'; }
+        if (!out.level && !I.gate) { out.level = 1; out.text = 'GATE SHUT: BTC was fast ' + (I.wait ? 'under ' + I.wait + ' min ago' : 'minutes ago'); }
+        return out;
+      }
+      function verdict(R) {
+        R = R || live(); if (!R || R.last == null || !R.lastState) return null; const S = Object.assign({ score: R.last, d3: R.d3 }, R.lastState), imp = impWatch(); S.imp = imp;
+        if (imp.level > 0) {
+          const floor = imp.level >= 3 ? 90 : imp.level === 2 ? 75 : 55; S.L = Math.max(S.L, floor);
+          if (S.L >= 66) { S.color = 'red'; S.tone = S.L >= 80 ? 'danger' : 'wait'; } else if (S.color === 'green') { S.color = 'yellow'; S.tone = 'check'; }
+          S.why = [imp.text].concat(S.why.filter(x => x !== imp.text)); if (imp.level >= 2) { S.burst = imp.level >= 3 ? 'huge' : (S.burst || 'big'); S.rr = S.rr || 0; }
+          if (imp.level >= 2 && !S.failing.includes('impulse')) S.failing = S.failing.concat('impulse');
+        }
+        return S;
+      }
+      W.v151Risk = { compute, live, rank, impWatch, riskPct, scoreOf, meaning, modelScore, verdict, stateOf, data: RK, model: RM };
     })();
   </script>
   <script data-module="v152">
@@ -49564,6 +49609,22 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         } else if (rank === 0 && HW.rank > 0) { banner('ok', 'Gauge is back to GO', 'The warning has cleared (' + V.L.toFixed(0) + ').'); setTimeout(() => { const b = $('v152Hold'); if (b && /back to GO/i.test(b.textContent)) b.hidden = true; }, 20000); }
         HW.rank = rank;
       }
+      /* impulse watch: checked every 4 s, so a fast BTC move reaches you in seconds (the hourly gauge cannot) */
+      const IMPW = { lvl: 0, at: 0 };
+      function impTick() {
+        try {
+          const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; if (!V || !V.imp) return;
+          const I = V.imp, holding = !!posNow(), inWindow = V.phase === 'entry' || V.phase === 'hold';
+          if (!(holding || inWindow)) { IMPW.lvl = 0; return; }
+          if (I.level >= 2 && (I.level > IMPW.lvl || Date.now() - IMPW.at > 10 * 60000)) {
+            const IM = W.__STRANGLE_IMPULSE, row = IM && IM.rows ? IM.rows.find(r => I.level >= 3 ? /IMPULSE \(top 1/.test(r.name) : /FAST/.test(r.name)) : null;
+            const lvl = I.level >= 3 ? 'danger' : 'bad', ttl = holding ? 'BTC IS MOVING FAST while you are short' : 'BTC is moving fast: entry gate shut';
+            const body = I.text + '.' + (holding ? ' Check your legs and your stop now.' : ' Do not sell until it settles (15 minutes without a fast reading).') + (row ? ' In the ' + IM.days + '-day test a reading like this was followed by a 0.7% or bigger swing within the hour ' + row.pct + '% of the time, against ' + IM.baseRate + '% normally.' : '');
+            banner(lvl, ttl, body); ping(lvl, ttl, body); IMPW.lvl = I.level; IMPW.at = Date.now();
+          } else if (I.level < IMPW.lvl) IMPW.lvl = I.level;
+        } catch (e) { }
+      }
+      setInterval(impTick, 4000);
       setInterval(() => { try { check(); } catch (e) { } }, 20000); setTimeout(() => { try { check(); } catch (e) { } }, 8000);
       W.v152 = { layouts: all, apply: applyOn, check, state: () => HW, shadow: () => LSg(SKEY, []) };
     })();
@@ -50159,15 +50220,17 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             if (!live) { if (cur && cur.phase === S.phase) cur.i1 = i; else { cur = { i0: i, i1: i, phase: S.phase }; runs.push(cur); } } else cur = null;
             return { time: bar.time, value: S.L, color: col };
           });
+          const V = W.v151Risk.verdict(RR);
+          if (V && V.imp && V.imp.level > 0) { for (let q = pts.length - 1; q >= 0; q--) if (pts[q] && pts[q].value != null) { if ((V.phase === 'entry' || V.phase === 'hold')) pts[q] = { time: pts[q].time, value: V.L, color: V.color === 'red' ? (V.L >= 80 ? DK : RD) : V.color === 'green' ? GR : AM }; else pts[q] = { time: pts[q].time, value: pts[q].value, color: pts[q].color }; break; } }
           o.runs = runs; o.a.setData(pts); try { o.prim && o.prim.req(); } catch (e) { }
-          const V = W.v151Risk.verdict(RR), live = V && (V.phase === 'entry' || V.phase === 'hold'), cls = !V ? '' : !live ? 'm' : V.color === 'green' ? 'g' : V.color === 'red' ? 'r' : 'a', P = RR.parts, RMg = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V6;
+          const _unused = null, live = V && (V.phase === 'entry' || V.phase === 'hold'), cls = !V ? '' : !live ? 'm' : V.color === 'green' ? 'g' : V.color === 'red' ? 'r' : 'a', P = RR.parts, RMg = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V6;
           const arrow = !V || V.dL == null ? '' : V.dir === 'rising' ? '↑' : V.dir === 'falling' ? '↓' : '→', acls = !V || V.dL == null ? 'm' : V.dir === 'rising' ? 'r' : V.dir === 'falling' ? 'g' : 'm';
           const base = !V ? '' : V.color === 'green' ? 'GO' : V.color === 'red' ? 'WAIT' : 'CHECK', word = !V ? '' : V.phase === 'entry' ? base : V.phase === 'hold' ? 'HOLDING · ' + base : V.phase === 'ny' ? 'NO ENTRY · NY fear read' : 'NO ENTRY · session';
           const J = V && V.J, sp = J ? (J.spike >= 0 ? '+' : '−') + Math.abs(J.spike).toFixed(1) + '%' : '', stg = !J ? '' : J.stage === 'calm' ? 'NY fear: none' : J.stage === 'holding' ? 'NY fear ' + sp + ': IV still near its peak' : J.stage === 'real' ? 'NY fear ' + sp + ' fading: VoV falling = real IV fall' : J.stage === 'crush' ? 'IV falling hard, VoV rising: crush may reverse' : 'NY spike ' + sp + ', mixed signals';
           const zs = RMg && V && live ? (RMg.zones.find(z => z.color === V.color) || null) : null;
           const fl = P && P.flags && P.flags.length ? P.flags.map(x => ((W.v151Risk.data() && W.v151Risk.data().order.find(q => q.k === x.k)) || {}).l + ' ' + x.txt).join(' · ') : '';
           st(o, cls);
-          setLeg(o, `<b>ENTRY GAUGE</b>${V ? `<span class="${cls}">${V.L.toFixed(0)} ${word}</span><span class="${acls}">${arrow}${V.dL != null ? (V.dL >= 0 ? '+' : '−') + Math.abs(V.dL).toFixed(0) + '/3h' : ''}</span>` : '<span class="m">—</span>'}${V && V.burst ? `<span class="r">BIG MOVE · last hour ${V.rr.toFixed(1)}× normal range</span>` : ''}${V && V.phase === 'entry' && V.failing.length ? `<span class="m">waiting for: ${esc(V.why.filter(x => !/^BIG MOVE/.test(x)).slice(0, 2).join(' · '))}</span>` : ''}${stg ? `<span class="${J.stage === 'holding' ? 'r' : J.stage === 'real' ? 'g' : 'm'}">${esc(stg)}</span>` : ''}${zs ? `<span class="m">${zs.stop}% stopped in ${zs.color} hours (5-yr, out-of-sample)</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
+          setLeg(o, `<b>ENTRY GAUGE</b>${V ? `<span class="${cls}">${V.L.toFixed(0)} ${word}</span><span class="${acls}">${arrow}${V.dL != null ? (V.dL >= 0 ? '+' : '−') + Math.abs(V.dL).toFixed(0) + '/3h' : ''}</span>` : '<span class="m">—</span>'}${V && V.imp && V.imp.level > 0 ? `<span class="${V.imp.level >= 2 ? 'r' : 'a'}">${esc(V.imp.text)}</span>` : V && V.burst ? `<span class="r">BIG MOVE · last hour ${V.rr.toFixed(1)}× normal range</span>` : ''}${V && V.phase === 'entry' && V.failing.length ? `<span class="m">waiting for: ${esc(V.why.filter(x => !/^BIG MOVE/.test(x)).slice(0, 2).join(' · '))}</span>` : ''}${stg ? `<span class="${J.stage === 'holding' ? 'r' : J.stage === 'real' ? 'g' : 'm'}">${esc(stg)}</span>` : ''}${zs ? `<span class="m">${zs.stop}% stopped in ${zs.color} hours (5-yr, out-of-sample)</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
           o.last = V ? V.L : null; o.meaning = null;
         }
         if (k === 'macro') {
