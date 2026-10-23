@@ -46537,6 +46537,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       /* ---------- P&L from Delta (live) ---------- */
       const P = { rows: null, at: 0, err: null, busy: false, range: '365', failed: 0 };
+      try { const c = JSON.parse(localStorage.getItem('v133_rows') || 'null'); if (c && Array.isArray(c.rows) && c.rows.length) { P.rows = c.rows; P.at = c.at || 0; P.n = c.n || 0; } } catch (e) { }   // last read stays on screen (and feeds the calendar) while Delta is re-read
       const parseSym = s => { const m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(String(s || '')); return m ? { type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3] } : null; };
       const ts = v => { if (v == null) return NaN; if (typeof v === 'number') return v > 1e14 ? v / 1000 : v > 1e11 ? v : v * 1000; const n = +v; if (fin(n)) return ts(n); return Date.parse(v); };
       const settleMs = exp => Date.parse(exp + 'T12:00:00Z');
@@ -46587,8 +46588,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             if (c.type === 'C') { r.call += c.cash; r.Kc = r.Kc ? r.Kc + '/' + c.K : c.K; } else { r.put += c.cash; r.Kp = r.Kp ? r.Kp + '/' + c.K : c.K; } r.lots = Math.max(r.lots, c.sell);
           }
           P.rows = [...by.values()].map(r => ({ ...r, pnl: r.call + r.put })).sort((a, b) => a.first - b.first); P.at = Date.now(); P.n = all.length;
+          try { localStorage.setItem('v133_rows', JSON.stringify({ at: P.at, n: P.n, rows: P.rows.map(({ legs, ...r }) => r) })); } catch (e) { }
         }
-        catch (e) { P.err = String(e && e.message || e); } finally { P.busy = false; render(); }
+        catch (e) { P.err = String(e && e.message || e); } finally { P.busy = false; render(); try { W.dispatchEvent(new Event('v133fills')); } catch (x) { } }
       }
       function render() {
         const host = $('pgPnl'); if (!host) return; const old = $('v132Pnl'); if (old) old.remove(); let el = $('v133Pnl');
@@ -46618,7 +46620,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (!P.rows) return; const L = [['expiry', 'first_fill', 'calls', 'puts', 'lots', 'credit_usd', 'call_pnl', 'put_pnl', 'fees', 'net', 'status'].join(',')].concat(P.rows.map(r => [r.exp, new Date(r.first).toISOString(), r.Kc || '', r.Kp || '', r.lots, r.credit.toFixed(2), r.call.toFixed(2), r.put.toFixed(2), r.fee.toFixed(2), r.pnl.toFixed(2), r.open ? 'open' : 'closed'].join(',')));
         try { const a = D.createElement('a'); a.href = URL.createObjectURL(new Blob([L.join('\n')], { type: 'text/csv' })); a.download = 'delta-strangles.csv'; D.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500); } catch (e) { }
       }
-      function pnl() { render(); if (!P.rows && !P.busy) load(); }
+      function pnl() { render(); if ((!P.rows || Date.now() - P.at > 10 * MIN) && !P.busy) load(); }
       function tick() { if (D.hidden) return; try { moves(); fit(); } catch (e) { console.warn('v133', e); } }
       setTimeout(tick, 900); setTimeout(tick, 3000); setInterval(tick, 3000); addEventListener('resize', () => setTimeout(fit, 150));
       // v150: the phone's visible height changes without a width change when the address bar hides / shows on scroll and on
@@ -51908,6 +51910,14 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
       /* ---------- Master Strategy Blueprint Rules ---------- */
       function lastFri(y, m) { let d = Date.UTC(y, m + 1, 0); while (new Date(d).getUTCDay() !== 5) d -= DAY; return d; }
 
+      /* the user's own closed Delta trades (P&L page, v133) per trading night: an entry between 16:30 and 06:30 IST belongs to that evening */
+      function realNight(key) {
+        const S = W.v133 && W.v133.state && W.v133.state(); if (!S || !S.rows) return null;
+        if (realNight.at !== S.at || !realNight.m) { const m = {}; for (const r of S.rows) { if (r.open) continue; const k = new Date(r.first + IST - 6 * HR).toISOString().slice(0, 10), o = m[k]; if (o) { o.pnl += r.pnl; o.credit += r.credit; } else m[k] = { pnl: r.pnl, credit: r.credit }; } realNight.m = m; realNight.at = S.at; }
+        return realNight.m[key] || null;
+      }
+      const usdT = v => (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(0);
+
       function plan(D0, raw) {
         const d = ist(D0), wd = d.getUTCDay(), dt = d.getUTCDate(), y = d.getUTCFullYear(), m = d.getUTCMonth(), key = isoD(D0), r = { D0, wd, key, pts: [], ctx: 'oth' };
         const F = FR(D0 + 18 * HR);
@@ -51950,6 +51960,14 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
           const exp = rbd ? rbd.expectancyUsd : (FB[wd] ? FB[wd][3] : null);
           const high = true; // every weekday = full 100 lots (no half-size anywhere)
           r.rb = { verdict, conviction: conv, oos, exp };
+          const _t0 = Math.floor((Date.now() + IST) / DAY) * DAY - IST, rl = D0 < _t0 ? realNight(key) : null;
+          if (rl) {   // a night you actually traded: your Delta result beats the model
+            r.isPast = true; r.real = true; r.realUsd = rl.pnl; r.histTxt = usdT(rl.pnl); r.size = 1.0;
+            if (rl.pnl > 0) { r.kind = 'win'; r.icon = 'shield'; r.badge = '✓ WIN (' + r.histTxt + ')'; r.title = DN[wd] + ' Win (' + r.histTxt + ')'; r.why = 'Your Delta fills: ' + r.histTxt + ' after fees.'; }
+            else if (rl.pnl < -0.5 * (rl.credit || 1)) { r.kind = 'stopped'; r.icon = 'stop'; r.badge = '✗ LOSS (' + r.histTxt + ')'; r.title = DN[wd] + ' Loss (' + r.histTxt + ')'; r.why = 'Your Delta fills: ' + r.histTxt + ' after fees.'; }
+            else { r.kind = 'full'; r.icon = 'shield'; r.badge = '· SMALL LOSS (' + r.histTxt + ')'; r.title = DN[wd] + ' Small loss (' + r.histTxt + ')'; r.why = 'Your Delta fills: ' + r.histTxt + ' after fees.'; }
+            return r;
+          }
           const bd = (W.__STRANGLE_BT_DAYS && W.__STRANGLE_BT_DAYS[key]) || (W.__STRANGLE_BT_DAYS_5Y && W.__STRANGLE_BT_DAYS_5Y[key]) || null;   // real 1-yr first, then 5-yr modelled fill
 
           if (verdict === 'SKIP') {
@@ -51974,8 +51992,8 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
           const _todayD0 = Math.floor((Date.now() + IST) / DAY) * DAY - IST;
           if (D0 < _todayD0) {
             r.kind = 'nodata'; r.icon = ''; r.size = 0; r.delta = 'None'; r.isPast = true;
-            r.badge = '— no data'; r.title = DN[wd] + ' · no backtest data';
-            r.why = 'Before the backtest window — BTC implied-vol (DVOL) history only starts 2021. No modelled result for this date.';
+            r.badge = '— no data'; r.title = DN[wd] + ' · no record';
+            r.why = D0 < Date.UTC(2021, 2, 24) - IST ? 'Before the backtest window — BTC implied-vol (DVOL) history only starts 2021. No modelled result for this date.' : 'No backtest record yet and no Delta fills for this night (the model files are rebuilt from the 5-year scripts; your real trades show here once the P&L page has read them).';
             return r;
           }
 
@@ -53515,6 +53533,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
       function paintCal() {
         const g = $('v147Grid');
         if (!g) return;
+        try { const S = W.v133 && W.v133.state && W.v133.state(); if (S && !S.busy && (!S.rows || Date.now() - S.at > 15 * 60000) && !paintCal.ld) { paintCal.ld = 1; setTimeout(() => { paintCal.ld = 0; }, 60000); W.v133.load(); } } catch (e) { }   // your real fills fill the past nights the model files do not cover
         const v = new Date(VIEW), y = v.getUTCFullYear(), m = v.getUTCMonth();
         $('v147Mon').textContent = MN[m] + ' ' + y;
 
@@ -53538,18 +53557,21 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
                 p.kind === 'pending' ? SVG_ICONS.bullseye(dngCol(p.wkDanger), 16) : '';
 
           let sizingText = p.kind === 'nodata' ? '' : p.kind === 'off' ? 'Weekend · off' : p.kind === 'wait' ? 'WAIT — no trade' : p.kind === 'pending' ? ('enter ' + (p.wkEntry || '01:30') + ' IST') : (p.isPast ? (p.kind === 'win' ? 'Win · GO' : p.kind === 'stopped' ? '2.0× Stop · GO' : 'Time exit · GO') : '100 lots on GO');
+          if (p.real) sizingText = 'Delta · your fills';
           let resultText = '';
           if (p.kind === 'nodata') {
-            resultText = '<div class="cc-result" style="color:#4a5568">— pre-2021</div>';
+            resultText = '<div class="cc-result" style="color:#4a5568">' + (D0 < Date.UTC(2021, 2, 24) - IST ? '— pre-2021' : '— no record') + '</div>';
           } else if (p.isPast) {
-            if (p.kind === 'win') resultText = '<div class="cc-result res-ok">✓ Won (+' + p.histPnl + '%)</div>';
-            else if (p.kind === 'stopped') resultText = '<div class="cc-result res-bad">✗ Stopped (2.0×)</div>';
+            if (p.kind === 'win') resultText = '<div class="cc-result res-ok">✓ Won (' + (p.histTxt || '+' + p.histPnl + '%') + ')</div>';
+            else if (p.kind === 'stopped') resultText = '<div class="cc-result res-bad">' + (p.real ? '✗ Lost (' + p.histTxt + ')' : '✗ Stopped (2.0×)') + '</div>';
+            else if (p.kind === 'full') resultText = '<div class="cc-result" style="color:#94A3B8">' + (p.real ? p.histTxt : '≈ ' + p.histPnl + '%') + ' · time exit</div>';
             else if (p.kind === 'wait') resultText = '<div class="cc-result" style="color:#94A3B8">⏸ WAIT · passed</div>';
           } else if (p.kind === 'off') {
             resultText = '<div class="cc-result" style="color:#64748B">Desk off</div>';
           } else {
             resultText = '<div class="cc-result" style="color:' + dngCol(p.wkDanger) + '">' + (p.wkDanger != null ? p.wkDanger + '% danger' : 'gate decides') + (p.wkLeg ? ' · ' + p.wkLeg : '') + '</div>';
           }
+          if (isToday && !p.isPast) { try { const V = W.v139 && W.v139.decide ? W.v139.decide() : null; if (V && V.w) resultText = '<div class="cc-result" style="color:' + (V.w === 'GO' ? '#10B981' : V.w === 'WAIT' ? '#F59E0B' : '#38BDF8') + '">Live gate: ' + V.w + '</div>' + resultText; } catch (e) { } }
           const cellStyle = (p.kind === 'pending') ? ' style="border-left:3px solid ' + dngCol(p.wkDanger) + '"' : (p.kind === 'nodata') ? ' style="opacity:.42"' : '';
 
           h += '<button type="button" class="cal-cell ' + p.kind + ' ' + (isSel ? 'selected' : '') + ' ' + (isToday ? 'today' : '') + '"' + cellStyle + ' data-a="day" data-d="' + D0 + '" aria-label="' + fmt(D0) + ': ' + p.title + '">' +
@@ -53564,6 +53586,8 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
         }
         g.innerHTML = h;
       }
+
+      W.addEventListener('v133fills', () => { try { paintCal(); } catch (e) { } });
 
       function paintSheet() {
         const el = $('v147Sheet');
