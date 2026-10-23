@@ -28029,6 +28029,16 @@ Signs follow Settings → Dealer positioning.`;
           const __vis = e => !!e && getComputedStyle(e).display !== 'none';
           const vb = el('paVolBox'), ab0 = el('paAdxBox'), ab = __vis(ab0) ? ab0 : null, vOn = !!pref.vol && __vis(vb), cb = host, fsMode = document.fullscreenElement === pane || document.body.classList.contains('gfs-max'), fixedMode = fsMode || document.body.classList.contains('wm') || document.body.classList.contains('onepage') || document.body.classList.contains('v80');
           if (!fixedMode || !pane.clientHeight) { if (ab) { ab.style.removeProperty('height'); ab.style.removeProperty('flex'); } cb.style.removeProperty('height'); cb.style.removeProperty('flex'); cb.style.removeProperty('min-height'); vb.style.removeProperty('height'); vb.style.removeProperty('flex'); vb.style.removeProperty('min-height'); vb.style.removeProperty('max-height'); return; }
+          if (innerWidth <= 760) {
+            if (ab) { ab.style.removeProperty('height'); ab.style.removeProperty('flex'); }
+            if (cb.style.getPropertyValue('height') !== '280px') {
+              cb.style.setProperty('height', '280px', 'important');
+              cb.style.setProperty('flex', '0 0 280px', 'important');
+              cb.style.setProperty('min-height', '250px', 'important');
+              schedDraw();
+            }
+            return;
+          }
           const ofp = el('ofPane'), ofOn = !fsMode && innerWidth > 760 && __vis(ofp); let ofH = 0;
           let others = 0; for (const ch of pane.children) { if (ch === cb || ch === vb || ch === ab || (ofOn && ch === ofp) || ch.hidden || getComputedStyle(ch).display === 'none' || getComputedStyle(ch).position === 'absolute') continue; others += ch.getBoundingClientRect().height; }
           if (ofOn) { const a0 = Math.floor(pane.clientHeight - others); ofH = clamp(Math.round(a0 * 0.13), innerWidth > 760 && !fsMode ? 72 : 92, 190); others += ofH; if (ofp.style.getPropertyValue('height') !== ofH + 'px') { ofp.style.setProperty('height', ofH + 'px', 'important'); ofp.style.setProperty('flex', '0 0 auto', 'important'); } }
@@ -28048,7 +28058,7 @@ Signs follow Settings → Dealer positioning.`;
           if (chartH < MINC && vOn) { const take = Math.min(MINC - chartH, volH - MINV); if (take > 0) { volH -= take; chartH += take; } }
           if (chartH < MINC) { chartH = MINC; volH = MINV; pane.classList.add('pa-scroll'); } else pane.classList.remove('pa-scroll');
           if (ab) { const set2 = (k, v) => { if (ab.style.getPropertyValue(k) !== v) ab.style.setProperty(k, v, 'important'); }; set2('height', adxH + 'px'); set2('flex', '0 0 auto'); }
-          const set = (e, k, v) => { if (e.style.getPropertyValue(k) !== v) e.style.setProperty(k, v, 'important'); };
+          const set = (e, k, v) => { if (e.style.getPropertyValue(k) !== v) { if (k === 'height' && Math.abs((parseFloat(e.style.getPropertyValue(k)) || 0) - (parseFloat(v) || 0)) < 2) return; e.style.setProperty(k, v, 'important'); } };
           set(cb, 'flex', '1 0 auto'); set(cb, 'height', chartH + 'px'); set(cb, 'min-height', '0px');   /* v144: grows into any free space at once */
           if (vOn) { set(vb, 'flex', '0 0 auto'); set(vb, 'height', volH + 'px'); set(vb, 'min-height', '0px'); set(vb, 'max-height', 'none'); }
           pane.classList.toggle('pa-tight', avail < 330); schedDraw();
@@ -48373,7 +48383,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* ---------- v138.3 phone: the chart block reaches the tab bar (no empty band, no page scroll) ---------- */
       function phoneFit() {
         const cp = $('chartp'), tb = $('tabbar'), pg = $('pgDesk'); if (!cp || !pg) return;
-        if (innerWidth <= 760) { for (const p of ['height', 'max-height']) cp.style.removeProperty(p); cp.style.setProperty('min-height', '440px'); pg.style.removeProperty('padding-bottom'); pg.style.removeProperty('min-height'); D.body.classList.remove('v138-pfit'); try { W.paRefit && W.paRefit(); } catch (e) { } return; }
+        if (innerWidth <= 760) { for (const p of ['height', 'max-height']) cp.style.removeProperty(p); cp.style.setProperty('min-height', '440px'); pg.style.removeProperty('padding-bottom'); pg.style.removeProperty('min-height'); D.body.classList.remove('v138-pfit'); return; }
         if (D.body.classList.contains('gfs') || !pg.classList.contains('on')) { if (!D.body.classList.contains('v138-pfit')) return; for (const p of ['height', 'min-height', 'max-height']) cp.style.removeProperty(p); pg.style.removeProperty('padding-bottom'); pg.style.removeProperty('min-height'); D.body.style.removeProperty('padding-bottom'); D.body.classList.remove('v138-pfit'); return; }
         const top = cp.getBoundingClientRect().top + scrollY, bar = tb && getComputedStyle(tb).display !== 'none' ? tb.getBoundingClientRect().top + scrollY : innerHeight, h = Math.max(420, Math.round(bar - top - 6));
         if (cp.style.getPropertyValue('height') !== h + 'px') { for (const p of ['height', 'min-height', 'max-height']) cp.style.setProperty(p, h + 'px', 'important'); try { W.paRefit && W.paRefit(); } catch (e) { } }
@@ -48384,7 +48394,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* ---------- loop ---------- */
       function paintAll() {
         try { phoneFit(); } catch (e) { } for (const k of Object.keys(SEC)) try { paint(k); } catch (e) { console.warn('v138 ' + k, e); } try { deskStates(); } catch (e) { } try { grips(); } catch (e) { } try { axis(); } catch (e) { } try { events(); } catch (e) { } try { strikes(); } catch (e) { } try { armAll(); } catch (e) { } readout();
-        requestAnimationFrame(() => { const p = $('paneG'); if (p && p.scrollHeight > p.clientHeight + 1) try { W.paRefit && W.paRefit(); } catch (e) { } });
+        requestAnimationFrame(() => { if (innerWidth > 760) { const p = $('paneG'); if (p && p.scrollHeight > p.clientHeight + 1) try { W.paRefit && W.paRefit(); } catch (e) { } } });
       }
       function hook() { const src = W.paChart && W.paChart(); if (!src || hook.done) return; hook.done = 1; let raf = 0; src.timeScale().subscribeVisibleLogicalRangeChange(() => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; try { events(); } catch (e) { } try { strikes(); } catch (e) { } for (const o of Object.values(S.lanes)) { zones(o); if (o.vbArgs && S.bars) for (const k in o.vbArgs) try { vband(o, k, S.bars, ...o.vbArgs[k]); } catch (e) { } } }); }); }
       setTimeout(() => { paintAll(); hook(); }, 4200); setInterval(() => { if (D.hidden) return; hook(); paintAll(); legRec(); }, 20000);
@@ -48679,21 +48689,19 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           ['News · no high-impact release before exit', news, news ? 'clear' : R.evNext.code + ' ' + hm(R.evNext.t)]];
         let w, col, why = [];
         if (R.pos) { const lg = (R.legs || []).filter(l => l.x != null), mx = lg.length ? Math.max(...lg.map(l => l.x)) : null; const ex = /^EXIT|^BOOK|^CLOSE/.test(v); w = ex ? 'EXIT' : 'HOLD'; col = ex ? 'r' : 'b'; why = [v]; return { w, c: col, why, checks, R, mx, soft: null }; }
-        if (isWeekend) { w = 'NOT NOW'; col = 'n'; why = [DL[dw] + ' night: no new entry']; }
-        else if (isThu) { w = 'NOT NOW'; col = 'r'; why = ['Thursday: Sunday expiry, thin credit · 61.1% stopped vs 43.3% rest (p = 0.0279)']; }
-        else if (!speedOk) { w = 'NOT NOW'; col = 'r'; why = ['Speed vs IV ' + speedVal.toFixed(2) + '× ≥ 1.5× (kinetic storm)']; }
-        else if (!news) { w = 'NOT NOW'; col = 'r'; why = ['news: ' + R.evNext.code + ' ' + hm(R.evNext.t)]; }
-        else if (isSetupWindow) { w = 'NOT NOW'; col = 'a'; why = ['Amber Setup Window (21:30–22:30 IST) · Await 22:30 IST proven entry trigger (NY+180m, p=0.0014)']; }
-        else if (!inProvenWindow) { w = 'NOT NOW'; col = 'n'; why = [istMins > PROVEN_BOUNDARIES.ENTRY_END_MINS ? 'Entry window closed at 23:30 IST · Await 04:00 IST exit' : 'Outside proven 22:30–23:30 IST entry window']; }
+        if (isWeekend) { w = 'WAIT'; col = 'n'; why = [DL[dw] + ' night: no new entry']; }
+        else if (isThu) { w = 'WAIT'; col = 'r'; why = ['Thursday: Sunday expiry, thin credit · 61.1% stopped vs 43.3% rest (p = 0.0279)']; }
+        else if (!speedOk) { w = 'WAIT'; col = 'r'; why = ['Speed vs IV ' + speedVal.toFixed(2) + '× ≥ 1.5× (kinetic storm)']; }
+        else if (!news) { w = 'WAIT'; col = 'r'; why = ['news: ' + R.evNext.code + ' ' + hm(R.evNext.t)]; }
+        else if (isSetupWindow) { w = 'WAIT'; col = 'a'; why = ['Amber Setup Window (21:30–22:30 IST) · Await 22:30 IST proven entry trigger (NY+180m, p=0.0014)']; }
+        else if (!inProvenWindow) { w = 'WAIT'; col = 'n'; why = [istMins > PROVEN_BOUNDARIES.ENTRY_END_MINS ? 'Entry window closed at 23:30 IST · Await 04:00 IST exit' : 'Outside proven 22:30–23:30 IST entry window']; }
         else if (ivOk) { w = 'GO'; col = 'g'; why = ['SELL · ' + sizeTxt + ' · Proven NY+180m Window (22:30–23:30 IST)']; }
-        else { w = 'NOT NOW'; col = 'a'; why = [v]; }
+        else { w = 'WAIT'; col = 'a'; why = [v]; }
         return { w, c: col, why, checks, R, soft: null };
       }
       /* ---------- status pill in the chart bar ---------- */
       function pill() {
-        const top = $('gTop'); if (!top) return; let p = $('v139Pill'); if (!p) { p = D.createElement('button'); p.type = 'button'; p.id = 'v139Pill'; p.title = 'Open the Decision page'; p.addEventListener('click', () => { const b = D.querySelector('#nav [data-page="pgDecision"],#tabbar [data-page="pgDecision"],#moreSheet [data-page="pgDecision"]'); if (b) b.click(); }); }
-        const anchor = top.querySelector('#v100Master') || top.querySelector('.sym'); if (anchor && p.previousElementSibling !== anchor) anchor.after(p);
-        const d = decide(), h = `${esc(d.w)}<i>details → Decision</i>`; if (p.innerHTML !== h) p.innerHTML = h; if (p.className !== d.c) p.className = d.c;
+        const p = $('v139Pill'); if (p) p.remove();
       }
       /* ---------- menu groups + auto layout ---------- */
       const GROUPS = [['n', 'NEW IN v142 · tick to show', ['rsi', 'dfl', 'grk', 'spr', 'fp', 'vwap', 'avp', 'lhm']], ['e', 'ENTRY · TRUSTED (1-year test)', ['ready', 'iv', 'adx', 'sig']], ['h', 'YOUR CONFIRMATIONS', ['ton', 'spd', 'vov', 'rv', 'pat']], ['h', 'HOLD', ['legs', 'strk']], ['x', 'EXIT · ALARMS', ['liq']], ['w', 'BTC CHART', ['ses', 'cdl', 'gex']], ['w', 'WATCH ONLY', ['term', 'edge', 'rng', 'dv', 'skew', 'fund']]];
@@ -52239,7 +52247,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
 
         return Object.assign(st, {
           cls: 'not-now',
-          word: 'NOT NOW',
+          word: 'WAIT',
           d1: whyD1,
           d2: whyD2,
           icon: stopIcon
@@ -52379,12 +52387,12 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
         let centerIcon = SVG_ICONS.beacon(isSpeedCalm, 28);
         if (st.word === 'GO') centerIcon = SVG_ICONS.shield(F0.green, 32);
         else if (st.cls === 'exit') centerIcon = SVG_ICONS.door(F0.blue, 30);
-        else if (st.word === 'NOT NOW') centerIcon = SVG_ICONS.stop(F0.red, 30);
+        else if (st.word === 'WAIT') centerIcon = SVG_ICONS.stop(F0.red, 30);
 
         s += '<g transform="translate(' + (C - 16) + ',' + (C - 24) + ')">' + centerIcon + '</g>';
 
         // Center Digital Readout: Unambiguous GO vs NOT NOW with 12h time
-        const masterWord = st.word === 'GO' ? 'GO' : 'NOT NOW';
+        const masterWord = st.word === 'GO' ? 'GO' : 'WAIT';
         const masterWordCol = st.word === 'GO' ? F0.green : F0.red;
         s += '<text x="' + C + '" y="' + (C + 15) + '" text-anchor="middle" font-family="Barlow Semi Condensed,sans-serif" font-weight="900" font-size="13" letter-spacing="0.04em" fill="' + masterWordCol + '">' + masterWord + '</text>';
         s += '<text x="' + C + '" y="' + (C + 27) + '" text-anchor="middle" font-family="JetBrains Mono,monospace" font-size="8.5" font-weight="700" fill="' + (isSpeedCalm ? F0.green : F0.red) + '">SPEED ' + st.speedVal.toFixed(2) + '× ' + (isSpeedCalm ? '[CALM]' : '[STORM]') + '</text>';
@@ -52762,7 +52770,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
             '<span><b>▶</b> Entry set · <b>⏸</b> Hold set · <b>⏹</b> Exit set — the dots switch by phase</span>' +
             '<span>Dot colour — <b style="color:#10B981">green</b> good · <b style="color:#F59E0B">yellow</b> caution · <b style="color:#EF4444">red</b> danger</span>' +
             '<span>Outer rays = Speed (green &lt;1× · amber &lt;1.5× · red storm)</span>' +
-            '<span>Centre — 🛡 GO · ⛔ NOT NOW</span>' +
+            '<span>Centre — 🛡 GO · ⏸ WAIT</span>' +
             '</div>' +
             '</div>' +
 
@@ -53073,7 +53081,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
         <td>${new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td>
         <td>${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][r.dow]}</td>
         <td>${r.speedVal.toFixed(2)}×</td>
-        <td>${r.uiGo ? '<span class="badge-proven">GO</span>' : '<span class="badge-fail">NOT NOW</span>'}</td>
+        <td>${r.uiGo ? '<span class="badge-proven">GO</span>' : '<span class="badge-fail">WAIT</span>'}</td>
         <td>${r.match ? '<span class="badge-ok">MATCH</span>' : '<span class="badge-fail">FLAG</span>'}</td>
       </tr>
     `).join('');
@@ -53266,7 +53274,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
         const inProvenWindow = st.inProvenEntryWindow;
 
         const isMasterGo = st.word === 'GO';
-        const masterWord = isMasterGo ? 'GO' : 'NOT NOW';
+        const masterWord = isMasterGo ? 'GO' : 'WAIT';
         const masterBannerClass = isMasterGo ? (st.cls === 'full' ? 'full' : 'half') : 'not-now';
 
         tx.innerHTML =
@@ -53321,7 +53329,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
           '<div class="agreement-notice ' + (isMasterGo ? 'notice-go' : 'notice-stop') + '">' +
           (isMasterGo ?
             '★ DUAL AGREEMENT CONFIRMED: Both Calendar edge AND Speed beacon agree. Execution authorized in 22:30–23:30 IST window.' :
-            '⛔ DUAL AGREEMENT NOT MET: Full Green Go strictly requires both Calendar day agreement AND Speed beacon (<1.5x). Otherwise: NOT NOW.') +
+            '⛔ DUAL AGREEMENT NOT MET: Full Green Go strictly requires both Calendar day agreement AND Speed beacon (<1.5x). Otherwise: WAIT.') +
           '</div>' +
 
           '<div class="pref-switches">' +
@@ -55431,7 +55439,20 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
 </style>
 
 <style id="mobileFixCss">
+/* Kill all blinking on live tag, chart base, and canvas globally */
+.lp-tag.last .lp-c, .lp-tag.soon .lp-c b, .lp-tag.flash {
+  animation: none !important;
+}
+.chart, .chart canvas, .chart-box, #chartG, #chartG div {
+  animation: none !important;
+  transition: none !important;
+}
+#v139Pill {
+  display: none !important;
+}
+
 @media (max-width: 760px) {
+
   /* Prevent horizontal page spill / sideways scrolling */
   html, body {
     max-width: 100vw !important;
