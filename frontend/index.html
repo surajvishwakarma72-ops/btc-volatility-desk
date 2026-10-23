@@ -596,7 +596,7 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       };
     })();
   </script>
-  <meta name="theme-color" content="#0A1014">
+  <meta name="theme-color" content="#0B0E11">
   <meta name="robots" content="noindex,nofollow">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -15024,7 +15024,8 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       font-variant-numeric: tabular-nums;
       -webkit-font-smoothing: antialiased;
       overscroll-behavior-y: none;
-      min-height: 100vh
+      min-height: 100vh;
+      min-height: 100dvh
     }
 
     button,
@@ -15860,7 +15861,8 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
     /* ---------- pages ---------- */
     #pages {
       display: block;
-      min-height: calc(100vh - var(--tk-h) - var(--hdr-h))
+      min-height: calc(100vh - var(--tk-h) - var(--hdr-h));
+      min-height: calc(100dvh - var(--tk-h) - var(--hdr-h))
     }
 
     .page {
@@ -16831,6 +16833,7 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
 
     body.gfs .chartp {
       height: calc(100vh - var(--tk-h) - var(--hdr-h));
+      height: calc(100dvh - var(--tk-h) - var(--hdr-h));
       min-height: 0
     }
 
@@ -21762,7 +21765,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
     }
     function applyTheme(t) {
       document.documentElement.dataset.theme = t;
-      document.querySelector('meta[name=theme-color]')?.setAttribute('content', t === 'light' ? '#E8EDF1' : '#0D1721');
+      document.querySelector('meta[name=theme-color]')?.setAttribute('content', t === 'light' ? '#E8EDF1' : '#0B0E11');
       if (typeof applyChartTheme === 'function') applyChartTheme();
     }
 
@@ -46507,7 +46510,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const rail = $('v89Rail'), vr = $('volRow'); if (rail && vr && rail.previousElementSibling !== vr) { rail.classList.add('v133-moved'); vr.after(rail); }
       }
       /* ---------- P&L from Delta (live) ---------- */
-      const P = { rows: null, at: 0, err: null, busy: false, range: '90' };
+      const P = { rows: null, at: 0, err: null, busy: false, range: '365', failed: 0 };
       const parseSym = s => { const m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(String(s || '')); return m ? { type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3] } : null; };
       const ts = v => { if (v == null) return NaN; if (typeof v === 'number') return v > 1e14 ? v / 1000 : v > 1e11 ? v : v * 1000; const n = +v; if (fin(n)) return ts(n); return Date.parse(v); };
       const settleMs = exp => Date.parse(exp + 'T12:00:00Z');
@@ -46519,11 +46522,23 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (P.busy) return; const A = W.v100 && W.v100.api; if (!A || !A.on()) { P.err = 'nokey'; render(); return; } if (!W.v100.dget) { P.err = 'This desk build cannot read Delta.'; render(); return; }
         P.busy = true; P.err = null; render();
         try {
-          const since = (Date.now() - 90 * DAY) * 1000; let after = null, all = [];
-          for (let pg = 0; pg < 30; pg++) {
-            const q = 'contract_types=call_options,put_options&page_size=100&start_time=' + since + (after ? '&after=' + encodeURIComponent(after) : '');
-            const res = await W.v100.dget('/v2/fills', q); if (Array.isArray(res)) all = all.concat(res); const m = W.v100.dgetMeta && W.v100.dgetMeta(); after = m && m.after; if (!after || !res || !res.length) break;
+          /* 365 days, read in 30-day windows (microsecond timestamps): one slow or failed window is retried once and then
+             reported as partial instead of throwing the whole year away */
+          const WIN = 30 * DAY, t1 = Date.now(), t0 = t1 - 365 * DAY; let all = []; P.failed = 0;
+          for (let a = t0; a < t1; a += WIN) {
+            const b = Math.min(a + WIN, t1); let ok = false;
+            for (let tr = 0; tr < 2 && !ok; tr++) {
+              try {
+                let after = null, got = [];
+                for (let pg = 0; pg < 20; pg++) {
+                  const q = 'contract_types=call_options,put_options&page_size=100&start_time=' + a * 1000 + '&end_time=' + b * 1000 + (after ? '&after=' + encodeURIComponent(after) : '');
+                  const res = await W.v100.dget('/v2/fills', q); if (Array.isArray(res)) got = got.concat(res); const m = W.v100.dgetMeta && W.v100.dgetMeta(); after = m && m.after; if (!after || !res || !res.length) break;
+                }
+                all = all.concat(got); ok = true;
+              } catch (e) { if (e && e.status === 401) throw e; if (tr) P.failed++; }
+            }
           }
+          if (P.failed >= 13 && !all.length) throw new Error('Delta did not return any fills');
           // per contract
           const C = new Map();
           for (const f of all) {
@@ -46553,7 +46568,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const host = $('pgPnl'); if (!host) return; const old = $('v132Pnl'); if (old) old.remove(); let el = $('v133Pnl');
         if (!el) { el = D.createElement('div'); el.id = 'v133Pnl'; el.className = 'v132p'; host.appendChild(el); el.addEventListener('click', e => { const b = e.target.closest('[data-r]'); if (b) { P.range = b.dataset.r; render(); } if (e.target.closest('[data-ref]')) load(); if (e.target.closest('[data-csv]')) csv(); if (e.target.closest('[data-set]')) try { D.querySelector('#nav [data-page="pgSettings"]').click(); } catch (x) { } }); }
         el.setAttribute('id', 'v133Pnl'); el.classList.add('v133p');
-        const hd = `<div class="hd"><h2>P&amp;L analysis</h2>${[['7', '7D'], ['30', '30D'], ['90', '90D']].map(([k, l]) => `<button type="button" data-r="${k}" aria-pressed="${P.range === k}">${l}</button>`).join('')}<span class="v6x src">${P.busy ? 'reading your Delta fills…' : P.at ? `live from Delta · ${P.n} fills · read ${hm(P.at)} IST` : ''}</span><button type="button" data-ref="1">${P.busy ? 'Reading…' : 'Refresh'}</button><button type="button" data-csv="1">Export CSV</button></div>`;
+        const hd = `<div class="hd"><h2>P&amp;L analysis</h2>${[['7', '7D'], ['30', '30D'], ['90', '90D'], ['365', '1Y']].map(([k, l]) => `<button type="button" data-r="${k}" aria-pressed="${P.range === k}">${l}</button>`).join('')}<span class="v6x src">${P.busy ? 'reading your Delta fills…' : P.at ? `live from Delta · ${P.n} fills · read ${hm(P.at)} IST${P.failed ? ` · ${P.failed} of 13 windows missing, press Refresh` : ''}` : ''}</span><button type="button" data-ref="1">${P.busy ? 'Reading…' : 'Refresh'}</button><button type="button" data-csv="1">Export CSV</button></div>`;
         if (P.err === 'nokey') { el.innerHTML = hd + `<div class="c em">Connect your Delta key (read-only) in Settings to see your real P&amp;L.<br><button type="button" data-set="1" style="margin-top:10px">Open Settings</button></div>`; return; }
         if (P.err) { el.innerHTML = hd + `<div class="c em err">Delta did not answer: ${esc(P.err)}</div>`; return; }
         if (!P.rows) { el.innerHTML = hd + `<div class="c em">${P.busy ? 'Reading your fills from Delta…' : 'Press Refresh to read your fills from Delta.'}</div>`; return; }
@@ -46583,7 +46598,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       // v150: the phone's visible height changes without a width change when the address bar hides / shows on scroll and on
       // entering / leaving full screen; once it settles the desk refits, so no blank band is left above the tab bar
       // (window resize events for this are swallowed by the v105.14 scroll guard, visualViewport ones are not)
-      const vhRefit = () => { clearTimeout(fit.vv); fit.vv = setTimeout(() => { if (Math.abs(innerHeight - (fit.vh || 0)) >= 2) { fit.vh = innerHeight; fit(); } }, 250); };
+      const vhRefit = () => { clearTimeout(fit.vv); fit.vv = setTimeout(() => { if (Math.abs(innerHeight - (fit.vh || 0)) >= 1) { fit.vh = innerHeight; fit(); } }, 120); };
       try { W.visualViewport && W.visualViewport.addEventListener('resize', vhRefit); } catch (e) { }
       D.addEventListener('fullscreenchange', vhRefit);
       D.addEventListener('click', e => { if (e.target.closest('#nav [data-page="pgDesk"],#tabbar [data-page="pgDesk"]')) setTimeout(fit, 200); }, true);
@@ -55736,6 +55751,8 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
    the tab bar, a phone on its side / a short window scrolls normally instead of nesting a tall fixed block, and wide
    desktops use the width. Heights use dvh (the visible screen) with a vh line first for older browsers. */
 :root { --page-max: 1800px; }
+/* hard pull past either end of the page shows the same solid colour as the desk, never a lighter band */
+html { overscroll-behavior-y: none; background-color: var(--bg); }
 .ms-tooltip { position: fixed; }
 /* the session-watch pill (ASIA · EXIT WATCH / LONDON · WATCH ONLY) is gone; its room goes to the chart. Hidden, not
    removed: other modules still anchor on #ph89 */
@@ -55745,7 +55762,8 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
   /* clip, not hidden: hidden turns body into a scroll box and breaks the sticky header */
   html { overflow-x: clip; }
   html, body { height: auto !important; }
-  body { min-height: 100vh; min-height: 100dvh; }
+  body { min-height: 100vh; min-height: 100dvh; background: var(--bg) !important; background-attachment: scroll !important; }
+  .tabbar { background-color: var(--bg); }
   .page {
     padding: 4px max(4px, env(safe-area-inset-right, 0px)) 0 max(4px, env(safe-area-inset-left, 0px)) !important;
   }
