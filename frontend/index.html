@@ -46480,9 +46480,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const ph = Hb - hd; set(pg, 'height', ph + 'px'); set(pg, 'min-height', ph + 'px'); set(pg, 'max-height', ph + 'px');
         // lanes: an equal share of ≤ 40 % of the panel (the time-axis lane gets its axis row on top); never below a label + thin plot
         const axId = W.__v138Axis ? W.__v138Axis() : null, axX = axId && lanes.some(l => l.id === axId) ? 24 : 0;
-        const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(nL * minL, Math.min(Math.floor(ph * 0.4), ph - minC) - axX);
-        const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nL))) : 0;
-        for (const l of lanes) { const hh = lh + (l.id === axId ? axX : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
+        // v150: the ATM IV lane gets 1.6 shares of the lane budget, every other lane (and ADX) one; the candles are unchanged
+        const wt = l => l.id === 'v138Iv' ? 1.6 : 1, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? 1 : 0);
+        const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * 0.4), ph - minC) - axX);
+        const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
+        for (const l of lanes) { const hh = Math.round(lh * wt(l)) + (l.id === axId ? axX : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
         W.__v133Lane = lh;   // paRefit gives the ADX strip the same share
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
