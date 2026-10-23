@@ -45325,6 +45325,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const DEF = { spd: true, edge: false, rng: false, adx: false, iv: true, rv: false, vov: false, dv: false, ton: true, gex: false, sig: true, pat: true, cdl: false, term: true, skew: false, fund: false, liq: false, strk: true, legs: true, lvl: true, ses: true, rsi: false, dfl: false, grk: false, spr: false, fp: false, vwap: false, avp: false, lhm: false, crush: false, fut: true, macro: true };   // v133: a clean first screen; tick more in the menu
       let on = Object.assign({}, DEF, LSg('v133_ind', {}));
       delete on.ready; delete on.day; delete on.gng; delete on.pwin; delete on.tip;
+      if (!Object.values(on).some(Boolean)) on = Object.assign({}, DEF);
       function save() { LSs('v133_ind', on); }
       function refit() { try { W.paRefit && W.paRefit(); } catch (e) { } setTimeout(() => { try { W.dispatchEvent(new Event('resize')); } catch (e) { } }, 60); setTimeout(() => { try { W.v128 && W.v128.refit && W.v128.refit(); } catch (e) { } }, 700); }
       /* ---------- the menu ---------- */
@@ -45372,6 +45373,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             fl.style.display = 'none';
           }
         }
+        const newsBtn = D.createElement('button');
+        newsBtn.type = 'button';
         newsBtn.id = 'v148ToolbarNewsBtn';
         newsBtn.className = 'tool';
         newsBtn.title = 'National Economy Breaking News & Minister Bulletins';
@@ -47172,9 +47175,6 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const wrap = $('v147StrategyNearFri');
           if (wrap && wrap.previousElementSibling !== c) { c.after(wrap); }
         }
-        const ph = $('ph89'); if (!ph) return; let c = $('v136Chip'); if (!c) { c = D.createElement('span'); c.id = 'v136Chip'; c.setAttribute('role', 'status'); } if (c.previousElementSibling !== ph) ph.after(c);
-        const i = chipInfo(Date.now()); if (c.textContent !== i.t) c.textContent = i.t; const cl = 'v136 ' + i.c; if (c.className !== cl) c.className = cl; c.title = 'Day mode · Decision page has the day plan';
-      }
       /* ---------- live readings ---------- */
       function L() { return (W.v121 && W.v121.last) || null; }
       function adxNow() { try { const A = W.v134sig && W.v134sig.__test.adxArr(); if (!A || A.length < 4) return null; const now = Date.now(), at = t => { let v = null; for (const p of A) { if (p.t + HR <= t) v = p.v; else break; } return v; }, a = at(now), b = at(now - 3 * HR); if (a == null || b == null) return null; return { a, rising: !(a <= 40 && a <= b) }; } catch (e) { return null; } }

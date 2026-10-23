@@ -21856,7 +21856,7 @@ const DEF={
 };
 
 let on=Object.assign({},DEF,LSg('v133_ind',{}));
-delete on.ready;delete on.day;delete on.gng;delete on.pwin;delete on.tip;
+delete on.ready;delete on.day;delete on.gng;delete on.pwin;delete on.tip;if(!Object.values(on).some(Boolean))on=Object.assign({},DEF);
 function save(){LSs('v133_ind',on);}
 function refit(){try{W.paRefit&&W.paRefit();}catch(e){}setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(e){}},60);setTimeout(()=>{try{W.v128&&W.v128.refit&&W.v128.refit();}catch(e){}},700);}
 /* ---------- the menu ---------- */
@@ -21903,7 +21903,7 @@ function button(){const top=$('gTop');if(!top||$('v132IndBtn'))return;const r=to
       fl.style.display = 'none';
     }
   }
-  newsBtn.id='v148ToolbarNewsBtn';
+  const newsBtn=D.createElement('button');newsBtn.type='button';newsBtn.id='v148ToolbarNewsBtn';
   newsBtn.className='tool';
   newsBtn.title='National Economy Breaking News & Minister Bulletins';
   newsBtn.innerHTML='<b style="color:#38BDF8">📰</b> Internal News <span class="v148-tb-badge" id="v148TbUnread" style="display:none;background:#EF4444;color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px;margin-left:4px"></span>';
@@ -22536,7 +22536,6 @@ function chip() {
   const wrap = $('v147StrategyNearFri');
   if (wrap && wrap.previousElementSibling !== c) { c.after(wrap); }
 }
-  const i=chipInfo(Date.now());if(c.textContent!==i.t)c.textContent=i.t;const cl='v136 '+i.c;if(c.className!==cl)c.className=cl;c.title='Day mode · Decision page has the day plan';}
 /* ---------- live readings ---------- */
 function L(){return (W.v121&&W.v121.last)||null;}
 function adxNow(){try{const A=W.v134sig&&W.v134sig.__test.adxArr();if(!A||A.length<4)return null;const now=Date.now(),at=t=>{let v=null;for(const p of A){if(p.t+HR<=t)v=p.v;else break;}return v;},a=at(now),b=at(now-3*HR);if(a==null||b==null)return null;return {a,rising:!(a<=40&&a<=b)};}catch(e){return null;}}
