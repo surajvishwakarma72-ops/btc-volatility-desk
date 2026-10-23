@@ -3071,7 +3071,7 @@ body.dv-off .dv-box{display:none!important}
 /* v80: legacy per-pane overnight-cooling UI hidden; the model lives on the Vol page strip */
 .cool-box,.cool-therm,.cool-row{display:none}
 
-</style>
+#v138Ready,#v145Day,#v142Gng,#v142Pwin,#v142Tip{display:none!important}#v142LvlChip,#v147DeskClockMount{display:none!important}</style>
 <style id="v80Css">
 /* =====================================================================
    v80 · design system + layout. ONE layer: tokens, type, chrome, pages,
@@ -8782,7 +8782,8 @@ function deskUpdate(){
           let xlv=false;try{xlv=!!(JSON.parse(localStorage.getItem('pa_layer_prefs_v3')||'{}').xlv);}catch(e){}
           if(xlv){if(C.sig){inc(S+1.2*C.sig);inc(S-1.2*C.sig);}inc(C.legs?.call?.K);inc(C.legs?.put?.K);}
           const rg=Math.max(b-a,S*0.004),near=v=>v!=null&&v>a-rg&&v<b+rg;
-          for(const v of [C.G?.flip,C.G?.callWall,C.G?.putWall])if(near(v))inc(v);}
+          for(const v of [C.G?.flip,C.G?.callWall,C.G?.putWall])if(near(v))inc(v);
+          if(typeof lvlOn==='function'&&lvlOn()){try{const R=typeof lvlRanges==='function'?lvlRanges():null;if(R){const cfg=(typeof LVL_CFG==='object'&&LVL_CFG)||{day:true,week:true};if(cfg.day!==false&&R.day){inc(R.day.hi);inc(R.day.lo);}if(cfg.week!==false&&R.week){if(near(R.week.lo))inc(R.week.lo);if(near(R.week.hi))inc(R.week.hi);}}}catch(e){}}}
         // v64: vertical zoom from the ↕ buttons / mouse wheel over the price axis, around the middle of the range
         const vz=window.__gVZ||1;if(vz!==1){const m=(a+b)/2,h=(b-a)/2/vz;a=m-h;b=m+h;}
         return {...r,priceRange:{minValue:a,maxValue:b}};}});
@@ -17831,71 +17832,237 @@ function chartLines(ctx){const S=W.__gexSeries;if(!S||!S.createPriceLine)return;
   if(ctx.or){LN.or.push(S.createPriceLine({price:ctx.or.h,color:amber,lineWidth:1,lineStyle:2,axisLabelVisible:false,title:'OR high'}),S.createPriceLine({price:ctx.or.l,color:amber,lineWidth:1,lineStyle:2,axisLabelVisible:false,title:'OR low'}));}
   const P=plan(),sp=spot();if(P&&P.em&&sp){const c=ctx.orMid||sp;LN.em.push(S.createPriceLine({price:c+P.em,color:blue,lineWidth:1,lineStyle:1,axisLabelVisible:false,title:'+1 EM'}),S.createPriceLine({price:c-P.em,color:blue,lineWidth:1,lineStyle:1,axisLabelVisible:false,title:'−1 EM'}));}}
 /* ---------------- BTC chart: day / week / month high-low LEVELS (5-yr backtest-tagged) ----------------
-   week / month LOW = the danger zone (most stops) → red ⬇ ; HIGH = safer → green ⬆ ; day = neutral grey.
+   week / month LOW = the danger zone (most stops) → red ⬇ ; HIGH = safer → green ⬆ ; day = neutral sky-blue.
    Sell near the HIGH, place the call strike above the week high. Toggle via the ƒx "Levels" indicator. */
 const LVL={lines:[],key:''};
+const LVL_CFG=(function(){
+  const def={day:true,week:true,month:true};
+  try{
+    const s=JSON.parse(localStorage.getItem('v142_lvl_cfg')||'{}');
+    if(s&&typeof s==='object')Object.assign(def,s);
+  }catch(e){}
+  return def;
+})();
+
 const lvlOn=()=>{try{return !!(W.v132ind&&W.v132ind.state&&W.v132ind.state().lvl);}catch(e){return false;}};
-// 366-day 5-min price index (the 10-day chart can't reach a 30-day range) — cached, sorted once per version.
 let _lvlArr=null,_lvlVer='';
-function lvlArr(){try{const L=W.rvIndexLong&&W.rvIndexLong();if(!L||!L.bars||!L.bars.size)return null;const ver=(L.ver||0)+'|'+L.bars.size;if(_lvlVer!==ver){_lvlArr=[...L.bars.values()].sort((a,b)=>a.t-b.t);_lvlVer=ver;}return _lvlArr;}catch(e){return null;}}
-function lvlRanges(){const a=lvlArr();if(!a||!a.length)return null;const nowT=a[a.length-1].t;
-  const span=(ms)=>{const from=nowT-ms;let hi=-Infinity,lo=Infinity;for(let i=a.length-1;i>=0;i--){const b=a[i];if(b.t<from)break;if(b.h>hi)hi=b.h;if(b.l<lo)lo=b.l;}return hi>lo?{hi,lo}:null;};
-  return {day:span(864e5),week:span(7*864e5),month:span(30*864e5),spot:a[a.length-1].c};}
-function lvlChip(R){
-  const cb=D.querySelector('#paneG>.chart-box');if(!cb)return;
-  let el=$('v142LvlChip');
-  if(!lvlOn()||!R){if(el)el.hidden=true;return;}
-  if(!el){
-    el=D.createElement('div');
-    el.id='v142LvlChip';
-    el.style.cssText='position:absolute;top:6px;left:8px;z-index:22;display:flex;align-items:center;gap:5px;background:rgba(255,255,255,0.96);border:1px solid #cbd5e1;border-radius:6px;padding:2px 7px;font-family:Inter,sans-serif;font-size:9.5px;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,0.06);backdrop-filter:blur(4px);pointer-events:auto;';
-    cb.appendChild(el);
-  }
-  el.hidden=false;
-  const k$=(n)=>'$'+(n/1000).toFixed(1)+'k';
-  const posTag=typeof livePosTag==='function'?livePosTag():null;
-  const wTag=posTag&&posTag.week?(posTag.week.tag==='SAFER'?'<span style="color:#15803d;background:#dcfce7;padding:0 3px;border-radius:2px;font-weight:800;font-size:8px;">SAFER ✓</span>':posTag.week.tag==='DANGER'?'<span style="color:#dc2626;background:#fee2e2;padding:0 3px;border-radius:2px;font-weight:800;font-size:8px;">DANGER ⚠</span>':'<span style="color:#64748b;font-weight:700;font-size:8px;">MID</span>'):'';
-  const isMini = el.dataset.mini === '1';
-  if(isMini){
-    el.innerHTML=`<span style="font-weight:800;color:#0f172a;cursor:pointer;" title="Click to expand Day/Week/Month range levels">📏 LEVELS [D/W/M] ▾</span>`;
-    el.onclick=()=>{el.dataset.mini='0';lvlChip(R);};
-  } else {
-    el.onclick=null;
-    el.innerHTML=`
-      <span style="font-weight:800;color:#0f172a;display:inline-flex;align-items:center;gap:2px;">📏 LEVELS:</span>
-      <span style="background:#f8fafc;border:1px solid #e2e8f0;padding:1px 4px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:9px;">
-        <b style="color:#64748b">DAY</b> ${R.day?k$(R.day.lo)+'–'+k$(R.day.hi):'—'}
-      </span>
-      <span style="background:#f8fafc;border:1px solid #e2e8f0;padding:1px 4px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:9px;">
-        <b style="color:#0284c7">WEEK</b> ${R.week?k$(R.week.lo)+'–'+k$(R.week.hi):'—'} ${wTag}
-      </span>
-      <span style="background:#f8fafc;border:1px solid #e2e8f0;padding:1px 4px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:9px;">
-        <b style="color:#7c3aed">MONTH</b> ${R.month?k$(R.month.lo)+'–'+k$(R.month.hi):'—'}
-      </span>
-      <button type="button" style="border:none;background:none;color:#94a3b8;cursor:pointer;font-size:9px;padding:0 2px;margin-left:2px;" title="Minimize levels chip" onclick="event.stopPropagation();$('v142LvlChip').dataset.mini='1';lvlChip(lvlRanges());">▴</button>
-    `;
-  }
+function lvlArr(){
+  try{
+    const L=W.rvIndexLong&&W.rvIndexLong();
+    if(!L||!L.bars||!L.bars.size){
+      const R=W.paRes&&W.paRes();
+      if(R&&R.bars&&R.bars.length){
+        return R.bars.map(b=>({t:(b.time-19800)*1000,h:b.high,l:b.low,c:b.close}));
+      }
+      return null;
+    }
+    const ver=(L.ver||0)+'|'+L.bars.size;
+    if(_lvlVer!==ver){
+      _lvlArr=[...L.bars.values()].sort((a,b)=>a.t-b.t);
+      _lvlVer=ver;
+    }
+    return _lvlArr;
+  }catch(e){return null;}
 }
-function lvlDraw(){
-  const S=W.__gexSeries;if(!S||!S.createPriceLine)return;
-  const on=lvlOn();const R=on?lvlRanges():null;
-  lvlChip(R);
-  const rk=(x)=>x?Math.round(x.hi)+'_'+Math.round(x.lo):'0';
-  const key=on&&R?[rk(R.day),rk(R.week),rk(R.month)].join('|'):'off';
-  if(key===LVL.key)return;
-  LVL.key=key;
-  for(const l of LVL.lines)try{S.removePriceLine(l);}catch(e){}
-  LVL.lines=[];
-  if(!on||!R)return;
-  const RED='#dc2626',GRN='#15803d',GRY='#94a3b8';
-  // axisLabelVisible: false so Month lines do NOT stretch the Y-axis and squash the candles
-  const add=(price,color,title,w,ax)=>{
-    if(!(price>0))return;
-    LVL.lines.push(S.createPriceLine({price,color,lineWidth:w||1,lineStyle:2,axisLabelVisible:!!ax,title}));
+
+function lvlRanges(){
+  const a=lvlArr();
+  if(!a||!a.length)return null;
+  const nowT=a[a.length-1].t;
+  const span=(ms)=>{
+    const from=nowT-ms;
+    let hi=-Infinity,lo=Infinity;
+    for(let i=a.length-1;i>=0;i--){
+      const b=a[i];
+      if(b.t<from)break;
+      if(b.h>hi)hi=b.h;
+      if(b.l<lo)lo=b.l;
+    }
+    return hi>lo?{hi,lo}:null;
   };
-  if(R.day){add(R.day.hi,GRY,'D-Hi',1,false);add(R.day.lo,GRY,'D-Lo',1,false);}
-  if(R.week){add(R.week.hi,GRN,'W-Hi · Safer',1,false);add(R.week.lo,RED,'W-Lo · Danger',1,false);}
-  if(R.month){add(R.month.hi,GRN,'M-Hi',1,false);add(R.month.lo,RED,'M-Lo',1,false);}
+  const sp=a[a.length-1].c||(typeof spot==='function'?spot():null);
+  return {day:span(864e5),week:span(7*864e5),month:span(30*864e5),spot:sp};
+}
+
+function fitLevels(){
+  const S=W.__gexSeries,ch=W.paChart?W.paChart():W.__gexChart;
+  if(!S||!ch)return;
+  const R=lvlRanges();
+  if(!R)return;
+  try{
+    W.__gVZ=1;
+    if(ch.priceScale)ch.priceScale('right').applyOptions({autoScale:true});
+    S.applyOptions({});
+    lvlDraw();
+  }catch(e){}
+}
+W.fitLevels=fitLevels;
+
+function lvlChip(R) {
+  const el = $('v142LvlChip');
+  if (el) el.remove();
+}
+let _lvlRaf=0;
+function schedLvlSvg(){
+  if(_lvlRaf)return;
+  _lvlRaf=requestAnimationFrame(()=>{
+    _lvlRaf=0;
+    renderLvlSvg();
+  });
+}
+
+function renderLvlSvg(){
+  const cb=D.querySelector('#paneG>.chart-box')||$('chartwrap')||$('paneG');
+  if(!cb)return;
+  let svg=$('v142LvlSvg');
+  if(!lvlOn()){
+    if(svg)svg.innerHTML='';
+    return;
+  }
+  const S=W.__gexSeries,ch=W.paChart?W.paChart():W.__gexChart;
+  const R=lvlRanges();
+  if(!S||!ch||!R){
+    if(svg)svg.innerHTML='';
+    return;
+  }
+  if(!svg){
+    svg=D.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.id='v142LvlSvg';
+    svg.setAttribute('aria-hidden','true');
+    svg.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:12;overflow:hidden;';
+    cb.appendChild(svg);
+    try{
+      ch.timeScale().subscribeVisibleLogicalRangeChange(schedLvlSvg);
+      window.addEventListener('resize',schedLvlSvg);
+    }catch(e){}
+  }
+  const Wd=cb.clientWidth,H=cb.clientHeight;
+  svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`);
+  svg.setAttribute('width',Wd);
+  svg.setAttribute('height',H);
+
+  let psw=78;
+  try{
+    const pw=ch.priceScale?ch.priceScale('right').width():78;
+    if(pw>0)psw=pw;
+  }catch(e){}
+  const rightEdge=Math.max(10,Wd-psw);
+
+  const levels=[];
+  if(LVL_CFG.day!==false&&R.day){
+    levels.push({key:'d_hi',price:R.day.hi,title:'DAY HIGH',shortTitle:'D-Hi',icon:'📅',color:'#0284c7',badgeBg:'rgba(2, 132, 199, 0.92)',lineStyle:'dashed',w:1.5});
+    levels.push({key:'d_lo',price:R.day.lo,title:'DAY LOW',shortTitle:'D-Lo',icon:'📅',color:'#0284c7',badgeBg:'rgba(2, 132, 199, 0.92)',lineStyle:'dashed',w:1.5});
+  }
+  if(LVL_CFG.week!==false&&R.week){
+    levels.push({key:'w_hi',price:R.week.hi,title:'WEEK HIGH · SAFER',shortTitle:'W-Hi Safer',icon:'🛡️',color:'#10b981',badgeBg:'rgba(16, 185, 129, 0.95)',lineStyle:'solid',w:2});
+    levels.push({key:'w_lo',price:R.week.lo,title:'WEEK LOW · DANGER',shortTitle:'W-Lo Danger',icon:'⚠️',color:'#ef4444',badgeBg:'rgba(239, 68, 68, 0.95)',lineStyle:'solid',w:2});
+  }
+  if(LVL_CFG.month!==false&&R.month){
+    levels.push({key:'m_hi',price:R.month.hi,title:'MONTH HIGH',shortTitle:'M-Hi',icon:'🏛️',color:'#8b5cf6',badgeBg:'rgba(139, 92, 246, 0.92)',lineStyle:'dashed',w:1.5});
+    levels.push({key:'m_lo',price:R.month.lo,title:'MONTH LOW',shortTitle:'M-Lo',icon:'🏛️',color:'#f43f5e',badgeBg:'rgba(244, 63, 94, 0.92)',lineStyle:'dashed',w:1.5});
+  }
+
+  let html='';
+  let topOffCount=0;
+  let botOffCount=0;
+
+  for(const lvl of levels){
+    let y=null;
+    try{y=S.priceToCoordinate(lvl.price);}catch(e){}
+    const priceStr='$'+Math.round(lvl.price).toLocaleString('en-US');
+
+    if(y!=null&&y>=0&&y<=H){
+      const lineDash=lvl.lineStyle==='dashed'?'stroke-dasharray="6 4"':'';
+      html+=`<line x1="0" y1="${y.toFixed(1)}" x2="${rightEdge.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${lvl.color}" stroke-width="${lvl.w}" ${lineDash} opacity="0.85" />`;
+      
+      const tagText=`${lvl.icon} ${lvl.title}  ${priceStr}`;
+      const tagW=Math.max(120,tagText.length*6.8+18);
+      const tagX=14;
+      const tagY=y-11;
+      
+      html+=`
+        <g class="lvl-chart-tag" filter="drop-shadow(0 1px 3px rgba(0,0,0,0.35))">
+          <rect x="${tagX}" y="${tagY.toFixed(1)}" width="${tagW}" height="22" rx="4" fill="${lvl.badgeBg}" stroke="#ffffff" stroke-width="0.75" />
+          <text x="${tagX+8}" y="${(tagY+15).toFixed(1)}" fill="#ffffff" font-family="'JetBrains Mono', Inter, monospace" font-size="10" font-weight="700" letter-spacing="0.02em">${tagText}</text>
+        </g>
+      `;
+    }else if(y!=null&&y<0){
+      const offX=8+topOffCount*135;
+      topOffCount++;
+      if(offX+130<rightEdge){
+        html+=`
+          <g class="lvl-off-tag" opacity="0.9" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+            <rect x="${offX}" y="2" width="128" height="18" rx="3" fill="${lvl.badgeBg}" stroke="#ffffff" stroke-width="0.5" />
+            <text x="${offX+6}" y="14.5" fill="#ffffff" font-family="Inter, sans-serif" font-size="9" font-weight="700">▲ ${lvl.shortTitle} ${priceStr}</text>
+          </g>
+        `;
+      }
+    }else if(y!=null&&y>H){
+      const offX=8+botOffCount*135;
+      botOffCount++;
+      if(offX+130<rightEdge){
+        html+=`
+          <g class="lvl-off-tag" opacity="0.9" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
+            <rect x="${offX}" y="${H-20}" width="128" height="18" rx="3" fill="${lvl.badgeBg}" stroke="#ffffff" stroke-width="0.5" />
+            <text x="${offX+6}" y="${H-7.5}" fill="#ffffff" font-family="Inter, sans-serif" font-size="9" font-weight="700">▼ ${lvl.shortTitle} ${priceStr}</text>
+          </g>
+        `;
+      }
+    }
+  }
+
+  svg.innerHTML=html;
+}
+
+function lvlDraw(){
+  const S=W.__gexSeries;
+  if(!S||!S.createPriceLine)return;
+  const on=lvlOn();
+  const R=on?lvlRanges():null;
+  lvlChip(R);
+
+  const rk=(x)=>x?Math.round(x.hi)+'_'+Math.round(x.lo):'0';
+  const cfgStr=[LVL_CFG.day,LVL_CFG.week,LVL_CFG.month].join('-');
+  const key=on&&R?[rk(R.day),rk(R.week),rk(R.month),cfgStr].join('|'):'off';
+
+  if(key!==LVL.key){
+    LVL.key=key;
+    for(const l of LVL.lines){
+      try{S.removePriceLine(l);}catch(e){}
+    }
+    LVL.lines=[];
+
+    if(on&&R){
+      const addLine=(price,color,title,w,isSolid)=>{
+        if(!(price>0))return;
+        LVL.lines.push(S.createPriceLine({
+          price,
+          color,
+          lineWidth:w||1.5,
+          lineStyle:isSolid?0:2,
+          axisLabelVisible:true,
+          axisLabelColor:color,
+          axisLabelTextColor:'#ffffff',
+          title
+        }));
+      };
+
+      if(LVL_CFG.day!==false&&R.day){
+        addLine(R.day.hi,'#0284c7','D-HIGH',1.5,false);
+        addLine(R.day.lo,'#0284c7','D-LOW',1.5,false);
+      }
+      if(LVL_CFG.week!==false&&R.week){
+        addLine(R.week.hi,'#059669','W-HIGH · Safer',2,true);
+        addLine(R.week.lo,'#dc2626','W-LOW · Danger',2,true);
+      }
+      if(LVL_CFG.month!==false&&R.month){
+        addLine(R.month.hi,'#7c3aed','M-HIGH',1.5,false);
+        addLine(R.month.lo,'#e11d48','M-LOW',1.5,false);
+      }
+    }
+  }
+
+  schedLvlSvg();
 }
 W.lvlDraw=lvlDraw; W.lvlChip=lvlChip; W.lvlRanges=lvlRanges; W.lvlOn=lvlOn;
 function wireEm(){const b=$('emBtn');if(!b||b.__v89)return;b.__v89=true;b.textContent='OR · EM';b.title='30-minute NY opening range and ±1 expected move to the planned exit';b.setAttribute('aria-pressed',String(emOn()));
@@ -21624,12 +21791,10 @@ const LIST=[
   ['liq','Liquidations','OKX BTC swaps, last 15 min · alarm badge on the BTC chart','btc'],
   ['strk','Strikes + expected move','your strangle (or tonight\'s suggested) strikes and the ±1σ band to expiry on the BTC chart','btc'],
   ['legs','Leg multiple','call × and put × vs the 2× stop · only while a trade is open','btc'],
-  ['pwin','P(success)','chance the strangle ends in profit if sold now · your archive + the 1-year test','btc'],
   ['rsi','RSI 14 + divergence','regular and hidden divergence on the BTC bars','btc'],
   ['dfl','Deribit option flow','net puts / calls bought per 15 min · put buying = put-leg threat','btc'],
   ['grk','ATM Greeks','Θ · Vega · Γ · Δ of the master expiry (follows it) · plus your strangle','btc'],
   ['spr','Bid / ask spread','ATM IV spread (vol pts) + premium spread % · master expiry','btc'],
-  ['tip','Improve my trades','your closed Delta trades vs the tested rule · what to change','btc'],
   ['crush','IV driver · crush','who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger','btc'],
   ['fut','Futures positioning','OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days','btc']
 ];
@@ -21663,12 +21828,10 @@ const IND={
   term:()=>$('v137Term'),
   skew:()=>$('v137Skew'),
   fund:()=>$('v137Fund'),
-  pwin:()=>$('v142Pwin'),
   rsi:()=>$('v142Rsi'),
   dfl:()=>$('v142Dfl'),
   grk:()=>$('v142Grk'),
   spr:()=>$('v142Spr'),
-  tip:()=>$('v142Tip'),
   crush:()=>$('v145Crush'),
   fut:()=>$('v146Fut')
 };
@@ -21689,61 +21852,57 @@ const DEF={
   fp:true,   // 12. Footprints
   sig:true,  // 13. Entry signals
   macro:true,// 14. Outside markets volatility pressure (0-100) lane
-  edge:false,adx:false,rv:false,vov:false,dv:false,ton:false,term:false,skew:false,fund:false,liq:false,strk:false,legs:false,pwin:false,rsi:false,dfl:false,grk:false,spr:false,tip:false,crush:false,fut:false
+  edge:false,adx:false,rv:false,vov:false,dv:false,ton:false,term:false,skew:false,fund:false,liq:false,strk:false,legs:false,rsi:false,dfl:false,grk:false,spr:false,crush:false,fut:false
 };
 
 let on=Object.assign({},DEF,LSg('v133_ind',{}));
+delete on.ready;delete on.day;delete on.gng;delete on.pwin;delete on.tip;
 function save(){LSs('v133_ind',on);}
 function refit(){try{W.paRefit&&W.paRefit();}catch(e){}setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(e){}},60);setTimeout(()=>{try{W.v128&&W.v128.refit&&W.v128.refit();}catch(e){}},700);}
 /* ---------- the menu ---------- */
 function button(){const top=$('gTop');if(!top||$('v132IndBtn'))return;const r=top.querySelector('.r')||top;
 
   // Mount Strategy Flash Indicators Ribbon immediately below toolbar (Ultra-Compact Single-Line Light Strip with Dismiss)
-  if(!$('flashRibbon')){
-    const fl=D.createElement('div');
-    fl.id='flashRibbon';
-    fl.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 10px;background:#ffffff;border-bottom:1px solid #e2e8f0;font-size:10px;font-family:Inter,sans-serif;box-sizing:border-box;height:24px;overflow-x:auto;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,0.02);flex:none;';
-    fl.innerHTML=`
-      <div style="display:inline-flex;align-items:center;gap:8px;">
-        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;font-weight:800;color:#64748b;letter-spacing:0.04em;display:inline-flex;align-items:center;gap:3px;flex-shrink:0;">
+  if (!$('flashRibbon')) {
+    const fl = D.createElement('div');
+    fl.id = 'flashRibbon';
+    fl.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:2px 6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:9.5px;font-family:Inter,sans-serif;box-sizing:border-box;white-space:nowrap;flex-shrink:0;';
+    fl.innerHTML = `
+      <div style="display:inline-flex;align-items:center;gap:5px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.04em;display:inline-flex;align-items:center;gap:2px;flex-shrink:0;">
           ⚡ FLASH:
         </span>
-        <div style="display:inline-flex;align-items:center;gap:4px;background:#f8fafc;border:1px solid #cbd5e1;border-left:3px solid #10b981;border-radius:3px;padding:1px 6px;cursor:help;" title="IV 51.4% vs RV 45.2% (+6.2 vol spread). Institutional short premium cushion tonight.">
-          <span style="font-weight:700;color:#0f172a;font-size:9.5px;">DAY: Edge (VRP)</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;color:#059669;">+65.3% WIN · +$24k</span>
+        <div style="display:inline-flex;align-items:center;gap:3px;background:#ffffff;border:1px solid #cbd5e1;border-left:3px solid #10b981;border-radius:3px;padding:1px 5px;cursor:help;" title="IV 51.4% vs RV 45.2% (+6.2 vol spread). Institutional short premium cushion tonight.">
+          <span style="font-weight:700;color:#0f172a;font-size:9px;">DAY: Edge</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:800;color:#059669;">+65.3%</span>
         </div>
-        <div style="display:inline-flex;align-items:center;gap:4px;background:#f8fafc;border:1px solid #cbd5e1;border-left:3px solid #0284c7;border-radius:3px;padding:1px 6px;" title="Filtered 4 erratic whipsaws during London close. Successfully defended the short strangle put-wing.">
-          <span style="font-weight:700;color:#0f172a;font-size:9.5px;">WEEK: Speed vs IV</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;color:#0284c7;">4 Vetoes · 100% Stop Drop</span>
+        <div style="display:inline-flex;align-items:center;gap:3px;background:#ffffff;border:1px solid #cbd5e1;border-left:3px solid #0284c7;border-radius:3px;padding:1px 5px;" title="Filtered 4 erratic whipsaws during London close. Successfully defended the short strangle put-wing.">
+          <span style="font-weight:700;color:#0f172a;font-size:9px;">WEEK: Speed</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:800;color:#0284c7;">4 Vetoes</span>
         </div>
-        <div style="display:inline-flex;align-items:center;gap:4px;background:#f8fafc;border:1px solid #cbd5e1;border-left:3px solid #7c3aed;border-radius:3px;padding:1px 6px;" title="Vol of Vol below 28th percentile and call/put skew held within 1.04 band, yielding max theta.">
-          <span style="font-weight:700;color:#0f172a;font-size:9.5px;">MONTH: VoV + 25Δ Skew</span>
-          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;color:#7c3aed;">Sharpe 2.41 · Top Rank</span>
+        <div style="display:inline-flex;align-items:center;gap:3px;background:#ffffff;border:1px solid #cbd5e1;border-left:3px solid #7c3aed;border-radius:3px;padding:1px 5px;" title="Vol of Vol below 28th percentile and call/put skew held within 1.04 band, yielding max theta.">
+          <span style="font-weight:700;color:#0f172a;font-size:9px;">MONTH: VoV+Skew</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:800;color:#7c3aed;">Sharpe 2.41</span>
         </div>
       </div>
-      <button type="button" id="v148CloseRibbonBtn" style="border:none;background:none;color:#94a3b8;cursor:pointer;font-size:11px;font-weight:700;padding:0 4px;" title="Dismiss flash ribbon for maximum chart space">✕</button>
+      <button type="button" id="v148CloseRibbonBtn" style="border:none;background:none;color:#94a3b8;cursor:pointer;font-size:10px;font-weight:700;padding:0 3px;" title="Dismiss flash ribbon">✕</button>
     `;
-    const dockEl=$('v147DeskDock');
-    const chartWrap=$('chartwrap')||$('paneG');
-    if(dockEl&&dockEl.parentNode){
-      dockEl.parentNode.insertBefore(fl,dockEl);
-    }else if(chartWrap&&chartWrap.parentNode){
-      chartWrap.parentNode.insertBefore(fl,chartWrap);
-    }else if(top&&top.parentElement){
-      top.parentElement.insertBefore(fl,top.nextSibling);
+    const wrap = $('v147StrategyNearFri') || $('v147DeskDock')?.parentNode;
+    if (wrap) {
+      wrap.appendChild(fl);
+    } else {
+      const chipEl = $('v136Chip') || $('ph89') || $('nav');
+      if (chipEl && chipEl.parentNode) chipEl.after(fl);
     }
     fl.querySelector('#v148CloseRibbonBtn')?.addEventListener('click', () => {
       fl.style.display = 'none';
-      try { localStorage.setItem('v148_flash_dismiss', '1'); } catch(e){}
-      setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(x){}},50);
+      try { localStorage.setItem('v148_flash_dismiss', '1'); } catch (e) { }
+      setTimeout(() => { try { W.dispatchEvent(new Event('resize')); } catch (x) { } }, 50);
     });
     if (localStorage.getItem('v148_flash_dismiss') === '1') {
       fl.style.display = 'none';
     }
   }
-  
-  const newsBtn=D.createElement('button');
-  newsBtn.type='button';
   newsBtn.id='v148ToolbarNewsBtn';
   newsBtn.className='tool';
   newsBtn.title='National Economy Breaking News & Minister Bulletins';
@@ -21772,9 +21931,9 @@ function button(){const top=$('gTop');if(!top||$('v132IndBtn'))return;const r=to
 function count(){const n=Object.values(on).filter(Boolean).length;const s=D.querySelector('#v132IndBtn .v132n');if(s)s.textContent=n;}
 function openMenu(){let m=$('v132Ind');if(m){m.hidden=!m.hidden;if(!m.hidden){paint();const q=m.querySelector('input[type=search]');if(q)q.focus();}return;}
   m=D.createElement('div');m.id='v132Ind';m.setAttribute('role','dialog');m.setAttribute('aria-label','Indicators');
-  m.innerHTML='<div class="h"><b>Indicators</b><button type="button" class="x" aria-label="Close">✕</button></div><label class="s"><span aria-hidden="true">⌕</span><input type="search" placeholder="Search" aria-label="Search indicators"></label><div class="lb">Deploy a phase set</div><div class="f phf"><button type="button" data-a="entry" style="color:#2ec45f;border-color:#2b5540;font-weight:800">▶ Entry</button><button type="button" data-a="hold" style="color:#4ea8ff;border-color:#294863;font-weight:800">⏸ Hold</button><button type="button" data-a="exit" style="color:#ff6b6b;border-color:#5a2a32;font-weight:800">⏹ Exit</button></div><div class="lb">Indicators</div><div class="ls" role="list"></div><div class="f"><button type="button" data-a="all">Show all</button><button type="button" data-a="def">Default set</button></div>';
+  m.innerHTML='<div class="h"><b>Indicators</b><button type="button" class="x" aria-label="Close">✕</button></div><label class="s"><span aria-hidden="true">⌕</span><input type="search" placeholder="Search" aria-label="Search indicators"></label><div class="ls" role="list"></div><div class="f"><button type="button" data-a="all">Show all</button><button type="button" data-a="def">Default set</button></div>';
   D.body.appendChild(m);
-  m.addEventListener('click',e=>{e.stopPropagation();if(e.target.closest('.x')){m.hidden=true;return;}const a=e.target.closest('[data-a]');if(a){const act=a.dataset.a;if(act==='entry'||act==='hold'||act==='exit'){try{W.v138&&W.v138.preset&&W.v138.preset(act.charAt(0).toUpperCase()+act.slice(1));}catch(x){}m.hidden=true;return;}if(act==='all')for(const [k] of LIST)on[k]=true;else on=Object.assign({},DEF);save();apply(true);paint();return;}
+  m.addEventListener('click',e=>{e.stopPropagation();if(e.target.closest('.x')){m.hidden=true;return;}const a=e.target.closest('[data-a]');if(a){const act=a.dataset.a;if(act==='all')for(const [k] of LIST)on[k]=true;else on=Object.assign({},DEF);save();apply(true);paint();return;}
     const it=e.target.closest('[data-k]');if(it){const k=it.dataset.k;on[k]=!on[k];if(!Object.values(on).some(Boolean))on[k]=true;save();apply(true);paint();}});
   m.querySelector('input').addEventListener('input',paint);
   D.addEventListener('click',e=>{if(m.hidden||!e.isTrusted)return;const P=e.composedPath?e.composedPath():[];if(P.some(n=>n===m||(n&&n.id==='v132IndBtn')))return;if(e.target.isConnected&&e.target.closest('#v132Ind,#v132IndBtn'))return;m.hidden=true;});   // v140: a tick re-paints the list (target detached) — no longer closes the menu
@@ -22357,7 +22516,26 @@ function mode(now){const ist=new Date(now+IST-7*HR),dow=ist.getUTCDay(),h=ist.ge
 function chipInfo(now){const m=mode(now),st=S.stats&&S.stats[m.dow];
   if(m.k==='hold')return {t:DN[m.dow]+' · HOLD ONLY',c:'a'};if(m.k==='fri')return {t:'FRI · WEEKEND ENTRY',c:'b'};
   const g=st?st.g:{g:'…',c:''};const sz=g.g==='C−'||g.g==='C'?' · SMALL SIZE':'';return {t:DN[m.dow]+' · GRADE '+g.g+sz,c:g.c||'b'};}
-function chip(){const ph=$('ph89');if(!ph)return;let c=$('v136Chip');if(!c){c=D.createElement('span');c.id='v136Chip';c.setAttribute('role','status');}if(c.previousElementSibling!==ph)ph.after(c);
+function chip() {
+  const ph = $('ph89'); if (!ph) return;
+  let c = $('v136Chip');
+  if (!c) {
+    c = D.createElement('span'); c.id = 'v136Chip'; c.setAttribute('role', 'status');
+    c.style.cursor = 'pointer';
+    c.addEventListener('click', () => {
+      const b = D.querySelector('#nav [data-page="pgDecision"],#tabbar [data-page="pgDecision"],#moreSheet [data-page="pgDecision"]');
+      if (b) b.click();
+    });
+  }
+  if (c.previousElementSibling !== ph) ph.after(c);
+  const i = chipInfo(Date.now());
+  if (c.textContent !== i.t) c.textContent = i.t;
+  const cl = 'v136 ' + i.c;
+  if (c.className !== cl) c.className = cl;
+  c.title = 'Day mode: ' + i.t + ' · Click to open Day Decision page';
+  const wrap = $('v147StrategyNearFri');
+  if (wrap && wrap.previousElementSibling !== c) { c.after(wrap); }
+}
   const i=chipInfo(Date.now());if(c.textContent!==i.t)c.textContent=i.t;const cl='v136 '+i.c;if(c.className!==cl)c.className=cl;c.title='Day mode · Decision page has the day plan';}
 /* ---------- live readings ---------- */
 function L(){return (W.v121&&W.v121.last)||null;}
@@ -22705,8 +22883,8 @@ W.__v138X=lanes=>{let x=0;for(const l of lanes){const h=W.__v138H(l.id,100);x+=M
 function bars(){const R=W.paRes&&W.paRes();if(!R||!R.bars||R.bars.length<3)return null;const b=R.bars,tf=(b[b.length-1].time-b[b.length-2].time)*1000;return {b,tf,n:b.length};}
 const t0ms=bar=>(bar.time-ISTS)*1000;
 /* ---------- section factory ---------- */
-const SEC={ready:{id:'v138Ready',kind:'ready'},iv:{id:'v138Iv'},rv:{id:'v138Rv'},vov:{id:'v138Vov'},dv:{id:'v138Dv'},legs:{id:'v138Legs'}};
-const ORDER=['v138Ready','v145Day','v142Gng','v142Pwin','v138Iv','v142Ton','v145Crush','cvLane','macroStressLane','v138Vov','v138Rv','paAdxBox','v142Rsi','v138Dv','v142Dfl','v142Grk','v142Spr','v105EdgeBox','v105RangeBox','v137Term','v137Skew','v137Fund','v146Fut','v142Tip','v138Legs'];   // v142: + new sections
+const SEC={iv:{id:'v138Iv'},rv:{id:'v138Rv'},vov:{id:'v138Vov'},dv:{id:'v138Dv'},legs:{id:'v138Legs'}};
+const ORDER=['v138Iv','v142Ton','v145Crush','cvLane','macroStressLane','v138Vov','v138Rv','paAdxBox','v142Rsi','v138Dv','v142Dfl','v142Grk','v142Spr','v105EdgeBox','v105RangeBox','v137Term','v137Skew','v137Fund','v146Fut','v138Legs'];   // v142: + new sections
 function place(box){const pane=$('paneG');if(!pane)return;const my=ORDER.indexOf(box.id);let after=pane.querySelector(':scope>.chart-box')||null;
   for(const id of ORDER.slice(0,my)){const e=$(id);if(e&&e.parentElement===pane)after=e;}
   if(box.parentElement!==pane||box.previousElementSibling!==after){if(after)after.after(box);else pane.appendChild(box);}}
@@ -22859,8 +23037,8 @@ function readout(){const pane=$('paneG'),src=W.paChart&&W.paChart();if(!pane||!s
   src.subscribeCrosshairMove(p=>{const B=S.bars;if(!p||p.time==null||!B||!p.point){box.style.display='none';for(const o of Object.values(S.lanes))try{o.ch.clearCrosshairPosition();}catch(e){}return;}
     let i=-1;for(let j=B.n-1;j>=0;j--)if(B.b[j].time===p.time){i=j;break;}if(i<0){box.style.display='none';return;}
     const bar=B.b[i],rows=[['BTC',bar.close!=null?bar.close.toLocaleString('en-US',{maximumFractionDigits:0}):'—']];
-    const names={ready:'Entry/Hold/Exit',iv:'ATM IV',rv:'RV 1 h',vov:'VoV',dv:'DVOL',legs:'Leg ×'};
-    for(const k of ['ready','iv','rv','vov','dv','legs']){const o=S.lanes[k];if(!o||o.box.classList.contains('v127-off'))continue;const v=(S.vals[k]||[])[i];
+    const names={iv:'ATM IV',rv:'RV 1 h',vov:'VoV',dv:'DVOL',legs:'Leg ×'};
+    for(const k of ['iv','rv','vov','dv','legs']){const o=S.lanes[k];if(!o||o.box.classList.contains('v127-off'))continue;const v=(S.vals[k]||[])[i];
       rows.push([names[k],v==null?'—':k==='ready'?({g:'ENTRY ✓',a:'IV only',n:'wait',h:'HOLD',x:'EXIT',w:'no-trade day',p:'before NY',q:'first hour',c:'window closed'}[v]||'—'):k==='iv'||k==='rv'?v.toFixed(2)+'%':k==='legs'?v.toFixed(2)+'×':v.toFixed(2)]);
       try{if(v!=null&&k!=='ready')o.ch.setCrosshairPosition(v,p.time,o.a);else o.ch.clearCrosshairPosition();}catch(e){}}
     try{for(const [k,nm] of [['term','Term Cur−N2N'],['skew','25Δ RR'],['fund','Funding']]){const o=W.v137.state().lanes[k];if(!o||o.box.classList.contains('v127-off'))continue;const t=(bar.time-ISTS)*1000+((S.bars.tf)||0);
@@ -22900,8 +23078,8 @@ function legRec(){const R=L121();const lg=R&&R.legs?R.legs.filter(l=>l.x!=null):
   if(!S.legs||S.legs.id!==id)S.legs={id,pts:[]};const c=lg.find(l=>/c/i.test(l.type||'')),p=lg.find(l=>/p/i.test(l.type||''));const t=Math.floor(Date.now()/MIN)*MIN;
   const last=S.legs.pts[S.legs.pts.length-1];if(last&&last[0]===t)return;S.legs.pts.push([t,c?c.x:null,p?p.x:null]);if(S.legs.pts.length>2000)S.legs.pts.shift();LSs('v138_legs',S.legs);}
 /* ---------- presets in the Indicators menu ---------- */
-const PRE={Entry:{ready:1,spd:1,vov:1,rng:1,rv:1,dv:1,iv:1,edge:1,ton:1,term:1,sig:1,gng:1,crush:1,vwap:1,avp:1,ses:1,day:1,lvl:1},Hold:{ready:1,legs:1,strk:1,grk:1,rsi:1,liq:1,lhm:1,iv:1,crush:1,pwin:1,lvl:1},Exit:{ready:1,ton:1,sig:1,legs:1,tip:1,iv:1,day:1,crush:1},Clean:{}};   // v149: groups graded by the 5-year backtest — Entry = calm-tape + IV-turn verifiers (primary+confirm) · Hold = position/leg/greeks/cascade · Exit = exit state + review
-const KEEP=['day','crush','fut','pat','cdl','gex','ton','ses','gng','pwin','rsi','dfl','grk','spr','fp','vwap','avp','lhm','tip'];   // v142: layouts (and auto) never switch off the new items you ticked
+const PRE={Entry:{spd:1,vov:1,rng:1,rv:1,dv:1,iv:1,edge:1,ton:1,term:1,sig:1,crush:1,vwap:1,avp:1,ses:1,lvl:1},Hold:{legs:1,strk:1,grk:1,rsi:1,liq:1,lhm:1,iv:1,crush:1,lvl:1},Exit:{ton:1,sig:1,legs:1,iv:1,crush:1},Clean:{}};   // v149: groups graded by the 5-year backtest — Entry = calm-tape + IV-turn verifiers (primary+confirm) · Hold = position/leg/greeks/cascade · Exit = exit state + review
+const KEEP=['crush','fut','pat','cdl','gex','ton','ses','rsi','dfl','grk','spr','fp','vwap','avp','lhm'];   // v142: layouts (and auto) never switch off the new items you ticked
 function preset(name){const P=PRE[name];if(!P||!W.v132ind)return;const on=W.v132ind.state();for(const k of Object.keys(on))if(!KEEP.includes(k))on[k]=false;Object.assign(on,Object.fromEntries(Object.entries(P).map(([k,v])=>[k,!!v])));LSs('v133_ind',on);try{W.v132ind.apply(true);}catch(x){}setTimeout(()=>{paintAll();try{W.v137&&W.v137.paintAll();}catch(x){}},120);}
 function presets(){const m=$('v132Ind');if(!m||m.querySelector('.v138-presets'))return;const row=D.createElement('div');row.className='v138-presets';row.innerHTML='<span>LAYOUT</span>'+Object.keys(PRE).map(k=>`<button type="button" data-p="${k}">${k}</button>`).join('');
   const ls=m.querySelector('.ls');if(ls)ls.before(row);else m.prepend(row);
@@ -23049,7 +23227,7 @@ function pill(){const top=$('gTop');if(!top)return;let p=$('v139Pill');if(!p){p=
   const anchor=top.querySelector('#v100Master')||top.querySelector('.sym');if(anchor&&p.previousElementSibling!==anchor)anchor.after(p);
   const d=decide(),h=`${esc(d.w)}<i>details → Decision</i>`;if(p.innerHTML!==h)p.innerHTML=h;if(p.className!==d.c)p.className=d.c;}
 /* ---------- menu groups + auto layout ---------- */
-const GROUPS=[['n','NEW IN v142 · tick to show',['gng','pwin','rsi','dfl','grk','spr','fp','vwap','avp','lhm','tip']],['e','ENTRY · TRUSTED (1-year test)',['ready','iv','adx','sig']],['h','YOUR CONFIRMATIONS',['ton','spd','vov','rv','pat']],['h','HOLD',['legs','strk']],['x','EXIT · ALARMS',['liq']],['w','BTC CHART',['ses','cdl','gex']],['w','WATCH ONLY',['term','edge','rng','dv','skew','fund']]];
+const GROUPS=[['n','NEW IN v142 · tick to show',['rsi','dfl','grk','spr','fp','vwap','avp','lhm']],['e','ENTRY · TRUSTED (1-year test)',['ready','iv','adx','sig']],['h','YOUR CONFIRMATIONS',['ton','spd','vov','rv','pat']],['h','HOLD',['legs','strk']],['x','EXIT · ALARMS',['liq']],['w','BTC CHART',['ses','cdl','gex']],['w','WATCH ONLY',['term','edge','rng','dv','skew','fund']]];
 function groupMenu(){const m=$('v132Ind'),ls=m&&m.querySelector('.ls');if(!ls||ls.querySelector('.v139-grp'))return;const q=(m.querySelector('input')||{}).value;if(q)return;
   const items=[...ls.querySelectorAll('[data-k]')];if(!items.length)return;const by={};for(const it of items)by[it.dataset.k]=it;const frag=D.createDocumentFragment(),used=new Set();
   for(const [cls,name,keys] of (W.v145menu?[]:GROUPS)){   /* v145: ranked list instead of groups */const ks=keys.filter(k=>by[k]);if(!ks.length)continue;const h=D.createElement('div');h.className='v139-grp '+cls;h.textContent=name;frag.appendChild(h);for(const k of ks){frag.appendChild(by[k]);used.add(k);}}
@@ -23257,9 +23435,9 @@ const master=()=>{try{return (W.v100&&W.v100.expNow&&W.v100.expNow())||(L121()&&
 const settleMs=e=>{try{return expiryEpoch(e);}catch(x){return Date.parse(e+'T12:00:00Z');}};
 
 /* =================================================================== sections (same look as v138) */
-const SEC={ton:{id:'v142Ton',name:'TONIGHT'},gng:{id:'v142Gng',name:'GO / NO-GO'},pwin:{id:'v142Pwin',name:'P(SUCCESS)'},rsi:{id:'v142Rsi',name:'RSI 14'},dfl:{id:'v142Dfl',name:'DERIBIT FLOW'},
-  grk:{id:'v142Grk',name:'ATM GREEKS'},spr:{id:'v142Spr',name:'BID / ASK'},tip:{id:'v142Tip',name:'IMPROVE'},day:{id:'v145Day',name:'MY DAY'},crush:{id:'v145Crush',name:'IV DRIVER'},fut:{id:'v146Fut',name:'FUTURES'},macro:{id:'macroStressLane',name:'MACRO STRESS'}};   // v145 · v146 · v149
-const ORDER=['v138Ready','v145Day','v142Gng','v142Pwin','v138Iv','v142Ton','v145Crush','cvLane','macroStressLane','v138Vov','v138Rv','paAdxBox','v142Rsi','v138Dv','v142Dfl','v142Grk','v142Spr','v105EdgeBox','v105RangeBox','v137Term','v137Skew','v137Fund','v146Fut','v142Tip','v138Legs'];
+const SEC={ton:{id:'v142Ton',name:'TONIGHT'},rsi:{id:'v142Rsi',name:'RSI 14'},dfl:{id:'v142Dfl',name:'DERIBIT FLOW'},
+  grk:{id:'v142Grk',name:'ATM GREEKS'},spr:{id:'v142Spr',name:'BID / ASK'},crush:{id:'v145Crush',name:'IV DRIVER'},fut:{id:'v146Fut',name:'FUTURES'},macro:{id:'macroStressLane',name:'MACRO STRESS'}};   // v145 · v146 · v149
+const ORDER=['v138Iv','v142Ton','v145Crush','cvLane','macroStressLane','v138Vov','v138Rv','paAdxBox','v142Rsi','v138Dv','v142Dfl','v142Grk','v142Spr','v105EdgeBox','v105RangeBox','v137Term','v137Skew','v137Fund','v146Fut','v138Legs'];
 const S={lanes:{},vals:{},grk:LSg('v142_grk','theta'),anchor:LSg('v142_anchor',null),pick:false};
 const pf=(d,u)=>({type:'custom',formatter:v=>(fin(v)?v.toFixed(d):'')+(u||''),minMove:Math.pow(10,-d)});
 function order(){const pane=$('paneG');if(!pane)return;const els=ORDER.map($).filter(e=>e&&e.parentElement===pane);
@@ -23863,9 +24041,6 @@ function grid(){const S=SIG();if(!S)return null;const G=S.grid||[],now=Date.now(
 // rank · tag · how to use it for the short strangle (honest about tested vs watch-only)
 const TAGN={t:'TESTED',g:'GUIDE',c:'CONFIRM',h:'HOLD',x:'EXIT',w:'WATCH',n:'NEW'};
 const INFO={
- ready:[1,'t','The tested night, replayed every 15 min. <em class="ok">Green = sell</em> (IV turn + ADX falling + the day\'s rule). Amber = IV turn only → wait. Blue = holding. Red = exit. Grey = no-entry time: before NY, the first hour, Thu / Sat / Sun, or the window has closed. Only sell on green.'],
- day:[2,'g','Your journey for the night, from the Decision page: day check → news → NY open → wait 60 min → IV turn → ADX → sell window → hold → book. The blue chip is the step you are on; the legend says what comes next. Keep it near the top.'],
- gng:[3,'t','One bar per 15 min. GO (full green) only when the tested verdict says SELL. Cautions (spread, option flow, odds) show as amber but never block. Use it as the final yes / no before you place the order.'],
  iv:[4,'t','The core rule: let the NY spike happen, then sell when ATM IV is <em>1.5–6 % off the NY high</em> with 1–2 red 15-min candles (+10.5 % of credit vs +4.5 % at a fixed time in the 1-year test). <em class="bad">Never sell into rising IV.</em>'],
  adx:[5,'t','Sell only when 1-h ADX is <em>≤ 40 and lower than 3 h ago</em> (trend fading): +10.8 % of credit vs +7.0 % without it. Rising ADX = BTC trending = the strangle gets run over.'],
  ton:[6,'c','Tonight\'s IV against its usual clock path. <em class="ok">Above the clock after 21:00 = premium rich → sell OK.</em> Below = IV cheaper than usual → wait. ▲▼ marks are the crossovers. A confirmation, not an entry by itself.'],
@@ -23874,7 +24049,6 @@ const INFO={
  spd:[9,'c','RV ÷ IV: how fast BTC moves against what the premium prices. <em class="ok">Under 1× = good for sellers.</em> The tested entry needs it under 1.5×. Above 1.5× = moving too fast → don\'t sell, protect an open strangle.'],
  legs:[10,'h','Only with an open strangle: each leg\'s price ÷ its entry price. <em class="bad">2× on one leg = close that leg</em> (tested per-leg stop, keep the other). Treat 1.6× as the warning.'],
  strk:[11,'h','Your strikes (or tonight\'s suggested ones) and the ±1σ move to expiry on the BTC chart. Price walking toward a strike = that leg is in danger; strikes outside ±1σ are the safer sell.'],
- pwin:[12,'t','Chance the strangle ends in profit if you sell now — your own archive once it has 30+ rule trades, else the 1-year test (61 %). Under 50 % = skip unless everything else is green.'],
  macro:[13,'n','Outside market volatility pressure (0–100): tracks Forex (DXY, USDJPY), Commodities (Gold, WTI Oil), Stocks (Nasdaq, VIX), Bonds (US10Y, MOVE), and News Calendar (CPI, FOMC, NFP in IST). <em class="ok">Green (&lt;35) = calm → 100% normal size.</em> Amber (35–65) = half size. Red (&gt;65) = macro shock → skip / cut size.'],
  fut:[13,'n','Futures positioning: is a move built on <em>new</em> positions or on positions closing? Price ↑ OI ↑ = new longs, price ↓ OI ↑ = new shorts (fuel for the move), faded bars = positions closing (covering / liquidation). FUEL / FLUSH marks show their 30-day hit rate — grey = not proven. New — not part of the tested strangle rule.'],
  crush:[13,'n','Who moves IV: put wing vs call wing (25Δ). <em class="bad">Puts driving a rise</em> = fear of a drop → put-leg danger. <em class="bad">Calls driving a rise</em> = squeeze → call-leg danger. A crush led by one side = that leg decays faster. New — not part of the tested rule.'],
@@ -23897,8 +24071,7 @@ const INFO={
  vwap:[30,'w','Session VWAP from 05:30 IST with ±1σ / ±2σ. Price outside ±2σ = stretched → wait for it to come back before selling.'],
  avp:[31,'w','VWAP anchored at the NY open (or a candle you pick) with its volume profile. POC and value area show accepted prices; strikes outside the value area are safer.'],
  rsi:[32,'w','RSI 14 with regular / hidden divergence. Divergence = momentum fading; with ADX falling it supports the "range" story. Not a tested entry.'],
- fp:[33,'w','Buy vs sell volume per price inside each candle (zoom in). Big one-sided prints at a level = someone pushing price.'],
- tip:[34,'w','After trading: your closed Delta trades checked against the tested rule, with what to change next time.']};
+ fp:[33,'w','Buy vs sell volume per price inside each candle (zoom in). Big one-sided prints at a level = someone pushing price.'],};
 const favs=()=>new Set((LSg('v145_fav',[])||[]).filter(k=>typeof k==='string'));
 function toggleFav(k){const f=favs();f.has(k)?f.delete(k):f.add(k);LSs('v145_fav',[...f]);}
 const OPEN=new Set();
@@ -25311,98 +25484,36 @@ function compactActionBadge(st){
   }
 }
 
-function mountDeskDock(){
-  let dock=$('v147DeskDock');
-  if(!dock){
-    dock=D.createElement('div');
-    dock.id='v147DeskDock';
-    dock.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 10px;background:#ffffff;border-bottom:1px solid #e2e8f0;box-sizing:border-box;box-shadow:0 1px 2px rgba(0,0,0,0.02);color:#0f172a;flex:none;height:38px;overflow-x:auto;white-space:nowrap;';
-    dock.innerHTML=`
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-        <div id="v147DeskClockMount" style="width:30px;height:30px;min-width:30px;min-height:30px;flex-shrink:0;cursor:pointer;position:relative;display:flex;align-items:center;justify-content:center;" title="Tap to expand full strategy blueprint"></div>
-        <div style="display:flex;flex-direction:column;line-height:1;gap:1px;flex-shrink:0;">
-          <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:800;color:#64748b;letter-spacing:0.04em;">CLOCK</span>
-          <span style="font-size:8px;font-weight:700;color:#15803d;background:rgba(21,128,61,0.08);padding:0 3px;border-radius:2px;border:1px solid rgba(21,128,61,0.25);">IST</span>
-        </div>
-      </div>
-      <div id="v147DeskDecide" style="flex-shrink:0;font-size:10px;"></div>
-      <div id="v147DeskDayIcons" style="display:flex;gap:3px;align-items:center;flex-shrink:0;"></div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-        <button type="button" id="v147ExpandBtn" style="font-size:9.5px;font-weight:700;background:#f8fafc;border:1px solid #cbd5e1;color:#1e293b;padding:2px 6px;border-radius:3px;cursor:pointer;" title="Open full strategy blueprint & calendar">
-          🔍 30D Audit
-        </button>
-        <button type="button" id="v147DockToggleBtn" style="font-size:9.5px;font-weight:700;background:#ffffff;border:1px solid #cbd5e1;color:#64748b;padding:2px 6px;border-radius:3px;cursor:pointer;" title="Toggle dock visibility for clear chart">
-          ▲ Hide
-        </button>
-      </div>
+function mountDeskDock() {
+  let wrap = $('v147StrategyNearFri');
+  let dock = $('v147DeskDock');
+  if (!wrap) {
+    wrap = D.createElement('div');
+    wrap.id = 'v147StrategyNearFri';
+    wrap.style.cssText = 'display:inline-flex;align-items:center;gap:6px;flex:1 1 auto;min-width:0;overflow-x:auto;white-space:nowrap;scrollbar-width:none;margin-left:6px;';
+  }
+  if (!dock) {
+    dock = D.createElement('div');
+    dock.id = 'v147DeskDock';
+    dock.style.cssText = 'display:inline-flex;align-items:center;gap:6px;flex-shrink:0;white-space:nowrap;';
+    dock.innerHTML = `
+      <div id="v147DeskClockMount" style="display:none!important;"></div>
+      <div id="v147DeskDecide" style="display:inline-flex;align-items:center;flex-shrink:0;font-size:10px;"></div>
+      <div id="v147DeskDayIcons" style="display:inline-flex;gap:3px;align-items:center;flex-shrink:0;"></div>
+      <button type="button" id="v147ExpandBtn" onclick="event.stopPropagation();try{if(window.openBig)window.openBig();else if(window.v147&&window.v147.open)window.v147.open();}catch(e){console.error(e);}" style="font-size:9.5px;font-weight:700;background:#f8fafc;border:1px solid #cbd5e1;color:#1e293b;padding:2px 6px;border-radius:3px;cursor:pointer;flex-shrink:0;" title="Open full strategy blueprint & calendar">
+        🔍 30D Audit
+      </button>
     `;
-    const chartWrap = $('chartwrap') || $('gPanesMenu') || $('paneG');
-    const top = $('gTop');
-    if(chartWrap && chartWrap.parentNode){
-      chartWrap.parentNode.insertBefore(dock, chartWrap);
-    } else if(top && top.parentNode){
-      top.parentNode.insertBefore(dock, top.nextSibling);
-    } else {
-      D.body.prepend(dock);
-    }
-    
-    // Wire click events
-    $('v147DeskClockMount')?.addEventListener('click',function(e){e.stopPropagation();openBig();});
-    $('v147ExpandBtn')?.addEventListener('click',function(e){e.stopPropagation();openBig();});
-    $('v147DockToggleBtn')?.addEventListener('click',function(e){
-      e.stopPropagation();
-      const isHidden = dock.dataset.collapsed === '1';
-      if(isHidden){
-        dock.dataset.collapsed = '0';
-        dock.style.height = '38px';
-        dock.querySelectorAll('#v147DeskClockMount, #v147DeskDecide, #v147DeskDayIcons, #v147ExpandBtn').forEach(x=>x.style.display='');
-        this.textContent = '▲ Hide';
-        try{localStorage.setItem('v147_dock_collapsed','0');}catch(x){}
-      } else {
-        dock.dataset.collapsed = '1';
-        dock.style.height = '18px';
-        dock.querySelectorAll('#v147DeskClockMount, #v147DeskDecide, #v147DeskDayIcons, #v147ExpandBtn').forEach(x=>x.style.display='none');
-        this.textContent = '▼ Show Strategy Dock';
-        try{localStorage.setItem('v147_dock_collapsed','1');}catch(x){}
-      }
-      setTimeout(()=>{try{W.dispatchEvent(new Event('resize'));}catch(x){}},50);
-    });
-    if(localStorage.getItem('v147_dock_collapsed')==='1'){
-      dock.dataset.collapsed = '1';
-      dock.style.height = '18px';
-      dock.querySelectorAll('#v147DeskClockMount, #v147DeskDecide, #v147DeskDayIcons, #v147ExpandBtn').forEach(x=>x.style.display='none');
-      const tb = $('v147DockToggleBtn'); if(tb)tb.textContent = '▼ Show Strategy Dock';
-    }
+    wrap.appendChild(dock);
+    $('v147DeskClockMount')?.addEventListener('click', function (e) { e.stopPropagation(); openBig(); });
+    dock.querySelector('#v147ExpandBtn')?.addEventListener('click', function (e) { e.stopPropagation(); openBig(); });
+  }
+  const chipEl = $('v136Chip') || $('ph89') || $('nav');
+  if (chipEl && chipEl.parentNode) {
+    if (wrap.previousElementSibling !== chipEl) { chipEl.after(wrap); }
   }
   return dock;
 }
-
-function paintDeskDayIcons(st){
-  const el=$('v147DeskDayIcons');
-  if(!el)return;
-  const curDw=st&&st.p?st.p.wd:ist(Date.now()).getUTCDay();
-  const days=[
-    { dw: 1, name: 'MON', win: '73%', edge: '+$1.2k', title: 'Monday', trade: true },
-    { dw: 2, name: 'TUE', win: '68%', edge: '+$0.8k', title: 'Tuesday', trade: true },
-    { dw: 3, name: 'WED', win: '64%', edge: '+$1.4k', title: 'Wednesday', trade: true },
-    { dw: 4, name: 'THU', win: '62%', edge: '+$1.5k', title: 'Thursday', trade: true },
-    { dw: 5, name: 'FRI', win: '75%', edge: '+$3.5k', title: 'Friday (Premium)', trade: true, prem: true },
-    { dw: 6, name: 'SAT', win: '—', edge: 'Off', title: 'Saturday (Off)', trade: false },
-    { dw: 0, name: 'SUN', win: '—', edge: 'Off', title: 'Sunday (Off)', trade: false }
-  ];
-  el.innerHTML=days.map(d=>{
-    const isToday=d.dw===curDw;
-    const bg=isToday ? '#eff6ff' : (d.trade ? '#ffffff' : '#f8fafc');
-    const border=isToday ? '1px solid #2563eb' : (d.prem ? '1px solid #f59e0b' : '1px solid #cbd5e1');
-    const fg=isToday ? '#1d4ed8' : '#0f172a';
-    const tagCol=d.trade ? (d.prem ? '#b45309' : '#059669') : '#94a3b8';
-    return `<div style="width:48px;background:${bg};border:${border};border-radius:3px;padding:1px 3px;text-align:center;cursor:pointer;line-height:1.15;flex-shrink:0;" onclick="try{window.v147.open();}catch(e){}" title="${d.title}">
-      <div style="font-size:8px;font-weight:800;color:${fg};">${d.name}${isToday?' ★':''}</div>
-      <div style="font-size:8px;font-weight:800;color:${tagCol};">${d.trade?d.win:'OFF'}</div>
-    </div>`;
-  }).join('');
-}
-
 function paintDeskDock(){
   const dock=mountDeskDock();
   if(!dock)return;
@@ -26715,7 +26826,7 @@ setTimeout(boot,50);
 setTimeout(boot,200);
 setTimeout(boot,600);
 
-W.v147={status:status,plan:plan,face:face,open:openBig,lights:R121,__test:{cellStats:cellStats,NIGHTS:NIGHTS,speedBlocks:speedBlocks}};
+W.openBig = openBig; W.v147 = { status: status, plan: plan, face: face, open: openBig, lights: R121, __test: { cellStats: cellStats, NIGHTS: NIGHTS, speedBlocks: speedBlocks } };
 })();
 
 </script>
@@ -27985,5 +28096,35 @@ W.openShadowDashboard = openShadowDashboard;
   }
 })();
 </script>
-</body>
+<script>
+// Immediate indicator cleanup
+(function(){
+  try {
+    ['v142LvlChip', 'v138Ready', 'v145Day', 'v142Gng', 'v142Pwin', 'v142Tip'].forEach(function(id) {
+      var el = document.getElementById(id);
+      if (el) el.remove();
+    });
+    var ind = JSON.parse(localStorage.getItem('v133_ind') || '{}');
+    if (ind.ready || ind.day || ind.gng || ind.pwin || ind.tip) {
+      delete ind.ready; delete ind.day; delete ind.gng; delete ind.pwin; delete ind.tip;
+      localStorage.setItem('v133_ind', JSON.stringify(ind));
+    }
+  } catch(e) {}
+})();
+</script><script>
+// Global delegated click handler for 30D Audit button
+document.addEventListener('click', function(e) {
+  var b = e.target && e.target.closest && e.target.closest('#v147ExpandBtn');
+  if (b) {
+    e.stopPropagation();
+    try {
+      if (typeof openBig === 'function') openBig();
+      else if (window.openBig) window.openBig();
+      else if (window.v147 && window.v147.open) window.v147.open();
+    } catch(err) {
+      console.error('30D Audit open error:', err);
+    }
+  }
+}, true);
+</script></body>
 </html>
