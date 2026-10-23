@@ -14,6 +14,53 @@ function ttlFor(url: string): number {
   return 2_000; // quotes / orderbook / tickers
 }
 
+/**
+ * Binance's public archive (data.binance.vision) throttles bursts from a shared cloud IP (HTTP 429) but answers a
+ * patient one-at-a-time client. Its daily files never change, so they are fetched through ONE queue (spaced, with
+ * backoff on 429) and kept for a week; the desk's multi-year futures history then loads from here without a storm.
+ */
+interface ArchiveHit { at: number; status: number; contentType: string; body: Buffer }
+const archive = new Map<string, ArchiveHit>();
+const archiveInflight = new Map<string, Promise<ArchiveHit>>();
+let archiveChain: Promise<unknown> = Promise.resolve();
+const ARCHIVE_TTL_OK = 7 * 24 * 3600_000;
+const ARCHIVE_TTL_404 = 3600_000;
+const isArchive = (u: string) => { try { const p = new URL(u); return p.hostname === 'data.binance.vision' && p.pathname.startsWith('/data/'); } catch { return false; } };
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function fetchArchive(u: string): Promise<ArchiveHit> {
+  const hit = archive.get(u);
+  if (hit && Date.now() - hit.at < (hit.status === 200 ? ARCHIVE_TTL_OK : ARCHIVE_TTL_404)) return hit;
+  const running = archiveInflight.get(u);
+  if (running) return running;
+  const job = new Promise<ArchiveHit>((resolve) => {
+    archiveChain = archiveChain.then(async () => {
+      let last: ArchiveHit = { at: Date.now(), status: 502, contentType: 'application/json', body: Buffer.from('{"success":false,"error":"archive unavailable"}') };
+      for (let attempt = 0; attempt < 5; attempt++) {
+        try {
+          const r = await fetch(u, { redirect: 'follow', headers: { 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' }, signal: AbortSignal.timeout(15_000) });
+          const body = Buffer.from(await r.arrayBuffer());
+          if (r.status === 200 || r.status === 404) {
+            last = { at: Date.now(), status: r.status, contentType: r.status === 200 ? 'application/zip' : 'application/octet-stream', body: r.status === 200 ? body : Buffer.alloc(0) };
+            break;
+          }
+          last = { at: Date.now(), status: r.status === 429 ? 429 : 502, contentType: 'application/octet-stream', body: Buffer.alloc(0) };
+          if (r.status === 429 || r.status >= 500) { await sleep(Math.min(8000, 1500 * 2 ** attempt)); continue; }
+          break;
+        } catch { await sleep(1000 * (attempt + 1)); }
+      }
+      if (last.status === 200 || last.status === 404) {
+        archive.set(u, last);
+        if (archive.size > 1600) { const first = archive.keys().next().value; if (first) archive.delete(first); }
+      }
+      await sleep(350);   // spacing between archive requests
+      resolve(last);
+    });
+  });
+  archiveInflight.set(u, job);
+  try { return await job; } finally { archiveInflight.delete(u); }
+}
+
 export const marketGatewayRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/', async (request, reply) => {
     const u = (request.query as { u?: string }).u;
@@ -22,6 +69,13 @@ export const marketGatewayRoutes: FastifyPluginAsync = async (fastify) => {
     }
     if (!isAllowed(u)) {
       return reply.status(403).send({ success: false, error: 'Target not in allowlist' });
+    }
+
+    if (isArchive(u)) {
+      const a = await fetchArchive(u);
+      reply.header('X-Content-Type-Options', 'nosniff');
+      reply.header('Cache-Control', a.status === 200 ? 'public, max-age=86400' : 'no-store');
+      return reply.status(a.status).type(a.contentType).send(a.body);
     }
 
     const now = Date.now();
