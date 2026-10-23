@@ -25,7 +25,7 @@ const dkey=(ts)=>new Date(ts).toISOString().slice(0,10);
 const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
 const sd=a=>{if(a.length<2)return null;const m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/(a.length-1));};
 
-const FIXEDW={spd:10,atm:8,spk:7,rng:6,vov:5,dchg:4,rv:3,edge:3,clk:2.5,dvol:2,adx:1.5,rsi:1,rng6:1,r6:0.5,r24:0.5,rvr:0.5};   // FIXED=1: the user's priority order, speed > ATM IV > range > VoV
+const FIXEDW={spd:Number(process.env.SPDM)||10,atm:8,spk:7,rng:6,vov:5,dchg:4,rv:3,edge:3,clk:2.5,dvol:2,adx:1.5,rsi:1,rng6:1,r6:0.5,r24:0.5,rvr:0.5};   // FIXED=1: the user's priority order, speed > ATM IV > range > VoV
 const BASE10=['spd','atm','vov','rv','rng','edge','clk','dvol','adx','rsi'];
 const FEATS=[...BASE10,'r6','r24','rng6','rvr','dchg','spk'];   // shipped set: the 10 + trend / recent-range / IV-change terms (walk-forward AUC 0.611 → 0.62+)
 const ORDER=[['spd','IV vs speed'],['atm','ATM IV'],['vov','VoV'],['rv','RV'],['rng','Range 24'],['edge','Edge'],['clk','Tonight IV vs clock'],['dvol','DVOL'],['skew','25Δ skew'],['adx','ADX'],['rsi','RSI'],['macro','Macro stress'],['fut','Futures positioning'],['fund','Funding / OI'],['term','Term spread'],['bidask','Bid/ask spread'],['crush','IV crush driver'],['greeks','ATM greeks']];
@@ -259,7 +259,7 @@ function main(){
   const journey={stages:stageRows,confirms:confRows,go:{n:goA.length,stop:st(goA),pnl:pn(goA)},notGo:{n:noA.length,stop:st(noA),pnl:pn(noA)},nightly:{trades:goN.length,nights:nights.size,stop:st(goN),avg:pn(goN),total:+goN.reduce((x,t)=>x+t.final,0).toFixed(0)}};
 
   /* ---------- the Entry Gauge: one RSI-style line, 0 (GO) .. 100 (WAIT) ---------- */
-  const GW={spd:10,model:8,fear:7,rise:4,vov:5,rv:3,edge:3,adx:1.5};const GWT=Object.values(GW).reduce((a,b)=>a+b,0);const PRIM=['spd','model','fear','rise','vov'],SEC=['rv','edge','adx'];
+  const GW={spd:Number(process.env.SPDG)||10,model:8,fear:7,rise:4,vov:5,rv:3,edge:3,adx:1.5};const GWT=Object.values(GW).reduce((a,b)=>a+b,0);const PRIM=['spd','model','fear','rise','vov'],SEC=['rv','edge','adx'];
   const ivx=(E)=>dh.get(E)>0?dh.get(E):null;
   const vovx=(E)=>{const v=[];for(let h=6;h>=0;h--){const x=ivx(E-h*HOUR);if(x)v.push(x);}if(v.length<5)return null;const c=[];for(let i=1;i<v.length;i++)c.push(Math.log(v[i]/v[i-1]));return sd(c)*100;};
   const gMemo=new Map();
@@ -342,7 +342,7 @@ function main(){
     wfAuc:{old:+mean(aucOld).toFixed(3),logistic:+mean(aucNew).toFixed(3),sets:setAuc},oosBands:bandRows,oosAbove25:{n:above.length,stop:st(above),pnl:pn(above)},oosAtOrBelow25:{n:below.length,stop:st(below),pnl:pn(below)},
     dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey,gauge};
   const js=`window.__STRANGLE_RISKMODEL = ${JSON.stringify(out)};\n`;
-  for(const rel of ['../../data/risk_model.js','../../frontend/public/data/risk_model.js'])fs.writeFileSync(P(rel),js);
+  if(!process.env.NOWRITE)for(const rel of ['../../data/risk_model.js','../../frontend/public/data/risk_model.js'])fs.writeFileSync(P(rel),js);
   console.log('\nlogistic weights (on centred percentile rank; + = riskier):',JSON.stringify(out.coef.w),'calibration',JSON.stringify(cal));
 }
 main();

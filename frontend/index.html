@@ -49344,7 +49344,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       /* one reading → GO / CHECK / WAIT / DANGER. GO needs: score ≤ 25, not rising over 3 h, no NY fear spike still holding, the chart confirming (3 of 4: IV vs speed < 1, ADX < 25, RV < IV, edge > 0).
          The backtest of exactly this rule is in data/risk_model.js (journey). 'CHECK' = calm but not confirmed yet (or IV history still loading). */
-      const GAW = { spd: 10, model: 8, fear: 7, rise: 4, vov: 5, rv: 3, edge: 3, adx: 1.5 }, GAWT = 41.5, GAPRIM = ['spd', 'model', 'fear', 'rise', 'vov'];
+      const GAW = { spd: 16, model: 8, fear: 7, rise: 4, vov: 5, rv: 3, edge: 3, adx: 1.5 }, GAWT = 47.5, GAPRIM = ['spd', 'model', 'fear', 'rise', 'vov'];
       function stateOf(v, d3, J) {
         const dir = d3 == null ? null : d3 >= 2 ? 'rising' : d3 <= -2 ? 'falling' : 'flat', why = [];
         if (v > 50) why.push('Risk-ADX ' + v.toFixed(0) + ' is above 50: the danger zone');
@@ -49471,6 +49471,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const LSg = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
       const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
       const css = D.createElement('style'); css.textContent = `
+        #v151Risk::before,#v151Risk::after{content:'';position:absolute;left:0;right:0;height:3px;z-index:7;pointer-events:none}
+        #v151Risk::before{top:0;background:#E05252}#v151Risk::after{bottom:0;background:#22A06B}
         .v152-layouts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--line)}
         .v152-layouts>span{font:600 11px var(--font);letter-spacing:.06em;color:var(--muted);margin-right:2px}
         .v152-layouts button{font:600 12px var(--font);padding:5px 10px;border-radius:999px;border:1px solid var(--line2,var(--line));background:var(--panel);color:var(--text);cursor:pointer}
@@ -49648,7 +49650,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (k === 'risk') {
           o.a = Ln('#22A06B', 2.2, pf(0)); o.rmax = 100;
           o.a.applyOptions({ priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: o.rmax } }) });
-          o.a.createPriceLine({ price: 66, color: 'rgba(224, 82, 82, 0.8)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '▲ WAIT' }); o.a.createPriceLine({ price: 34, color: 'rgba(34, 160, 107, 0.8)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '▼ GO' });
+          o.a.createPriceLine({ price: 100, color: 'rgba(224, 82, 82, 1)', lineWidth: 3, lineStyle: 0, axisLabelVisible: false, title: '' }); o.a.createPriceLine({ price: 0, color: 'rgba(34, 160, 107, 1)', lineWidth: 3, lineStyle: 0, axisLabelVisible: false, title: '' }); o.a.createPriceLine({ price: 66, color: 'rgba(224, 82, 82, 0.8)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '▲ WAIT' }); o.a.createPriceLine({ price: 34, color: 'rgba(34, 160, 107, 0.8)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '▼ GO' });
         }
         if (k === 'macro') {
           o.a = Ln('#15803d', 2.2, pf(0));
