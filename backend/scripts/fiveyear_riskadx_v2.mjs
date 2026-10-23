@@ -96,6 +96,54 @@ function main(){
       samples.push({E,E0,k,wd,yr:new Date(E).getUTCFullYear(),mo:new Date(E).getUTCMonth()+1,f,fPrev,stop:s.stopped,final:s.final,sim:s});}
   }
   const base=samples.filter(s=>s.stop).length/samples.length*100;
+  /* ---------- the desk's own chart-pattern detectors (frontend/index.html, paLayer), run on 5 years of hourly bars ---------- */
+  function loadPatternCode(){
+    const t=fs.readFileSync(P('../../frontend/index.html'),'utf8'),a=t.indexOf('function atrOf(H, L, C, n)'),b=t.indexOf('function regime(R) {',a);
+    const bs=t.indexOf('const PAT_BIAS = {'),be=t.indexOf('};',bs)+2;
+    const code='const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));'+t.slice(a,b)+t.slice(bs,be)+';return {atrOf,pivots,structure,candlePatterns,chartPatterns,rangeBox,PAT_BIAS};';
+    return new Function(code)();
+  }
+  const PATC=loadPatternCode(),PV=process.env.PATTERN==='1';
+  const NEUTRAL=new Set(['Range','Symmetrical triangle','Broadening']);
+  function patternsAt(E){
+    const N=100,H=[],Lo=[],C=[],O=[];for(let h=N-1;h>=0;h--){const b=byT.get(E-h*HOUR);if(!b)return null;H.push(b.h);Lo.push(b.l);C.push(b.c);}
+    for(let i=0;i<N;i++)O.push(i?C[i-1]:C[0]);
+    const A=PATC.atrOf(H,Lo,C,14),piv=PATC.pivots(H,Lo,3),st=PATC.structure(piv,C),cp=PATC.candlePatterns(O,H,Lo,C,A),pats=PATC.chartPatterns(piv,O,H,Lo,C,A);
+    if(!pats.some(p=>p.name==='Range'))for(const p of PATC.rangeBox(O,H,Lo,C,A))pats.push(p);
+    const n=N,last=n-1;let latest=null;for(const x of pats){if(x.from>=n)continue;if(!latest||x.from>latest.from||(x.from===latest.from&&x.name==='Range'))latest=x;}
+    const dirActive=pats.filter(p=>(PATC.PAT_BIAS[p.name]||0)!==0);
+    const confirmedDir=dirActive.filter(p=>p.state==='confirmed'||p.dir===true);
+    const breaks=(st&&st.breaks||[]).filter(b=>b.to>=last-2);
+    const candles=(cp||[]).filter(c=>c.i>=last-1);
+    return {latest:latest?latest.name:null,latestBias:latest?(PATC.PAT_BIAS[latest.name]||0):0,latestState:latest?latest.state:null,nDir:dirActive.length,nConfirmed:confirmedDir.length,confirmedBias:confirmedDir.length?Math.sign(confirmedDir.reduce((s,p)=>s+(PATC.PAT_BIAS[p.name]||0),0)):0,
+      breakBos:breaks.some(b=>b.type==='BOS'),breakChoch:breaks.some(b=>b.type==='CHoCH'),breakDir:breaks.length?breaks[breaks.length-1].dir:0,candle:candles.length?candles[candles.length-1]:null,pats:pats.map(p=>p.name)};
+  }
+  for(const s of samples)s.pat=patternsAt(s.E);
+  const patternRows=[];
+  {
+    const rowsP=patternRows;const tag=(s)=>{if(s.pat===undefined)s.pat=patternsAt(s.E);return s.pat;};
+    let ok=0;for(const s of samples){const r=tag(s);if(r)ok++;}if(PV)console.log('PATTERN STUDY: samples with a pattern read',ok,'of',samples.length);
+    const baseStop=samples.filter(s=>s.stop).length/samples.length*100;const st=a=>a.length?(a.filter(s=>s.stop).length/a.length*100).toFixed(1):'-',pn=a=>a.length?mean(a.map(s=>s.final)).toFixed(1):'-';
+    const line=(nm,a)=>{const r={name:nm,n:a.length,stop:+st(a),pnl:+pn(a),lift:a.length?+(st(a)/baseStop).toFixed(2):null};rowsP.push(r);if(PV)console.log('  '+nm.padEnd(60)+' n '+String(a.length).padStart(5)+'  stopped '+String(r.stop).padStart(5)+'%  avg P&L '+String(r.pnl).padStart(5)+'%  x'+r.lift);};
+    const S=samples.filter(s=>s.pat);if(PV)console.log('  all samples base stop '+baseStop.toFixed(1)+'%');
+    line('no pattern read',S.filter(s=>!s.pat.latest));
+    line('latest pattern is neutral (range / symmetrical / broadening)',S.filter(s=>s.pat.latest&&s.pat.latestBias===0));
+    line('latest pattern is bullish (forming)',S.filter(s=>s.pat.latestBias>0&&s.pat.latestState!=='confirmed'));
+    line('latest pattern is bearish (forming)',S.filter(s=>s.pat.latestBias<0&&s.pat.latestState!=='confirmed'));
+    line('a directional pattern is CONFIRMED (bullish)',S.filter(s=>s.pat.confirmedBias>0));
+    line('a directional pattern is CONFIRMED (bearish)',S.filter(s=>s.pat.confirmedBias<0));
+    line('any directional pattern forming or confirmed',S.filter(s=>s.pat.nDir>0));
+    line('no directional pattern at all',S.filter(s=>s.pat.nDir===0));
+    line('BOS in the last 3 bars',S.filter(s=>s.pat.breakBos));
+    line('CHoCH (first sign of a turn) in the last 3 bars',S.filter(s=>s.pat.breakChoch));
+    line('no structure break in the last 3 bars',S.filter(s=>!s.pat.breakBos&&!s.pat.breakChoch));
+    const cd=S.filter(s=>s.pat.candle);line('a candle pattern on the last 2 bars',cd);line('  of which bullish',cd.filter(s=>s.pat.candle.bias>0));line('  of which bearish',cd.filter(s=>s.pat.candle.bias<0));line('  of which neutral / doji',cd.filter(s=>!s.pat.candle.bias));
+    const names={};for(const s of S)for(const nm of new Set(s.pat.pats))(names[nm]=names[nm]||[]).push(s);
+    if(PV)console.log('  by pattern name (present at the entry hour):');for(const [nm,a] of Object.entries(names).sort((x,y)=>y[1].length-x[1].length))line('    '+nm,a);
+    if(PV){for(const y of [2021,2022,2023,2024,2025,2026]){const a=S.filter(s=>s.yr===y&&s.pat.nDir>0),b=S.filter(s=>s.yr===y&&s.pat.nDir===0);console.log('    '+y+'  with '+st(a)+'% (n'+a.length+')  without '+st(b)+'% (n'+b.length+')');}}
+    if(PV)return;
+  }
+
   const sessions=(()=>{ // which hours of the day are sellable, and can a big move be seen coming?
     const hrs=[];for(let d=Math.ceil(first/DAY)*DAY;d<last-DAY;d+=DAY){const wd=new Date(d).getUTCDay();if(wd<1||wd>5)continue;for(let h=0;h<24;h++){const E=d+h*HOUR;const s=sim(E);if(!s)continue;const f=featuresAt(E);hrs.push({E,h,wd,s,f});}}
     console.log('SESSIONS: entry at each UTC hour (IST = UTC+5:30), Mon-Fri, 8h hold, per-leg 2x stop');
@@ -303,7 +351,8 @@ function main(){
       const cl=x=>Math.max(0,Math.min(1,x));
       const soft={spd:cl((f.spd-0.9)/0.2),model:cl((sc-20)/10),fear:(stage==='holding'||stage==='unknown')?1:0,rise:scp==null?0:cl((sc-scp-1)/2),vov:(stage==='crush'||(vovUp&&spike>=2))?1:0,rv:cl((f.rv/f.atm-0.9)/0.2),edge:cl((1-f.edge)/2),adx:cl((f.adx-22)/6)};
       let ra=null;{const b1=byT.get(E-HOUR);let t=0,n=0;for(let k=1;k<=24;k++){const b=byT.get(E-k*HOUR);if(b){t+=(b.h-b.l)/b.c;n++;}}if(b1&&n)ra=((b1.h-b1.l)/b1.c)/(t/n);}
-      out={soft,rr:ra,spike,E,sc,stage,ok,failW,veto:stage==='holding'||f.spd>=1.5||sc>50,spd:f.spd,build,exhaust,primPass:PRIM.every(k=>ok[k]),secFail:SEC.filter(k=>!ok[k]).length,allPass:failW===0};}
+      const pt=patternsAt(E);
+      out={bear:!!pt&&pt.confirmedBias<0,soft,rr:ra,spike,E,sc,stage,ok,failW,veto:stage==='holding'||f.spd>=1.5||sc>50,spd:f.spd,build,exhaust,primPass:PRIM.every(k=>ok[k]),secFail:SEC.filter(k=>!ok[k]).length,allPass:failW===0};}
     gMemo.set(key,out);return out;
   }
   const VARIANTS={
@@ -312,16 +361,18 @@ function main(){
     V2:{name:'V2 continuous, green = 5 main checks + at most 1 minor',mom:false,floor:false,tol:true},
     V3:{name:'V3 = V2 + momentum',mom:true,floor:false,tol:true},
     V5:{name:'V5 smooth: soft checks, EMA, hysteresis, 2-hour confirmation for green',soft:true,burst:false},
-    V6:{name:'V6 = V5 + big-move burst (hour range >= 2x: +15, >= 3x: red)',soft:true,burst:true}};
+    V6:{name:'V6 = V5 + big-move burst (hour range >= 2x: +15, >= 3x: red)',soft:true,burst:true},
+    V7:{name:'V7 = V6 + confirmed bearish chart pattern (+20 and no green)',soft:true,burst:true,pat:true}};
   function gaugeSeriesSoft(E0,F,yr,V){
     const out=[];let L=null,state='yellow',gcnt=0;
     for(let h=-6;h<=10;h++){const b=gaugeBase(E0+h*HOUR,F,yr);if(!b)continue;
       let failS=0;for(const k of Object.keys(GW))failS+=GW[k]*b.soft[k];
       let raw=100*(0.65*failS/GWT+0.35*Math.min(1,b.sc/50));
       if(V.burst&&b.rr!=null){if(b.rr>=3)raw=Math.max(raw,80);else if(b.rr>=2)raw+=15;}
+      if(V.pat&&b.bear)raw+=20;
       if(b.veto)raw=Math.max(raw,80);raw=Math.min(100,raw);
       L=L==null?raw:L+(raw-L)*(raw>L?0.7:0.3);
-      const primOK=PRIM.every(k=>b.soft[k]<0.5)&&!b.veto,minorBad=SEC.filter(k=>b.soft[k]>=0.5).length;
+      const primOK=PRIM.every(k=>b.soft[k]<0.5)&&!b.veto&&!(V.pat&&b.bear),minorBad=SEC.filter(k=>b.soft[k]>=0.5).length;
       if(state==='red'){if(L<55)state='yellow';}else if(L>=66)state='red';
       if(state==='green'){if(L>42||!primOK)state='yellow';gcnt=0;}
       else if(state==='yellow'){if(L<30&&primOK&&minorBad<=1){gcnt++;if(gcnt>=2){state='green';gcnt=0;}}else gcnt=0;}
@@ -343,7 +394,7 @@ function main(){
   }
   /* which single check matters: pass rate, and stopped % when only that one fails */
   {const bs=O.map(s=>gaugeBase(s.E,FMforYear(s.yr),s.yr)).filter(Boolean);const rowsC=[];for(const k of Object.keys(GW)){const f=bs.filter(b=>!b.ok[k]);rowsC.push(k+' pass '+((1-f.length/bs.length)*100).toFixed(0)+'%');}console.log('\nCHECK PASS RATES (entry hours, OOS):',rowsC.join(' | '));}
-  const gauge={variants:{}};
+  const gauge={variants:{}};const crossBy={};
   const dvAt=(s)=>s.f.dvol;
   for(const [vk,V] of Object.entries(VARIANTS)){
     const gSeries=new Map(),share={red:0,yellow:0,green:0,n:0},entry={red:0,yellow:0,green:0,n:0};
@@ -362,9 +413,15 @@ function main(){
     const lastE0=Math.max(...nights.keys()),n30=new Map([...nights].filter(([E0])=>E0>lastE0-30*DAY));
     const r30a=rep2('  last 30 days: first green hour',a=>a.find(x=>gk(x)&&gk(x).color==='green'),n30);
     rep2('  last 30 days: not red at 22:30',a=>{const s=a.find(x=>x.k===0);return s&&gk(s)&&gk(s).color!=='red'?s:null;},n30);
+    if(vk==='V6'||vk==='V7'){const cr=crossBy[vk]=[];const G2=G.filter(s=>s.pat);const f=(nm,a)=>{cr.push({name:nm,n:a.length,stop:st(a),pnl:pn(a)});console.log('  '+nm.padEnd(60)+' n '+String(a.length).padStart(4)+'  stopped '+String(st(a)).padStart(5)+'%  P&L '+String(pn(a)).padStart(5)+'%');};
+      console.log('\nCHART PATTERNS INSIDE THE GAUGE COLOURS (V6, out-of-sample 2023-26)');
+      for(const c of ['green','yellow','red']){const a=G2.filter(s=>gk(s).color===c);f(c+' · all',a);f(c+' · + confirmed bearish pattern',a.filter(s=>s.pat.confirmedBias<0));f(c+' · + confirmed bullish pattern',a.filter(s=>s.pat.confirmedBias>0));f(c+' · + rising wedge or double top present',a.filter(s=>s.pat.pats.some(n=>/Rising wedge|Double top/.test(n))));f(c+' · + CHoCH in the last 3 bars',a.filter(s=>s.pat.breakChoch));}
+      console.log('  AUC of the gauge level, plus points added when a confirmed bearish pattern is present:');for(const w of [0,5,10,20,30]){const sc=s=>gk(s).L+w*(s.pat.confirmedBias<0?1:0);console.log('    +'+w+' -> AUC '+auc(G2.filter(s=>s.stop).map(sc),G2.filter(s=>!s.stop).map(sc)).toFixed(3));}
+      console.log('  AUC with bullish confirmed subtracting points:');for(const w of [5,10,20]){const sc=s=>gk(s).L-w*(s.pat.confirmedBias>0?1:0);console.log('    -'+w+' -> AUC '+auc(G2.filter(s=>s.stop).map(sc),G2.filter(s=>!s.stop).map(sc)).toFixed(3));}
+      const yr=(fn)=>[2023,2024,2025,2026].map(y=>{const a=G2.filter(s=>s.yr===y&&fn(s));return y+':'+st(a)+'%(n'+a.length+')';}).join(' ');console.log('  by year, confirmed bearish: '+yr(s=>s.pat.confirmedBias<0));console.log('  by year, confirmed bullish: '+yr(s=>s.pat.confirmedBias>0));console.log('  by year, no confirmed pattern: '+yr(s=>s.pat.confirmedBias===0));}
     gauge.variants[vk]={name:V.name,flicker:flick,auc:+aucAll.toFixed(3),tune:tr,validate:va,zones,strategies:res};
-    if(vk==='V3'||vk==='V2'||vk==='V5'||vk==='V6'){gauge.variants[vk].recent=[...n30].sort((x,y)=>x[0]-y[0]).map(([E0,a])=>{a.sort((x,y)=>x.k-y.k);const s0=a.find(x=>x.k===0),fg=a.find(x=>gk(x)&&gk(x).color==='green');return {date:dkey(E0),c0:s0&&gk(s0)?gk(s0).color:null,L0:s0&&gk(s0)?+gk(s0).L.toFixed(0):null,stop0:s0?!!s0.stop:null,pnl0:s0?+s0.final.toFixed(1):null,firstGreen:fg?fg.k:null,stopG:fg?!!fg.stop:null,pnlG:fg?+fg.final.toFixed(1):null};});}
-    gauge.variants[vk].series=null;
+    if(vk==='V3'||vk==='V2'||vk==='V5'||vk==='V6'||vk==='V7'){gauge.variants[vk].recent=[...n30].sort((x,y)=>x[0]-y[0]).map(([E0,a])=>{a.sort((x,y)=>x.k-y.k);const s0=a.find(x=>x.k===0),fg=a.find(x=>gk(x)&&gk(x).color==='green');return {date:dkey(E0),c0:s0&&gk(s0)?gk(s0).color:null,L0:s0&&gk(s0)?+gk(s0).L.toFixed(0):null,stop0:s0?!!s0.stop:null,pnl0:s0?+s0.final.toFixed(1):null,firstGreen:fg?fg.k:null,stopG:fg?!!fg.stop:null,pnlG:fg?+fg.final.toFixed(1):null};});}
+    gauge.variants[vk].series=null;if(crossBy[vk])gauge.variants[vk].patCross=crossBy[vk];
     if(vk==='V3')gauge._V3=gSeries;
   }
   /* exhaustion test: nights that were red/yellow-high earlier in the evening and then released to green by momentum exhaustion (V3) vs the same without momentum (V2) */
@@ -385,7 +442,7 @@ function main(){
   const out={generated:dkey(Date.now()),samples:samples.length,baseStopPct:+base.toFixed(1),span:[dkey(samples[0].E),dkey(samples[samples.length-1].E)],feats:FEATS,names,
     coef:{b:+FM.w[0].toFixed(5),w:Object.fromEntries(FEATS.map((k,i)=>[k,+FM.w[i+1].toFixed(4)]))},pct:FM.pct,calibration:cal,
     wfAuc:{old:+mean(aucOld).toFixed(3),logistic:+mean(aucNew).toFixed(3),sets:setAuc},oosBands:bandRows,oosAbove25:{n:above.length,stop:st(above),pnl:pn(above)},oosAtOrBelow25:{n:below.length,stop:st(below),pnl:pn(below)},
-    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey,gauge,sessions};
+    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey,gauge,sessions,patterns:patternRows};
   const js=`window.__STRANGLE_RISKMODEL = ${JSON.stringify(out)};\n`;
   if(!process.env.NOWRITE)for(const rel of ['../../data/risk_model.js','../../frontend/public/data/risk_model.js'])fs.writeFileSync(P(rel),js);
   console.log('\nlogistic weights (on centred percentile rank; + = riskier):',JSON.stringify(out.coef.w),'calibration',JSON.stringify(cal));
