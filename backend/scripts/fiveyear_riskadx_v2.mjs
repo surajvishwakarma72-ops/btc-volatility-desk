@@ -362,9 +362,12 @@ function main(){
     V3:{name:'V3 = V2 + momentum',mom:true,floor:false,tol:true},
     V5:{name:'V5 smooth: soft checks, EMA, hysteresis, 2-hour confirmation for green',soft:true,burst:false},
     V6:{name:'V6 = V5 + big-move burst (hour range >= 2x: +15, >= 3x: red)',soft:true,burst:true},
-    V7:{name:'V7 = V6 + confirmed bearish chart pattern (+20 and no green)',soft:true,burst:true,pat:true}};
+    V7:{name:'V7 = V6 + confirmed bearish chart pattern (+20 and no green)',soft:true,burst:true,pat:true},
+    V8:{name:'V8 = V7 + a rising line turns red (level up 4+ in 1 h or 8+ in 3 h, from 20 up)',soft:true,burst:true,pat:true,rise:true,rise1:4,rise3:8,latch:0},
+    V9:{name:'V9 = rising red: 3 h change 10+ only, red held 2 more hours',soft:true,burst:true,pat:true,rise:true,rise1:0,rise3:10,latch:2},
+    V10:{name:'V10 = rising red: 3 h change 15+ only, red held 2 more hours',soft:true,burst:true,pat:true,rise:true,rise1:0,rise3:15,latch:2}};
   function gaugeSeriesSoft(E0,F,yr,V){
-    const out=[];let L=null,state='yellow',gcnt=0;
+    const out=[];let L=null,state='yellow',gcnt=0,hold=0;const Lh=[];
     for(let h=-6;h<=10;h++){const b=gaugeBase(E0+h*HOUR,F,yr);if(!b)continue;
       let failS=0;for(const k of Object.keys(GW))failS+=GW[k]*b.soft[k];
       let raw=100*(0.65*failS/GWT+0.35*Math.min(1,b.sc/50));
@@ -377,7 +380,9 @@ function main(){
       if(state==='green'){if(L>42||!primOK)state='yellow';gcnt=0;}
       else if(state==='yellow'){if(L<30&&primOK&&minorBad<=1){gcnt++;if(gcnt>=2){state='green';gcnt=0;}}else gcnt=0;}
       else gcnt=0;
-      out.push({E:b.E,h,L,raw,sc:b.sc,stage:b.stage,build:b.build,exhaust:b.exhaust,color:state});}
+      Lh.push(L);let rising=V.rise&&L>=20&&((V.rise1&&Lh.length>=2&&L-Lh[Lh.length-2]>=V.rise1)||(Lh.length>=4&&L-Lh[Lh.length-4]>=V.rise3));
+      if(V.rise){if(rising)hold=V.latch||0;else if(hold>0){hold--;rising=L>=20;}}
+      out.push({E:b.E,h,L,raw,sc:b.sc,stage:b.stage,build:b.build,exhaust:b.exhaust,rising:!!rising,color:rising&&state!=='red'?'red':state});}
     return out;
   }
   function gaugeSeries(E0,F,yr,V){
@@ -419,8 +424,16 @@ function main(){
       console.log('  AUC of the gauge level, plus points added when a confirmed bearish pattern is present:');for(const w of [0,5,10,20,30]){const sc=s=>gk(s).L+w*(s.pat.confirmedBias<0?1:0);console.log('    +'+w+' -> AUC '+auc(G2.filter(s=>s.stop).map(sc),G2.filter(s=>!s.stop).map(sc)).toFixed(3));}
       console.log('  AUC with bullish confirmed subtracting points:');for(const w of [5,10,20]){const sc=s=>gk(s).L-w*(s.pat.confirmedBias>0?1:0);console.log('    -'+w+' -> AUC '+auc(G2.filter(s=>s.stop).map(sc),G2.filter(s=>!s.stop).map(sc)).toFixed(3));}
       const yr=(fn)=>[2023,2024,2025,2026].map(y=>{const a=G2.filter(s=>s.yr===y&&fn(s));return y+':'+st(a)+'%(n'+a.length+')';}).join(' ');console.log('  by year, confirmed bearish: '+yr(s=>s.pat.confirmedBias<0));console.log('  by year, confirmed bullish: '+yr(s=>s.pat.confirmedBias>0));console.log('  by year, no confirmed pattern: '+yr(s=>s.pat.confirmedBias===0));}
+    if(vk==='V7'){const dl=(s,h)=>{const S=gSeries.get(s.E0),q=S&&S.find(x=>x.E===s.E-h*HOUR);return q&&gk(s)?gk(s).L-q.L:null;};
+      const R=G.map(s=>({s,d1:dl(s,1),d2:dl(s,2),d3:dl(s,3)})).filter(x=>x.d3!=null);
+      const f=(nm,a)=>console.log('  '+nm.padEnd(64)+' n '+String(a.length).padStart(4)+'  stopped '+String(st(a.map(x=>x.s))).padStart(5)+'%  P&L '+String(pn(a.map(x=>x.s))).padStart(5)+'%');
+      console.log('RISING LINE (V7, out-of-sample): change of the gauge level over the last 1 / 2 / 3 hours');
+      for(const [lab,k] of [['1 h','d1'],['2 h','d2'],['3 h','d3']])for(const th of [4,8,12,20]){f('rising: level up '+th+'+ points in '+lab,R.filter(x=>x[k]>=th));}
+      f('falling: level down 8+ points in 3 h',R.filter(x=>x.d3<=-8));f('flat: within +-8 points over 3 h',R.filter(x=>Math.abs(x.d3)<8));
+      for(const c of ['green','yellow','red']){const a=R.filter(x=>gk(x.s).color===c);f(c+' · all',a);f(c+' · and rising 8+ in 3 h',a.filter(x=>x.d3>=8));f(c+' · and rising 4+ in 1 h',a.filter(x=>x.d1>=4));f(c+' · and not rising',a.filter(x=>x.d3<8&&x.d1<4));}
+      const sc=(w)=>x=>gk(x.s).L+w*(x.d3>=8?1:0);console.log('  AUC of the level, plus points when rising 8+ in 3 h:');for(const w of [0,10,20,30])console.log('    +'+w+' -> '+auc(R.filter(x=>x.s.stop).map(sc(w)),R.filter(x=>!x.s.stop).map(sc(w))).toFixed(3));}
     gauge.variants[vk]={name:V.name,flicker:flick,auc:+aucAll.toFixed(3),tune:tr,validate:va,zones,strategies:res};
-    if(vk==='V3'||vk==='V2'||vk==='V5'||vk==='V6'||vk==='V7'){gauge.variants[vk].recent=[...n30].sort((x,y)=>x[0]-y[0]).map(([E0,a])=>{a.sort((x,y)=>x.k-y.k);const s0=a.find(x=>x.k===0),fg=a.find(x=>gk(x)&&gk(x).color==='green');return {date:dkey(E0),c0:s0&&gk(s0)?gk(s0).color:null,L0:s0&&gk(s0)?+gk(s0).L.toFixed(0):null,stop0:s0?!!s0.stop:null,pnl0:s0?+s0.final.toFixed(1):null,firstGreen:fg?fg.k:null,stopG:fg?!!fg.stop:null,pnlG:fg?+fg.final.toFixed(1):null};});}
+    if(vk==='V3'||vk==='V2'||vk==='V5'||vk==='V6'||vk==='V7'||vk==='V8'||vk==='V9'||vk==='V10'){gauge.variants[vk].recent=[...n30].sort((x,y)=>x[0]-y[0]).map(([E0,a])=>{a.sort((x,y)=>x.k-y.k);const s0=a.find(x=>x.k===0),fg=a.find(x=>gk(x)&&gk(x).color==='green');return {date:dkey(E0),c0:s0&&gk(s0)?gk(s0).color:null,L0:s0&&gk(s0)?+gk(s0).L.toFixed(0):null,stop0:s0?!!s0.stop:null,pnl0:s0?+s0.final.toFixed(1):null,firstGreen:fg?fg.k:null,stopG:fg?!!fg.stop:null,pnlG:fg?+fg.final.toFixed(1):null};});}
     gauge.variants[vk].series=null;if(crossBy[vk])gauge.variants[vk].patCross=crossBy[vk];
     if(vk==='V3')gauge._V3=gSeries;
   }
