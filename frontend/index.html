@@ -46482,9 +46482,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         // lanes: an equal share of ≤ 40 % of the panel (the time-axis lane gets its axis row on top); never below a label + thin plot
         const axId = W.__v138Axis ? W.__v138Axis() : null, axX = axId && lanes.some(l => l.id === axId) ? 24 : 0;
         // v150: ATM IV gets 1.6 lane shares, Speed vs IV and ADX 1.4, every other lane one; the lanes' part of the panel
-        // grows with the extra shares (40 % at equal shares, at most 50 %), the candles take the rest
+        // grows with the extra shares (40 % at equal shares, at most 58 %), the candles take the rest
         const wt = l => l.id === 'v138Iv' ? 1.6 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
-        const share = nL ? Math.min(0.5, 0.4 * nW / nL) : 0.4;
+        const share = nL ? Math.min(0.58, 0.4 * nW / nL) : 0.4;
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
         for (const l of lanes) { const hh = Math.round(lh * wt(l)) + (l.id === axId ? axX : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
