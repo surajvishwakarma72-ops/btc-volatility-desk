@@ -17902,168 +17902,97 @@ function lvlChip(R) {
   const el = $('v142LvlChip');
   if (el) el.remove();
 }
-let _lvlRaf=0;
-function schedLvlSvg(){
-  if(_lvlRaf)return;
-  _lvlRaf=requestAnimationFrame(()=>{
-    _lvlRaf=0;
-    renderLvlSvg();
-  });
-}
-
-function renderLvlSvg(){
-  const cb=D.querySelector('#paneG>.chart-box')||$('chartwrap')||$('paneG');
-  if(!cb)return;
-  let svg=$('v142LvlSvg');
-  if(!lvlOn()){
-    if(svg)svg.innerHTML='';
-    return;
-  }
-  const S=W.__gexSeries,ch=W.paChart?W.paChart():W.__gexChart;
-  const R=lvlRanges();
-  if(!S||!ch||!R){
-    if(svg)svg.innerHTML='';
-    return;
-  }
-  if(!svg){
-    svg=D.createElementNS('http://www.w3.org/2000/svg','svg');
-    svg.id='v142LvlSvg';
-    svg.setAttribute('aria-hidden','true');
-    svg.style.cssText='position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:12;overflow:hidden;';
-    cb.appendChild(svg);
-    try{
-      ch.timeScale().subscribeVisibleLogicalRangeChange(schedLvlSvg);
-      window.addEventListener('resize',schedLvlSvg);
-    }catch(e){}
-  }
-  const Wd=cb.clientWidth,H=cb.clientHeight;
-  svg.setAttribute('viewBox',`0 0 ${Wd} ${H}`);
-  svg.setAttribute('width',Wd);
-  svg.setAttribute('height',H);
-
-  let psw=78;
-  try{
-    const pw=ch.priceScale?ch.priceScale('right').width():78;
-    if(pw>0)psw=pw;
-  }catch(e){}
-  const rightEdge=Math.max(10,Wd-psw);
-
-  const levels=[];
-  if(LVL_CFG.day!==false&&R.day){
-    levels.push({key:'d_hi',price:R.day.hi,title:'DAY HIGH',shortTitle:'D-Hi',icon:'📅',color:'#0284c7',badgeBg:'rgba(2, 132, 199, 0.92)',lineStyle:'dashed',w:1.5});
-    levels.push({key:'d_lo',price:R.day.lo,title:'DAY LOW',shortTitle:'D-Lo',icon:'📅',color:'#0284c7',badgeBg:'rgba(2, 132, 199, 0.92)',lineStyle:'dashed',w:1.5});
-  }
-  if(LVL_CFG.week!==false&&R.week){
-    levels.push({key:'w_hi',price:R.week.hi,title:'WEEK HIGH · SAFER',shortTitle:'W-Hi Safer',icon:'🛡️',color:'#10b981',badgeBg:'rgba(16, 185, 129, 0.95)',lineStyle:'solid',w:2});
-    levels.push({key:'w_lo',price:R.week.lo,title:'WEEK LOW · DANGER',shortTitle:'W-Lo Danger',icon:'⚠️',color:'#ef4444',badgeBg:'rgba(239, 68, 68, 0.95)',lineStyle:'solid',w:2});
-  }
-  if(LVL_CFG.month!==false&&R.month){
-    levels.push({key:'m_hi',price:R.month.hi,title:'MONTH HIGH',shortTitle:'M-Hi',icon:'🏛️',color:'#8b5cf6',badgeBg:'rgba(139, 92, 246, 0.92)',lineStyle:'dashed',w:1.5});
-    levels.push({key:'m_lo',price:R.month.lo,title:'MONTH LOW',shortTitle:'M-Lo',icon:'🏛️',color:'#f43f5e',badgeBg:'rgba(244, 63, 94, 0.92)',lineStyle:'dashed',w:1.5});
-  }
-
-  let html='';
-  let topOffCount=0;
-  let botOffCount=0;
-
-  for(const lvl of levels){
-    let y=null;
-    try{y=S.priceToCoordinate(lvl.price);}catch(e){}
-    const priceStr='$'+Math.round(lvl.price).toLocaleString('en-US');
-
-    if(y!=null&&y>=0&&y<=H){
-      const lineDash=lvl.lineStyle==='dashed'?'stroke-dasharray="6 4"':'';
-      html+=`<line x1="0" y1="${y.toFixed(1)}" x2="${rightEdge.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${lvl.color}" stroke-width="${lvl.w}" ${lineDash} opacity="0.85" />`;
-      
-      const tagText=`${lvl.icon} ${lvl.title}  ${priceStr}`;
-      const tagW=Math.max(120,tagText.length*6.8+18);
-      const tagX=14;
-      const tagY=y-11;
-      
-      html+=`
-        <g class="lvl-chart-tag" filter="drop-shadow(0 1px 3px rgba(0,0,0,0.35))">
-          <rect x="${tagX}" y="${tagY.toFixed(1)}" width="${tagW}" height="22" rx="4" fill="${lvl.badgeBg}" stroke="#ffffff" stroke-width="0.75" />
-          <text x="${tagX+8}" y="${(tagY+15).toFixed(1)}" fill="#ffffff" font-family="'JetBrains Mono', Inter, monospace" font-size="10" font-weight="700" letter-spacing="0.02em">${tagText}</text>
-        </g>
-      `;
-    }else if(y!=null&&y<0){
-      const offX=8+topOffCount*135;
-      topOffCount++;
-      if(offX+130<rightEdge){
-        html+=`
-          <g class="lvl-off-tag" opacity="0.9" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
-            <rect x="${offX}" y="2" width="128" height="18" rx="3" fill="${lvl.badgeBg}" stroke="#ffffff" stroke-width="0.5" />
-            <text x="${offX+6}" y="14.5" fill="#ffffff" font-family="Inter, sans-serif" font-size="9" font-weight="700">▲ ${lvl.shortTitle} ${priceStr}</text>
-          </g>
-        `;
+function cleanLvlSvg() {
+        const svg = $('v142LvlSvg');
+        if (svg) svg.remove();
       }
-    }else if(y!=null&&y>H){
-      const offX=8+botOffCount*135;
-      botOffCount++;
-      if(offX+130<rightEdge){
-        html+=`
-          <g class="lvl-off-tag" opacity="0.9" filter="drop-shadow(0 1px 2px rgba(0,0,0,0.25))">
-            <rect x="${offX}" y="${H-20}" width="128" height="18" rx="3" fill="${lvl.badgeBg}" stroke="#ffffff" stroke-width="0.5" />
-            <text x="${offX+6}" y="${H-7.5}" fill="#ffffff" font-family="Inter, sans-serif" font-size="9" font-weight="700">▼ ${lvl.shortTitle} ${priceStr}</text>
-          </g>
-        `;
+      function schedLvlSvg() {
+        cleanLvlSvg();
       }
-    }
-  }
 
-  svg.innerHTML=html;
-}
+      function lvlDraw() {
+        cleanLvlSvg();
+        const S = W.__gexSeries;
+        if (!S || !S.createPriceLine) return;
+        const on = lvlOn();
+        const R = on ? lvlRanges() : null;
+        lvlChip(R);
 
-function lvlDraw(){
-  const S=W.__gexSeries;
-  if(!S||!S.createPriceLine)return;
-  const on=lvlOn();
-  const R=on?lvlRanges():null;
-  lvlChip(R);
+        const rk = (x) => x ? Math.round(x.hi) + '_' + Math.round(x.lo) : '0';
+        const cfgStr = [LVL_CFG.day, LVL_CFG.week, LVL_CFG.month].join('-');
+        const key = on && R ? [rk(R.day), rk(R.week), rk(R.month), cfgStr].join('|') : 'off';
 
-  const rk=(x)=>x?Math.round(x.hi)+'_'+Math.round(x.lo):'0';
-  const cfgStr=[LVL_CFG.day,LVL_CFG.week,LVL_CFG.month].join('-');
-  const key=on&&R?[rk(R.day),rk(R.week),rk(R.month),cfgStr].join('|'):'off';
+        if (key === LVL.key) return;
+        LVL.key = key;
 
-  if(key!==LVL.key){
-    LVL.key=key;
-    for(const l of LVL.lines){
-      try{S.removePriceLine(l);}catch(e){}
-    }
-    LVL.lines=[];
+        for (const l of LVL.lines) {
+          try { S.removePriceLine(l); } catch (e) { }
+        }
+        LVL.lines = [];
 
-    if(on&&R){
-      const addLine=(price,color,title,w,isSolid)=>{
-        if(!(price>0))return;
-        LVL.lines.push(S.createPriceLine({
-          price,
-          color,
-          lineWidth:w||1.5,
-          lineStyle:isSolid?0:2,
-          axisLabelVisible:true,
-          axisLabelColor:color,
-          axisLabelTextColor:'#ffffff',
-          title
-        }));
-      };
+        if (!on || !R) return;
 
-      if(LVL_CFG.day!==false&&R.day){
-        addLine(R.day.hi,'#0284c7','D-HIGH',1.5,false);
-        addLine(R.day.lo,'#0284c7','D-LOW',1.5,false);
+        // Collect candidate levels
+        const candidates = [];
+        if (LVL_CFG.day !== false && R.day) {
+          if (R.day.hi > 0) candidates.push({ price: R.day.hi, period: 'Day', isHi: true, rank: 1, color: '#64748b', lineStyle: 2 });
+          if (R.day.lo > 0) candidates.push({ price: R.day.lo, period: 'Day', isHi: false, rank: 1, color: '#64748b', lineStyle: 2 });
+        }
+        if (LVL_CFG.week !== false && R.week) {
+          if (R.week.hi > 0) candidates.push({ price: R.week.hi, period: 'Week', isHi: true, rank: 2, color: '#16a34a', lineStyle: 2 });
+          if (R.week.lo > 0) candidates.push({ price: R.week.lo, period: 'Week', isHi: false, rank: 2, color: '#dc2626', lineStyle: 2 });
+        }
+        if (LVL_CFG.month !== false && R.month) {
+          if (R.month.hi > 0) candidates.push({ price: R.month.hi, period: 'Month', isHi: true, rank: 3, color: '#7c3aed', lineStyle: 3 });
+          if (R.month.lo > 0) candidates.push({ price: R.month.lo, period: 'Month', isHi: false, rank: 3, color: '#e11d48', lineStyle: 3 });
+        }
+
+        // Sort by price ascending
+        candidates.sort((a, b) => a.price - b.price);
+
+        // Cluster and merge duplicates within 0.08% of price (~$50 on BTC)
+        const clusters = [];
+        for (const item of candidates) {
+          const prev = clusters[clusters.length - 1];
+          if (prev && Math.abs(prev.price - item.price) / prev.price < 0.0008) {
+            prev.items.push(item);
+            prev.price = prev.items.reduce((s, x) => s + x.price, 0) / prev.items.length;
+          } else {
+            clusters.push({ price: item.price, items: [item] });
+          }
+        }
+
+        const ORDER_NAMES = ['Day', 'Week', 'Month'];
+        for (const c of clusters) {
+          c.items.sort((a, b) => (b.rank || 0) - (a.rank || 0));
+          const primary = c.items[0];
+
+          const types = [...new Set(c.items.map(x => x.period))].sort((a, b) => ORDER_NAMES.indexOf(a) - ORDER_NAMES.indexOf(b));
+          const isHi = primary.isHi;
+          const periodStr = types.join(' & ');
+          let title = '';
+          if (types.includes('Week') && isHi) {
+            title = periodStr + ' High · Safer';
+          } else if (types.includes('Week') && !isHi) {
+            title = periodStr + ' Low · Danger';
+          } else {
+            title = periodStr + (isHi ? ' High' : ' Low');
+          }
+
+          try {
+            LVL.lines.push(S.createPriceLine({
+              price: c.price,
+              color: primary.color,
+              lineWidth: 1,
+              lineStyle: primary.lineStyle,
+              axisLabelVisible: true,
+              axisLabelColor: primary.color,
+              axisLabelTextColor: '#ffffff',
+              title
+            }));
+          } catch (e) { }
+        }
       }
-      if(LVL_CFG.week!==false&&R.week){
-        addLine(R.week.hi,'#059669','W-HIGH · Safer',2,true);
-        addLine(R.week.lo,'#dc2626','W-LOW · Danger',2,true);
-      }
-      if(LVL_CFG.month!==false&&R.month){
-        addLine(R.month.hi,'#7c3aed','M-HIGH',1.5,false);
-        addLine(R.month.lo,'#e11d48','M-LOW',1.5,false);
-      }
-    }
-  }
-
-  schedLvlSvg();
-}
 W.lvlDraw=lvlDraw; W.lvlChip=lvlChip; W.lvlRanges=lvlRanges; W.lvlOn=lvlOn;
 function wireEm(){const b=$('emBtn');if(!b||b.__v89)return;b.__v89=true;b.textContent='OR · EM';b.title='30-minute NY opening range and ±1 expected move to the planned exit';b.setAttribute('aria-pressed',String(emOn()));
   b.addEventListener('click',e=>{e.stopImmediatePropagation();try{localStorage.setItem('v89_em',emOn()?'0':'1');}catch(x){}b.setAttribute('aria-pressed',String(emOn()));LN.key='';run(true);},true);}
