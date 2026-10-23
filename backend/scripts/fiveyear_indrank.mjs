@@ -140,7 +140,21 @@ function main(){
   // consistency check, not a true out-of-sample test)
   composite.byYear={}; for(const y of [...new Set(nights.map(n=>new Date(n.E).getUTCFullYear()))]){const a=hotN.filter(n=>new Date(n.E).getUTCFullYear()===y),b=calmN.filter(n=>new Date(n.E).getUTCFullYear()===y);composite.byYear[y]={above25:{n:a.length,stop:sr(a)},atOrBelow25:{n:b.length,stop:sr(b)}};}
 
+  // the gate's own rules, tested on the same nights: stop% when the rule fires (would WAIT) vs when it does not
+  const ruleTest=(name,fn)=>{const a=nights.filter(n=>fn(n)===true),b=nights.filter(n=>fn(n)===false);return {name,fires:{n:a.length,stop:sr(a)},clear:{n:b.length,stop:sr(b)}};};
+  const dvolOf=n=>n.f.dvol, spdOf=n=>n.f.spd;
+  const rules=[
+    ruleTest('Thursday',n=>n.wd===4), ruleTest('Friday',n=>n.wd===5), ruleTest('Monday',n=>n.wd===1),
+    ruleTest('Speed ≥ 1.5×',n=>spdOf(n)==null?null:spdOf(n)>=1.5), ruleTest('Speed ≥ 1.2×',n=>spdOf(n)==null?null:spdOf(n)>=1.2),
+    ruleTest('DVOL ≥ 65',n=>dvolOf(n)>=65), ruleTest('DVOL ≥ 55',n=>dvolOf(n)>=55), ruleTest('Risk-ADX above 25',n=>n.score==null?null:n.score>25),
+    ruleTest('Speed ≥ 1.5× or DVOL ≥ 65',n=>spdOf(n)==null?null:(spdOf(n)>=1.5||dvolOf(n)>=65)),
+    ruleTest('Speed ≥ 1.5× or DVOL ≥ 65 or Risk-ADX > 25',n=>n.score==null||spdOf(n)==null?null:(spdOf(n)>=1.5||dvolOf(n)>=65||n.score>25)),
+    ruleTest('Friday AND Risk-ADX above 25',n=>n.wd===5?(n.score==null?null:n.score>25):null)
+  ];
+  const baseByWeekday=Object.fromEntries([1,2,3,4,5].map(w=>{const a=nights.filter(n=>n.wd===w);return [w,{n:a.length,stop:sr(a)}];}));
+
   const out={
+    rules, baseByWeekday,
     generated:new Date().toISOString().slice(0,10), nights:N, baseStopPct:+base.toFixed(1), vetoPct:VETO_PCT,
     span:[dkey(nights[0].E),dkey(nights[N-1].E)],
     note:'DVOL as IV, BS legs, stop@2x in 8h, entry 22:30 IST. Skew/term/bid-ask/crush/greeks/funding/futures/macro have no 5y history (live-only).',
@@ -160,6 +174,8 @@ function main(){
   console.log('\nBEST 3 BY WEEKDAY:');for(const w of [1,2,3,4,5])console.log(`  ${DN[w]}: `+out.weekday[w].slice(0,3).map(x=>`${ORDER[PRIO[x.k]-1][1]} (+${x.lift})`).join(' · '));
   console.log('\nCOMPOSITE (calibrated so 25 = riskiest-30% cutoff):',JSON.stringify(composite.above25),'vs',JSON.stringify(composite.atOrBelow25));
   console.log('BY YEAR (stop% above25 / at-or-below25):',Object.entries(composite.byYear).map(([y,v])=>`${y}: ${v.above25.stop}% (n${v.above25.n}) / ${v.atOrBelow25.stop}% (n${v.atOrBelow25.n})`).join(' | '));
+  console.log('BASE STOP BY WEEKDAY:',Object.entries(baseByWeekday).map(([w,v])=>`${DN[w]} ${v.stop}% (n${v.n})`).join(' | '));
+  console.log('RULE TESTS (stop% when the rule fires vs when clear):');for(const r of rules)console.log(`  ${r.name.padEnd(46)} fires ${String(r.fires.stop).padStart(5)}% (n${r.fires.n})   clear ${String(r.clear.stop).padStart(5)}% (n${r.clear.n})`);
   console.log('WEIGHTS:',JSON.stringify(weights));
 }
 main();

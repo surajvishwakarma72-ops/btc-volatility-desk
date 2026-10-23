@@ -48749,11 +48749,13 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const inProvenWindow = istMins >= PROVEN_BOUNDARIES.ENTRY_START_MINS && istMins <= PROVEN_BOUNDARIES.ENTRY_END_MINS; // Strictly 22:30–23:30 IST (NY+180m point estimate, p=0.0014)
         const isSetupWindow = istMins >= PROVEN_BOUNDARIES.SETUP_START_MINS && istMins < PROVEN_BOUNDARIES.SETUP_END_MINS;  // 21:30–22:30 IST (Amber Setup Window)
         const ivOk = /^SELL/.test(v), news = !(R.evNext && now < R.evNext.ok);
-        const sizeTxt = isPrime ? '1.0× FULL' : isHalf ? '0.5× HALF' : '0×';
+        const RK5 = W.__STRANGLE_INDRANK, RA = W.v151Risk && W.v151Risk.live ? W.v151Risk.live() : null, riskV = RA && RA.last != null ? RA.last : null, riskOk = riskV == null ? null : riskV <= 25, c25 = RK5 && RK5.composite, wd5 = RK5 && RK5.baseByWeekday && RK5.baseByWeekday[dw];
+        const sizeTxt = isThu ? '0×' : dw === 5 ? '1.0× FULL · ★ PREMIUM' : '1.0× FULL';   // 5-year: Friday is the calmest night (18.6 % stopped), no night is half-size; the Risk-ADX / speed gates do the avoiding
         const checks = [
-          ['Calendar Day (Tue/Wed Prime 1.0×, Mon/Fri Half 0.5×, Thu Skip)', dayOk, isThu ? 'Thursday Expiry Shock · Skip' : isPrime ? 'Tue/Wed Prime (1.0×)' : isHalf ? 'Mon/Fri Half (0.5×)' : 'Weekend'],
+          ['Weekday · Mon–Fri, Thursday skipped', dayOk, isThu ? 'Thursday · 1-yr real prices: 83% stopped → skip' + (wd5 ? ' (5-yr model says ' + wd5.stop + '%)' : '') : isWeekend ? 'Weekend' : (wd5 ? DL[dw] + ' · 5-yr: ' + wd5.stop + '% stopped (all nights ' + RK5.baseStopPct + '%)' : DL[dw])],
           ['Speed Beacon (RV ÷ IV < 1.50× Kinetic Filter)', speedOk, speedVal != null ? speedVal.toFixed(2) + '× · ' + (speedOk ? 'Calm (<1.5×)' : 'Storm (≥1.5×)') : '—'],
           ['Timing Window (22:30–23:30 IST proven entry, p=0.0014)', inProvenWindow, inProvenWindow ? 'Proven Window (22:30–23:30 IST)' : isSetupWindow ? 'Amber Setup (21:30–22:30 IST) · Wait' : istMins > PROVEN_BOUNDARIES.ENTRY_END_MINS ? 'Entry Closed (>23:30 IST)' : 'Before NY Window'],
+          ['Risk-ADX at or below 25', riskOk, riskV != null ? riskV.toFixed(1) + (riskOk ? ' · calm' : ' · risky') + (c25 ? ' · 5-yr: ' + c25.above25.stop + '% stopped above 25 vs ' + c25.atOrBelow25.stop + '% below' : '') : 'loading'],
           ['IV Turn (1.5–6% off NY peak)', ivOk, R.offPct != null ? R.offPct.toFixed(1) + '% off' : '—'],
           ['News · no high-impact release before exit', news, news ? 'clear' : R.evNext.code + ' ' + hm(R.evNext.t)]];
         let w, col, why = [];
@@ -48761,6 +48763,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (isWeekend) { w = 'WAIT'; col = 'n'; why = [DL[dw] + ' night: no new entry']; }
         else if (isThu) { w = 'WAIT'; col = 'r'; why = ['Thursday: Sunday expiry, thin credit · 61.1% stopped vs 43.3% rest (p = 0.0279)']; }
         else if (!speedOk) { w = 'WAIT'; col = 'r'; why = ['Speed vs IV ' + speedVal.toFixed(2) + '× ≥ 1.5× (kinetic storm)']; }
+        else if (riskOk === false) { w = 'WAIT'; col = 'r'; why = ['Risk-ADX ' + riskV.toFixed(1) + ' is above 25' + (c25 ? ' · 5-yr: ' + c25.above25.stop + '% of such nights stopped vs ' + c25.atOrBelow25.stop + '%' : '')]; }
         else if (!news) { w = 'WAIT'; col = 'r'; why = ['news: ' + R.evNext.code + ' ' + hm(R.evNext.t)]; }
         else if (isSetupWindow) { w = 'WAIT'; col = 'a'; why = ['Amber Setup Window (21:30–22:30 IST) · Await 22:30 IST proven entry trigger (NY+180m, p=0.0014)']; }
         else if (!inProvenWindow) { w = 'WAIT'; col = 'n'; why = [istMins > PROVEN_BOUNDARIES.ENTRY_END_MINS ? 'Entry window closed at 23:30 IST · Await 04:00 IST exit' : 'Outside proven 22:30–23:30 IST entry window']; }
@@ -48896,13 +48899,19 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     ${rw(ivd == null ? null : ivd < 1, 'NEW · IV 1 pt above your entry IV → exit', ivd != null ? 'entry ' + R.ivEntry.toFixed(1) + ' · now ' + R.iv.toFixed(1) + ' · ' + pm(ivd) : 'needs an open strangle')}
     ${rw(true, 'Day exit time · ' + xl, xT ? (Date.now() < xT ? hm(xT) + ' in ' + cd(xT - Date.now()) : hm(xT) + ' passed') : '')}
     <span class="s">1 year: per-leg stop beat closing both legs in both halves · holding to expiry was clearly worse.</span></div>`;
-        const why = `<div class="c"><span class="l">WHAT YOU CAN TRUST · 1-YEAR TEST (240 nights)</span>
-    <span style="font-size:13.5px">1 · <b>Weekday</b>: Fri +21% of credit · Wed +12% · Mon/Tue +2–3% · <b class="bad">Thu −15%, stopped 83% → no trade</b>.</span>
-    <span style="font-size:13.5px">2 · <b>Your IV turn</b>: +10.5% a night vs +4.5% selling at a fixed time, better in both halves.</span>
-    <span style="font-size:13.5px">3 · <b>Per-leg stop</b>: the stop changes results more than any entry filter.</span>
-    <span style="font-size:13.5px">4 · <b>ADX falling</b>: the one confirmation that helped in both halves (medium trust).</span>
-    <span class="s">Not trusted yet: indicator combinations (luck in a shuffle test), RSI / MACD / VWAP / volume entries, profit targets. Numbers are simulated (ATM IV for the wings, Bitstamp BTC).</span></div>`;
-        const h = ban + `<div class="g3">${entry}${greeks}${bidask}</div><div class="g2">${hold}${why}</div>`;
+        const K5 = W.__STRANGLE_INDRANK, rk = W.v151Risk && W.v151Risk.rank ? W.v151Risk.rank(null, F && F.dow) : null, DLN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], MON = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+        const rl = r => r ? (r.rest != null ? '' : '') + `${Math.round(r.hot)}% vs ${Math.round(r.rest)}%` : '';
+        const ruleRow = nm => { const r = K5 && K5.rules && K5.rules.find(x => x.name === nm); return r ? `<tr><td class="s">${esc(nm)}</td><td class="mono">${r.fires.stop}% <span class="s">(n ${r.fires.n})</span></td><td class="mono">${r.clear.stop}% <span class="s">(n ${r.clear.n})</span></td></tr>` : ''; };
+        const why = K5 ? `<div class="c"><span class="l">5-YEAR BACKTEST · WHAT THE GATE RESTS ON (${K5.nights} nights, ${esc(K5.span[0].slice(0, 4))}–${esc(K5.span[1].slice(0, 4))})</span>
+    <span class="s">Stop = a leg hits 2× within 8 h of the 22:30 IST entry · all nights ${K5.baseStopPct}% · modelled on DVOL, not real option prices</span>
+    <table><thead><tr><th>Rule fires</th><th>stopped then</th><th>stopped when clear</th></tr></thead><tbody>${ruleRow('Speed ≥ 1.5×')}${ruleRow('Risk-ADX above 25')}${ruleRow('Speed ≥ 1.5× or DVOL ≥ 65 or Risk-ADX > 25')}${ruleRow('DVOL ≥ 65')}${ruleRow('Thursday')}</tbody></table>
+    <span class="s">By weekday: ${[1, 2, 3, 4, 5].map(w => DL[w] + ' <b>' + K5.baseByWeekday[w].stop + '%</b>').join(' · ')}</span>
+    <span class="s">Friday is the calmest night, so it is traded at full size. DVOL ≥ 65 made no difference in 5 years (kept as a panic stand-down). Thursday is average in the model but stopped 83% on real 1-year option prices, so it stays skipped. Not in the history (live only): skew, term spread, bid/ask, IV crush, greeks, funding, futures, macro.</span></div>` : `<div class="c"><span class="l">5-YEAR BACKTEST</span><span class="s">data/indicator_rank_dynamic.js not loaded</span></div>`;
+        const rkTbl = (t, a) => `<div><span class="l">${esc(t)}</span>${(a || []).map((x, i) => `<div class="rw"><b class="${i === 0 ? 'ok' : 'amb'}">${i + 1}</b><span>${esc(x.name)}</span><span class="s">+${x.lift} pts · ${Math.round(x.hot)}% vs ${Math.round(x.rest)}% stopped</span></div>`).join('') || '<span class="s">not enough nights</span>'}</div>`;
+        const rank = rk ? `<div class="c"><span class="l">BEST INDICATORS RIGHT NOW · RANKED FROM THE 5-YEAR NIGHTS (riskiest 30% of readings vs the rest)</span>
+    <div class="g3">${rkTbl('TODAY · ' + DLN[rk.wd].toUpperCase(), rk.day)}${rkTbl('THIS WEEK · WEEK ' + rk.wom + ' OF THE MONTH', rk.week)}${rkTbl('THIS MONTH · ' + MON[rk.mo].toUpperCase(), rk.month)}</div>
+    <span class="s">Ranked by how much more often a night was stopped when the indicator read risky. It changes with the date. Top overall: ${(rk.overall || []).map(x => esc(x.name) + ' +' + x.lift).join(' · ')}.</span></div>` : '';
+        const h = ban + `<div class="g3">${entry}${greeks}${bidask}</div>${rank}<div class="g2">${hold}${why}</div>`;
         if (el.dataset.h !== h) { el.dataset.h = h; el.innerHTML = h; }
       }
       /* ---------- loop ---------- */
@@ -49292,13 +49301,16 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         return { score: barH.map(h => hourScore[h]), last, parts, hours: n };
       }
       /* best indicators for a given date: weekday / week-of-month / month, top 3 each */
-      function rank(date) {
-        const r = RK(); if (!r) return null; const d = date || new Date(Date.now() + 19800000), wd = d.getUTCDay(), wom = Math.ceil(d.getUTCDate() / 7), mo = d.getUTCMonth() + 1;
+      function rank(date, dow) {
+        const r = RK(); if (!r) return null; const nowIst = Date.now() + 19800000, d = date || new Date(nowIst - (new Date(nowIst).getUTCHours() < 7 ? 864e5 : 0)), wd = dow != null && dow >= 0 && dow <= 6 ? dow : d.getUTCDay(), wom = Math.ceil(d.getUTCDate() / 7), mo = d.getUTCMonth() + 1;
         const nm = {}; for (const o of r.order) nm[o.k] = o.l;
         const top = a => (a || []).slice(0, 3).map(x => ({ k: x.k, name: nm[x.k] || x.k, lift: x.lift, hot: x.hot, rest: x.rest, n: x.n }));
         return { wd, wom, mo, day: top(r.weekday[wd]), week: top(r.weekOfMonth[wom]), month: top(r.month[mo]), overall: top(r.overall), base: r.baseStopPct, span: r.span, nights: r.nights };
       }
-      W.v151Risk = { compute, rank, riskPct, scoreOf, data: RK };
+      /* the same score for whoever needs it without the lane (Decision page, clock): from the chart's own bars, cached 20 s */
+      const LV = { at: 0, v: null };
+      function live() { if (Date.now() - LV.at < 20000) return LV.v; LV.at = Date.now(); try { const R = W.paRes && W.paRes(); LV.v = R && R.bars && R.bars.length ? compute({ b: R.bars }) : null; } catch (e) { LV.v = null; } return LV.v; }
+      W.v151Risk = { compute, live, rank, riskPct, scoreOf, data: RK };
     })();
   </script>
   <script data-module="v142">
@@ -52359,7 +52371,10 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
         }
 
         // 2. Full GO agreement: Day + Speed + Timing Window
-        if (dualGo && inProvenEntryWindow) {
+        // ONE gate: the Decision page's v139 verdict decides GO (speed, Risk-ADX, news, IV turn, window); this panel only words it
+        let gateGo = dualGo && inProvenEntryWindow, V0 = null; try { V0 = W.v139 && W.v139.decide ? W.v139.decide() : null; if (V0 && V0.w) gateGo = V0.w === 'GO'; } catch (e) { }
+        st.gateGo = gateGo;
+        if (gateGo) {
           return Object.assign(st, {
             cls: 'full',
             word: 'GO',
@@ -52378,6 +52393,10 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
           whyD1 = 'Weekend: Options Cycle Closed';
           whyD2 = 'Next trade: Monday 22:30 IST';
           stopIcon = 'off';
+        } else if (V0 && V0.w === 'WAIT' && V0.why && V0.why.length && /Risk-ADX|news|Thursday/.test(V0.why[0])) {
+          whyD1 = 'WAIT — ' + V0.why[0];
+          whyD2 = 'The Decision page gate says wait · same verdict everywhere';
+          stopIcon = 'beacon_red';
         } else if (ivNow != null && ivNow >= 65) {
           whyD1 = 'WAIT — IV panic (' + ivNow.toFixed(0) + '% ≥ 65)';
           whyD2 = 'Real fear · stand down until IV cools';
