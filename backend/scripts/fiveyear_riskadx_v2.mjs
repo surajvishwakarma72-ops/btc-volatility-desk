@@ -258,6 +258,81 @@ function main(){
   const goN=[];for(const [E0,a] of nights){a.sort((x,y)=>x.k-y.k);const t=a.find(isGo);if(t)goN.push(t);}console.log('  first GO hour of each night (22:30-01:30 IST): trades '+goN.length+'/'+nights.size+' stopped '+st(goN)+'% avg '+pn(goN)+'% total '+goN.reduce((x,t)=>x+t.final,0).toFixed(0));
   const journey={stages:stageRows,confirms:confRows,go:{n:goA.length,stop:st(goA),pnl:pn(goA)},notGo:{n:noA.length,stop:st(noA),pnl:pn(noA)},nightly:{trades:goN.length,nights:nights.size,stop:st(goN),avg:pn(goN),total:+goN.reduce((x,t)=>x+t.final,0).toFixed(0)}};
 
+  /* ---------- the Entry Gauge: one RSI-style line, 0 (GO) .. 100 (WAIT) ---------- */
+  const GW={spd:10,model:8,fear:7,rise:4,vov:5,rv:3,edge:3,adx:1.5};const GWT=Object.values(GW).reduce((a,b)=>a+b,0);const PRIM=['spd','model','fear','rise','vov'],SEC=['rv','edge','adx'];
+  const ivx=(E)=>dh.get(E)>0?dh.get(E):null;
+  const vovx=(E)=>{const v=[];for(let h=6;h>=0;h--){const x=ivx(E-h*HOUR);if(x)v.push(x);}if(v.length<5)return null;const c=[];for(let i=1;i<v.length;i++)c.push(Math.log(v[i]/v[i-1]));return sd(c)*100;};
+  const gMemo=new Map();
+  function gaugeBase(E,F,yr){
+    const key=yr+'|'+E;if(gMemo.has(key))return gMemo.get(key);let out=null;
+    const f=featuresAt(E);if(f){const sc=F.toScore(F.score(f));const fp=featuresAt(E-3*HOUR),scp=fp?F.toScore(F.score(fp)):null;
+      const pre=ivx(E-5*HOUR),now=ivx(E);let pk=null;for(let h=4;h>=1;h--){const x=ivx(E-h*HOUR);if(x&&(pk==null||x>pk))pk=x;}
+      let stage='unknown',vovUp=false,spike=0;
+      if(pre&&pk&&now){spike=(pk-pre)/pre*100;const fall=(pk-now)/pk*100,x2=ivx(E-2*HOUR),hard=x2?(x2-now)/x2*100:0,v0=vovx(E),v2=vovx(E-2*HOUR),v4=vovx(E-4*HOUR);
+        const vovDn=v0!=null&&v2!=null&&v4!=null&&v0<v2&&v2<v4;vovUp=v0!=null&&v2!=null&&v0>v2*1.05;
+        stage=spike<2?'calm':fall<1.5?'holding':(vovDn||(hard>=0.5&&!vovUp))?'real':(hard>=3&&vovUp)?'crush':'mixed';}
+      const ok={spd:f.spd<1,model:sc<=25,fear:stage!=='holding'&&stage!=='unknown',rise:scp==null||sc-scp<2,vov:!(stage==='crush'||(vovUp&&spike>=2)),rv:f.rv<f.atm,edge:f.edge>0,adx:f.adx<25};
+      let failW=0;for(const k of Object.keys(GW))if(!ok[k])failW+=GW[k];
+      /* momentum of the indicators over 2 h: building = realised-vol ratio, 6 h range and IV all accelerating (and VoV rising); exhausted = a hot reading now cooling in all of them */
+      const f2=featuresAt(E-2*HOUR),iv2=ivx(E-2*HOUR);let build=0,exhaust=0;
+      if(f2&&iv2&&now){const ivCh=(now-iv2)/iv2*100;
+        const b=[f.rvr!=null&&f2.rvr!=null&&f.rvr>f2.rvr*1.15,f.rng6>f2.rng6*1.2,ivCh>=0.7,vovUp];build=b.filter(Boolean).length/4;
+        const hot=(f2.rvr!=null&&f2.rvr>1.0)||f2.rng6>1.2,e=[f.rvr!=null&&f2.rvr!=null&&f.rvr<f2.rvr*0.85,f.rng6<f2.rng6*0.8,ivCh<=-0.7];exhaust=hot?e.filter(Boolean).length/3:0;}
+      out={E,sc,stage,ok,failW,veto:stage==='holding'||f.spd>=1.5||sc>50,spd:f.spd,build,exhaust,primPass:PRIM.every(k=>ok[k]),secFail:SEC.filter(k=>!ok[k]).length,allPass:failW===0};}
+    gMemo.set(key,out);return out;
+  }
+  const VARIANTS={
+    V0:{name:'V0 plain (floor 34, green = every check)',mom:false,floor:true,tol:false},
+    V1:{name:'V1 = V0 + momentum',mom:true,floor:true,tol:false},
+    V2:{name:'V2 continuous, green = 5 main checks + at most 1 minor',mom:false,floor:false,tol:true},
+    V3:{name:'V3 = V2 + momentum',mom:true,floor:false,tol:true}};
+  function gaugeSeries(E0,F,yr,V){
+    const out=[];let L=null,better=0;
+    for(let h=-6;h<=10;h++){const b=gaugeBase(E0+h*HOUR,F,yr);if(!b)continue;
+      let raw=100*(0.65*b.failW/GWT+0.35*Math.min(1,b.sc/50));
+      if(V.floor&&b.failW>0)raw=Math.max(raw,34);if(b.veto)raw=Math.max(raw,80);
+      if(V.mom&&b.build>=0.5)raw=Math.min(100,Math.max(raw,(L==null?raw:L)+25*b.build));
+      if(L==null){L=raw;better=0;}else if(raw>=L){L=raw;better=0;}else if(V.mom&&b.exhaust>=2/3){L=raw;better=0;}else{better++;if(better>=2)L=raw;}
+      const greenOk=V.tol?(b.primPass&&b.secFail<=1&&!b.veto):b.allPass;
+      out.push({E:b.E,h,L,raw,sc:b.sc,stage:b.stage,ok:b.ok,build:b.build,exhaust:b.exhaust,color:L>=66?'red':(L<34&&greenOk)?'green':'yellow'});}
+    return out;
+  }
+  /* which single check matters: pass rate, and stopped % when only that one fails */
+  {const bs=O.map(s=>gaugeBase(s.E,FMforYear(s.yr),s.yr)).filter(Boolean);const rowsC=[];for(const k of Object.keys(GW)){const f=bs.filter(b=>!b.ok[k]);rowsC.push(k+' pass '+((1-f.length/bs.length)*100).toFixed(0)+'%');}console.log('\nCHECK PASS RATES (entry hours, OOS):',rowsC.join(' | '));}
+  const gauge={variants:{}};
+  const dvAt=(s)=>s.f.dvol;
+  for(const [vk,V] of Object.entries(VARIANTS)){
+    const gSeries=new Map(),share={red:0,yellow:0,green:0,n:0},entry={red:0,yellow:0,green:0,n:0};
+    for(const [E0,a] of nights){const yr=a[0].yr;const F=FMforYear(yr);const S=gaugeSeries(E0,F,yr,V);if(!S.length)continue;gSeries.set(E0,S);for(const p of S){share[p.color]++;share.n++;}for(const s of a){const p=S.find(q=>q.E===s.E);s['g_'+vk]=p||null;if(p){entry[p.color]++;entry.n++;}}}
+    const G=O.filter(s=>s['g_'+vk]);const gk=(s)=>s['g_'+vk];
+    const zones=['red','yellow','green'].map(c=>{const a=G.filter(s=>gk(s).color===c);return {color:c,n:a.length,stop:st(a),pnl:pn(a),shareAll:+(share[c]/share.n*100).toFixed(1),shareEntry:+(entry[c]/entry.n*100).toFixed(1)};});
+    const aucAll=auc(G.filter(s=>s.stop).map(s=>gk(s).L),G.filter(s=>!s.stop).map(s=>gk(s).L));
+    const split=(fn)=>{const a=G.filter(fn);const g=a.filter(s=>gk(s).color==='green'),r=a.filter(s=>gk(s).color==='red');return {n:a.length,green:{n:g.length,stop:st(g)},red:{n:r.length,stop:st(r)},auc:+auc(a.filter(s=>s.stop).map(s=>gk(s).L),a.filter(s=>!s.stop).map(s=>gk(s).L)).toFixed(3)};};
+    const tr=split(s=>s.yr<=2024),va=split(s=>s.yr>=2025);
+    console.log('\n=== '+V.name+' ===  AUC '+aucAll.toFixed(3)+'   tune(2023-24) green '+tr.green.stop+'% (n'+tr.green.n+') red '+tr.red.stop+'% (n'+tr.red.n+') AUC '+tr.auc+'   validate(2025-26) green '+va.green.stop+'% (n'+va.green.n+') red '+va.red.stop+'% (n'+va.red.n+') AUC '+va.auc);
+    for(const z of zones)console.log('  '+z.color.padEnd(7)+' n '+String(z.n).padStart(4)+'  stopped '+String(z.stop).padStart(5)+'%  P&L '+String(z.pnl).padStart(6)+'%  share of all hours '+z.shareAll+'%  of entry hours '+z.shareEntry+'%');
+    const res=[];const rep2=(name,pick,arr)=>{const T=[];for(const [E0,a] of (arr||nights)){a.sort((x,y)=>x.k-y.k);const t=pick(a);if(t)T.push(t);}const tot=T.reduce((x,t)=>x+t.final,0);const r={name,nights:(arr||nights).size,trades:T.length,stop:T.length?st(T):null,avg:T.length?pn(T):null,total:+tot.toFixed(0)};res.push(r);console.log('  '+name.padEnd(46)+' trades '+String(r.trades).padStart(3)+'/'+r.nights+'  stopped '+String(r.stop).padStart(5)+'%  avg '+String(r.avg).padStart(5)+'%  total '+String(r.total).padStart(6));return T;};
+    rep2('first green hour 22:30-01:30',a=>a.find(x=>gk(x)&&gk(x).color==='green'));
+    rep2('not red at 22:30',a=>{const s=a.find(x=>x.k===0);return s&&gk(s)&&gk(s).color!=='red'?s:null;});
+    const lastE0=Math.max(...nights.keys()),n30=new Map([...nights].filter(([E0])=>E0>lastE0-30*DAY));
+    const r30a=rep2('  last 30 days: first green hour',a=>a.find(x=>gk(x)&&gk(x).color==='green'),n30);
+    rep2('  last 30 days: not red at 22:30',a=>{const s=a.find(x=>x.k===0);return s&&gk(s)&&gk(s).color!=='red'?s:null;},n30);
+    gauge.variants[vk]={name:V.name,auc:+aucAll.toFixed(3),tune:tr,validate:va,zones,strategies:res};
+    if(vk==='V3'||vk==='V2'){gauge.variants[vk].recent=[...n30].sort((x,y)=>x[0]-y[0]).map(([E0,a])=>{a.sort((x,y)=>x.k-y.k);const s0=a.find(x=>x.k===0),fg=a.find(x=>gk(x)&&gk(x).color==='green');return {date:dkey(E0),c0:s0&&gk(s0)?gk(s0).color:null,L0:s0&&gk(s0)?+gk(s0).L.toFixed(0):null,stop0:s0?!!s0.stop:null,pnl0:s0?+s0.final.toFixed(1):null,firstGreen:fg?fg.k:null,stopG:fg?!!fg.stop:null,pnlG:fg?+fg.final.toFixed(1):null};});}
+    gauge.variants[vk].series=null;
+    if(vk==='V3')gauge._V3=gSeries;
+  }
+  /* exhaustion test: nights that were red/yellow-high earlier in the evening and then released to green by momentum exhaustion (V3) vs the same without momentum (V2) */
+  {const mm=(nm,fn)=>{const a=O.filter(fn);console.log('  '+nm.padEnd(60)+' n '+String(a.length).padStart(4)+'  stopped '+String(st(a)).padStart(5)+'%  P&L '+String(pn(a)).padStart(6)+'%');return {name:nm,n:a.length,stop:st(a),pnl:pn(a)};};
+  console.log('\nMOMENTUM EFFECT (V3 against V2 at the same entry hour)');
+  gauge.momentum=[mm('momentum released the line to green (V3 green, V2 not)',s=>s.g_V3&&s.g_V2&&s.g_V3.color==='green'&&s.g_V2.color!=='green'),
+    mm('momentum lifted the line to red (V3 red, V2 not)',s=>s.g_V3&&s.g_V2&&s.g_V3.color==='red'&&s.g_V2.color!=='red'),
+    mm('V2 green and V3 green',s=>s.g_V3&&s.g_V2&&s.g_V3.color==='green'&&s.g_V2.color==='green'),
+    mm('V2 red and V3 red',s=>s.g_V3&&s.g_V2&&s.g_V3.color==='red'&&s.g_V2.color==='red'),
+    mm('V2 green but V3 not green (momentum held it back)',s=>s.g_V3&&s.g_V2&&s.g_V2.color==='green'&&s.g_V3.color!=='green')];}
+  gauge.weights=GW;gauge.note='red >= 66; green = L < 34 and the main checks pass; yellow otherwise. Rises at once (faster when momentum builds), falls after two better hours (at once when momentum is spent).';
+  delete gauge._V3;
+
   /* ---------- write the model for the desk ---------- */
   const names=Object.fromEntries([...ORDER.map(([k,l])=>[k,l]),['r6','6h move'],['r24','24h move'],['rng6','6h range'],['rvr','RV 6h ÷ 24h'],['dchg','IV change 24h'],['spk','NY IV spike']]);
   /* parity check: the same model on the newest hours (compare with the desk's lane) */
@@ -265,7 +340,7 @@ function main(){
   const out={generated:dkey(Date.now()),samples:samples.length,baseStopPct:+base.toFixed(1),span:[dkey(samples[0].E),dkey(samples[samples.length-1].E)],feats:FEATS,names,
     coef:{b:+FM.w[0].toFixed(5),w:Object.fromEntries(FEATS.map((k,i)=>[k,+FM.w[i+1].toFixed(4)]))},pct:FM.pct,calibration:cal,
     wfAuc:{old:+mean(aucOld).toFixed(3),logistic:+mean(aucNew).toFixed(3),sets:setAuc},oosBands:bandRows,oosAbove25:{n:above.length,stop:st(above),pnl:pn(above)},oosAtOrBelow25:{n:below.length,stop:st(below),pnl:pn(below)},
-    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey};
+    dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey,gauge};
   const js=`window.__STRANGLE_RISKMODEL = ${JSON.stringify(out)};\n`;
   for(const rel of ['../../data/risk_model.js','../../frontend/public/data/risk_model.js'])fs.writeFileSync(P(rel),js);
   console.log('\nlogistic weights (on centred percentile rank; + = riskier):',JSON.stringify(out.coef.w),'calibration',JSON.stringify(cal));
