@@ -42876,7 +42876,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             S.hist.createPriceLine({ price: 1, color: 'rgba(227,174,69,.85)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' }); S.hist.createPriceLine({ price: 1.5, color: 'rgba(239,83,80,.7)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: '' });
           } catch (e) { S.hist = null; return; }
         }
-        try { const m = ch.priceScale('right').options().scaleMargins; if (!m || m.bottom < 0.13) ch.priceScale('right').applyOptions({ scaleMargins: { top: m ? m.top : 0.05, bottom: 0.14 } });   // v150: just clear of the 13 % strip } catch (e) { }
+        try { const m = ch.priceScale('right').options().scaleMargins; if (!m || m.bottom < 0.13) ch.priceScale('right').applyOptions({ scaleMargins: { top: m ? m.top : 0.05, bottom: 0.14 } }); } catch (e) { }   // v150: just clear of the 13 % strip
         const key = c.length + '|' + c[c.length - 1].time + '|' + Math.floor(Date.now() / 60000); if (S.hkey === key) return; S.hkey = key;
         const from = Math.max(0, c.length - 600), arr = []; for (let i = from; i < c.length; i++) { const v = speedAt(c[i].time, t.pi); arr.push(v == null ? { time: c[i].time } : { time: c[i].time, value: Math.min(1.6, v), color: v > 1.5 ? 'rgba(239,83,80,.62)' : v >= 1 ? 'rgba(38,166,154,.62)' : 'rgba(140,150,160,.45)' }); }
         try { S.hist.setData(arr); } catch (e) { }
@@ -48376,7 +48376,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const last = S.legs.pts[S.legs.pts.length - 1]; if (last && last[0] === t) return; S.legs.pts.push([t, c ? c.x : null, p ? p.x : null]); if (S.legs.pts.length > 2000) S.legs.pts.shift(); LSs('v138_legs', S.legs);
       }
       /* ---------- presets in the Indicators menu ---------- */
-      const PRE = { Entry: { spd: 1, vov: 1, rng: 1, rv: 1, dv: 1, iv: 1, edge: 1, ton: 1, term: 1, sig: 1, crush: 1, vwap: 1, avp: 1, ses: 1, lvl: 1 }, Hold: { legs: 1, strk: 1, grk: 1, rsi: 1, liq: 1, lhm: 1, iv: 1, crush: 1, lvl: 1 }, Exit: { ton: 1, sig: 1, legs: 1, iv: 1, crush: 1 }, Clean: {} };   // v149: groups graded by the 5-year backtest — Entry = calm-tape + IV-turn verifiers (primary+confirm) · Hold = position/leg/greeks/cascade · Exit = exit state + review
+      const PRE = { Entry: { risk: 1, spd: 1, vov: 1, rng: 1, rv: 1, dv: 1, iv: 1, edge: 1, ton: 1, term: 1, sig: 1, crush: 1, vwap: 1, avp: 1, ses: 1, lvl: 1 }, Hold: { risk: 1, legs: 1, strk: 1, grk: 1, rsi: 1, liq: 1, lhm: 1, iv: 1, crush: 1, lvl: 1 }, Exit: { risk: 1, ton: 1, sig: 1, legs: 1, iv: 1, crush: 1 }, Clean: {} };   // v149: groups graded by the 5-year backtest — Entry = calm-tape + IV-turn verifiers (primary+confirm) · Hold = position/leg/greeks/cascade · Exit = exit state + review
       const KEEP = ['crush', 'fut', 'pat', 'cdl', 'gex', 'ton', 'ses', 'rsi', 'dfl', 'grk', 'spr', 'fp', 'vwap', 'avp', 'lhm'];   // v142: layouts (and auto) never switch off the new items you ticked
       function preset(name) { const P = PRE[name]; if (!P || !W.v132ind) return; const on = W.v132ind.state(); for (const k of Object.keys(on)) if (!KEEP.includes(k)) on[k] = false; Object.assign(on, Object.fromEntries(Object.entries(P).map(([k, v]) => [k, !!v]))); LSs('v133_ind', on); try { W.v132ind.apply(true); } catch (x) { } setTimeout(() => { paintAll(); try { W.v137 && W.v137.paintAll(); } catch (x) { } }, 120); }
       function presets() {
@@ -55919,6 +55919,11 @@ html { overscroll-behavior-y: none; background-color: var(--bg); }
   html, body { height: auto !important; }
   body { min-height: 100vh; min-height: 100dvh; background: var(--bg) !important; background-attachment: scroll !important; }
   .tabbar { background-color: var(--bg); }
+  /* the desk page is sized to end just above the tab bar, so the page itself must not add tab-bar clearance below it:
+     that spacer was the blank band you saw when pulling the page up (the other pages keep it) */
+  body:has(#pgDesk.on) { padding-bottom: 0 !important; }
+  #pgDesk.on::after { display: none !important; }
+  body:has(#pgDesk.on) #pages { min-height: 0 !important; }
   .page {
     padding: 4px max(4px, env(safe-area-inset-right, 0px)) 0 max(4px, env(safe-area-inset-left, 0px)) !important;
   }
