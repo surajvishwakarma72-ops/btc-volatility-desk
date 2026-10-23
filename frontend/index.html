@@ -55713,6 +55713,9 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
    desktops use the width. Heights use dvh (the visible screen) with a vh line first for older browsers. */
 :root { --page-max: 1800px; }
 .ms-tooltip { position: fixed; }
+/* the session-watch pill (ASIA · EXIT WATCH / LONDON · WATCH ONLY) is gone; its room goes to the chart. Hidden, not
+   removed: other modules still anchor on #ph89 */
+#ph89 { display: none !important; }
 
 @media (max-width: 760px) {
   /* clip, not hidden: hidden turns body into a scroll box and breaks the sticky header */
@@ -55723,6 +55726,25 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
     padding: 4px max(4px, env(safe-area-inset-right, 0px)) 0 max(4px, env(safe-area-inset-left, 0px)) !important;
   }
   .top.hdr .vt-dock { flex: 1 1 auto; min-width: 0; max-width: none !important; }
+  /* expiry switch rides on the brand row, so the old pill row disappears */
+  .top.hdr #v100Master { order: 1 !important; margin: 0 0 0 auto !important; flex: 0 0 auto !important; width: auto !important; }
+  .top.hdr h1.brand { order: 0 !important; }
+  .top.hdr .top-actions { margin-left: 6px !important; }
+  /* strategy chips and the flash ribbon share one row, each scrolls sideways */
+  .top.hdr > #v147StrategyNearFri { flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; }
+  .top.hdr > #flashRibbon { order: 11 !important; flex: 1 1 0 !important; min-width: 0 !important; max-width: 50% !important; overflow-x: auto !important; scrollbar-width: none !important; }
+  .top.hdr > #flashRibbon::-webkit-scrollbar { display: none; }
+  /* the brand row wraps first: the strip after it always starts a new line */
+  .top.hdr > .top-actions { flex: 0 0 auto !important; }
+  .top.hdr::after { content: ""; order: 5; flex: 0 0 100%; height: 0; }
+  /* chart toolbar: BTC label shares the timeframe row, slimmer zoom rail; every px saved goes to the candles */
+  #gTop.tb { flex-direction: row !important; flex-wrap: wrap !important; align-items: center !important; gap: 3px 6px !important; padding: 3px 6px !important; }
+  #gTop .sym { order: 0 !important; width: auto !important; flex: 0 0 auto !important; }
+  #gTop .g-tf { order: 1 !important; flex: 1 1 0 !important; min-width: 0 !important; }
+  #gTop .r { order: 2 !important; flex: 1 1 100% !important; padding: 0 !important; }
+  #gTop .g-tools { order: 3 !important; flex: 1 1 100% !important; padding-top: 2px !important; }
+  #gTop .g-rail { min-height: 0 !important; padding: 2px 0 !important; }
+  #gTop .g-rail button, #gTop .g-rail .tool { height: 28px !important; min-height: 28px !important; }
   body.gfs .chartp {
     height: calc(100vh - var(--tk-h) - var(--hdr-h) - var(--tab-h) - env(safe-area-inset-bottom, 0px)) !important;
     height: calc(100dvh - var(--tk-h) - var(--hdr-h) - var(--tab-h) - env(safe-area-inset-bottom, 0px)) !important;
