@@ -46573,6 +46573,12 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function pnl() { render(); if (!P.rows && !P.busy) load(); }
       function tick() { if (D.hidden) return; try { moves(); fit(); } catch (e) { console.warn('v133', e); } }
       setTimeout(tick, 900); setTimeout(tick, 3000); setInterval(tick, 3000); addEventListener('resize', () => setTimeout(fit, 150));
+      // v150: the phone's visible height changes without a width change when the address bar hides / shows on scroll and on
+      // entering / leaving full screen; once it settles the desk refits, so no blank band is left above the tab bar
+      // (window resize events for this are swallowed by the v105.14 scroll guard, visualViewport ones are not)
+      const vhRefit = () => { clearTimeout(fit.vv); fit.vv = setTimeout(() => { if (Math.abs(innerHeight - (fit.vh || 0)) >= 2) { fit.vh = innerHeight; fit(); } }, 250); };
+      try { W.visualViewport && W.visualViewport.addEventListener('resize', vhRefit); } catch (e) { }
+      D.addEventListener('fullscreenchange', vhRefit);
       D.addEventListener('click', e => { if (e.target.closest('#nav [data-page="pgDesk"],#tabbar [data-page="pgDesk"]')) setTimeout(fit, 200); }, true);
       W.v133 = { fit, pnl, load, state: () => P, __test: { parseSym, ts } };
     })();
@@ -48334,7 +48340,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* ---------- v138.1: per-section zoom (roller + wheel/drag like the BTC chart, time stays shared) ---------- */
       const near = (a, b) => a && b && Math.abs(a.from - b.from) < 0.01 && Math.abs(a.to - b.to) < 0.01;
       function wrapScale(o) {
-        const prov = orig => { const r = orig(); if (!r || !r.priceRange || !(o.zoom && o.zoom !== 1) && !o.shift) return r; const lo = r.priceRange.minValue, hi = r.priceRange.maxValue, c = (lo + hi) / 2 + (o.shift || 0) * (hi - lo), h = Math.max(1e-6, (hi - lo) / 2 / (o.zoom || 1)); return { priceRange: { minValue: c - h, maxValue: c + h }, margins: r.margins }; };
+        // v150: the markers (NY, ADX ✕, 1-4) reserve a fixed pixel band above and below the plot; in a short lane that band
+        // ate over half the height and squashed the candles, so it is capped at 8 px and the data fills the lane like BTC
+        const mg = m => m ? { above: Math.min(m.above || 0, 8), below: Math.min(m.below || 0, 8) } : m;
+        const prov = orig => { const r = orig(); if (!r || !r.priceRange) return r; if (!(o.zoom && o.zoom !== 1) && !o.shift) return { priceRange: r.priceRange, margins: mg(r.margins) }; const lo = r.priceRange.minValue, hi = r.priceRange.maxValue, c = (lo + hi) / 2 + (o.shift || 0) * (hi - lo), h = Math.max(1e-6, (hi - lo) / 2 / (o.zoom || 1)); return { priceRange: { minValue: c - h, maxValue: c + h }, margins: mg(r.margins) }; };
         for (const s of [o.a, o.b]) if (s) try { s.applyOptions({ autoscaleInfoProvider: prov }); } catch (e) { }
       }
       function arm(o) {
@@ -55735,12 +55744,14 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
   }
   .top.hdr .vt-dock { flex: 1 1 auto; min-width: 0; max-width: none !important; }
   /* expiry switch rides on the brand row, so the old pill row disappears */
-  .top.hdr #v100Master { order: 1 !important; margin: 0 0 0 auto !important; flex: 0 0 auto !important; width: auto !important; }
+  /* expiry switch fills the room after WAIT / 30D Audit; the name row keeps only the brand and the full-screen button */
+  .top.hdr #v100Master { order: 11 !important; margin: 0 !important; flex: 0 0 auto !important; width: auto !important; }
+  .top.hdr > .top-actions { margin-left: auto !important; }
   .top.hdr h1.brand { order: 0 !important; }
   .top.hdr .top-actions { margin-left: 6px !important; }
   /* strategy chips and the flash ribbon share one row, each scrolls sideways */
-  .top.hdr > #v147StrategyNearFri { flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; }
-  .top.hdr > #flashRibbon { order: 11 !important; flex: 1 1 0 !important; min-width: 0 !important; max-width: 50% !important; overflow-x: auto !important; scrollbar-width: none !important; }
+  .top.hdr > #v147StrategyNearFri { flex: 0 1 auto !important; width: auto !important; min-width: 0 !important; max-width: calc(100% - 118px) !important; }
+  .top.hdr > #flashRibbon { order: 12 !important; flex: 1 1 0 !important; min-width: 0 !important; max-width: 50% !important; overflow-x: auto !important; scrollbar-width: none !important; }
   .top.hdr > #flashRibbon::-webkit-scrollbar { display: none; }
   /* the brand row wraps first: the strip after it always starts a new line */
   .top.hdr > .top-actions { flex: 0 0 auto !important; }
