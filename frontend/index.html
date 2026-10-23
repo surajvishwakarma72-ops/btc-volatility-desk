@@ -49271,6 +49271,42 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (!DV) return null; for (let k = 0; k < 4; k++) { const r = DV.h && DV.h.get(t - k * HR); if (r && r[4] > 0) return r[4]; }
         if (DV.m && DV.m.size) { let best = null; for (const [mt, r] of DV.m) if (mt <= t + HR && mt >= t - 3 * HR && r[4] > 0 && (!best || mt > best[0])) best = r; if (best) return best[4]; } return null;
       }
+      /* The eight indicators with no 5-year history (skew, term, bid/ask, IV crush, greeks, funding, futures, macro): read live and
+         turned into the same 0–100 risk scale, where 50 = a normal reading (the backtested ones sit at 50 when typical too). The
+         scales are rule-of-thumb, not fitted; the weights are your priority order. Only the latest reading uses them. */
+      const clamp = x => Math.max(0, Math.min(100, x));
+      const atTs = (a, t, tol) => { if (!a || !a.length) return null; let lo = 0, hi = a.length - 1; if (a[0][0] > t) return null; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (a[m][0] <= t) lo = m; else hi = m - 1; } return t - a[lo][0] <= tol ? a[lo][1] : null; };
+      function liveItems() {
+        const out = [], add = (k, risk, v, txt) => { if (fin(risk)) out.push({ k, risk: clamp(risk), v, txt }); }, now = Date.now(), p100 = v => fin(v) ? (v < 5 ? v * 100 : v) : null;
+        try { const M = W.macroStress && W.macroStress.get ? W.macroStress.get() : null; if (M && fin(M.score)) add('macro', 50 + (M.score - 35) * (50 / 30), M.score, 'macro ' + M.score + '/100'); } catch (e) { }
+        let V = null, sn = null; try { V = W.v137 && W.v137.state ? W.v137.state() : null; sn = W.v137 && W.v137.snapshot ? W.v137.snapshot(now) : null; } catch (e) { }
+        if (sn) {
+          if (fin(sn.tc)) add('term', 50 - 20 * sn.tc, sn.tc, 'Cur−N2N ' + sn.tc.toFixed(1));
+          if (fin(sn.rr)) add('skew', 50 + (Math.abs(sn.rr) - 1.5) * 25, sn.rr, '25Δ RR ' + sn.rr.toFixed(1));
+          if (V && V.fund && V.fund.length > 24 && fin(sn.fund)) { const a = V.fund.map(q => Math.abs(q[1])).sort((x, y) => x - y), f = Math.abs(sn.fund); add('fund', 100 * a.filter(x => x <= f).length / a.length, sn.fund, 'funding |' + (sn.fund * 3 * 365).toFixed(0) + '|%/yr'); }
+          if (V && V.oi && V.oi.length) { const o1 = atTs(V.oi, now, 2 * 36e5), o0 = atTs(V.oi, now - 6 * 36e5, 3 * 36e5); if (o1 > 0 && o0 > 0) { const ch = (o1 / o0 - 1) * 100; add('fut', 50 + (Math.abs(ch) - 1) * 25, ch, 'OI 6h ' + (ch >= 0 ? '+' : '') + ch.toFixed(1) + '%'); } }
+        }
+        try {
+          const X = W.v139 && W.v139.legs ? W.v139.legs() : null; if (!X && W.v139 && W.v139.chain) { try { W.v139.chain(false); } catch (e) { } }   // the option chain is read once if nothing has asked for it yet
+          if (X && X.c && X.p) {
+            const sp = x => x && x.bid > 0 && x.ask > 0 && x.mark > 0 ? (x.ask - x.bid) / x.mark * 100 : null, a = [sp(X.c), sp(X.p)].filter(fin);
+            if (a.length) {
+              const sNow = a.reduce((x, y) => x + y, 0) / a.length; let H = {}; try { H = JSON.parse(localStorage.getItem('v139_spr') || '{}') || {}; } catch (e) { }
+              const u = (H[String(new Date(now + 19800000).getUTCHours())] || []).map(q => q[1]).sort((x, y) => x - y), usual = u.length >= 6 ? u[u.length >> 1] : null;
+              if (usual > 0) add('bidask', 50 + (sNow / usual - 1) * 100, sNow, 'spread ' + sNow.toFixed(1) + '% vs usual ' + usual.toFixed(1) + '%');
+            }
+            const thH = (Math.abs(X.c.th) + Math.abs(X.p.th)) / 24, gm = (X.c.g || 0) + (X.p.g || 0), iv = p100(X.atmC && X.atmC.iv);
+            if (gm > 0 && thH > 0 && iv > 0 && X.S0 > 0) { const be = Math.sqrt(2 * thH / gm) / X.S0 * 100, ratio = (iv / Math.sqrt(8760)) / be; add('greeks', 50 + (ratio - 0.6) * 100, ratio, 'theta pays ' + be.toFixed(2) + '%/h vs 1σ ' + (iv / Math.sqrt(8760)).toFixed(2) + '%'); }
+          }
+        } catch (e) { }
+        try {
+          const e = W.v100 && W.v100.expNow ? W.v100.expNow() : null, CR = W.v145 && W.v145.CR; if (e && CR) {
+            const c = CR.d[e]; if (!c && W.v145.__test && W.v145.__test.crLoad) { try { W.v145.__test.crLoad(e); } catch (x) { } }
+            if (c && c.p && c.p.length && c.c && c.c.length) { const lift = (A) => { const n1 = A[A.length - 1], b = atTs(A, n1[0] - 36e5, 20 * 6e4); return b != null && fin(n1[1]) ? n1[1] - b : null; }, dP = lift(c.p), dC = lift(c.c); if (dP != null && dC != null) add('crush', 50 + (Math.max(dP, dC, 0) - 0.5) * 40, Math.max(dP, dC), 'wing IV lift 1h ' + Math.max(dP, dC).toFixed(1) + ' pts'); }
+          }
+        } catch (e) { }
+        return out;
+      }
       /* B = the chart's bars ({time (IST-shifted s), high, low, close}); returns one score per bar + the latest breakdown */
       function compute(B) {
         const r = RK(); if (!r || !B || !B.b || B.b.length < 10) return null; const DV = W.dvolStore && W.dvolStore.ready ? W.dvolStore : null;
@@ -49297,7 +49333,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           } else f.rng = null;
           let s = 0, w = 0; const pp = [];
           for (const k of Object.keys(r.pct)) { const rp = riskPct(k, f[k]); if (rp == null) continue; const wt = r.weights[k] || 0; s += rp * wt; w += wt; pp.push({ k, v: f[k], risk: rp, w: wt }); }
-          if (w <= 0) continue; hourScore[i] = scoreOf(s / w, r.calibration); if (i === n - 1) parts = { raw: s / w, items: pp.sort((a, b) => b.risk * b.w - a.risk * a.w), priceOnly: !(iv > 0) };
+          if (w <= 0) continue; hourScore[i] = scoreOf(s / w, r.calibration);
+          if (i === n - 1) {   // the latest reading also folds in the live-only indicators
+            const LV = liveItems(); let s2 = s, w2 = w; for (const it of LV) { const wt = r.weights[it.k] || 0; s2 += it.risk * wt; w2 += wt; pp.push({ k: it.k, v: it.v, risk: it.risk, w: wt, live: true, txt: it.txt }); }
+            hourScore[i] = scoreOf(s2 / w2, r.calibration); parts = { raw: s2 / w2, items: pp.sort((a, b) => b.risk * b.w - a.risk * a.w), priceOnly: !(iv > 0), nLive: LV.length, nBack: Object.keys(f).filter(k => fin(f[k])).length };
+          }
         }
         let last = null; for (let i = n - 1; i >= 0; i--) if (hourScore[i] != null) { last = hourScore[i]; break; }
         return { score: barH.map(h => hourScore[h]), last, parts, hours: n };
@@ -49891,7 +49931,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const top = RR.parts ? RR.parts.items.slice(0, 3).map(x => { const nm = (K.order.find(q => q.k === x.k) || {}).l || x.k; return nm + ' ' + Math.round(x.risk); }).join(' · ') : '';
           const MS = W.macroStress && W.macroStress.get ? W.macroStress.get() : null;
           st(o, cls);
-          setLeg(o, `<b>RISK-ADX</b>${v != null ? `<span class="${cls}">${v.toFixed(1)}</span><span class="${cls}">${hot ? 'ABOVE 25 · stop risk high' : 'AT/BELOW 25 · calm'}</span>` : '<span class="m">—</span>'}${top ? `<span class="m">driving it: ${esc(top)}</span>` : ''}${MS && MS.score != null ? `<span class="${MS.score < 35 ? 'g' : MS.score <= 65 ? 'a' : 'r'}">macro ${MS.score}/100</span>` : ''}${c ? `<span class="m">5-yr: ${c.above25.stop}% stopped above 25 vs ${c.atOrBelow25.stop}% at/below</span>` : ''}${RR.parts && RR.parts.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
+          setLeg(o, `<b>RISK-ADX</b>${v != null ? `<span class="${cls}">${v.toFixed(1)}</span><span class="${cls}">${hot ? 'ABOVE 25 · stop risk high' : 'AT/BELOW 25 · calm'}</span>` : '<span class="m">—</span>'}${top ? `<span class="m">driving it: ${esc(top)}</span>` : ''}${MS && MS.score != null ? `<span class="${MS.score < 35 ? 'g' : MS.score <= 65 ? 'a' : 'r'}">macro ${MS.score}/100</span>` : ''}${c ? `<span class="m">5-yr: ${c.above25.stop}% stopped above 25 vs ${c.atOrBelow25.stop}% at/below</span>` : ''}${RR.parts ? `<span class="m">${RR.parts.nBack}+${RR.parts.nLive} of 18 indicators</span>` : ''}${RR.parts && RR.parts.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
         }
         if (k === 'macro') {
           const ST = W.macroStress && W.macroStress.get ? W.macroStress.get() : null;
