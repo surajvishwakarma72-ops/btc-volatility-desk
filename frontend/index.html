@@ -46469,11 +46469,12 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const lanes = ['cvLane', 'macroStressLane', 'v138Iv', 'v138Rv', 'v138Vov', 'v138Dv', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v138Legs', ...((W.v142 && W.v142.ids()) || [])].map($).filter(e => e && getComputedStyle(e).display !== 'none');
         const adx = $('paAdxBox'), adxOn = adx && getComputedStyle(adx).display !== 'none'; const nL = lanes.length + (adxOn ? 1 : 0);
         // many ticks: the block grows (the page scrolls) instead of clipping a lane
-        const extra = W.__v138X ? W.__v138X(lanes) : 0; const Hb = Math.max(460, H - volsH, hd + 34 + 300 + nL * 100 + extra);
+        // v150: the BTC candles (+ ADX strip) get the first screen; the lanes stack under it and the page scrolls
+        const extra = W.__v138X ? W.__v138X(lanes) : 0, C = Math.max(300, H - hd - 34); const Hb = Math.max(460, H - volsH, hd + 34 + C + nL * 100 + extra);
         set(cp, 'height', Hb + 'px'); set(cp, 'min-height', Hb + 'px'); set(cp, 'max-height', Hb + 'px');
         const ph = Hb - hd; set(pg, 'height', ph + 'px'); set(pg, 'min-height', ph + 'px'); set(pg, 'max-height', ph + 'px');
         // indicator lanes share at most ~45 % of the block, so the candles keep the larger part
-        const lh = nL ? Math.max(96, Math.min(150, Math.floor((ph - 34) * 0.45 / nL))) : 0;
+        const lh = nL ? Math.max(96, Math.min(150, Math.floor((H - hd - 34) * 0.45 / nL))) : 0;   // v150: from the window, not the (now taller) block
         for (const l of lanes) { const hh = W.__v138H ? W.__v138H(l.id, lh) : (l.id === 'macroStressLane' ? 88 : lh); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
         clearTimeout(fit.c); fit.c = setTimeout(() => {
           const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
