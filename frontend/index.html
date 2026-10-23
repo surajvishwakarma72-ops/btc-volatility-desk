@@ -24970,7 +24970,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
                   if (R) {
                     const cfg = (typeof LVL_CFG === 'object' && LVL_CFG) || { week: true };
                     if (cfg.day !== false && R.day) { inc(R.day.hi); inc(R.day.lo); }
-                    if (cfg.week !== false && R.week) { if (near(R.week.lo)) inc(R.week.lo); if (near(R.week.hi)) inc(R.week.hi); }
+                    if (cfg.week !== false && R.week) { if (near(R.week.lo)) inc(R.week.lo); if (near(R.week.hi)) inc(R.week.hi); }   // v150: off-screen ones are pinned to the chart edge (v150WeekPins)
                   }
                 } catch(e){}
               }
@@ -55832,6 +55832,43 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
       if (b.parentElement !== r || (at && at.parentElement === r && at.nextElementSibling !== b)) { if (at && at.parentElement === r) at.after(b); else r.appendChild(b); }
     }
     D.addEventListener('DOMContentLoaded', mount); setTimeout(mount, 1500); setInterval(() => { if (!D.hidden) mount(); }, 4000);
+  })();
+</script>
+<style id="v150PinCss">
+/* v150 · week low / high pinned to the BTC chart edge when the candles' scale leaves them off screen */
+.v150-pin { position: absolute; z-index: 6; display: none; align-items: center; gap: 4px; padding: 1px 6px; border-radius: 4px; font: 600 10.5px/16px var(--font, system-ui); color: #fff; pointer-events: none; white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); opacity: .92; }
+.v150-pin.hi { background: #16A34A; }
+.v150-pin.lo { background: #DC2626; }
+</style>
+<script>/* v150 · Week High / Week Low stay visible: when the price scale fits the candles and a week level falls outside it,
+   its label sits on that edge of the chart (▲ above / ▼ below) with the price; when price comes near, the level's own line
+   is back on screen and the pin hides */
+  (function () {
+    'use strict';
+    const D = document, W = window, pins = {};
+    const fmt = v => Math.round(v).toLocaleString('en-US');
+    function pin(k, box) {
+      let p = pins[k]; if (p && p.parentElement === box) return p;
+      p = D.createElement('div'); p.className = 'v150-pin ' + k; p.setAttribute('aria-hidden', 'true'); box.appendChild(p); pins[k] = p; return p;
+    }
+    function upd() {
+      const ch = W.__gexChart, s = W.__gexSeries, box = D.getElementById('chartG'); if (!ch || !s || !box) return;
+      let R = null, on = false; try { R = typeof lvlRanges === 'function' ? lvlRanges() : null; on = typeof lvlOn === 'function' ? !!lvlOn() : true; } catch (e) { }
+      let H = 0, pw = 0, mb = 0.1; try { H = ch.paneSize().height; pw = ch.timeScale().width(); mb = ch.priceScale('right').options().scaleMargins.bottom || 0; } catch (e) { return; }
+      for (const k of ['hi', 'lo']) {
+        const p = pin(k, box), v = R && R.week ? R.week[k] : null, y = on && v != null ? s.priceToCoordinate(v) : null;
+        const off = y != null && (k === 'hi' ? y < 0 : y > H);
+        if (!off) { p.style.display = 'none'; continue; }
+        const t = (k === 'hi' ? '▲ Week High · ' : '▼ Week Low · ') + fmt(v); if (p.textContent !== t) p.textContent = t;
+        p.style.display = 'inline-flex';
+        p.style.right = Math.max(4, box.clientWidth - pw + 4) + 'px';
+        // one row inside the candles' extremes, so the Day High / Day Low labels at the edges stay readable
+        p.style.top = (k === 'hi' ? 30 : Math.max(4, Math.round(H * (1 - mb)) - 46)) + 'px';
+      }
+    }
+    let raf = 0; const soon = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; upd(); }); };
+    function hook() { const ch = W.__gexChart; if (!ch || hook.ch === ch) return; hook.ch = ch; try { ch.timeScale().subscribeVisibleLogicalRangeChange(soon); } catch (e) { } }
+    setInterval(() => { if (D.hidden) return; hook(); upd(); }, 1000); addEventListener('resize', soon);
   })();
 </script>
 
