@@ -50690,7 +50690,23 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         #v165Sh .row b{text-align:right}
         #v165Sh .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:4px 0}
         #v165Sh .note{font:500 11px/1.4 var(--font);color:var(--muted,#667085);margin-top:8px}
-        #v165Sh .why{margin-top:6px;font:600 12px/1.4 var(--font)}`;
+        #v165Sh .why{margin-top:6px;font:600 12px/1.4 var(--font)}
+        #v165Sh .vsw{display:flex;gap:6px;margin-top:6px}
+        #v165Sh .vsw button{flex:1;height:26px;border-radius:9px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:700 11.5px var(--font);cursor:pointer}
+        #v165Sh .vsw button.on{background:#1A2733 !important;color:#fff !important;border-color:#1A2733}
+        #v165Sh .vd{display:flex;align-items:center;gap:8px;margin-top:10px;padding:9px 11px;border-radius:12px;font:800 13px/1.25 var(--font);color:#fff}
+        #v165Sh .vd small{display:block;font:500 11px var(--font);opacity:.92}
+        #v165Sh .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+        #v165Sh .cd{border:1px solid var(--line,#8884);border-radius:14px;padding:9px 9px 10px;min-width:0}
+        #v165Sh .cd .tt{display:flex;justify-content:space-between;align-items:baseline;font:800 12px var(--font)}
+        #v165Sh .cd .big{font:800 22px/1.1 var(--font);margin:3px 0 1px}
+        #v165Sh .cd .lb{font:700 9.5px var(--font);letter-spacing:.06em;color:var(--muted,#667085);text-transform:uppercase;margin:8px 0 2px}
+        #v165Sh .cd svg{width:100%;height:auto;display:block}
+        #v165Sh .sb{display:flex;height:12px;border-radius:6px;overflow:hidden;background:rgba(128,128,128,.25)}
+        #v165Sh .sb span{display:block;height:100%}
+        #v165Sh .cap{font:600 10.5px var(--font);display:flex;justify-content:space-between;gap:4px;margin-top:2px}
+        #v165Sh .rg{display:flex;align-items:center;gap:8px}
+        #v165Sh .rg b{font:800 18px var(--font)}`;
       D.head.appendChild(css);
 
       /* ---------- Black-76, r = 0 ---------- */
@@ -50788,19 +50804,64 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       function draw() {
         const sh = $('v165Sh'); if (!sh || sh.hidden) return; const c = sh.querySelector('.c'), keep = c.scrollTop; const d = DATA;
-        let h = `<div class="hd"><div class="t"><span>Strike picker · delta 0.10 to 0.15</span><button type="button" aria-label="Close" data-v165x="1">×</button></div><small>${d ? 'Expiry ' + d.k + ' · BTC ' + Math.round(d.F).toLocaleString('en-US') + ' · ATM IV ' + (d.ivAtm * 100).toFixed(1) + '% · ' + d.Hh.toFixed(1) + ' h to 07:00 IST · updated ' + new Date(d.at + IST).toISOString().slice(11, 19) + ' IST' : (lastErr || 'loading…')}</small><div class="seg">${[['cur', 'Current'], ['nxt', 'Next'], ['n2n', 'N2N']].map(([k, l]) => `<button type="button" data-v165s="${k}" class="${slot === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
+        let h = `<div class="hd"><div class="t"><span>Strike picker · delta 0.10 to 0.15</span><button type="button" aria-label="Close" data-v165x="1">×</button></div><small>${d ? 'Expiry ' + d.k + ' · BTC ' + Math.round(d.F).toLocaleString('en-US') + ' · ATM IV ' + (d.ivAtm * 100).toFixed(1) + '% · ' + d.Hh.toFixed(1) + ' h to 07:00 IST · updated ' + new Date(d.at + IST).toISOString().slice(11, 19) + ' IST' : (lastErr || 'loading…')}</small><div class="seg">${[['cur', 'Current'], ['nxt', 'Next'], ['n2n', 'N2N']].map(([k, l]) => `<button type="button" data-v165s="${k}" class="${slot === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="vsw">${[['pic', 'Pictures'], ['det', 'Details']].map(([k, l]) => `<button type="button" data-v165v="${k}" class="${view === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
         if (d) {
           const C = d.C.best, P = d.P.best;
+          if (view === 'pic') { h += picHtml(d); c.innerHTML = h; c.scrollTop = keep; return; }
           if (C && P) h += `<div class="why" style="margin-top:8px">Pick: sell <b style="color:${GRN}">${C.K} call (Δ ${C.delta.toFixed(2)})</b> + <b style="color:${RED}">${P.K} put (Δ ${P.delta.toFixed(2)})</b> · credit ${$$(C.sell + P.sell)}${d.rv ? ' · IV ' + (d.ivAtm * 100).toFixed(1) + '% vs realised ' + (d.rv * 100).toFixed(1) + '%: ' + (d.ivAtm > d.rv * 1.1 ? 'IV is richer than gamma' : d.ivAtm >= d.rv * 0.95 ? 'IV about equal to realised, little edge' : 'IV is BELOW realised, gamma is richer') : ''} · stop is ${C.stopMove == null ? '>15' : (C.stopMove * 100).toFixed(1)}% up on the call / ${P.stopMove == null ? '>15' : (P.stopMove * 100).toFixed(1)}% down on the put${Math.min(C.stopMove == null ? 1 : C.stopMove, P.stopMove == null ? 1 : P.stopMove) < 0.009 ? ' <b style="color:'+RED+'">(closer than a 0.9% move: premium is too thin to absorb it)</b>' : ''} · theta ${$$(C.th1 + P.th1)}/h · chance at least one leg touches its 2× stop before 07:00 ≈ ${pc(1 - (1 - C.pTouch) * (1 - P.pTouch))}</div>`;
           h += legHtml(d.C, 'C') + candTable(d.C, 'C') + legHtml(d.P, 'P') + candTable(d.P, 'P');
           h += `<div class="note">The pick is the strike in the 0.10–0.15 band with the best premium × (1 − 2 × touch chance), lower delta winning a near tie, and it never crosses 0.15. Prices are Delta's live marks and best bid/ask in dollars per BTC; the model reprices the option with Black-76 at the mark IV, so it ignores skew moves and fills. The touch chance uses the option's own IV as BTC's volatility; in the 2.6-year Delta backtest (N2N IV mostly 35–46%) 0.10-delta legs were stopped at 2× on about 15% of nights each, and the stop needed a median BTC move of about 2.2%; at a low IV like today the same delta sits much closer to spot, so the stop is closer and the risk higher. Theta is shown at today's rate; it speeds up near expiry. Information only: nothing here places an order.</div>`;
         }
         c.innerHTML = h; c.scrollTop = keep;
       }
+      /* ---------- pictures view ---------- */
+      let view = (() => { try { return localStorage.getItem('v165_view') === 'det' ? 'det' : 'pic'; } catch (e) { return 'pic'; } })();
+      const GREEN = '#15803D', AMBER = '#D69E2E', REDC = '#C53030', BLUE = '#2B6CB0', ORG = '#C05621';
+      function ring(p, col) { const r = 15, L = 2 * Math.PI * r, f = Math.max(0, Math.min(1, p)); return `<svg viewBox="0 0 40 40" style="width:44px;height:44px"><circle cx="20" cy="20" r="${r}" fill="none" stroke="#8883" stroke-width="5"/><circle cx="20" cy="20" r="${r}" fill="none" stroke="${col}" stroke-width="5" stroke-linecap="round" stroke-dasharray="${(f * L).toFixed(1)} ${L.toFixed(1)}" transform="rotate(-90 20 20)"/></svg>`; }
+      function deltaBar(dl) { const x = v => ((v - 0.05) / 0.15 * 100); return `<svg viewBox="0 0 160 22"><rect x="0" y="9" width="160" height="5" rx="2.5" fill="#8883"/><rect x="${(x(0.10) * 1.6).toFixed(1)}" y="7" width="${((x(0.15) - x(0.10)) * 1.6).toFixed(1)}" height="9" rx="3" fill="${GREEN}" opacity=".28"/><circle cx="${Math.max(4, Math.min(156, x(dl) * 1.6)).toFixed(1)}" cy="11.5" r="6" fill="${GREEN}"/><text x="${(x(0.10) * 1.6).toFixed(1)}" y="21.5" font-size="7" text-anchor="middle" fill="currentColor" opacity=".6">.10</text><text x="${(x(0.15) * 1.6).toFixed(1)}" y="21.5" font-size="7" text-anchor="middle" fill="currentColor" opacity=".6">.15</text></svg>`; }
+      function stopTrack(c) {
+        const mx = 3, sm = c.stopMove == null ? 3 : Math.min(mx, c.stopMove * 100), ok = c.stopMove != null && c.stopMove >= 0.009, col = ok ? GREEN : REDC, X = v => 6 + v / mx * 148;
+        return `<svg viewBox="0 0 160 40"><rect x="6" y="18" width="148" height="6" rx="3" fill="#8883"/><rect x="6" y="18" width="${(X(0.9) - 6).toFixed(1)}" height="6" rx="3" fill="${REDC}" opacity=".35"/><line x1="${X(0.9).toFixed(1)}" y1="12" x2="${X(0.9).toFixed(1)}" y2="30" stroke="${REDC}" stroke-width="1.5" stroke-dasharray="2 2"/><text x="${X(0.9).toFixed(1)}" y="38" font-size="7.5" text-anchor="middle" fill="${REDC}">0.9% shock</text><circle cx="${X(sm).toFixed(1)}" cy="21" r="6" fill="${col}"/><text x="${Math.min(130, Math.max(22, X(sm))).toFixed(1)}" y="9" font-size="9" font-weight="800" text-anchor="middle" fill="${col}">stop ${c.stopMove == null ? '>15' : (c.stopMove * 100).toFixed(1)}%</text></svg>`;
+      }
+      function earnVsCost(c) {
+        const a = c.thTo, b = Math.max(0, c.dPart + c.gPart), m = Math.max(a, b, 1), w = v => Math.max(3, v / m * 100).toFixed(0);
+        return `<div class="lb">By 07:00 · you earn vs a 0.9% move costs</div><div class="sb" style="height:9px;margin-bottom:3px"><span style="width:${w(a)}%;background:${GREEN}"></span></div><div class="cap"><span style="color:${GREEN}">+${$$(a)} theta</span></div><div class="sb" style="height:9px;margin:4px 0 3px"><span style="width:${w(b)}%;background:${REDC}"></span></div><div class="cap"><span style="color:${REDC}">−${$$(b)} move</span></div>`;
+      }
+      function card(L, side) {
+        const c = L.best, nm = side === 'C' ? 'CALL' : 'PUT', col = side === 'C' ? GREEN : REDC;
+        if (!c) return `<div class="cd"><div class="tt"><span style="color:${col}">${nm}</span></div><div class="lb">no strike up to 0.15</div></div>`;
+        const g = c.Prv == null ? null : Math.max(0, Math.min(100, c.Prv / c.mark * 100)), richer = c.rich != null && c.rich > 0;
+        const sh = Math.abs(c.dPart) + Math.abs(c.gPart) + Math.abs(c.vPart) || 1, sp = v => Math.abs(v) / sh * 100;
+        const risk = c.pTouch, rcol = risk < 0.12 ? GREEN : risk < 0.25 ? AMBER : REDC;
+        return `<div class="cd"><div class="tt"><span style="color:${col}">${nm} ${(c.K / 1000).toFixed(1)}k</span><span>Δ ${c.delta.toFixed(2)}</span></div>${deltaBar(c.delta)}
+          <div class="big">${$$(c.sell)}</div><div class="cap" style="margin:0"><span style="opacity:.65">sell price</span></div>
+          ${g == null ? '' : `<div class="lb">Premium made of</div><div class="sb"><span style="width:${g.toFixed(0)}%;background:${AMBER}"></span><span style="width:${(100 - g).toFixed(0)}%;background:${richer ? GREEN : REDC};${richer ? '' : 'opacity:.0'}"></span></div><div class="cap"><span style="color:${AMBER}">gamma ${g.toFixed(0)}%</span><span style="color:${richer ? GREEN : REDC}">${richer ? 'IV ' + (100 - g).toFixed(0) + '%' : 'IV < RV'}</span></div>`}
+          <div class="lb">Distance to your 2× stop</div>${stopTrack(c)}
+          <div class="lb">Touch before 07:00</div><div class="rg">${ring(risk, rcol)}<b style="color:${rcol}">${(risk * 100).toFixed(0)}%</b></div>
+          ${earnVsCost(c)}
+          <div class="lb">Bad night: what drives the loss</div><div class="sb"><span style="width:${sp(c.dPart).toFixed(0)}%;background:${ORG}"></span><span style="width:${sp(c.gPart).toFixed(0)}%;background:${AMBER}"></span><span style="width:${sp(c.vPart).toFixed(0)}%;background:${BLUE}"></span></div><div class="cap"><span style="color:${ORG}">Δ ${sp(c.dPart).toFixed(0)}</span><span style="color:${AMBER}">Γ ${sp(c.gPart).toFixed(0)}</span><span style="color:${BLUE}">IV ${sp(c.vPart).toFixed(0)}</span></div></div>`;
+      }
+      function verdict(d) {
+        const C = d.C.best, P = d.P.best; if (!C || !P) return '';
+        const minStop = Math.min(C.stopMove == null ? 1 : C.stopMove, P.stopMove == null ? 1 : P.stopMove), pBoth = 1 - (1 - C.pTouch) * (1 - P.pTouch), ivOk = d.rv ? d.ivAtm >= d.rv * 0.95 : true;
+        let col = GREEN, t = 'GOOD SETUP', sub = 'Stops are farther than a 0.9% move and IV is not below realised.';
+        if (minStop < 0.009 || pBoth > 0.5) { col = REDC; t = 'THIN · stop inside a 0.9% move'; sub = 'A normal move stops a leg. Premium is too small for this delta.'; }
+        else if (!ivOk || pBoth > 0.3 || minStop < 0.012) { col = AMBER; t = 'CAUTION'; sub = !ivOk ? 'IV is below realised vol: gamma costs more than IV pays.' : 'Stop is close or touch chance is high.'; }
+        return `<div class="vd" style="background:${col}"><span style="font-size:20px">${col === GREEN ? '✓' : col === AMBER ? '!' : '✕'}</span><span>${t}<small>${sub}</small></span></div>`;
+      }
+      function picHtml(d) {
+        const C = d.C.best, P = d.P.best, ivr = d.rv ? d.ivAtm / d.rv : null, w = Math.max(0, Math.min(100, ivr == null ? 50 : ivr * 50)), col = ivr == null ? '#8888' : ivr >= 1.1 ? GREEN : ivr >= 0.95 ? AMBER : REDC;
+        let h = verdict(d);
+        h += `<div style="margin-top:10px"><div class="lb" style="font:700 9.5px var(--font);letter-spacing:.06em;color:var(--muted,#667085);text-transform:uppercase;margin-bottom:3px">IV vs realised vol · who is richer</div><div class="sb" style="height:14px;position:relative"><span style="width:${w.toFixed(0)}%;background:${col}"></span><i style="position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:currentColor;opacity:.7"></i></div><div class="cap"><span>IV ${(d.ivAtm * 100).toFixed(1)}%</span><span style="opacity:.7">realised ${d.rv ? (d.rv * 100).toFixed(1) + '%' : '—'}</span><span style="color:${col};font-weight:800">${ivr == null ? '' : ivr >= 1.1 ? 'IV richer' : ivr >= 0.95 ? 'equal' : 'gamma richer'}</span></div></div>`;
+        h += `<div class="g2">${card(d.C, 'C')}${card(d.P, 'P')}</div>`;
+        if (C && P) h += `<div class="cap" style="margin-top:8px;font-size:11px"><span>credit <b>${$$(C.sell + P.sell)}</b></span><span>theta <b>${$$(C.th1 + P.th1)}/h</b></span><span>either stopped <b style="color:${REDC}">${((1 - (1 - C.pTouch) * (1 - P.pTouch)) * 100).toFixed(0)}%</b></span></div>`;
+        h += `<div class="note">Dashed red = a 0.9% BTC move. A dot left of it means that move alone stops the leg. Switch to Details for the numbers and every strike in the band.</div>`;
+        return h;
+      }
       let T = 0;
       function open() {
         let sh = $('v165Sh'); if (!sh) { sh = D.createElement('div'); sh.id = 'v165Sh'; sh.hidden = true; sh.innerHTML = '<div class="c" role="dialog" aria-modal="true" aria-label="Strike picker"></div>'; D.body.appendChild(sh);
-          sh.addEventListener('click', e => { const s = e.target.closest('[data-v165s]'); if (s) { slot = s.dataset.v165s; DATA = null; draw(); load(); return; } if (e.target === sh || e.target.closest('[data-v165x]')) close(); }); D.addEventListener('keydown', e => { if (e.key === 'Escape' && !sh.hidden) close(); }); }
+          sh.addEventListener('click', e => { const vv = e.target.closest('[data-v165v]'); if (vv) { view = vv.dataset.v165v; try { localStorage.setItem('v165_view', view); } catch (x) { } draw(); return; } const s = e.target.closest('[data-v165s]'); if (s) { slot = s.dataset.v165s; DATA = null; draw(); load(); return; } if (e.target === sh || e.target.closest('[data-v165x]')) close(); }); D.addEventListener('keydown', e => { if (e.key === 'Escape' && !sh.hidden) close(); }); }
         sh.hidden = false; draw(); load(); clearInterval(T); T = setInterval(load, 15000);
       }
       function close() { const sh = $('v165Sh'); if (sh) sh.hidden = true; clearInterval(T); T = 0; }
