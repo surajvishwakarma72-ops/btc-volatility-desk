@@ -50666,6 +50666,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const css = D.createElement('style'); css.textContent = `
         #v165Chip{order:1;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:800 10.5px var(--font);white-space:nowrap}
         #v165Chip b{font-weight:800}
+        @media (max-width:760px){html body .top.hdr h1.brand{flex:0 1 auto !important;min-width:0 !important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%} #v165Chip{font-size:9.5px;gap:4px;padding:0 7px;height:22px}}
         #v165Chip .c{color:${GRN}} #v165Chip .p{color:${RED}}
         #v165Sh{position:fixed;inset:0;z-index:99996;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
         #v165Sh[hidden]{display:none}
@@ -50754,7 +50755,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const hdr = D.querySelector('header.top.hdr'); if (!hdr) return; let b = $('v165Chip');
         if (!b) { b = D.createElement('button'); b.type = 'button'; b.id = 'v165Chip'; b.setAttribute('aria-label', 'Strike picker: call and put to sell, delta 0.10 to 0.15'); const ta = hdr.querySelector('.top-actions'); hdr.insertBefore(b, ta || null); }
         const C = DATA && DATA.C.best, P = DATA && DATA.P.best;
-        const h = C && P ? `<span class="c">C <b>${(C.delta).toFixed(2)}</b> ${C.K}</span><span class="p">P <b>${(P.delta).toFixed(2)}</b> ${P.K}</span>` : (lastErr ? 'Strikes ⚠' : 'Strikes…');
+        const h = C && P ? `<span class="c">C <b>${(C.delta).toFixed(2).slice(1)}</b> ${(C.K / 1000).toFixed(1)}k</span><span class="p">P <b>${(P.delta).toFixed(2).slice(1)}</b> ${(P.K / 1000).toFixed(1)}k</span>` : (lastErr ? 'Strikes ⚠' : 'Strikes…');
         if (b.dataset.h !== h) { b.dataset.h = h; b.innerHTML = h; }
       }
 
