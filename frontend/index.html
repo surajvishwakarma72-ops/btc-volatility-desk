@@ -50385,16 +50385,18 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         #v161Strip .h{font:800 9.5px var(--font);letter-spacing:.09em;padding:2px 6px;border-radius:4px;background:#8883}
         #v161Strip .i{display:inline-flex;align-items:center;gap:5px}
         #v161Strip .i b{font-weight:800}
+        #v161Strip .pr{font-weight:600;opacity:.85}
         #v161Strip .i.cl{opacity:.5}
         #v161Strip .cl-t{font:600 8.5px var(--font);opacity:.8;text-transform:uppercase}
                 @media (prefers-reduced-motion:reduce){#v161Strip{overflow-x:auto}}`;
       D.head.appendChild(css);
       const DATA = { coins: null, idx: {} };
       const fmt = p => (p >= 0 ? '▲ +' : '▼ −') + Math.abs(p).toFixed(Math.abs(p) >= 10 ? 1 : 2) + '%';
-      const item = (name, p, closed) => p == null ? `<span class="i cl"><b>${name}</b><span>…</span></span>` : `<span class="i${closed ? ' cl' : ''}"><b>${name}</b><span style="color:${p >= 0 ? GRN : RED}">${fmt(p)}</span>${closed ? '<span class="cl-t">closed</span>' : ''}</span>`;
+      const px = v => v == null ? '' : v >= 1000 ? Math.round(v).toLocaleString('en-US') : v >= 10 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toFixed(4);
+      const item = (name, d, closed) => d == null ? `<span class="i cl"><b>${name}</b><span>…</span></span>` : `<span class="i${closed ? ' cl' : ''}"><b>${name}</b><span class="pr">${px(d.v)}</span><span style="color:${d.p >= 0 ? GRN : RED}">${fmt(d.p)}</span>${closed ? '<span class="cl-t">closed</span>' : ''}</span>`;
       function html() {
         const g = [`<span class="g"><span class="h">CRYPTO 24h</span>${COINS.map(([n, sym]) => item(n, DATA.coins ? DATA.coins[sym] : null, false)).join('')}</span>`];
-        for (const G of GROUPS) g.push(`<span class="g"><span class="h">${G.name}</span>${G.list.map(([n, sym]) => { const d = DATA.idx[sym]; return item(n, d ? d.p : null, d ? d.closed : false); }).join('')}</span>`);
+        for (const G of GROUPS) g.push(`<span class="g"><span class="h">${G.name}</span>${G.list.map(([n, sym]) => { const d = DATA.idx[sym]; return item(n, d || null, d ? d.closed : false); }).join('')}</span>`);
         return g.join('');
       }
       function paint() {
@@ -50402,11 +50404,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (trk.dataset.h === h) return; trk.dataset.h = h; trk.innerHTML = h + h;                // twice, so the loop is seamless
         walk(trk);
       }
-      /* the phone rules switch every CSS animation off (v105.14), so the walk is a Web Animation: one transform, nothing repainted */
+      /* about 22 px per second; the phone rules switch every CSS animation off (v105.14), so the walk is a Web Animation: one transform, nothing repainted */
       let ANI = null, HOLD = false;
       function walk(trk) {
         try { if (ANI) ANI.cancel(); ANI = null; if (!trk.animate || matchMedia('(prefers-reduced-motion:reduce)').matches) return; const w = trk.scrollWidth / 2; if (w < 50) return;
-          ANI = trk.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-' + w + 'px)' }], { duration: Math.max(40, w / 38) * 1000, iterations: Infinity }); if (HOLD) ANI.pause(); } catch (e) { }
+          ANI = trk.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-' + w + 'px)' }], { duration: Math.max(60, w / 22) * 1000, iterations: Infinity }); if (HOLD) ANI.pause(); } catch (e) { }
       }
       const hold = on => { HOLD = on; try { if (ANI) on ? ANI.pause() : ANI.play(); } catch (e) { } };
       function mount() {
@@ -50419,14 +50421,14 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       async function loadCoins() {
         try {
           const q = encodeURIComponent(JSON.stringify(COINS.map(c => c[1]))), r = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=' + q); if (!r.ok) throw 0; const a = await r.json(), o = {};
-          for (const t of a) { const p = parseFloat(t.priceChangePercent); if (Number.isFinite(p)) o[t.symbol] = p; } DATA.coins = o;
+          for (const t of a) { const p = parseFloat(t.priceChangePercent), v = parseFloat(t.lastPrice); if (Number.isFinite(p)) o[t.symbol] = { p, v }; } DATA.coins = o;
         } catch (e) { }
       }
       async function loadIdx(sym) {
         try {
           const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1d&interval=1d'); if (!r.ok) throw 0; const j = await r.json(), m = j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta; if (!m) throw 0;
           const px = m.regularMarketPrice, pc = m.chartPreviousClose != null ? m.chartPreviousClose : m.previousClose, p = Number.isFinite(m.regularMarketChangePercent) ? m.regularMarketChangePercent : (px && pc ? (px / pc - 1) * 100 : null);
-          if (p == null) throw 0; DATA.idx[sym] = { p, closed: !m.regularMarketTime || Date.now() / 1000 - m.regularMarketTime > 1500 };
+          if (p == null) throw 0; DATA.idx[sym] = { p, v: px, closed: !m.regularMarketTime || Date.now() / 1000 - m.regularMarketTime > 1500 };
         } catch (e) { }
       }
       async function refresh() {
