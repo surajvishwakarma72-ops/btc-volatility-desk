@@ -46534,7 +46534,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.5 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
-        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 165 : nL === 4 ? 135 : 112) : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
+        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
         W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
@@ -50609,11 +50609,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     (function () {
       const W = window, D = document, $ = id => D.getElementById(id), IST = 19800000, HR = 3600000;
       const css = D.createElement('style'); css.textContent = `
-        #v138Iv.v164in .v8c{top:62px !important}
-        #paneG #v138Iv.v164in .v8l{top:37px !important}
-        #v138Iv.v164in .v138-roll{top:66px !important}
-        #v138Iv.v164in .ps-rail,#v138Iv.v164in .v138-vb{top:62px !important;height:auto !important;bottom:0 !important}
-        #v164Lvl{position:absolute;left:0;right:0;top:0;height:34px;z-index:6;box-sizing:border-box;padding:1px 8px 0;background:var(--panel,transparent);font:600 11px/1.25 var(--font);font-variant-numeric:tabular-nums;color:var(--text,#111);overflow:hidden}
+        html body #pages{min-height:calc(100vh - var(--tk-h) - var(--hdr-h) - var(--v164-h,0px)) !important;min-height:calc(100dvh - var(--tk-h) - var(--hdr-h) - var(--v164-h,0px)) !important}
+        #v164Lvl{min-height:36px;position:relative;margin:3px 6px 0;box-sizing:border-box;padding:3px 9px 4px;border:1px solid var(--line,#8883);border-radius:10px;background:var(--panel,transparent);font:600 11px/1.25 var(--font);font-variant-numeric:tabular-nums;color:var(--text,#111);overflow:hidden}
         #v164Lvl[hidden]{display:none}
         #v164Lvl .r1{display:flex;align-items:center;gap:8px}
         #v164Lvl .t{font:800 9.5px var(--font);letter-spacing:.07em;color:var(--muted,#667085);white-space:nowrap}
@@ -50634,12 +50631,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         return { wd, label, h, day };
       }
       function render() {
-        const iv = $('v138Iv'); let box = $('v164Lvl'); const U = W.__N2N_IV_PATH;
-        const on = iv && getComputedStyle(iv).display !== 'none' && U && U.byWd;
-        if (!on) { if (box && !box.hidden) { box.hidden = true; if (iv) iv.classList.remove('v164in'); kick(); } return; }
+        const iv = $('v138Iv'), hdr = D.querySelector('header.top.hdr'); let box = $('v164Lvl'); const U = W.__N2N_IV_PATH;
+        if (iv) { const ivOn = getComputedStyle(iv).display !== 'none'; if (ivOn !== iv.classList.contains('v164in')) { iv.classList.toggle('v164in', ivOn); kick(); } }   // class only sets the ATM IV panel's minimum height
+        if (!hdr || !U || !U.byWd) return;
         if (!box) { box = D.createElement('div'); box.id = 'v164Lvl'; }
-        if (box.parentNode !== iv) iv.appendChild(box);
-        if (!iv.classList.contains('v164in')) { iv.classList.add('v164in'); kick(); try { W.dispatchEvent(new Event('resize')); } catch (e) { } }
+        if (box.previousElementSibling !== hdr) hdr.insertAdjacentElement('afterend', box);   // v171: a thin bar right under the header, always visible
         const T = tonight(), P = U.byWd[T.wd]; if (!P) { box.hidden = true; return; }
         const tot = P.med[12], by2230 = P.med[3], note = 'Backtest: Delta N2N IV, 2.6 years, about ' + P.n + ' nights for this weekday. Usual fall from the NY open (19:30 IST) to 07:30 IST: ' + f(tot) + ', of which ' + f(by2230) + ' by 22:30. Used = fall so far / usual total fall. What IV did before 22:30 did not predict what it did after (correlation 0.03), so this is the usual shape, not a rule.';
         let live = null; try { const tst = W.v138 && W.v138.__test, key = n2nKey(); if (tst && key) { const u = tst.n2nUsual(key, null, tst.ivCandles(key), true); if (u && u.h >= 0 && u.h <= 12.5 && u.fell != null && tot <= -1) live = u; } } catch (e) { }
@@ -50651,10 +50647,14 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           html = `<div class="r1"><span class="t">USUAL FALL · ${T.label.toUpperCase()} ${NAMES[T.wd].toUpperCase()}</span><span class="bar"><u style="width:${Math.min(100, by2230 / tot * 100).toFixed(0)}%;background:#7A8794"></u></span><span class="pc">${f(tot)}</span></div><div class="r2">${f(by2230)} by 22:30 · ${f(tot - by2230)} after · live level from the NY open (N2N)</div>`;
         }
         if (box.dataset.h !== html) { box.dataset.h = html; box.innerHTML = html; } box.title = note;
-        if (box.hidden) { box.hidden = false; kick(); }
+        if (box.hidden) box.hidden = false; const bh = box.offsetHeight + 3; if (bh !== render.bh || innerWidth !== render.w) { render.bh = bh; render.w = innerWidth; reserve(bh); kick(); }
       }
       function kick() { try { W.v133 && W.v133.fit && W.v133.fit(); } catch (e) { } }
-      setInterval(() => { try { render(); } catch (e) { } }, 4000); setTimeout(() => { try { render(); } catch (e) { } }, 2500);
+      /* the page sizes #pages as 100vh minus ticker and header; the bar under the header is subtracted too (--v164-h) so the desk still fills the window exactly */
+      function reserve(bh) { try { D.documentElement.style.setProperty('--v164-h', bh + 'px'); } catch (e) { } }
+      // reserve the bar's room at once, so the chart panel is sized with it from the first layout (no later resize)
+      try { const hdr0 = D.querySelector('header.top.hdr'); if (hdr0 && !$('v164Lvl')) { const b0 = D.createElement('div'); b0.id = 'v164Lvl'; hdr0.insertAdjacentElement('afterend', b0); } } catch (e) { }
+      setInterval(() => { try { render(); } catch (e) { } }, 4000); setTimeout(() => { try { render(); } catch (e) { } }, 800);
       D.addEventListener('click', () => setTimeout(() => { try { render(); } catch (e) { } }, 600), true);
       W.v164 = { render };
     })();
