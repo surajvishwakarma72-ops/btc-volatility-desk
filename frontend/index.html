@@ -46511,7 +46511,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         // vol charts first: each gets a fixed, readable strip; the BTC block takes what is left
         const each = vols.length ? Math.max(150, Math.min(240, Math.round(Hb * (vols.length >= 3 ? 0.17 : vols.length === 2 ? 0.2 : 0.25)))) : 0;
         const volsH = vols.length ? vols.length * (each + 2) + 8 : 0; if (volsH) Hb = Math.max(320, Hb - volsH);
-        const hd = ($('gTop') ? $('gTop').offsetHeight : 34) + ($('gBot') ? $('gBot').offsetHeight : 24) + ($('gTabs') && $('gTabs').offsetHeight || 0) + 4 + (($('v164Lvl') && $('v164Lvl').offsetHeight) || 0);
+        const hd = ($('gTop') ? $('gTop').offsetHeight : 34) + ($('gBot') ? $('gBot').offsetHeight : 24) + ($('gTabs') && $('gTabs').offsetHeight || 0) + 4;
         const lanes = ['cvLane', 'macroStressLane', 'v138Iv', 'v138Rv', 'v138Vov', 'v138Dv', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v138Legs', ...((W.v142 && W.v142.ids()) || [])].map($).filter(e => e && getComputedStyle(e).display !== 'none');
         const adx = $('paAdxBox'), adxOn = adx && getComputedStyle(adx).display !== 'none'; const nL = lanes.length + (adxOn ? 1 : 0);
         set(cp, 'height', Hb + 'px'); set(cp, 'min-height', Hb + 'px'); set(cp, 'max-height', Hb + 'px');
@@ -46520,11 +46520,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const axId = W.__v138Axis ? W.__v138Axis() : null, axX = axId && lanes.some(l => l.id === axId) ? 24 : 0;
         // v150: ATM IV gets 2.2 lane shares, Speed vs IV and ADX 1.4, every other lane one; the lanes' part of the panel
         // grows with the extra shares (33 % at equal shares, at most 48 %), the candles take the rest
-        const wt = l => l.id === 'v138Iv' ? 2.2 : l.id === 'v151Risk' ? 3.2 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
-        const share = nL ? Math.min(phone ? 0.36 : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
+        const wt = l => l.id === 'v138Iv' ? (phone ? 3 : 2.2) : l.id === 'v151Risk' ? 3.2 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
+        const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.46 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
-        for (const l of lanes) { const hh = Math.round(lh * wt(l)) + (l.id === axId ? axX : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
+        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? 132 : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
         W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
@@ -50599,7 +50599,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     (function () {
       const W = window, D = document, $ = id => D.getElementById(id), IST = 19800000, HR = 3600000;
       const css = D.createElement('style'); css.textContent = `
-        #v164Lvl{box-sizing:border-box;padding:3px 8px 4px;border-bottom:1px solid var(--line,#8883);background:var(--panel,transparent);font:600 11px/1.25 var(--font);font-variant-numeric:tabular-nums;color:var(--text,#111)}
+        #v138Iv.v164in .v8c{top:56px !important}
+        #v138Iv.v164in .v138-roll{top:60px !important}
+        #v138Iv.v164in .ps-rail,#v138Iv.v164in .v138-vb{top:56px !important;height:auto !important;bottom:0 !important}
+        #v164Lvl{position:absolute;left:0;right:0;top:22px;height:33px;z-index:6;box-sizing:border-box;padding:1px 8px 0;background:var(--panel,transparent);font:600 11px/1.25 var(--font);font-variant-numeric:tabular-nums;color:var(--text,#111);overflow:hidden}
         #v164Lvl[hidden]{display:none}
         #v164Lvl .r1{display:flex;align-items:center;gap:8px}
         #v164Lvl .t{font:800 9.5px var(--font);letter-spacing:.07em;color:var(--muted,#667085);white-space:nowrap}
@@ -50610,7 +50613,6 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         #v164Lvl .r2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:500 10px var(--font);color:var(--muted,#667085);margin-top:1px}`;
       D.head.appendChild(css);
       const NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], f = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%';
-      let lastH = 0;
       function tonight() {
         const t = new Date(Date.now() + IST), h = t.getUTCHours() + t.getUTCMinutes() / 60; let wd = t.getUTCDay(), day = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
         if (h < 7) { wd = (wd + 6) % 7; day -= 86400000; }           // before 07:00 it is still last night
@@ -50621,9 +50623,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function render() {
         const iv = $('v138Iv'); let box = $('v164Lvl'); const U = W.__N2N_IV_PATH;
         const on = iv && getComputedStyle(iv).display !== 'none' && U && U.byWd;
-        if (!on) { if (box && !box.hidden) { box.hidden = true; kick(); } return; }
-        if (!box) { box = D.createElement('div'); box.id = 'v164Lvl'; iv.parentNode.insertBefore(box, iv); }
-        if (box.nextElementSibling !== iv) iv.parentNode.insertBefore(box, iv);
+        if (!on) { if (box && !box.hidden) { box.hidden = true; if (iv) iv.classList.remove('v164in'); kick(); } return; }
+        if (!box) { box = D.createElement('div'); box.id = 'v164Lvl'; }
+        if (box.parentNode !== iv) iv.appendChild(box);
+        if (!iv.classList.contains('v164in')) { iv.classList.add('v164in'); kick(); try { W.dispatchEvent(new Event('resize')); } catch (e) { } }
         const T = tonight(), P = U.byWd[T.wd]; if (!P) { box.hidden = true; return; }
         const tot = P.med[12], by2230 = P.med[3], note = 'Backtest: Delta N2N IV, 2.6 years, about ' + P.n + ' nights for this weekday. Usual fall from the NY open (19:30 IST) to 07:30 IST: ' + f(tot) + ', of which ' + f(by2230) + ' by 22:30. Used = fall so far / usual total fall. What IV did before 22:30 did not predict what it did after (correlation 0.03), so this is the usual shape, not a rule.';
         let live = null; try { const R = W.v121 && W.v121.last, tst = W.v138 && W.v138.__test; if (R && R.F && R.F.n2n && tst) { const u = tst.n2nUsual(R.F.n2n, R, tst.ivCandles(R.F.n2n)); if (u && u.h >= 0 && u.h <= 12.5 && u.fell != null && tot <= -1) live = u; } } catch (e) { }
@@ -50635,7 +50638,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           html = `<div class="r1"><span class="t">USUAL FALL · ${T.label.toUpperCase()} ${NAMES[T.wd].toUpperCase()}</span><span class="bar"><u style="width:${Math.min(100, by2230 / tot * 100).toFixed(0)}%;background:#7A8794"></u></span><span class="pc">${f(tot)}</span></div><div class="r2">${f(by2230)} by 22:30 · ${f(tot - by2230)} after · live level from the NY open (N2N)</div>`;
         }
         if (box.dataset.h !== html) { box.dataset.h = html; box.innerHTML = html; } box.title = note;
-        if (box.hidden) { box.hidden = false; } const h = box.offsetHeight; if (h !== lastH) { lastH = h; kick(); }
+        if (box.hidden) { box.hidden = false; kick(); }
       }
       function kick() { try { W.v133 && W.v133.fit && W.v133.fit(); } catch (e) { } }
       setInterval(() => { try { render(); } catch (e) { } }, 4000); setTimeout(() => { try { render(); } catch (e) { } }, 2500);
