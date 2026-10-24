@@ -50666,6 +50666,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const css = D.createElement('style'); css.textContent = `
         #v165Chip{order:1;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:800 10.5px var(--font);white-space:nowrap}
         #v165Chip b{font-weight:800}
+        #v165Chip{flex-direction:column;align-items:flex-start;justify-content:center;gap:0;height:auto !important;min-height:22px;padding:2px 9px !important;border-radius:13px !important;line-height:1.15}
+        #v165Chip .l1{display:flex;gap:6px;align-items:center}
+        #v165Chip .l2{font:700 8.5px var(--font);white-space:nowrap}
         @media (max-width:760px){html body .top.hdr h1.brand{flex:0 1 auto !important;min-width:0 !important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%} #v165Chip{font-size:9.5px;gap:4px;padding:0 7px;height:22px}}
         #v165Chip .c{color:${GRN}} #v165Chip .p{color:${RED}}
         #v165Sh{position:fixed;inset:0;z-index:99996;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
@@ -50706,7 +50709,18 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         #v165Sh .sb span{display:block;height:100%}
         #v165Sh .cap{font:600 10.5px var(--font);display:flex;justify-content:space-between;gap:4px;margin-top:2px}
         #v165Sh .rg{display:flex;align-items:center;gap:8px}
-        #v165Sh .rg b{font:800 18px var(--font)}`;
+        #v165Sh .rg b{font:800 18px var(--font)}
+        #v165Sh .pl{border:1px solid var(--line,#8884);border-radius:14px;padding:10px;margin-top:10px}
+        #v165Sh .pl .hd2{display:flex;justify-content:space-between;align-items:center;gap:8px}
+        #v165Sh .pl .num{font:800 28px/1.05 var(--font)}
+        #v165Sh .pl .sub{font:500 11px/1.3 var(--font);color:var(--muted,#667085)}
+        #v165Sh .lots{display:flex;gap:4px}
+        #v165Sh .lots button{height:24px;padding:0 9px;border-radius:8px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:700 11px var(--font);cursor:pointer}
+        #v165Sh .lots button.on{background:#1A2733 !important;color:#fff !important;border-color:#1A2733}
+        #v165Sh .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px}
+        #v165Sh .tiles div{border-radius:9px;background:rgba(128,128,128,.12);padding:5px 4px;text-align:center}
+        #v165Sh .tiles b{display:block;font:800 13px var(--font)}
+        #v165Sh .tiles span{font:600 9px var(--font);color:var(--muted,#667085);text-transform:uppercase;letter-spacing:.03em}`;
       D.head.appendChild(css);
 
       /* ---------- Black-76, r = 0 ---------- */
@@ -50734,6 +50748,35 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       };
 
       const readRv = () => { try { const t = ((D.querySelector('#tkRv .v') || {}).textContent || '').replace(/[^0-9.]/g, ''); const v = parseFloat(t); return v > 1 && v < 300 ? v / 100 : null; } catch (e) { return null; } };
+      /* ---------- estimated P&L at 07:00 on N lots, and Delta's margin for it ---------- */
+      let lots = (() => { try { const v = +localStorage.getItem('v165_lots'); return [50, 100, 200, 500].includes(v) ? v : 100; } catch (e) { return 100; } })();
+      const pdf = z => Math.exp(-z * z / 2) / Math.sqrt(2 * Math.PI);
+      function calcPnl(d, nLots) {
+        const C = d.C.best, P = d.P.best; if (!C || !P) return null;
+        const qty = nLots * 0.001, F = d.F, Tn = Math.max(1e-6, d.T0), Hl = Math.min(d.Hh, Tn * 8760), T1 = Math.max(1e-6, Tn - Hl / 8760), sm = (d.rv || d.ivAtm) * Math.sqrt(Hl / 8760), legs = [C, P];
+        const fee = c => Math.min(0.0001 * qty * F, 0.035 * qty * c.sell) * 2;                       // taker fee in and out: the smaller of 0.01 % of notional and 3.5 % of premium
+        const fees = fee(C) + fee(P), sigOf = c => Math.max(0.05, c.iv + (c.drPts || 0) / 100);
+        const endLeg = (c, x) => { const v = bs(F * (1 + x), c.K, T1, sigOf(c), c.call); return v >= 2 * c.sell ? -c.sell : c.sell - v; };      // price at 07:00; at or beyond the 2x stop it is a stopped loss of 1x the credit
+        const touchP = (c, x) => { const a = c.stopMove, adv = c.call ? x : -x; if (a == null) return 0; return adv >= a ? 1 : Math.exp(-2 * a * (a - adv) / (sm * sm)); };
+        const pathLeg = (c, x) => { const v = bs(F * (1 + x), c.K, T1, sigOf(c), c.call), pt = touchP(c, x); return pt * -c.sell + (1 - pt) * (c.sell - Math.min(v, 2 * c.sell)); };
+        const step = 0.0025, xs = []; for (let x = -0.04; x <= 0.04001; x += step) xs.push(+x.toFixed(4)); let wsum = 0; const wts = xs.map(x => { const w = pdf(x / sm); wsum += w; return w; });
+        const curve = xs.map((x, i) => ({ x, w: wts[i] / wsum, tot: qty * (pathLeg(C, x) + pathLeg(P, x)) - fees, end: qty * (endLeg(C, x) + endLeg(P, x)) - fees, clear: (1 - touchP(C, x)) * (1 - touchP(P, x)) }));
+        const exp = curve.reduce((a, r) => a + r.w * r.tot, 0), pProfit = curve.reduce((a, r) => a + (r.end > 0 ? r.w * r.clear : 0), 0), worst = Math.min(...curve.map(r => r.tot));
+        const at = x => qty * (endLeg(C, x) + endLeg(P, x)) - fees, flat = at(0), up9 = at(0.009), dn9 = at(-0.009);
+        // Delta margin for short options (portfolio margin guide): max(risk margin, margin floor)
+        const Ntot = 2 * qty * F, span = Ntot <= 1e5 ? 0.01 : Ntot >= 2.35e6 ? 0.10 : 0.01 + 4e-8 * (Ntot - 1e5), dte = Math.max(0.5, Tn * 365), kk = Math.pow(30 / dte, 0.3), vUp = Math.min(0.45, (Ntot <= 1e5 ? 0.09 : 0.09 + 1.8e-7 * Math.min(Ntot - 1e5, 2e6)) * kk), vDn = Math.min(0.30, (Ntot <= 1e5 ? 0.06 : 0.06 + 1.2e-7 * Math.min(Ntot - 1e5, 2e6)) * kk);
+        let risk = 0; for (let i = -3; i <= 3; i++) for (const vf of [1 - vDn, 1, 1 + vUp]) { const xx = i / 3 * span; let loss = 0; for (const c of legs) loss += qty * (bs(F * (1 + xx), c.K, Tn, c.iv * vf, c.call) - c.mark); risk = Math.max(risk, loss); }
+        const OM = Math.min(0.02, Ntot <= 2e5 ? 0.005 : 0.005 + 5e-9 * (Ntot - 2e5)), floor = legs.reduce((a, c) => a + Math.max(0.05 * qty * c.mark, OM * qty * F), 0), margin = Math.max(risk, floor);
+        return { lots: nLots, qty, exp, pProfit, worst, flat, up9, dn9, curve, fees, credit: qty * (C.sell + P.sell), risk, floor, margin, ret: margin > 0 ? exp / margin : null };
+      }
+      const SKEY = 'v165_pnl';
+      function sample() {
+        try {
+          const d = DATA; if (!d || !d.pnl) return; const now = Date.now(); let a = JSON.parse(localStorage.getItem(SKEY) || '[]'); if (!Array.isArray(a)) a = [];
+          if (a.length && now - a[a.length - 1].t < 14 * 60000) return; a.push({ t: now, e: +d.pnl.exp.toFixed(3), l: d.pnl.lots, k: d.k }); a = a.filter(r => now - r.t < 20 * 3600000).slice(-80); localStorage.setItem(SKEY, JSON.stringify(a));
+        } catch (e) { }
+      }
+      const history = () => { try { const a = JSON.parse(localStorage.getItem(SKEY) || '[]'); return Array.isArray(a) ? a.filter(r => r.l === lots && Date.now() - r.t < 14 * 3600000) : []; } catch (e) { return []; } };
       /* ---------- load + analyse ---------- */
       let DATA = null, busy = false, lastErr = null;
       async function load() {
@@ -50759,9 +50802,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             const L = A.filter(x => (x.contract_type === 'call_options') === call).map(x => mk(x, call)).sort((a, b) => call ? a.K - b.K : b.K - a.K);
             let band = L.filter(x => x.delta >= 0.10 && x.delta <= 0.15), fb = false; if (!band.length) { const below = L.filter(x => x.delta < 0.10).sort((a, b) => b.delta - a.delta)[0]; if (below) { band = [below]; fb = true; } }
             let best = null; for (const c of band) { if (!best || c.ev > best.ev * 1.05 || (c.ev >= best.ev * 0.95 && c.delta < best.delta)) best = c; }
-            return { list: band, best, fallback: fb };
+            const above = L.filter(x => x.delta > 0.15).sort((a, b) => a.delta - b.delta)[0] || null; return { list: band, best, fallback: fb, above };
           };
-          DATA = { rv, k, F, T0, Hh, ivAtm, drift, C: side(true), P: side(false), at: Date.now() }; lastErr = null;
+          DATA = { rv, k, F, T0, Hh, ivAtm, drift, C: side(true), P: side(false), at: Date.now() }; lastErr = null; try { DATA.pnl = calcPnl(DATA, lots); sample(); } catch (e) { DATA.pnl = null; console.warn('v165 pnl', e); }
         } catch (e) { lastErr = String(e.message || e); } finally { busy = false; }
         chip(); draw();
       }
@@ -50771,7 +50814,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const hdr = D.querySelector('header.top.hdr'); if (!hdr) return; let b = $('v165Chip');
         if (!b) { b = D.createElement('button'); b.type = 'button'; b.id = 'v165Chip'; b.setAttribute('aria-label', 'Strike picker: call and put to sell, delta 0.10 to 0.15'); const ta = hdr.querySelector('.top-actions'); hdr.insertBefore(b, ta || null); }
         const C = DATA && DATA.C.best, P = DATA && DATA.P.best;
-        const h = C && P ? `<span class="c">C <b>${(C.delta).toFixed(2).slice(1)}</b> ${(C.K / 1000).toFixed(1)}k</span><span class="p">P <b>${(P.delta).toFixed(2).slice(1)}</b> ${(P.K / 1000).toFixed(1)}k</span>` : (lastErr ? 'Strikes ⚠' : 'Strikes…');
+        const pn = DATA && DATA.pnl, hs = history(), old = hs.length ? hs.find(r => Date.now() - r.t >= 14 * 60000 && Date.now() - r.t < 60 * 60000) : null, arrow = pn && old ? (pn.exp > old.e + 0.05 ? ' ▲' : pn.exp < old.e - 0.05 ? ' ▼' : ' ▬') : '';
+        const l2 = pn ? `<span class="l2" style="color:${pn.exp >= 0 ? GRN : RED}">07:00 est ${pn.exp >= 0 ? '+' : '−'}$${Math.abs(pn.exp).toFixed(Math.abs(pn.exp) >= 10 ? 0 : 1)}${arrow} · ${pn.lots} lots</span>` : '';
+        const h = C && P ? `<span class="l1"><span class="c">C <b>${(C.delta).toFixed(2).slice(1)}</b> ${(C.K / 1000).toFixed(1)}k</span><span class="p">P <b>${(P.delta).toFixed(2).slice(1)}</b> ${(P.K / 1000).toFixed(1)}k</span></span>${l2}` : (DATA && (!C || !P) ? '<span class="l1"><span class="c">C ' + (C ? (C.delta).toFixed(2).slice(1) + ' ' + (C.K / 1000).toFixed(1) + 'k' : '—') + '</span><span class="p">P ' + (P ? (P.delta).toFixed(2).slice(1) + ' ' + (P.K / 1000).toFixed(1) + 'k' : '—') + '</span></span><span class="l2" style="color:#B7791F">strike not listed ≤0.15</span>' : (lastErr ? 'Strikes ⚠' : 'Strikes…'));
         if (b.dataset.h !== h) { b.dataset.h = h; b.innerHTML = h; }
       }
 
@@ -50809,8 +50854,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const C = d.C.best, P = d.P.best;
           if (view === 'pic') { h += picHtml(d); c.innerHTML = h; c.scrollTop = keep; return; }
           if (C && P) h += `<div class="why" style="margin-top:8px">Pick: sell <b style="color:${GRN}">${C.K} call (Δ ${C.delta.toFixed(2)})</b> + <b style="color:${RED}">${P.K} put (Δ ${P.delta.toFixed(2)})</b> · credit ${$$(C.sell + P.sell)}${d.rv ? ' · IV ' + (d.ivAtm * 100).toFixed(1) + '% vs realised ' + (d.rv * 100).toFixed(1) + '%: ' + (d.ivAtm > d.rv * 1.1 ? 'IV is richer than gamma' : d.ivAtm >= d.rv * 0.95 ? 'IV about equal to realised, little edge' : 'IV is BELOW realised, gamma is richer') : ''} · stop is ${C.stopMove == null ? '>15' : (C.stopMove * 100).toFixed(1)}% up on the call / ${P.stopMove == null ? '>15' : (P.stopMove * 100).toFixed(1)}% down on the put${Math.min(C.stopMove == null ? 1 : C.stopMove, P.stopMove == null ? 1 : P.stopMove) < 0.009 ? ' <b style="color:'+RED+'">(closer than a 0.9% move: premium is too thin to absorb it)</b>' : ''} · theta ${$$(C.th1 + P.th1)}/h · chance at least one leg touches its 2× stop before 07:00 ≈ ${pc(1 - (1 - C.pTouch) * (1 - P.pTouch))}</div>`;
+          if (d.pnl) h += `<div class="why">${d.pnl.lots} lots: expected P&amp;L at 07:00 ${d.pnl.exp >= 0 ? '+' : '−'}$${Math.abs(d.pnl.exp).toFixed(2)} · BTC flat ${d.pnl.flat >= 0 ? '+' : '−'}$${Math.abs(d.pnl.flat).toFixed(2)} · worst ${d.pnl.worst >= 0 ? '+' : '−'}$${Math.abs(d.pnl.worst).toFixed(2)} · margin ≈ $${d.pnl.margin.toFixed(0)} (floor $${d.pnl.floor.toFixed(0)}, stress $${d.pnl.risk.toFixed(0)}) · chance of profit ${(d.pnl.pProfit * 100).toFixed(0)}%</div>`;
           h += legHtml(d.C, 'C') + candTable(d.C, 'C') + legHtml(d.P, 'P') + candTable(d.P, 'P');
-          h += `<div class="note">The pick is the strike in the 0.10–0.15 band with the best premium × (1 − 2 × touch chance), lower delta winning a near tie, and it never crosses 0.15. Prices are Delta's live marks and best bid/ask in dollars per BTC; the model reprices the option with Black-76 at the mark IV, so it ignores skew moves and fills. The touch chance uses the option's own IV as BTC's volatility; in the 2.6-year Delta backtest (N2N IV mostly 35–46%) 0.10-delta legs were stopped at 2× on about 15% of nights each, and the stop needed a median BTC move of about 2.2%; at a low IV like today the same delta sits much closer to spot, so the stop is closer and the risk higher. Theta is shown at today's rate; it speeds up near expiry. Information only: nothing here places an order.</div>`;
+          h += `<div class="note">The pick is the strike in the 0.10–0.15 band with the best premium × (1 − 2 × touch chance), lower delta winning a near tie, and it never crosses 0.15. Prices are Delta's live marks and best bid/ask in dollars per BTC; the model reprices the option with Black-76 at the mark IV, so it ignores skew moves and fills. The touch chance uses the option's own IV as BTC's volatility; in the 2.6-year Delta backtest (N2N IV mostly 35–46%) 0.10-delta legs were stopped at 2× on about 15% of nights each, and the stop needed a median BTC move of about 2.2%; at a low IV like today the same delta sits much closer to spot, so the stop is closer and the risk higher. Theta is shown at today's rate; it speeds up near expiry. P&amp;L: each leg is repriced at 07:00 with Black-76 for BTC moves from −4% to +4% (weighted by a normal move at realised vol), IV drifting by its usual overnight amount; a leg whose path touches its 2× stop is counted as a loss of 1× its credit (bridge probability). Fees: the smaller of 0.01% of notional and 3.5% of premium, in and out. Margin follows Delta's portfolio-margin guide for short options (the larger of the margin floor, 0.5% of notional for BTC, and the stress loss over price ±1% and IV shocks). Your account mode and the exact 29-scenario table can change it, so confirm the figure on Delta before sizing. Information only: nothing here places an order.</div>`;
         }
         c.innerHTML = h; c.scrollTop = keep;
       }
@@ -50829,7 +50875,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       function card(L, side) {
         const c = L.best, nm = side === 'C' ? 'CALL' : 'PUT', col = side === 'C' ? GREEN : REDC;
-        if (!c) return `<div class="cd"><div class="tt"><span style="color:${col}">${nm}</span></div><div class="lb">no strike up to 0.15</div></div>`;
+        if (!c) return `<div class="cd"><div class="tt"><span style="color:${col}">${nm}</span></div><div class="big" style="font-size:15px;margin-top:8px">No strike up to Δ 0.15 is listed yet</div><div class="sub" style="font:500 11px/1.4 var(--font);opacity:.75;margin-top:6px">${L.above ? 'Nearest listed is ' + L.above.K + ' at Δ ' + L.above.delta.toFixed(2) + ', above your limit, so it is not used. A new expiry lists a narrow range first; wider strikes appear later.' : 'Nothing listed on this side.'}</div></div>`;
         const g = c.Prv == null ? null : Math.max(0, Math.min(100, c.Prv / c.mark * 100)), richer = c.rich != null && c.rich > 0;
         const sh = Math.abs(c.dPart) + Math.abs(c.gPart) + Math.abs(c.vPart) || 1, sp = v => Math.abs(v) / sh * 100;
         const risk = c.pTouch, rcol = risk < 0.12 ? GREEN : risk < 0.25 ? AMBER : REDC;
@@ -50849,9 +50895,20 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         else if (!ivOk || pBoth > 0.3 || minStop < 0.012) { col = AMBER; t = 'CAUTION'; sub = !ivOk ? 'IV is below realised vol: gamma costs more than IV pays.' : 'Stop is close or touch chance is high.'; }
         return `<div class="vd" style="background:${col}"><span style="font-size:20px">${col === GREEN ? '✓' : col === AMBER ? '!' : '✕'}</span><span>${t}<small>${sub}</small></span></div>`;
       }
+      function pnlBlock(d) {
+        const q = d.pnl; if (!q) return ''; const col = q.exp >= 0 ? GREEN : REDC, money = v => (v >= 0 ? '+' : '−') + '$' + Math.abs(v).toFixed(Math.abs(v) >= 100 ? 0 : Math.abs(v) >= 10 ? 1 : 2);
+        const W2 = 340, H2 = 84, mid = 44, mx = Math.max(1, ...q.curve.map(r => Math.abs(r.tot))), bw = W2 / q.curve.length, X = x => (x + 0.04) / 0.08 * W2;
+        const bars = q.curve.map((r, i) => `<rect x="${(i * bw + 1).toFixed(1)}" y="${(r.tot >= 0 ? mid - r.tot / mx * 38 : mid).toFixed(1)}" width="${(bw - 2).toFixed(1)}" height="${Math.max(1, Math.abs(r.tot) / mx * 38).toFixed(1)}" fill="${r.tot >= 0 ? GREEN : REDC}" opacity="${(0.35 + 0.65 * Math.min(1, r.w / 0.12)).toFixed(2)}"/>`).join('');
+        const hs = history().concat([{ t: Date.now(), e: q.exp }]), t0 = Math.min(...hs.map(r => r.t)), t1 = Math.max(Date.now(), t0 + 1), ys = hs.map(r => r.e), ymn = Math.min(...ys, 0), ymx = Math.max(...ys, 0.01);
+        const spark = hs.length < 2 ? '' : `<svg viewBox="0 0 340 34" style="margin-top:6px"><line x1="0" x2="340" y1="${(30 - (0 - ymn) / (ymx - ymn) * 26).toFixed(1)}" y2="${(30 - (0 - ymn) / (ymx - ymn) * 26).toFixed(1)}" stroke="#8886" stroke-dasharray="3 3"/><polyline fill="none" stroke="${col}" stroke-width="2" points="${hs.map(r => ((r.t - t0) / (t1 - t0) * 336 + 2).toFixed(1) + ',' + (30 - (r.e - ymn) / (ymx - ymn) * 26).toFixed(1)).join(' ')}"/></svg><div class="cap" style="font-size:9.5px;opacity:.7"><span>estimate every 15 min, last ${Math.round((Date.now() - t0) / 3600000 * 10) / 10} h</span><span>now ${money(q.exp)}</span></div>`;
+        return `<div class="pl"><div class="hd2"><div><div class="num" style="color:${col}">${money(q.exp)}</div><div class="sub">expected P&amp;L at 07:00 IST · ${q.lots} lots (${q.qty.toFixed(2)} BTC)</div></div><div class="lots">${[50, 100, 200, 500].map(n => `<button type="button" data-v165l="${n}" class="${q.lots === n ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+          <div class="sub" style="margin-top:6px">Margin Delta blocks ≈ <b>$${q.margin.toFixed(0)}</b> · expected return <b style="color:${col}">${q.ret == null ? '—' : (q.ret * 100).toFixed(0) + '%'}</b> on margin · credit $${q.credit.toFixed(1)} · fees ≈ $${q.fees.toFixed(2)}</div>
+          <svg viewBox="0 0 ${W2} ${H2}" style="margin-top:6px"><line x1="0" x2="${W2}" y1="${mid}" y2="${mid}" stroke="#8888"/>${bars}<line x1="${X(-0.009).toFixed(1)}" x2="${X(-0.009).toFixed(1)}" y1="4" y2="${H2 - 12}" stroke="${REDC}" stroke-dasharray="2 2"/><line x1="${X(0.009).toFixed(1)}" x2="${X(0.009).toFixed(1)}" y1="4" y2="${H2 - 12}" stroke="${REDC}" stroke-dasharray="2 2"/><text x="${X(0).toFixed(1)}" y="${H2 - 1}" font-size="8" text-anchor="middle" fill="currentColor" opacity=".7">BTC flat</text><text x="6" y="${H2 - 1}" font-size="8" fill="currentColor" opacity=".7">−4%</text><text x="${W2 - 6}" y="${H2 - 1}" font-size="8" text-anchor="end" fill="currentColor" opacity=".7">+4%</text><text x="${X(0.009).toFixed(1)}" y="${H2 - 1}" font-size="7.5" text-anchor="middle" fill="${REDC}">0.9%</text><text x="${X(-0.009).toFixed(1)}" y="${H2 - 1}" font-size="7.5" text-anchor="middle" fill="${REDC}">0.9%</text></svg>
+          <div class="tiles"><div><b style="color:${q.flat >= 0 ? GREEN : REDC}">${money(q.flat)}</b><span>BTC flat</span></div><div><b style="color:${Math.min(q.up9, q.dn9) >= 0 ? GREEN : REDC}">${money(Math.min(q.up9, q.dn9))}</b><span>0.9% against</span></div><div><b style="color:${REDC}">${money(q.worst)}</b><span>worst case</span></div><div><b style="color:${q.pProfit >= 0.55 ? GREEN : q.pProfit >= 0.4 ? AMBER : REDC}">${(q.pProfit * 100).toFixed(0)}%</b><span>chance profit</span></div></div>${spark}</div>`;
+      }
       function picHtml(d) {
         const C = d.C.best, P = d.P.best, ivr = d.rv ? d.ivAtm / d.rv : null, w = Math.max(0, Math.min(100, ivr == null ? 50 : ivr * 50)), col = ivr == null ? '#8888' : ivr >= 1.1 ? GREEN : ivr >= 0.95 ? AMBER : REDC;
-        let h = verdict(d);
+        let h = pnlBlock(d) + verdict(d);
         h += `<div style="margin-top:10px"><div class="lb" style="font:700 9.5px var(--font);letter-spacing:.06em;color:var(--muted,#667085);text-transform:uppercase;margin-bottom:3px">IV vs realised vol · who is richer</div><div class="sb" style="height:14px;position:relative"><span style="width:${w.toFixed(0)}%;background:${col}"></span><i style="position:absolute;left:50%;top:-2px;bottom:-2px;width:2px;background:currentColor;opacity:.7"></i></div><div class="cap"><span>IV ${(d.ivAtm * 100).toFixed(1)}%</span><span style="opacity:.7">realised ${d.rv ? (d.rv * 100).toFixed(1) + '%' : '—'}</span><span style="color:${col};font-weight:800">${ivr == null ? '' : ivr >= 1.1 ? 'IV richer' : ivr >= 0.95 ? 'equal' : 'gamma richer'}</span></div></div>`;
         h += `<div class="g2">${card(d.C, 'C')}${card(d.P, 'P')}</div>`;
         if (C && P) h += `<div class="cap" style="margin-top:8px;font-size:11px"><span>credit <b>${$$(C.sell + P.sell)}</b></span><span>theta <b>${$$(C.th1 + P.th1)}/h</b></span><span>either stopped <b style="color:${REDC}">${((1 - (1 - C.pTouch) * (1 - P.pTouch)) * 100).toFixed(0)}%</b></span></div>`;
@@ -50861,7 +50918,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       let T = 0;
       function open() {
         let sh = $('v165Sh'); if (!sh) { sh = D.createElement('div'); sh.id = 'v165Sh'; sh.hidden = true; sh.innerHTML = '<div class="c" role="dialog" aria-modal="true" aria-label="Strike picker"></div>'; D.body.appendChild(sh);
-          sh.addEventListener('click', e => { const vv = e.target.closest('[data-v165v]'); if (vv) { view = vv.dataset.v165v; try { localStorage.setItem('v165_view', view); } catch (x) { } draw(); return; } const s = e.target.closest('[data-v165s]'); if (s) { slot = s.dataset.v165s; DATA = null; draw(); load(); return; } if (e.target === sh || e.target.closest('[data-v165x]')) close(); }); D.addEventListener('keydown', e => { if (e.key === 'Escape' && !sh.hidden) close(); }); }
+          sh.addEventListener('click', e => { const ll = e.target.closest('[data-v165l]'); if (ll) { lots = +ll.dataset.v165l; try { localStorage.setItem('v165_lots', String(lots)); } catch (x) { } if (DATA) { try { DATA.pnl = calcPnl(DATA, lots); } catch (x) { } } chip(); draw(); return; } const vv = e.target.closest('[data-v165v]'); if (vv) { view = vv.dataset.v165v; try { localStorage.setItem('v165_view', view); } catch (x) { } draw(); return; } const s = e.target.closest('[data-v165s]'); if (s) { slot = s.dataset.v165s; DATA = null; draw(); load(); return; } if (e.target === sh || e.target.closest('[data-v165x]')) close(); }); D.addEventListener('keydown', e => { if (e.key === 'Escape' && !sh.hidden) close(); }); }
         sh.hidden = false; draw(); load(); clearInterval(T); T = setInterval(load, 15000);
       }
       function close() { const sh = $('v165Sh'); if (sh) sh.hidden = true; clearInterval(T); T = 0; }
