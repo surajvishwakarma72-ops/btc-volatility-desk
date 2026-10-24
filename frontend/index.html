@@ -46312,9 +46312,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const dk = ms => new Date(ms + IST).toISOString().slice(0, 10), hm = ms => new Date(ms + IST).toISOString().slice(11, 16), usd = v => fin(v) ? (v < 0 ? '−' : '') + '$' + Math.abs(v).toFixed(2) : '—';
       /* ---------- master expiry beside the timeframes ---------- */
       function master() {
-        const m = $('v100Master'), tf = $('gTf'); if (!m || !tf) return; if (innerWidth <= 760) { const ph = $('ph89'); const l = D.querySelector('#gTop .v132xl'); if (l) l.remove(); if (ph && m.previousElementSibling !== ph) ph.after(m); return; } if (m.parentElement !== tf.parentElement || m.previousElementSibling !== tf.nextElementSibling && m.previousElementSibling?.className !== 'v132xl') {
-          let l = tf.parentElement.querySelector('.v132xl'); if (!l) { l = D.createElement('span'); l.className = 'v132xl'; l.textContent = 'EXPIRY'; } tf.after(l); l.after(m);
-        }
+        const m = $('v100Master'); if (!m) return; const l = D.querySelector('#gTop .v132xl'); if (l) l.remove();   // v169: beside the 73% ring in the header, phone and desktop
+        const ring = $('v159Hit'), ph = $('ph89'); if (ring && ring.parentElement) { if (m.nextElementSibling !== ring || m.parentElement !== ring.parentElement) ring.before(m); } else if (ph && m.previousElementSibling !== ph) ph.after(m);
       }
       /* ---------- drawing bar on the left ---------- */
       function left() {
@@ -51087,8 +51086,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     /* v169 (24 Oct 2026) · phone header: the WAIT (CALL risk) panel and the 30D Audit button are gone (the Clock window already holds the 30-night audit),
        and the Cur / Next / N2N switch sits right beside the odds ring on the first row. Second row: strike chip + flash ribbon. Desktop unchanged. */
     (function () {
-      const css = document.createElement('style'); css.textContent = '@media (max-width:760px){' +
-        'html body .top.hdr > #v147StrategyNearFri #v147DeskDock{display:none !important}' +
+      const css = document.createElement('style'); css.textContent = 'html body .top.hdr #v147DeskDock{display:none !important}' +
+        '@media (min-width:761px){html body .top.hdr > #v159Hit,html body .top.hdr > #v165Chip{order:0 !important;margin-left:0 !important}html body .top.hdr > #v147StrategyNearFri #flashRibbon{flex:1 1 0 !important;min-width:120px !important;max-width:520px !important}html body .top.hdr > #v100Master{order:0 !important;margin:0 !important}}' +
+        '@media (max-width:760px){' +
         'html body .top.hdr > #v159Hit{order:1 !important;margin-left:auto !important}' +
         'html body .top.hdr > #v100Master{order:2 !important;margin:0 0 0 6px !important}' +
         'html body .top.hdr > .top-actions{order:3 !important;margin-left:6px !important}' +
@@ -51103,7 +51103,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
        Tap it for the eight timeframes; a tap there presses the chart's own timeframe button, so nothing else changes. Desktop keeps the row. */
     (function () {
       const D = document, $ = id => D.getElementById(id);
-      const css = D.createElement('style'); css.textContent = "@media (max-width:760px){html body #gTop #gTf,html body #gTop .g-tf{display:none !important}html body #gTop .sym{display:none !important}html body #gTop .r{order:0 !important;flex:1 1 100% !important}}#v170Tf{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:800 11px var(--font);white-space:nowrap;flex:0 0 auto}#v170Pop{position:fixed;z-index:99994;background:var(--panel,#fff);color:var(--text,#111);border:1px solid var(--line,#8884);border-radius:14px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.3);display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:min(260px,calc(100vw - 20px))}#v170Pop[hidden]{display:none}#v170Pop button{height:34px;border-radius:9px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:800 12.5px var(--font);cursor:pointer}#v170Pop button.on{background:#1A2733;color:#fff;border-color:#1A2733}"; D.head.appendChild(css);
+      const css = D.createElement('style'); css.textContent = "html body #gTop #gTf,html body #gTop .g-tf{display:none !important}@media (max-width:760px){html body #gTop .sym{display:none !important}html body #gTop .r{order:0 !important;flex:1 1 100% !important}}#v170Tf{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:800 11px var(--font);white-space:nowrap;flex:0 0 auto}#v170Pop{position:fixed;z-index:99994;background:var(--panel,#fff);color:var(--text,#111);border:1px solid var(--line,#8884);border-radius:14px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.3);display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:min(260px,calc(100vw - 20px))}#v170Pop[hidden]{display:none}#v170Pop button{height:34px;border-radius:9px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:800 12.5px var(--font);cursor:pointer}#v170Pop button.on{background:#1A2733;color:#fff;border-color:#1A2733}"; D.head.appendChild(css);
       const orig = () => [...D.querySelectorAll('#gTf .tf button')];
       const cur = () => { const b = orig().find(x => x.getAttribute('aria-pressed') === 'true'); return b ? (b.dataset.tf || b.textContent.trim()) : '5m'; };
       function paint() { const c = $('v170Tf'); if (c) { const t = 'TF · ' + cur(); if (c.textContent !== t) c.textContent = t; } }
