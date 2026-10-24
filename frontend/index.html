@@ -46532,10 +46532,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         // v150: ATM IV gets 2.2 lane shares, Speed vs IV and ADX 1.4, every other lane one; the lanes' part of the panel
         // grows with the extra shares (33 % at equal shares, at most 48 %), the candles take the rest
         const wt = l => l.id === 'v138Iv' ? (phone ? 3 : 2.2) : l.id === 'v151Risk' ? 3.2 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
-        const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.46 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
+        const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.5 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
-        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? 132 : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
+        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? 165 : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
         W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
@@ -50610,10 +50610,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     (function () {
       const W = window, D = document, $ = id => D.getElementById(id), IST = 19800000, HR = 3600000;
       const css = D.createElement('style'); css.textContent = `
-        #v138Iv.v164in .v8c{top:56px !important}
-        #v138Iv.v164in .v138-roll{top:60px !important}
-        #v138Iv.v164in .ps-rail,#v138Iv.v164in .v138-vb{top:56px !important;height:auto !important;bottom:0 !important}
-        #v164Lvl{position:absolute;left:0;right:0;top:22px;height:33px;z-index:6;box-sizing:border-box;padding:1px 8px 0;background:var(--panel,transparent);font:600 11px/1.25 var(--font);font-variant-numeric:tabular-nums;color:var(--text,#111);overflow:hidden}
+        #v138Iv.v164in .v8c{top:62px !important}
+        #paneG #v138Iv.v164in .v8l{top:37px !important}
+        #v138Iv.v164in .v138-roll{top:66px !important}
+        #v138Iv.v164in .ps-rail,#v138Iv.v164in .v138-vb{top:62px !important;height:auto !important;bottom:0 !important}
+        #v164Lvl{position:absolute;left:0;right:0;top:0;height:34px;z-index:6;box-sizing:border-box;padding:1px 8px 0;background:var(--panel,transparent);font:600 11px/1.25 var(--font);font-variant-numeric:tabular-nums;color:var(--text,#111);overflow:hidden}
         #v164Lvl[hidden]{display:none}
         #v164Lvl .r1{display:flex;align-items:center;gap:8px}
         #v164Lvl .t{font:800 9.5px var(--font);letter-spacing:.07em;color:var(--muted,#667085);white-space:nowrap}
