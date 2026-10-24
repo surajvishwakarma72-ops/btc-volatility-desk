@@ -50250,6 +50250,74 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       W.v158 = { draw, mode: () => mode, analyse };
     })();
   </script>
+  <script data-module="v159">
+    /* v159 (24 Oct 2026) · "Today's odds" icon in the empty part of the Trade page header. The ring is the HIT RATIO of this weekday over 5 years
+       (share of nights where no leg was stopped). Tap it for three pictures: today's ATM IV band (your 1-year sessions), the New York IV spike
+       against success (5-year stages), and the hit ratio of every weekday. Same numbers as the Decision page; nothing new is computed. */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id), GR = '#15803D', AM = '#D69E2E', RD = '#C53030', GY = '#9AA7B4', BL = '#2B6CB0';
+      const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const css = D.createElement('style'); css.textContent = `
+        #v159Hit{order:1;margin-left:auto;display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 9px 0 4px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:800 11px var(--font)}
+        #v159Hit svg{width:22px;height:22px;display:block}
+        #v159Hit .d{width:7px;height:7px;border-radius:50%;display:inline-block}
+        #v159Pop{position:fixed;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 62px);z-index:99998;max-width:380px;margin-left:auto;background:var(--panel,#fff);color:var(--text,#111);border:1px solid var(--line,#e5e7eb);border-radius:16px;padding:12px;box-shadow:0 10px 30px rgba(0,0,0,.28)}
+        #v159Pop[hidden]{display:none}
+        #v159Pop .h{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;font:800 14px var(--font)}
+        #v159Pop .h button{border:0;background:none;font-size:20px;line-height:1;cursor:pointer;color:inherit}
+        #v159Pop .r{border-top:1px solid var(--line,#eee);padding:8px 0}
+        #v159Pop .r:first-of-type{border-top:0}
+        #v159Pop .t{font:700 10.5px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#667085)}
+        #v159Pop .big{font:800 20px/1.1 var(--font)}
+        #v159Pop .cap{font:500 11.5px/1.35 var(--font);color:var(--muted,#667085);margin-top:3px}
+        #v159Pop svg{width:100%;height:auto;display:block}
+        #v159Pop svg text{font-family:var(--font),system-ui,sans-serif;fill:var(--text,#111)}`;
+      D.head.appendChild(css);
+      const tone = hit => hit == null ? GY : hit >= 80 ? GR : hit >= 72 ? AM : RD;
+      const FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+      function data() {
+        const RMd = W.__STRANGLE_RISKMODEL, DY = W.__STRANGLE_DAILY, DS = W.__SHADOW_BACKTEST_DATA; const t = new Date(Date.now() + 19800000), wd = t.getUTCHours() < 7 ? (t.getUTCDay() + 6) % 7 : t.getUTCDay();
+        const out = { wd, day: null, iv: null, band: null, spike: null, stages: [], wds: [] };
+        if (DY && DY.byWd) { out.wds = DY.byWd.map(w => ({ wd: w.wd, name: w.name, hit: +(100 - w.stop).toFixed(1), n: w.n })); const wk = wd >= 1 && wd <= 5, w = DY.byWd.find(x => x.wd === (wk ? wd : 1)); if (w) out.day = { name: wk ? FULL[wd] : 'Next: Monday', hit: +(100 - w.stop).toFixed(1), n: w.n }; }
+        try { const C = typeof desk === 'object' && desk ? desk.check : null; if (C && Number.isFinite(C.iv) && C.iv > 0) out.iv = C.iv < 3 ? C.iv * 100 : C.iv; } catch (e) { }
+        if (DS && DS.sessions) { const T = DS.sessions.filter(x => x.baselineAction === 'TRADE' && x.iv > 0), BK = [[0, 20], [20, 25], [25, 30], [30, 35], [35, 40], [40, 50], [50, 99]]; out.bands = BK.map(([lo, hi]) => { const a = T.filter(x => x.iv >= lo && x.iv < hi); return { lo, hi, n: a.length, hit: a.length ? +(100 - a.filter(x => x.stoppedAt2x).length / a.length * 100).toFixed(1) : null, avg: a.length ? a.reduce((q, x) => q + x.baselinePnl, 0) / a.length : null, cr: a.length ? a.reduce((q, x) => q + x.cr, 0) / a.length : null }; }); if (out.iv != null) out.band = out.bands.find(b => out.iv >= b.lo && out.iv < b.hi) || null; }
+        if (RMd && RMd.journey && RMd.journey.stages) out.stages = RMd.journey.stages.map(g => ({ id: g.id, label: g.label, n: g.n, hit: +(100 - g.stop).toFixed(1) }));
+        try { const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; if (V && V.J) out.spike = { pct: V.J.spike, stage: V.J.stage }; } catch (e) { }
+        return out;
+      }
+      function ring(hit) { const c = tone(hit), r = 9, L = 2 * Math.PI * r, f = hit == null ? 0 : Math.max(0, Math.min(1, hit / 100)); return `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="${r}" fill="none" stroke="#8883" stroke-width="3.2"/><circle cx="12" cy="12" r="${r}" fill="none" stroke="${c}" stroke-width="3.2" stroke-linecap="round" stroke-dasharray="${(f * L).toFixed(1)} ${L.toFixed(1)}" transform="rotate(-90 12 12)"/></svg>`; }
+      function bars(items, hiKey) {
+        const n = items.length, Wd = 320, H = 86, bw = Math.min(40, (Wd - 10) / n - 8), gap = (Wd - n * bw) / (n + 1); let g = `<line x1="0" y1="${H - 24}" x2="${Wd}" y2="${H - 24}" stroke="#8885"/>`;
+        items.forEach((it, i) => { const x = gap + i * (bw + gap), h = it.v == null ? 0 : Math.max(2, (it.v - 40) / 60 * (H - 40)), y = H - 24 - h; g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="4" fill="${it.c}"${it.hi ? ' stroke="#111" stroke-width="2.4"' : ''} opacity="${it.dim ? .45 : 1}"/><text x="${(x + bw / 2).toFixed(1)}" y="${(y - 3).toFixed(1)}" font-size="10" font-weight="800" text-anchor="middle">${it.v == null ? '' : Math.round(it.v) + '%'}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 11}" font-size="9" text-anchor="middle">${esc(it.l)}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 1}" font-size="7.5" text-anchor="middle" opacity=".6">${esc(it.s || '')}</text>`; });
+        return `<svg viewBox="0 0 ${Wd} ${H}" role="img">${g}</svg>`;
+      }
+      function popHtml(d) {
+        const bandRow = (() => { if (d.iv == null) return `<div class="r"><div class="t">Today's IV band</div><div class="cap">ATM IV not read yet.</div></div>`; const b = d.band, few = !b || b.n < 15; return `<div class="r"><div class="t">Today's IV band</div><div class="big" style="color:${few ? GY : tone(b.hit)}">${d.iv.toFixed(0)}% IV · ${few ? 'few trades' : Math.round(b.hit) + '% success'}</div>${bars((d.bands || []).map(x => ({ l: x.lo + '-' + x.hi, v: x.hit, c: x.n < 15 ? GY : tone(x.hit), s: 'n' + x.n, hi: b && x === b })))}<div class="cap">${b && b.n ? 'Your 1-year sessions at ' + b.lo + '-' + b.hi + '% IV: ' + b.n + ' trades, average result $' + Math.round(b.avg) + ' per BTC on a $' + Math.round(b.cr) + ' credit.' : 'No sessions at this IV in your year of data.'} Grey = too few trades.</div></div>`; })();
+        const stRow = (() => { const nm = { calm: 'No spike', holding: 'Spike holding', real: 'Real fall', crush: 'Crush?', mixed: 'Mixed' }, cur = d.spike ? d.spike.stage : null, cs = d.stages.find(x => x.id === cur); return `<div class="r"><div class="t">IV spike vs success</div><div class="big" style="color:${cs ? tone(cs.hit) : GY}">${d.spike ? (d.spike.pct >= 0 ? '+' : '−') + Math.abs(d.spike.pct).toFixed(1) + '% · ' + (nm[cur] || 'reading…') : 'reading…'}${cs ? ' · ' + Math.round(cs.hit) + '% success' : ''}</div>${bars(d.stages.map(x => ({ l: nm[x.id] || x.id, v: x.hit, c: x.n < 30 ? GY : tone(x.hit), s: 'n' + x.n, hi: x.id === cur })))}<div class="cap">The New York open IV spike, then what IV did next. No spike is the calmest start; a spike still holding stops about 1.5x as often. Grey = too few nights.</div></div>`; })();
+        const dayRow = `<div class="r"><div class="t">Day hit ratio</div><div class="big" style="color:${d.day ? tone(d.day.hit) : GY}">${d.day ? d.day.name + ' · ' + Math.round(d.day.hit) + '% hit' : 'weekend'}</div>${bars(d.wds.map(x => ({ l: x.name, v: x.hit, c: tone(x.hit), s: 'n' + x.n, hi: x.wd === (d.wd >= 1 && d.wd <= 5 ? d.wd : 1) })))}<div class="cap">Hit = no leg stopped before 07:00 IST, 5 years of weekday nights (about 290 each).</div></div>`;
+        return `<div class="h"><span>Today's odds</span><button aria-label="close" data-v159x="1">×</button></div>${bandRow}${stRow}${dayRow}<div class="cap" style="margin-top:6px">Success = a leg was NOT stopped. Fees and slippage are not included.</div>`;
+      }
+      let last = '';
+      function ensure() {
+        const hdr = D.querySelector('header.top.hdr'); if (!hdr) return; let b = $('v159Hit'); const ta = hdr.querySelector('.top-actions');
+        if (!b) { b = D.createElement('button'); b.type = 'button'; b.id = 'v159Hit'; b.setAttribute('aria-label', "Today's odds: IV band, IV spike and day hit ratio"); hdr.insertBefore(b, ta || null); }
+        let d; try { d = data(); } catch (e) { return; }
+        const day = d.day ? d.day.hit : null, ivT = d.band && d.band.n >= 15 ? tone(d.band.hit) : GY, cur = d.spike && d.stages.find(x => x.id === d.spike.stage), spT = cur ? tone(cur.hit) : GY;
+        const html = `${ring(day)}<span>${day == null ? '—' : Math.round(day) + '%'}</span><span class="d" style="background:${ivT}" title="IV band"></span><span class="d" style="background:${spT}" title="IV spike"></span>`;
+        if (html !== last) { last = html; b.innerHTML = html; }
+        const pop = $('v159Pop'); if (pop && !pop.hidden) { const ph = popHtml(d); if (pop.dataset.h !== ph) { pop.dataset.h = ph; pop.innerHTML = ph; } }
+      }
+      D.addEventListener('click', e => {
+        const b = e.target.closest && e.target.closest('#v159Hit'), x = e.target.closest && e.target.closest('[data-v159x]'); let pop = $('v159Pop');
+        if (b) { e.stopPropagation(); if (!pop) { pop = D.createElement('div'); pop.id = 'v159Pop'; pop.hidden = true; D.body.appendChild(pop); } pop.hidden = !pop.hidden; if (!pop.hidden) { pop.dataset.h = ''; ensure(); } return; }
+        if (x && pop) { pop.hidden = true; return; }
+        if (pop && !pop.hidden && !e.target.closest('#v159Pop')) pop.hidden = true;
+      }, true);
+      setInterval(() => { try { ensure(); } catch (e) { } }, 5000); setTimeout(ensure, 4000); setTimeout(ensure, 9000);
+      W.v159 = { ensure, data };
+    })();
+  </script>
   <script data-module="v142">
     /* v142 (17 Oct 2026, preview, not deployed) · new indicators + repairs, all inside the one chart panel (v138 style).
        ƒx Indicators (all off by default, nothing feeds the verdict — the tested rules are unchanged):
