@@ -483,6 +483,7 @@
   <script src="data/risk_model.js"></script>
   <script src="data/impulse_study.js"></script>
   <script src="data/daily_gauge.js"></script>
+  <script src="data/n2n_iv_path.js"></script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <script id="v105_17Early">/* v105.17 · smooth + fast start (runs before every other script).
@@ -48103,6 +48104,26 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* ---------- the BTC bars ---------- */
       function bars() { const R = W.paRes && W.paRes(); if (!R || !R.bars || R.bars.length < 3) return null; const b = R.bars, tf = (b[b.length - 1].time - b[b.length - 2].time) * 1000; return { b, tf, n: b.length }; }
       const t0ms = bar => (bar.time - ISTS) * 1000;
+      /* ---------- the usual N2N IV path from the NY open to 07:00 IST, and how much of the usual fall is already used ----------
+         Data: data/n2n_iv_path.js (Delta N2N straddle IV, 2.6 years, about 135 nights per weekday). Base = the IV at 19:30 IST, the first
+         hourly sample after the 19:00 NY open. Honest note: in that backtest what IV did before 22:30 did NOT predict what it did after
+         (correlation 0.03), so this level is information about the usual shape, not a rule. */
+      function n2nUsual(e, R, a) {
+        const U = W.__N2N_IV_PATH; if (!U || !U.byWd || !a || !a.length) return null; if (!(R && R.F && R.F.n2n === e)) return null;
+        const t = new Date(Date.now() + IST), day = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())); if (t.getUTCHours() < 7) day.setUTCDate(day.getUTCDate() - 1);
+        const wd = day.getUTCDay(), P = U.byWd[wd]; if (!P) return null; const tBase = day.getTime() - IST + (19 * 60 + 30) * 60000;     // 19:30 IST in UTC ms
+        const j = lower(a, Math.floor(tBase / 1000)); if (j >= a.length) return null; const base = pct(a[j][4]); if (base == null) return null;
+        const at = h => { if (h <= 0) return 0; if (h >= 12) return P.med[12]; const i = Math.floor(h); return P.med[i] + (P.med[i + 1] - P.med[i]) * (h - i); };
+        const h = (Date.now() - tBase) / HR, last = a[a.length - 1], cur = pct(last[4]);
+        return { P, wd, base, tBase, at, h, cur, fell: cur != null ? (cur / base - 1) * 100 : null };
+      }
+      function usedChip(u) {
+        const tot = u.P.med[12], now = u.at(u.h), f = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%';
+        const note = 'Backtest: Delta N2N IV, 2.6 years, about ' + u.P.n + ' nights for this weekday. Usual fall from the NY open to 07:30 IST: ' + f(tot) + ' (by now ' + f(now) + '). Used = fall so far / usual total fall. What IV did before 22:30 did not predict what it did after (correlation 0.03), so treat this as the usual shape, not a rule.';
+        if (!(tot <= -1)) return `<span class="m" title="${esc(note)}">IV fall so far ${f(u.fell)} · usual total ${f(tot)} (too small to rate)</span>`;
+        const used = Math.max(0, u.fell / tot * 100), room = Math.max(0, 100 - used), cls = used >= 100 ? 'r' : used >= 70 ? 'a' : 'g', col = used >= 100 ? '#C53030' : used >= 70 ? '#D69E2E' : '#15803D';
+        return `<span class="${cls}" title="${esc(note)}">IV fall ${f(u.fell)} · usual by now ${f(now)} · total ${f(tot)}</span><span class="${cls}" title="${esc(note)}"><i style="display:inline-block;vertical-align:middle;width:54px;height:6px;border-radius:3px;background:rgba(128,128,128,.35);overflow:hidden;margin-right:5px"><u style="display:block;height:100%;width:${Math.min(100, used).toFixed(0)}%;background:${col}"></u></i>used ${used > 200 ? '>200' : used.toFixed(0)}% · room ${room.toFixed(0)}%</span>`;
+      }
       /* ---------- section factory ---------- */
       const SEC = { iv: { id: 'v138Iv' }, rv: { id: 'v138Rv' }, vov: { id: 'v138Vov' }, dv: { id: 'v138Dv' }, legs: { id: 'v138Legs' } };
       const ORDER = ['v138Iv', 'v142Ton', 'v145Crush', 'cvLane', 'v151Risk', 'macroStressLane', 'v138Vov', 'v138Rv', 'paAdxBox', 'v142Rsi', 'v138Dv', 'v142Dfl', 'v142Grk', 'v142Spr', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v146Fut', 'v138Legs'];   // v142: + new sections
@@ -48251,11 +48272,13 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
               if (base != null) path = B.b.map(bar => { const t = t0ms(bar) + B.tf, h = (t - t90) / HR + 1, i0 = Math.floor(h); if (h < 1 || i0 >= P.length - 1 || P[i0] == null || P[i0 + 1] == null) return { time: bar.time }; return { time: bar.time, value: base + P[i0] + (P[i0 + 1] - P[i0]) * (h - i0) }; });
             }
           } catch (x) { }
+          let usual = null; try { usual = n2nUsual(e, R, ivCandles(e)); } catch (x) { }
+          if (!path.length && usual) path = B.b.map(bar => { const t = t0ms(bar) + B.tf, hh = (t - usual.tBase) / HR; if (hh < 0 || hh > 12) return { time: bar.time }; return { time: bar.time, value: usual.base * (1 + usual.at(hh) / 100) }; });
           o.p.setData(path.length ? path : B.b.map(b => ({ time: b.time })));
           const hi = R && R.nyHigh, cur = R && R.iv, off = R && R.offPct; o.zoneDef = hi && R.inNY ? [{ lo: hi * (1 - 0.06), hi: hi * (1 - 0.015), c: '#22A06B', t: '' }] : null;
           st(o, off == null ? '' : off >= 1.5 && off <= 6 ? 'g' : off < 1.5 ? 'a' : 'a');
           let chips = ''; try { chips = ivRules(o, B, R, e); } catch (x) { console.warn('v138 iv rules', x); }
-          setLeg(o, `<b>ATM IV</b>${cur != null ? `<span>${cur.toFixed(2)}%</span>` : '<span>—</span>'}<span>${esc(e || '')}</span>${off != null && R.inNY ? `<span class="${off >= 1.5 && off <= 6 ? 'g' : 'a'}">${off.toFixed(1)}% below NY high</span>` : ''}${chips}${path.length ? '<span class="m">dashed = usual Friday path</span>' : ''}`);
+          setLeg(o, `<b>ATM IV</b>${cur != null ? `<span>${cur.toFixed(2)}%</span>` : '<span>—</span>'}<span>${esc(e || '')}</span>${off != null && R.inNY ? `<span class="${off >= 1.5 && off <= 6 ? 'g' : 'a'}">${off.toFixed(1)}% below NY high</span>` : ''}${chips}${path.length ? '<span class="m">dashed = usual ' + (usual && !(R && R.F && R.F.dow === 5) ? 'N2N path (' + ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri'][usual.wd] + ', ' + usual.P.n + ' nights)' : 'Friday path') + '</span>' : ''}${usual && usual.h >= 0 && usual.h <= 12.5 && usual.fell != null ? usedChip(usual) : (!usual && R && R.F && R.F.n2n && e !== R.F.n2n && W.__N2N_IV_PATH ? '<span class="m" title="The usual-fall level is measured on the N2N expiry. Switch the header to N2N.">IV fall level: N2N only</span>' : '')}`);
         }
         if (k === 'rv') {
           const { out, slow } = rvBars(B); o.a.setData(out.map((v, i) => v == null ? { time: B.b[i].time } : { time: B.b[i].time, value: v })); o.b.setData(slow.map((v, i) => v == null ? { time: B.b[i].time } : { time: B.b[i].time, value: v })); vals = out;
@@ -48477,7 +48500,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function hook() { const src = W.paChart && W.paChart(); if (!src || hook.done) return; hook.done = 1; let raf = 0; src.timeScale().subscribeVisibleLogicalRangeChange(() => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; try { events(); } catch (e) { } try { strikes(); } catch (e) { } for (const o of Object.values(S.lanes)) { zones(o); if (o.vbArgs && S.bars) for (const k in o.vbArgs) try { vband(o, k, S.bars, ...o.vbArgs[k]); } catch (e) { } } }); }); }
       setTimeout(() => { paintAll(); hook(); }, 4200); setInterval(() => { if (D.hidden) return; hook(); paintAll(); legRec(); }, 20000);
       D.addEventListener('click', e => { if (e.target.closest('#v132Ind,#v132IndBtn,[data-page],#gTf,#v100Master')) setTimeout(() => { presets(); paintAll(); }, 250); }, true);
-      W.v138 = { paintAll, preset, zones, state: () => S, __test: { ivBars, rvBars, vovBars, dvBars, ppf } };
+      W.v138 = { paintAll, preset, zones, state: () => S, __test: { ivBars, rvBars, vovBars, dvBars, ppf, n2nUsual, usedChip, ivCandles } };
     })();
   </script>
 
