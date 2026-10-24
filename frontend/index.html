@@ -20545,16 +20545,27 @@ The floating P&L pill still shows the live P&L on top of everything. */
         if (fn) return false; if (store[key] === j) return true; store[key] = j; return false;
       }
       const ADD = ['addCandlestickSeries', 'addLineSeries', 'addAreaSeries', 'addHistogramSeries', 'addBarSeries', 'addBaselineSeries', 'addCustomSeries'];
+      /* v166 · a point whose value (or OHLC) is null / NaN / Infinity is drawn as a gap, never handed to the chart: a freshly listed expiry
+         sends such points in its first minutes and the library then throws 'Value is null' on every repaint. */
+      const finN = v => typeof v === 'number' && Number.isFinite(v);
+      function cleanPt(p) {
+        if (!p || typeof p !== 'object') return p;
+        if ('value' in p && !finN(p.value)) return { time: p.time };
+        if (('open' in p || 'close' in p) && !(finN(p.open) && finN(p.high) && finN(p.low) && finN(p.close))) return { time: p.time };
+        return p;
+      }
+      function cleanArr(d) { if (!Array.isArray(d)) return []; let i = 0; for (; i < d.length; i++) if (cleanPt(d[i]) !== d[i]) break; if (i === d.length) return d; const o = d.slice(); for (; i < o.length; i++) o[i] = cleanPt(o[i]); return o; }
       function wrapSeries(entry, s) {
         if (!s || s.__reg) return s;
         const rec = { s, entry, full: [], own: false, markers: null, set: s.setData.bind(s), upd: s.update.bind(s), mk: typeof s.setMarkers === 'function' ? s.setMarkers.bind(s) : null };
         s.__reg = rec; entry.series.push(rec);
         s.setData = function (d) {
-          rec.full = Array.isArray(d) ? d : []; rec.own = false;
+          rec.full = cleanArr(d); rec.own = false;
           if (HOLD.on || entry.off) { rec.pend = 'set'; HOLD.q.add(rec); return; }   // v105.14: phone mid-scroll or chart off-screen — draw later
           rec.pend = null; return rec.set(cut(rec.full));
         };
         s.update = function (b) {
+          b = cleanPt(b);
           if (b && num(b.time)) {
             const F = rec.full, L = F.length ? F[F.length - 1] : null;
             if (!L || !num(L.time) || b.time >= L.time) {
