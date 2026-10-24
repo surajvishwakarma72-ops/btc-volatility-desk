@@ -23493,14 +23493,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
 
     /* ---------- overnight seasonality and past nights ---------- */
     function inHold(ms) { const h = istHourAt(ms); return h >= HOLD_START || h < HOLD_END; }
-    function overnightShare(bars30) {
-      const r = returnsOf(bars30, 1800000).filter(x => x.h >= 0.49 && x.h <= 0.51);   // whole, consecutive half-hours only
-      if (r.length < 500) return null;
-      const sq = r.map(x => x.r * x.r), cap = [...sq].sort((a, b) => a - b)[Math.floor(sq.length * 0.995)];  // trim the rare shock bar
-      let tin = 0, tall = 0;
-      r.forEach((x, i) => { const v = Math.min(sq[i], cap); tall += v; if (inHold(x.t)) tin += v; });   // bar times are open times: the return of the 21:00 bar is the move from 21:00 to 21:30
-      return tall > 0 ? tin / tall : null;
-    }
+    
 
     /* ---------- assemble ---------- */
     function volCompute() {
@@ -25542,7 +25535,7 @@ Signs follow Settings → Dealer positioning.`;
       const $ = id => document.getElementById(id);
       const DAY = 86400000, CACHE_MS = 12 * 3600000;
       const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const WK = ['W1', 'W2', 'W3', 'W4', 'W5'], WKR = ['1–7', '8–14', '15–21', '22–28', '29–31'];
+      const WK = ['W1', 'W2', 'W3', 'W4', 'W5'];
       const E = { sea: null, seaSrc: '', stk: null, stkAt: 0, busy: false };
       const f0 = x => x == null || !isFinite(x) ? '—' : Math.round(x).toLocaleString('en-IN');
       const pct = (x, d = 1) => x == null || !isFinite(x) ? '—' : (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x * 100).toFixed(d) + '%';
@@ -25777,7 +25770,7 @@ Signs follow Settings → Dealer positioning.`;
       // the 2 h test is max excursion (high/low vs the pre-print price) against a 1σ close-to-close
       // move, so even a fairly priced random walk "beats implied" ~63% of the time
       // (P(sup|W|≥1) = 1 − 4/π·Σ(−1)^k/(2k+1)·e^(−(2k+1)²π²/8) ≈ 0.63). Grade against that, not 50%.
-      const BEAT_FAIR = 0.63, BEAT_GOOD = 0.55, BEAT_BAD = 0.75;
+      
       const STUDY_FROM = Date.UTC(2025, 0, 1);
       const K_EV = 'niv_events_v1', K_DVH = 'niv_dvol_h_v1', K_PX = 'niv_px30_v1';
 
@@ -25835,7 +25828,7 @@ Signs follow Settings → Dealer positioning.`;
       }
       const evening = t => true;   // v80: 24×7 — Asia, Europe and US releases all count
       const kNow = () => NI.k ?? 1.8;
-      const deltaIvNow = () => { const v = lastA?.atm; return v == null ? null : (v < 5 ? v * 100 : v); };
+      
 
       /* ---------- data ---------- */
       async function dvolRange(from, to, res) {
@@ -29920,7 +29913,7 @@ Signs follow Settings → Dealer positioning.`;
         let news = []; try { news = window.nivRail && window.nivRail.all ? window.nivRail.all() : []; } catch (e) { }
         out.news = news.filter(x => x.n >= 3).sort((a, b) => (b.spike || 0) - (a.spike || 0)).slice(0, 8);
         // v30: rank expiry x weekday for IV crush (3+ nights), and IV change by session for each expiry (from the calendar's day records)
-        const WDN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        
         if (out.cool.tagged) {
           const combos = [];
           for (const s of [0, 1, 2]) for (const w of [0, 1, 2, 3, 4, 5, 6]) {
@@ -30961,7 +30954,7 @@ Signs follow Settings → Dealer positioning.`;
       const $ = id => document.getElementById(id);
       const MIN = 60000, HR = 3600000;
       const PRE = -180, LOCK = -10, REACT = 30, CHECK = 60, GATE = 120, SETTLE = 240;
-      const BRACE = 0.2, COOL = 0.25, ELEV = 0.5, SPIKE_D = 0.8, EXIT_D = 0.5;
+      const BRACE = 0.2, COOL = 0.25, ELEV = 0.5, SPIKE_D = 0.8;
       const K_LOG = 'ng_log_v1';
       const NAME = { NFP: 'Jobs report', CPI: 'CPI', PPI: 'PPI', JOLTS: 'JOLTS', FOMC: 'FOMC decision', MIN: 'FOMC minutes', PCE: 'PCE', GDP: 'GDP', ISM: 'ISM', CLM: 'Jobless claims', CUS: 'Your event' };
       const sg = (v, d = 2) => v == null || !Number.isFinite(v) ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
@@ -33747,7 +33740,7 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
         if (short) return d ? `${d}d ${p2(h)}:${p2(m)}:${p2(s)}` : `${p2(h)}:${p2(m)}:${p2(s)}`; return d ? `${d}d ${h}h ${p2(m)}m ${p2(s)}s` : h ? `${h}h ${p2(m)}m ${p2(s)}s` : `${m}m ${p2(s)}s`;
       }
       const cdSpan = (end, short) => `<span data-end="${end}"${short ? ' data-s="1"' : ''}>${cd(end - Date.now(), short)}</span>`;
-      function periodEnd(u, ms) { return pNext(pStart(ms, u === 'year' ? 'year' : u), u === 'year' ? 'year' : u); }
+      
       // pStart/pNext know day/week/month; add year here
       const _pS = pStart, _pN = pNext;
       pStart = function (ms, u) { if (u === 'year') { const x = new Date(ms); return Date.UTC(x.getUTCFullYear(), 0, 1); } return _pS(ms, u); };
@@ -34226,14 +34219,14 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
       const W = window, $ = id => document.getElementById(id);
       const B15 = 900000, MIN = 60000, HR = 3600000, DAY = 86400000, IST = 19800, LOOK = 48 * HR;
       const SN = { ASIA: 'Asia', LONDON: 'London', 'NEW YORK': 'New York', OFF: 'Late' }, SV = { ASIA: '--asia', LONDON: '--london', 'NEW YORK': '--ny', OFF: '--night' };
-      const SORDER = ['ASIA', 'LONDON', 'NEW YORK', 'OFF'];
+      
       const esc = x => String(x ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
       const p2 = n => String(n).padStart(2, '0');
       const hm = ms => { const d = new Date(ms + IST * 1000); return p2(d.getUTCHours()) + ':' + p2(d.getUTCMinutes()); };
       const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const dayLab = ms => { const d = new Date(ms + IST * 1000); return DOW[d.getUTCDay()] + ' ' + d.getUTCDate(); };
       const fx = r => r == null || !isFinite(r) ? '—' : r.toFixed(2) + '×';
-      const CAP = 2.5, towerPct = r => r == null || !isFinite(r) ? 6 : Math.max(6, Math.min(100, r / CAP * 100)).toFixed(1);
+      const CAP = 2.5;
       const tone = r => r == null ? 'na' : r < 1 ? 'g' : 'r';
       // crypto weekend: Saturday 00:00 UTC to Monday 00:00 UTC (CME closed, US desks off)
       const weekend = ms => { const d = new Date(ms).getUTCDay(); return d === 6 || d === 0; };
@@ -35629,7 +35622,7 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
       }
 
       /* ---------- v98: IV change over a part — IV at its start (close of the hour before) → IV at its end (latest close inside it) ---------- */
-      const CHG_FLAT = 0.2, CCOL = { up: '#E5534B', dn: '#26A69A', flat: '#E3AE45', na: '#5A6F82' }, CDN = { up: 'IV rose', dn: 'IV fell', flat: 'flat (±0.2)' };
+      const CHG_FLAT = 0.2, CCOL = { up: '#E5534B', dn: '#26A69A', flat: '#E3AE45', na: '#5A6F82' };
       const sgn = v => Math.abs(v) < 0.05 ? '0.0' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(1);
       function ivAt(M, key) { for (let k = 0; k < 4; k++) { const v = M.get(key - k * HR); if (v > 0) return v; } return null; }
       function ivChange(S, runs, clock) {
@@ -36363,9 +36356,7 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
         const svg = $('v142LvlSvg');
         if (svg) svg.remove();
       }
-      function schedLvlSvg() {
-        cleanLvlSvg();
-      }
+      
 
       function lvlDraw() {
         cleanLvlSvg();
@@ -37091,7 +37082,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         const avg = n >= 3 ? s / n : null; if (v24 == null && avg == null) return null; return v24 == null ? avg : avg == null ? v24 : 0.5 * v24 + 0.5 * avg;
       }
       function expVol(B, a, b) { const P = profileBefore(B, a); if (!P) return null; const sh = shareOf(P, a, b), dv = dayVarAround(B, a); if (sh == null || dv == null) return null; const H = (b - a) / HR; return Math.sqrt(dv * sh * 8760 / H) * 100; }
-      function realVol(B, a, b) { const v = varBetween(B, a, b); if (v == null) return null; return Math.sqrt(v * 8760 / ((b - a) / HR)) * 100; }
+      
 
       /* ---------------- hard stops (with flags for past nights) ---------------- */
       function releaseIn(a, b) { try { const E = W.Events24; if (!E || !E.inLife) return null; return E.inLife(a, b).filter(e => (e.imp || 0) >= 3 && !/deribit|delta|expiry/i.test((e.src || '') + ' ' + (e.code || ''))).sort((x, y) => x.t - y.t)[0] || null; } catch (e) { return null; } }
@@ -44876,7 +44867,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       function keys(db, s) { return new Promise((res, rej) => { try { const t = db.transaction(s, 'readonly'), r = t.objectStore(s).getAllKeys(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); } catch (e) { rej(e); } }); }
       function getMany(db, s, ks) { return new Promise((res, rej) => { try { const t = db.transaction(s, 'readonly'), o = t.objectStore(s), out = new Map(); for (const k of ks) { const r = o.get(k); r.onsuccess = () => { if (r.result !== undefined) out.set(k, r.result); }; } t.oncomplete = () => res(out); t.onerror = () => rej(t.error); } catch (e) { rej(e); } }); }
-      const nextDay = d => dk(Date.parse(d + 'T12:00:00Z') + DAY), addDays = (d, n) => dk(Date.parse(d + 'T12:00:00Z') + n * DAY), d0 = d => Date.parse(d + 'T00:00:00Z') - IST;
+      const nextDay = d => dk(Date.parse(d + 'T12:00:00Z') + DAY), d0 = d => Date.parse(d + 'T00:00:00Z') - IST;
       const ivp = v => fin(v) && v > 0 ? (v < 5 ? v * 100 : v) : NaN;
       function ivSeries(recs, e, days, from, to) {
         const out = []; for (const d of days) {
@@ -49957,7 +49948,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const GR = '#15803D', AM = '#D69E2E', RD = '#C53030', BL = '#2B6CB0', GY = '#9AA7B4';
       let mode = LSg(MODE, 'plan'); const nowIst = () => new Date(Date.now() + IST), ymd = d => d.toISOString().slice(0, 10), dateMs = k => Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)) - IST;   // midnight IST of a date key, in ms
       const ST = { view: ymd(nowIst()).slice(0, 7), sel: ymd(nowIst()) };
-      const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], DFULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const css = D.createElement('style'); css.textContent = `
         #v147Big.v157-plan .bx > :not(.hd):not(#v157Bar):not(#v157Plan){display:none!important}
         #v157Bar{display:flex;justify-content:space-between;align-items:center;margin:6px 0}
@@ -51446,7 +51437,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       function paintOverlays() {
         const B = bars(), O = ovSeries(); if (!B || !O) return; const MB = (ON('vwap') || ON('avp') || ON('lhm') || ON('fp')) ? minBars() : [];
-        const blankAll = () => B.b.map(b => ({ time: b.time }));
+        
         if (ON('vwap') && MB.length) {
           const { vw, sd } = vwapCalc(B, MB); const mk = f => vw.map((v, i) => v == null ? { time: B.b[i].time } : { time: B.b[i].time, value: f(v, sd[i]) });
           O.vw.setData(mk(v => v)); O.u1.setData(mk((v, s) => v + s)); O.d1.setData(mk((v, s) => v - s)); O.u2.setData(mk((v, s) => v + 2 * s)); O.d2.setData(mk((v, s) => v - 2 * s));
@@ -51744,7 +51735,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const V = W.v151Risk.verdict(RR);
           if (V && V.imp && V.imp.level > 0) { for (let q = pts.length - 1; q >= 0; q--) if (pts[q] && pts[q].value != null) { if ((V.phase === 'entry' || V.phase === 'hold')) pts[q] = { time: pts[q].time, value: V.L, color: V.color === 'red' ? (V.L >= 80 ? DK : RD) : V.color === 'green' ? GR : AM }; else pts[q] = { time: pts[q].time, value: pts[q].value, color: pts[q].color }; break; } }
           o.runs = runs; o.a.setData(pts); try { o.prim && o.prim.req(); } catch (e) { }
-          const _unused = null, live = V && (V.phase === 'entry' || V.phase === 'hold'), cls = !V ? '' : !live ? 'm' : V.color === 'green' ? 'g' : V.color === 'red' ? 'r' : 'a', P = RR.parts, RMg = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V10;
+          const live = V && (V.phase === 'entry' || V.phase === 'hold'), cls = !V ? '' : !live ? 'm' : V.color === 'green' ? 'g' : V.color === 'red' ? 'r' : 'a', P = RR.parts, RMg = W.__STRANGLE_RISKMODEL && W.__STRANGLE_RISKMODEL.gauge && W.__STRANGLE_RISKMODEL.gauge.variants && W.__STRANGLE_RISKMODEL.gauge.variants.V10;
           const arrow = !V || V.dL == null ? '' : V.dir === 'rising' ? '↑' : V.dir === 'falling' ? '↓' : '→', acls = !V || V.dL == null ? 'm' : V.dir === 'rising' ? 'r' : V.dir === 'falling' ? 'g' : 'm';
           const base = !V ? '' : V.color === 'green' ? 'GO' : V.color === 'red' ? 'WAIT' : 'CHECK', word = !V ? '' : V.phase === 'entry' ? base : V.phase === 'hold' ? 'HOLDING · ' + base : V.phase === 'ny' ? 'NO ENTRY · NY fear read' : 'NO ENTRY · session';
           const J = V && V.J, sp = J ? (J.spike >= 0 ? '+' : '−') + Math.abs(J.spike).toFixed(1) + '%' : '', stg = !J ? '' : J.stage === 'calm' ? 'NY fear: none' : J.stage === 'holding' ? 'NY fear ' + sp + ': IV still near its peak' : J.stage === 'real' ? 'NY fear ' + sp + ' fading: VoV falling = real IV fall' : J.stage === 'crush' ? 'IV falling hard, VoV rising: crush may reverse' : 'NY spike ' + sp + ', mixed signals';
@@ -53817,7 +53808,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
           const RBW = (W.__STRANGLE_RULEBOOK && W.__STRANGLE_RULEBOOK.weekdays) || null;
           const rbd = RBW ? RBW.find(x => x.weekday === DN[wd]) : null;
           const FB = { 1: ['TRADE', 'NORMAL', 73.3, 1.23], 2: ['TRADE', 'NORMAL', 68.0, 0.78], 3: ['TRADE', 'NORMAL', 63.6, 1.39], 4: ['TRADE', 'NORMAL', 61.6, 1.5], 5: ['TRADE', 'HIGH', 75.0, 3.48] };
-          const isSkipDay = false; // every weekday trades now — full 100 lots, no Thursday skip
+           // every weekday trades now — full 100 lots, no Thursday skip
           const verdict = rbd ? rbd.verdict : (FB[wd] ? FB[wd][0] : 'TRADE');
           const conv = rbd ? rbd.conviction : (FB[wd] ? FB[wd][1] : '');
           const oos = rbd ? rbd.oosWinPct : (FB[wd] ? FB[wd][2] : null);
@@ -53879,7 +53870,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
       }
 
       const trade = k => k === 'full' || k === 'half' || k === 'win' || k === 'stopped';
-      function nextTrade(D0) { let d = D0 + DAY, p = plan(d), g = 0; while (!trade(p.kind) && g++ < 20) { d += DAY; p = plan(d); } return p; }
+      
 
       /* ---------- Live inputs from the desk ---------- */
       function series(e) { let a = null; try { a = typeof candles !== 'undefined' ? candles[e] : null; } catch (x) { } if (!a || !a.length) return null; const out = []; for (const c of a) { const v = c[4]; if (fin(v) && v > 0) out.push([c[0] * 1000, v < 5 ? v * 100 : v]); } return out.length ? out : null; }
@@ -54473,35 +54464,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
 
       /* ---------- Telemetry Client Logger & Self-Test Verifier ---------- */
       let LAST_TELEM_PING = 0;
-      async function sendTelemetryPing(st) {
-        const now = Date.now();
-        if (now - LAST_TELEM_PING < 30000) return; // throttle every 30s
-        LAST_TELEM_PING = now;
-        try {
-          const payload = {
-            timestamp: new Date().toISOString(),
-            dow: st.p ? st.p.wd : null,
-            istHour: st.curHour,
-            speedVal: st.speedVal,
-            uiGo: st.word === 'GO',
-            uiSizing: st.word === 'GO' ? (st.p.wd === 2 || st.p.wd === 3 ? 1.0 : 0.5) : 0.0,
-            delta: st.p ? st.p.delta : '0.15Δ',
-            ivMark: st.R && st.R.iv ? st.R.iv : null,
-            inProvenEntry: st.inProvenEntryWindow
-          };
-          const res = await fetch('/api/v1/telemetry/session', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-          });
-          const data = await res.json();
-          if (data.ok) {
-            updateTelemetryBadge(data.summary);
-          }
-        } catch (err) {
-          // Telemetry quiet fallback
-        }
-      }
+      
 
       function updateTelemetryBadge(summary) {
         const b = $('v147TelemBadge');
@@ -56231,13 +56194,7 @@ ${T && !T.short ? `<p class="s">Test: ${T.days} days of hourly data from ${new D
         return ms >= nthSun(y, 2, 2) + 7 * HR && ms < nthSun(y, 10, 1) + 6 * HR;
       }
 
-      function isLondon_BST(ms) {
-        const y = new Date(ms).getUTCFullYear();
-        // Last Sunday in March to last Sunday in October
-        const marchLast = Date.UTC(y, 2, 31) - (new Date(Date.UTC(y, 2, 31)).getUTCDay()) * DAY;
-        const octLast = Date.UTC(y, 9, 31) - (new Date(Date.UTC(y, 9, 31)).getUTCDay()) * DAY;
-        return ms >= marchLast + 1 * HR && ms < octLast + 1 * HR;
-      }
+      
 
       /* Coverage calculation for a given timestamp */
       function getCoverage(ms) {
