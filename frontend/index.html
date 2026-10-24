@@ -49914,6 +49914,192 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       W.v156 = { draw, mode: () => mode };
     })();
   </script>
+  <script data-module="v157">
+    /* v157 (24 Oct 2026) · PLAN MY DAY: the Clock / Calendar / 30-day Audit window in pictures, built from the 5-year numbers.
+       - a 24-hour strip with the safe and unsafe hours (stopped % by entry hour), the entry window, the hold, news and "now"
+       - the steps of tonight with their status, and what to do now
+       - a month calendar coloured by the day's backtested risk, with news dots, past results and a plan card for any day you tap
+       - the last 30 nights as squares and a profit curve: sell every night against "skip red nights"
+       The old windows are one tap away (Plan | Details). No new rule is invented here: weekday risk, news and Thursday skip are the Decision-page rules. */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id), MODE = 'v157_mode', IST = 19800000, H = 3600000, DAY = 86400000;
+      const LSg = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+      const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const GR = '#15803D', AM = '#D69E2E', RD = '#C53030', BL = '#2B6CB0', GY = '#9AA7B4';
+      let mode = LSg(MODE, 'plan'); const nowIst = () => new Date(Date.now() + IST), ymd = d => d.toISOString().slice(0, 10), dateMs = k => Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)) - IST;   // midnight IST of a date key, in ms
+      const ST = { view: ymd(nowIst()).slice(0, 7), sel: ymd(nowIst()) };
+      const MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'], DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], DFULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      const css = D.createElement('style'); css.textContent = `
+        #v147Big.v157-plan .bx > :not(.hd):not(#v157Bar):not(#v157Plan){display:none!important}
+        #v157Bar{display:flex;justify-content:space-between;align-items:center;margin:6px 0}
+        #v157Bar button{font:700 12px var(--font);padding:7px 12px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;margin-left:6px}
+        #v157Bar button.on{background:#2F7CC0;border-color:#2F7CC0;color:#fff}
+        #v157Plan .pc{background:var(--panel,#fff);border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:12px;margin:8px 0}
+        #v157Plan .pt{font:700 11px var(--font);letter-spacing:.07em;color:var(--muted,#667085);text-transform:uppercase;margin-bottom:6px}
+        #v157Plan .cap{font:500 12px/1.35 var(--font);color:var(--muted,#667085);margin-top:6px}
+        #v157Plan svg{width:100%;height:auto;display:block}
+        #v157Plan svg text{font-family:var(--font),system-ui,sans-serif;fill:var(--text,#111)}
+        #v157Plan .now{display:flex;gap:12px;align-items:center}
+        #v157Plan .big{font:800 24px/1.05 var(--font);white-space:nowrap}
+        #v157Plan .step{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line,#eee)}
+        #v157Plan .step:first-of-type{border-top:0}
+        #v157Plan .dot{width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font:800 11px var(--font);color:#fff}
+        #v157Plan .step b{font:700 13px var(--font)}
+        #v157Plan .step span{font:500 12px/1.3 var(--font);color:var(--muted,#667085);display:block}
+        #v157Plan .mn{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+        #v157Plan .mn button{font:800 16px var(--font);width:38px;height:34px;border-radius:10px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer}
+        #v157Plan .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+        #v157Plan .cal .h{font:700 10px var(--font);color:var(--muted,#667085);text-align:center}
+        #v157Plan .cal .d{position:relative;min-height:46px;border-radius:9px;padding:3px 4px;border:2px solid transparent;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;font:700 12px var(--font);color:#fff}
+        #v157Plan .cal .d.off{background:var(--panel2,#eef1f4);color:var(--muted,#98a2b3);cursor:default}
+        #v157Plan .cal .d.today{box-shadow:0 0 0 2px #111 inset}
+        #v157Plan .cal .d.sel{border-color:#2F7CC0}
+        #v157Plan .cal .d small{font:700 8.5px var(--font);line-height:1;opacity:.95}
+        #v157Plan .cal .d i{position:absolute;right:3px;top:3px;width:7px;height:7px;border-radius:50%;background:#fff;opacity:.9}
+        #v157Plan .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px}
+        #v157Plan .tile{border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:7px;text-align:center}
+        #v157Plan .tile b{display:block;font:800 18px var(--font)}
+        #v157Plan .tile span{font:600 10.5px var(--font);color:var(--muted,#667085)}
+        #v157Plan .leg{display:flex;flex-wrap:wrap;gap:8px;font:600 10.5px var(--font);margin-top:6px}
+        #v157Plan .leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}`;
+      D.head.appendChild(css);
+
+      /* ---------- data ---------- */
+      const RM = () => W.__STRANGLE_RISKMODEL, DY = () => W.__STRANGLE_DAILY;
+      function wdStat(wd) { const d = DY(); return d && d.byWd ? d.byWd.find(x => x.wd === wd) : null; }
+      function events(fromMs, toMs) { try { const E = W.Events24; if (!E || !E.list) return []; return E.list(fromMs, toMs).filter(e => e.src === 'engine' && e.imp >= 2).sort((a, b) => a.t - b.t); } catch (e) { return []; } }
+      function dayPlan(k) {
+        const wd = new Date(dateMs(k) + IST).getUTCDay(), st = wdStat(wd), t0 = dateMs(k), hold0 = t0 + 22.5 * H, hold1 = t0 + 31 * H, ev = events(hold0 - 3 * H, hold1), ev3 = ev.filter(e => e.imp >= 3), ev2 = ev.filter(e => e.imp === 2 && e.t >= hold0 && e.t <= hold1);
+        let verdict, col, msg;
+        if (wd === 0 || wd === 6) { verdict = 'NO ENTRY'; col = GY; msg = wd === 6 ? 'Saturday: only manage what you hold from Friday.' : 'Sunday: no new entry.'; }
+        else if (wd === 4) { verdict = 'SKIP'; col = RD; msg = 'Thursday is skipped: 1-year real prices said it was stopped 83% of the time (the 5-year model says ' + (st ? st.stop : '—') + '%).'; }
+        else if (ev3.length) { verdict = 'SKIP'; col = RD; msg = ev3[0].code + ' (high impact) at ' + new Date(ev3[0].t + IST).toISOString().slice(11, 16) + ' IST falls inside the hold: stay out.'; }
+        else if (ev2.length) { verdict = 'CAUTION'; col = AM; msg = ev2[0].code + ' during the hold: sell only on a clear green, or skip.'; }
+        else if (st && st.stop <= 20) { verdict = 'BEST NIGHT'; col = GR; msg = 'The safest weekday in 5 years: sell on the first green hour.'; }
+        else if (st && st.stop >= 28) { verdict = 'CAUTION'; col = AM; msg = 'A rougher weekday: sell only on a clear green gauge.'; }
+        else { verdict = 'SELL ON GREEN'; col = GR; msg = 'A normal night: wait for the first green hour in the entry window.'; }
+        return { wd, st, verdict, col, msg, ev };
+      }
+      function pastRow(k) { const d = DY(); if (!d) return null; const r = d.rows.find(x => x[0] === k); return r || null; }
+      function shadow(k) { try { return (W.v152 && W.v152.shadow ? W.v152.shadow() : []).find(x => x.d === k) || null; } catch (e) { return null; } }
+
+      /* ---------- A: the 24-hour strip ---------- */
+      function timeline() {
+        const RMd = RM(), hs = RMd && RMd.sessions ? RMd.sessions.hours : [], Wd = 360, Ht = 146, L = 8, pw = Wd - 16, hw = pw / 24, bottom = 104, top = 44;
+        const hx = ih => L + (((ih - 12 + 24) % 24)) * hw;                // IST clock hour (12 -> left edge)
+        let g = '';
+        // phase band
+        const band = (a, b, c, o, lab) => { const w = ((b - a + 24) % 24 || 24) * hw, x = hx(a); if (x + w > L + pw + 0.1) { const w1 = L + pw - x; g += `<rect x="${x.toFixed(1)}" y="16" width="${w1.toFixed(1)}" height="16" fill="${c}" opacity="${o}"/><rect x="${L}" y="16" width="${(w - w1).toFixed(1)}" height="16" fill="${c}" opacity="${o}"/>`; } else g += `<rect x="${x.toFixed(1)}" y="16" width="${w.toFixed(1)}" height="16" fill="${c}" opacity="${o}"/>`; };
+        band(12, 19, GY, 0.35); band(19, 22.5, AM, 0.75); band(22.5, 2.5, GR, 0.95); band(2.5, 7, BL, 0.75); band(7, 12, GY, 0.25);
+        const lab = (a, t) => `<text x="${(hx(a) + 3).toFixed(1)}" y="12" font-size="8.5" font-weight="700">${t}</text>`;
+        g += lab(12, 'London') + lab(19, 'NY open') + lab(22.5, 'ENTRY') + lab(2.5, 'HOLD') + lab(7.4, 'exit');
+        // entry-hour risk bars (stopped % by hour you would sell)
+        const mx = 46; g += `<line x1="${L}" y1="${bottom}" x2="${L + pw}" y2="${bottom}" stroke="#8885"/>`;
+        for (const r of hs) { const ist = (r.utc + 5.5) % 24, h = Math.max(1, Math.min(r.stop, mx) / mx * (bottom - top)), x = hx(Math.floor(ist)) + (ist % 1 ? hw / 2 : 0), c = r.stop <= 20 ? GR : r.stop >= 30 ? RD : AM; g += `<rect x="${(x + 1).toFixed(1)}" y="${(bottom - h).toFixed(1)}" width="${(hw - 2).toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${c}" opacity=".85"/>`; }
+        g += `<text x="${L + 2}" y="${top - 2}" font-size="8.5" opacity=".7">stopped % if you sell at that hour (bar height; green ≤20, red ≥30)</text>`;
+        for (let h = 12; h < 36; h += 3) { const hh = h % 24; g += `<text x="${(hx(hh) + 1).toFixed(1)}" y="${bottom + 11}" font-size="8.5" opacity=".75">${String(hh).padStart(2, '0')}</text>`; }
+        // news today/tonight
+        const t = nowIst(), base = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()) - IST, from = base + (t.getUTCHours() < 12 ? -12 : 12) * H;   // the 24h strip that contains now
+        const x12 = from + (t.getUTCHours() < 12 ? 0 : 0);
+        const evs = events(from, from + 24 * H); evs.forEach((e, i) => { const ih = new Date(e.t + IST); const hf = ih.getUTCHours() + ih.getUTCMinutes() / 60, x = hx(hf); g += `<line x1="${x.toFixed(1)}" y1="36" x2="${x.toFixed(1)}" y2="${bottom}" stroke="${e.imp >= 3 ? RD : AM}" stroke-width="1.5" stroke-dasharray="3 2"/><text x="${(x + 2).toFixed(1)}" y="${(124 + (i % 2) * 11)}" font-size="8.5" font-weight="700" fill="${e.imp >= 3 ? RD : AM}" style="fill:${e.imp >= 3 ? RD : AM}">${esc(e.code)} ${String(ih.getUTCHours()).padStart(2, '0')}:${String(ih.getUTCMinutes()).padStart(2, '0')}</text>`; });
+        // now marker
+        const nh = t.getUTCHours() + t.getUTCMinutes() / 60, nx = hx(nh); g += `<line x1="${nx.toFixed(1)}" y1="12" x2="${nx.toFixed(1)}" y2="${bottom + 2}" stroke="#111" stroke-width="2.5"/><circle cx="${nx.toFixed(1)}" cy="${bottom + 2}" r="4" fill="#111"/><text x="${Math.min(L + pw - 28, Math.max(L, nx - 12)).toFixed(1)}" y="${bottom + 24}" font-size="10" font-weight="800">now ${String(t.getUTCHours()).padStart(2, '0')}:${String(t.getUTCMinutes()).padStart(2, '0')}</text>`;
+        return `<svg viewBox="0 0 ${Wd} ${Ht}" role="img" aria-label="24 hour plan">${g}</svg>`;
+      }
+      function steps() {
+        const t = nowIst(), m = t.getUTCHours() * 60 + t.getUTCMinutes(), V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null;
+        const stage = m >= 1140 && m < 1350 ? 0 : (m >= 1350 || m < 150) ? 1 : m >= 150 && m < 420 ? 3 : m >= 420 && m < 480 ? 4 : -1;     // -1 = quiet daytime: the whole night is still ahead
+        const S = [
+          ['19:00', 'Watch the New York open', V && V.J ? (V.J.stage === 'calm' ? 'No fear spike: good.' : V.J.stage === 'holding' ? 'IV spiked and is still high: wait.' : V.J.stage === 'real' ? 'IV is fading with VoV falling: a real fall.' : 'Mixed signals: wait for the chart.') : 'Did IV spike when New York opened?'],
+          ['22:30', 'Entry window opens: sell only on GREEN', 'The first green hour until 01:30 IST is your entry. Red or grey = no sale.'],
+          ['entry', 'Place the strangle', '0.15 delta call and put, stop at 2× each. Skip if the credit is thin.'],
+          ['02:30', 'Hold and watch the alerts', 'Red gauge, fast BTC or a news event: check your legs, not just the number.'],
+          ['07:00', 'Exit and log the night', 'Book everything. The desk records the result and learns from it.']];
+        const idxStage = i => i === 2 ? 1 : i;      // "place" runs inside the entry stage
+        const stat = { now: [BL, '▶'], done: [GR, '✓'], next: [GY, ''], nextup: [AM, '→'] };
+        return S.map((r, i) => { const st = stage === -1 ? (i === 0 ? 'nextup' : 'next') : idxStage(i) < stage ? 'done' : idxStage(i) === stage ? 'now' : 'next', c = stat[st], tag = st === 'now' ? ' · NOW' : st === 'nextup' ? ' · NEXT' : ''; return `<div class="step"><div class="dot" style="background:${c[0]}">${c[1]}</div><div><b>${esc(r[0] === 'entry' ? 'First green hour' : r[0])} · ${esc(r[1])}${tag}</b><span>${esc(r[2])}</span></div></div>`; }).join('');
+      }
+      function nowCard() {
+        const t = nowIst(), mins = t.getUTCHours() * 60 + t.getUTCMinutes(), V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null, plan = dayPlan(ymd(mins < 7 * 60 ? new Date(t.getTime() - DAY) : t));
+        let d = null; try { d = W.v139 && W.v139.decide ? W.v139.decide() : null; } catch (e) { }
+        let head, col, sub;
+        if (plan.verdict === 'SKIP' || plan.verdict === 'NO ENTRY') { head = plan.verdict; col = plan.verdict === 'SKIP' ? RD : GY; sub = plan.msg; }
+        else if (V && V.phase === 'entry') { head = V.color === 'green' ? 'SELL NOW' : V.color === 'red' ? 'WAIT' : 'CHECK'; col = V.color === 'green' ? GR : V.color === 'red' ? RD : AM; sub = V.color === 'green' ? 'Gauge is green inside the entry window.' : (V.why[0] || 'The gauge is not green yet.'); }
+        else if (V && V.phase === 'hold') { head = 'HOLD'; col = BL; sub = 'Watch the gauge and the alerts until 07:00 IST.'; }
+        else { const m = mins <= 22 * 60 + 30 ? 22 * 60 + 30 - mins : 1440 - mins + 22 * 60 + 30; head = 'WAIT'; col = mins >= 19 * 60 && mins < 22 * 60 + 30 ? AM : GY; sub = 'Entry window opens in ' + Math.floor(m / 60) + 'h ' + (m % 60) + 'm (22:30 IST).'; }
+        return `<div class="now"><div class="big" style="color:${col}">${esc(head)}</div><div style="font:600 13px/1.35 var(--font)">${esc(sub)}</div></div>`;
+      }
+
+      /* ---------- C: month calendar + day card ---------- */
+      function calendar() {
+        const [Y, M] = ST.view.split('-').map(Number), first = Date.UTC(Y, M - 1, 1), nDays = new Date(Date.UTC(Y, M, 0)).getUTCDate(), lead = (new Date(first).getUTCDay() + 6) % 7, today = ymd(nowIst());
+        const evs = events(first - DAY, first + (nDays + 1) * DAY), byDay = {}; evs.forEach(e => { const k = ymd(new Date(e.t + IST)); (byDay[k] = byDay[k] || []).push(e); });
+        let cells = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<div class="h">${x}</div>`).join('');
+        for (let i = 0; i < lead; i++) cells += '<div></div>';
+        for (let d = 1; d <= nDays; d++) {
+          const k = ST.view + '-' + String(d).padStart(2, '0'), past = k < today, pr = past ? pastRow(k) : null, P = dayPlan(k), wk = P.wd === 0 || P.wd === 6;
+          let bg = P.col, tag = '';
+          if (wk) { cells += `<div class="d off${k === today ? ' today' : ''}${k === ST.sel ? ' sel' : ''}" data-v157d="${k}">${d}</div>`; continue; }
+          if (pr) { bg = pr[12] ? RD : GR; tag = pr[12] ? 'stopped' : 'ok'; }
+          else if (P.verdict === 'SKIP') tag = 'skip'; else if (P.verdict === 'CAUTION') tag = 'caution'; else if (P.verdict === 'BEST NIGHT') tag = 'best'; else tag = 'sell on green';
+          const e = byDay[k] && byDay[k].filter(x => x.imp >= 3)[0], big = pr && Math.abs(pr[9]) >= 2;
+          cells += `<div class="d${k === today ? ' today' : ''}${k === ST.sel ? ' sel' : ''}" data-v157d="${k}" style="background:${bg}${past && !pr ? ';opacity:.5' : ''}">${d}<small>${esc(e ? e.code : tag)}</small>${byDay[k] ? '<i></i>' : ''}${pr ? `<b style="position:absolute;right:4px;bottom:4px;width:9px;height:9px;border-radius:50%;background:${({ g: '#34D399', y: '#FCD34D', r: '#F87171' })[pr[2]]};border:1.5px solid #fff"></b>` : ''}${big ? `<small style="position:absolute;left:4px;bottom:14px">IV${pr[9] > 0 ? '▲' : '▼'}</small>` : ''}</div>`;
+        }
+        return `<div class="mn"><button data-v157m="-1" aria-label="previous month">‹</button><b style="font:800 15px var(--font)">${MON[M - 1]} ${Y}</b><button data-v157m="1" aria-label="next month">›</button></div><div class="cal">${cells}</div>
+          <div class="leg"><span><i style="background:${GR}"></i>sell on green / ok</span><span><i style="background:${AM}"></i>caution</span><span><i style="background:${RD}"></i>skip / stopped</span><span><i style="background:${GY}"></i>no entry</span><span>● news that day</span><span>round dot = gauge colour that night</span></div>`;
+      }
+      function dayCard() {
+        const k = ST.sel, P = dayPlan(k), wd = P.wd, pr = pastRow(k), sh = shadow(k), st = P.st, day = new Date(dateMs(k) + IST), lab = DN[wd] + ' ' + day.getUTCDate() + ' ' + MON[day.getUTCMonth()].slice(0, 3);
+        const mini = (v, c, t) => `<div class="tile"><b style="color:${c}">${v == null ? '—' : v + '%'}</b><span>${t}</span></div>`;
+        const hs = RM() && RM().sessions ? RM().sessions.hours.filter(r => r.utc >= 17 && r.utc <= 20).sort((a, b) => a.stop - b.stop)[0] : null, bestH = hs ? new Date(Date.UTC(2026, 0, 1, hs.utc, 0) + IST).toISOString().slice(11, 16) : '—';
+        const ev = P.ev.filter(e => e.t >= dateMs(k) + 12 * H).slice(0, 4).map(e => `<div style="font:600 12px var(--font);margin-top:4px"><span style="color:${e.imp >= 3 ? RD : AM}">●</span> ${new Date(e.t + IST).toISOString().slice(11, 16)} IST · ${esc(e.title || e.code)}</div>`).join('');
+        let past = '';
+        if (pr) past = `<div class="cap"><b>What happened that night (5-year model):</b> gauge ${({ g: 'GREEN', y: 'YELLOW', r: 'RED' })[pr[2]]} at 22:30, BTC went ${pr[5].toFixed(1)}% up / ${pr[6].toFixed(1)}% down at most, IV ${pr[9] >= 0 ? '+' : '−'}${Math.abs(pr[9]).toFixed(1)} points, result <b style="color:${pr[12] ? RD : GR}">${pr[12] ? 'STOPPED' : 'ok'}</b>${pr[13] == null ? '' : ' (' + (pr[13] >= 0 ? '+' : '−') + Math.abs(pr[13]).toFixed(0) + '% of credit)'}.</div>`;
+        else if (sh) past = `<div class="cap"><b>Your own log:</b> the desk saw the gauge ${esc(sh.c.toUpperCase())} (${sh.L}) at 22:30 IST.</div>`;
+        return `<div class="pc"><div style="display:flex;justify-content:space-between;align-items:center"><b style="font:800 16px var(--font)">${lab}</b><span style="font:800 12px var(--font);color:#fff;background:${P.col};padding:5px 10px;border-radius:999px">${P.verdict}</span></div>
+          <div style="font:600 13px/1.4 var(--font);margin-top:8px">${esc(P.msg)}</div>
+          ${st ? `<div class="tiles">${mini(st.stop, st.stop <= 20 ? GR : st.stop >= 28 ? RD : AM, 'stopped (5 yrs)')}${mini(st.big09, GY, 'BTC moved 0.9%+')}${mini(st.green, GR, 'gauge green at 22:30')}</div>` : ''}
+          ${wd >= 1 && wd <= 5 ? `<div class="cap">Calmest hour to start inside the window: ${bestH} IST (stopped least often in 5 years). Sell only when the gauge is green.</div>` : ''}${ev ? `<div style="margin-top:6px"><div class="pt" style="margin:4px 0 0">News around the night</div>${ev}</div>` : ''}${past}</div>`;
+      }
+
+      /* ---------- E: last 30 nights ---------- */
+      function audit() {
+        const d = DY(); if (!d) return '';
+        const rows = d.rows.slice(-30), n = rows.length, sq = 20, gap = 4, per = 15, W0 = per * (sq + gap), Ht = 2 * (sq + gap) + 4, C = { g: GR, y: AM, r: RD };
+        let g = ''; rows.forEach((r, i) => { const x = (i % per) * (sq + gap), y = Math.floor(i / per) * (sq + gap), big = Math.abs(r[9]) >= 2; g += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" rx="5" fill="${C[r[2]]}"${big ? ` stroke="${BL}" stroke-width="2.5"` : ''}/>${r[12] ? `<text x="${x + sq / 2}" y="${y + sq / 2 + 4.5}" font-size="14" font-weight="900" text-anchor="middle" style="fill:#fff">✕</text>` : ''}`; });
+        const cum = (f) => { let s = 0; return rows.map(r => (s += f(r) ? (r[13] || 0) : 0)); }, A = cum(() => true), B = cum(r => r[2] !== 'r'), mx = Math.max(10, ...A, ...B), mn = Math.min(0, ...A, ...B), CW = 330, CH = 120, X = i => 8 + i / (n - 1) * (CW - 16), Y = v => CH - 16 - (v - mn) / (mx - mn) * (CH - 30);
+        const line = (a, c) => `<polyline points="${a.map((v, i) => X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ')}" fill="none" stroke="${c}" stroke-width="2.6"/>`;
+        const curve = `<svg viewBox="0 0 ${CW} ${CH}">${Y(0) > 0 ? `<line x1="8" y1="${Y(0).toFixed(1)}" x2="${CW - 8}" y2="${Y(0).toFixed(1)}" stroke="#8885" stroke-dasharray="3 3"/>` : ''}${line(A, GY)}${line(B, GR)}<text x="${CW - 10}" y="${(Y(A[n - 1]) - 5).toFixed(1)}" font-size="10" font-weight="800" text-anchor="end" style="fill:${GY}">sell every night ${A[n - 1] >= 0 ? '+' : '−'}${Math.abs(A[n - 1]).toFixed(0)}%</text><text x="${CW - 10}" y="${(Y(B[n - 1]) + 13).toFixed(1)}" font-size="10" font-weight="800" text-anchor="end" style="fill:${GR}">skip red nights ${B[n - 1] >= 0 ? '+' : '−'}${Math.abs(B[n - 1]).toFixed(0)}%</text></svg>`;
+        const stopped = rows.filter(r => r[12]).length, wins = rows.filter(r => !r[12]).length, pn = rows.map(r => r[13] || 0), by = c => { const a = rows.filter(r => r[2] === c); return { n: a.length, st: a.filter(r => r[12]).length }; };
+        const t = (v, l, c) => `<div class="tile"><b style="color:${c || 'inherit'}">${v}</b><span>${l}</span></div>`, bc = c => { const o = by(c); return t(o.st + ' of ' + o.n, ({ g: 'GREEN nights stopped', y: 'YELLOW nights stopped', r: 'RED nights stopped' })[c], ({ g: GR, y: AM, r: RD })[c]); };
+        return `<svg viewBox="0 0 ${W0} ${Ht}" role="img">${g}</svg><div class="leg"><span><i style="background:${GR}"></i>green at 22:30</span><span><i style="background:${AM}"></i>yellow</span><span><i style="background:${RD}"></i>red</span><span>✕ stopped</span><span><b style="color:${BL}">▢</b> big IV move</span></div>
+          <div class="tiles">${t(stopped + ' of ' + n, 'nights stopped', stopped / n > 0.3 ? RD : GR)}${t((pn.reduce((a, b) => a + b, 0) / n >= 0 ? '+' : '−') + Math.abs(pn.reduce((a, b) => a + b, 0) / n).toFixed(1) + '%', 'average night', GY)}${t(Math.max(...pn).toFixed(0) + '% / ' + Math.min(...pn).toFixed(0) + '%', 'best / worst night', GY)}</div><div class="tiles">${bc('g')}${bc('y')}${bc('r')}</div>
+          <div class="pt" style="margin-top:10px">Profit curve, % of credit (5-year model)</div>${curve}<div class="cap">Last ${n} nights up to ${esc(rows[n - 1][0])}. Grey = sold every night at 22:30; green = skipped the red nights. One month is a small sample; the 5-year tables are the evidence.</div>`;
+      }
+
+      /* ---------- the window ---------- */
+      let last = '';
+      function render() {
+        const o = $('v147Big'); if (!o || o.hidden) return; const bx = o.querySelector('.bx'); if (!bx) return; const hd = bx.querySelector('.hd');
+        let bar = $('v157Bar'), plan = $('v157Plan');
+        if (!bar) { bar = D.createElement('div'); bar.id = 'v157Bar'; (hd ? hd.after(bar) : bx.prepend(bar)); }
+        if (!plan) { plan = D.createElement('div'); plan.id = 'v157Plan'; bar.after(plan); }
+        o.classList.toggle('v157-plan', mode === 'plan');
+        const html = `<b style="font:800 14px var(--font)">Plan my day</b><span><button data-v157="plan" class="${mode === 'plan' ? 'on' : ''}">Plan</button><button data-v157="det" class="${mode === 'det' ? 'on' : ''}">Details</button></span>`;
+        if (bar.innerHTML !== html) bar.innerHTML = html;
+        let body = ''; if (mode === 'plan') { try { body = `<div class="pc"><div class="pt">Right now</div>${nowCard()}</div><div class="pc"><div class="pt">Your 24 hours (IST)</div>${timeline()}<div class="cap">Green bar = safe hour to sell, red = unsafe, from 5 years of nights. Band on top: entry window green, hold blue.</div></div><div class="pc"><div class="pt">Tonight's steps</div>${steps()}</div><div class="pc"><div class="pt">Calendar</div>${calendar()}</div>${dayCard()}<div class="pc"><div class="pt">Last 30 nights</div>${audit()}</div>`; } catch (e) { console.warn('v157', e); body = '<div class="pc">Could not draw the plan.</div>'; } }
+        if (plan.innerHTML !== body) plan.innerHTML = body;
+      }
+      D.addEventListener('click', e => {
+        const b = e.target.closest && e.target.closest('[data-v157]'); if (b) { e.stopPropagation(); mode = b.dataset.v157; LSs(MODE, mode); render(); return; }
+        const m = e.target.closest && e.target.closest('[data-v157m]'); if (m) { e.stopPropagation(); const [y, mo] = ST.view.split('-').map(Number), d = new Date(Date.UTC(y, mo - 1 + (+m.dataset.v157m), 1)); ST.view = ymd(d).slice(0, 7); render(); return; }
+        const c = e.target.closest && e.target.closest('[data-v157d]'); if (c) { e.stopPropagation(); ST.sel = c.dataset.v157d; render(); const dc = $('v157Plan'); }
+      }, true);
+      setInterval(() => { try { const o = $('v147Big'); if (o && !o.hidden && !D.hidden) render(); } catch (e) { } }, 5000);
+      D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v147ClockBtn,#v147Mini,#v147ExpandBtn')) setTimeout(render, 700); }, true);
+      W.v157 = { render, state: () => ST, mode: () => mode };
+    })();
+  </script>
   <script data-module="v142">
     /* v142 (17 Oct 2026, preview, not deployed) · new indicators + repairs, all inside the one chart panel (v138 style).
        ƒx Indicators (all off by default, nothing feeds the verdict — the tested rules are unchanged):
