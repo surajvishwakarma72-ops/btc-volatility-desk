@@ -51082,6 +51082,21 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       W.v168 = { openTop, openTg, mount };
     })();
   </script>
+  <script data-module="v169">
+    /* v169 (24 Oct 2026) · phone header: the WAIT (CALL risk) panel and the 30D Audit button are gone (the Clock window already holds the 30-night audit),
+       and the Cur / Next / N2N switch sits right beside the odds ring on the first row. Second row: strike chip + flash ribbon. Desktop unchanged. */
+    (function () {
+      const css = document.createElement('style'); css.textContent = '@media (max-width:760px){' +
+        'html body .top.hdr > #v147StrategyNearFri #v147DeskDock{display:none !important}' +
+        'html body .top.hdr > #v159Hit{order:1 !important;margin-left:auto !important}' +
+        'html body .top.hdr > #v100Master{order:2 !important;margin:0 0 0 6px !important}' +
+        'html body .top.hdr > .top-actions{order:3 !important;margin-left:6px !important}' +
+        'html body .top.hdr > #v165Chip{order:6 !important}' +
+        'html body .top.hdr > #v147StrategyNearFri{order:10 !important;flex:1 1 0 !important;min-width:0 !important;max-width:none !important}' +
+        '}';
+      document.head.appendChild(css);
+    })();
+  </script>
   <script data-module="v142">
     /* v142 (17 Oct 2026, preview, not deployed) · new indicators + repairs, all inside the one chart panel (v138 style).
        ƒx Indicators (all off by default, nothing feeds the verdict — the tested rules are unchanged):
