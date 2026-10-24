@@ -50373,7 +50373,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const GROUPS = [
         { id: 'asia', name: 'ASIA', list: [['Nikkei', '^N225'], ['Hang Seng', '^HSI'], ['Nifty 50', '^NSEI'], ['Shanghai', '000001.SS']] },
         { id: 'lon', name: 'LONDON', list: [['FTSE 100', '^FTSE'], ['DAX', '^GDAXI']] },
-        { id: 'us', name: 'US', list: [['S&P 500', '^GSPC'], ['Nasdaq', '^IXIC'], ['Dow', '^DJI']] }];
+        { id: 'us', name: 'US', list: [['S&P 500', '^GSPC'], ['Nasdaq', '^IXIC'], ['Dow', '^DJI']] },
+        { id: 'com', name: 'COMMODITIES', list: [['Gold', 'GC=F'], ['Silver', 'SI=F'], ['Crude Oil', 'CL=F'], ['Brent', 'BZ=F'], ['Nat Gas', 'NG=F'], ['Copper', 'HG=F']] },
+        { id: 'fx', name: 'DOLLAR', list: [['Dollar Index', 'DX-Y.NYB'], ['USD/INR', 'INR=X'], ['EUR/USD', 'EURUSD=X', 4]] }];
+      const DEC = {}; GROUPS.forEach(G => G.list.forEach(x => { if (x[2]) DEC[x[1]] = x[2]; }));
       const css = D.createElement('style'); css.textContent = `
         :root{--ws-h:22px;--tk-h:52px !important}
         @media (max-width:760px){:root{--tk-h:50px !important}}
@@ -50392,8 +50395,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       D.head.appendChild(css);
       const DATA = { coins: null, idx: {} };
       const fmt = p => (p >= 0 ? '▲ +' : '▼ −') + Math.abs(p).toFixed(Math.abs(p) >= 10 ? 1 : 2) + '%';
-      const px = v => v == null ? '' : v >= 1000 ? Math.round(v).toLocaleString('en-US') : v >= 10 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toFixed(4);
-      const item = (name, d, closed) => d == null ? `<span class="i cl"><b>${name}</b><span>…</span></span>` : `<span class="i${closed ? ' cl' : ''}"><b>${name}</b><span class="pr">${px(d.v)}</span><span style="color:${d.p >= 0 ? GRN : RED}">${fmt(d.p)}</span>${closed ? '<span class="cl-t">closed</span>' : ''}</span>`;
+      const px = (v, dec) => v == null ? '' : dec ? v.toFixed(dec) : v >= 1000 ? Math.round(v).toLocaleString('en-US') : v >= 10 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toFixed(4);
+      const item = (name, d, closed) => d == null ? `<span class="i cl"><b>${name}</b><span>…</span></span>` : `<span class="i${closed ? ' cl' : ''}"><b>${name}</b><span class="pr">${px(d.v, d.dec)}</span><span style="color:${d.p >= 0 ? GRN : RED}">${fmt(d.p)}</span>${closed ? '<span class="cl-t">closed</span>' : ''}</span>`;
       function html() {
         const g = [`<span class="g"><span class="h">CRYPTO 24h</span>${COINS.map(([n, sym]) => item(n, DATA.coins ? DATA.coins[sym] : null, false)).join('')}</span>`];
         for (const G of GROUPS) g.push(`<span class="g"><span class="h">${G.name}</span>${G.list.map(([n, sym]) => { const d = DATA.idx[sym]; return item(n, d || null, d ? d.closed : false); }).join('')}</span>`);
@@ -50428,7 +50431,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         try {
           const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1d&interval=1d'); if (!r.ok) throw 0; const j = await r.json(), m = j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta; if (!m) throw 0;
           const px = m.regularMarketPrice, pc = m.chartPreviousClose != null ? m.chartPreviousClose : m.previousClose, p = Number.isFinite(m.regularMarketChangePercent) ? m.regularMarketChangePercent : (px && pc ? (px / pc - 1) * 100 : null);
-          if (p == null) throw 0; DATA.idx[sym] = { p, v: px, closed: !m.regularMarketTime || Date.now() / 1000 - m.regularMarketTime > 1500 };
+          if (p == null) throw 0; DATA.idx[sym] = { p, v: px, dec: DEC[sym], closed: !m.regularMarketTime || Date.now() / 1000 - m.regularMarketTime > 1500 };
         } catch (e) { }
       }
       async function refresh() {
