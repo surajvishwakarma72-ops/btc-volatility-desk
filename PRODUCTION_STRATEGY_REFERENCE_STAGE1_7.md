@@ -1,5 +1,7 @@
 # BTC Volatility Desk: Master Strategy Production Reference (Stages 1–7)
 
+> **Note:** the Stage 1-7 test harnesses linked below (`backend/src/scripts/stage*_*.ts`, `integrated_full_strategy_backtest.ts`) were removed from the working tree; they remain in git history before commit pruning them. The maintained pipeline is `backend/src/backtest/steps`.
+
 **Document Version:** 1.0.1 (Production Release · Reconciled)  
 **Status:** Approved & Shipped  
 **Scope:** Definitive specification of trade authorization (`decide()`), sizing (`judge()`), calendar filters, kinetic speed beacon, timing gates, and indicator hierarchy.
