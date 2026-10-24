@@ -51098,6 +51098,32 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       document.head.appendChild(css);
     })();
   </script>
+  <script data-module="v170">
+    /* v170 (24 Oct 2026) · phone chart toolbar: the full timeframe row (1m … 1D) and the "BTC" label are replaced by one "TF · 5m" chip next to Indicators.
+       Tap it for the eight timeframes; a tap there presses the chart's own timeframe button, so nothing else changes. Desktop keeps the row. */
+    (function () {
+      const D = document, $ = id => D.getElementById(id);
+      const css = D.createElement('style'); css.textContent = "@media (max-width:760px){html body #gTop #gTf,html body #gTop .g-tf{display:none !important}html body #gTop .sym{display:none !important}html body #gTop .r{order:0 !important;flex:1 1 100% !important}}#v170Tf{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:800 11px var(--font);white-space:nowrap;flex:0 0 auto}#v170Pop{position:fixed;z-index:99994;background:var(--panel,#fff);color:var(--text,#111);border:1px solid var(--line,#8884);border-radius:14px;padding:8px;box-shadow:0 10px 30px rgba(0,0,0,.3);display:grid;grid-template-columns:repeat(4,1fr);gap:6px;width:min(260px,calc(100vw - 20px))}#v170Pop[hidden]{display:none}#v170Pop button{height:34px;border-radius:9px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:800 12.5px var(--font);cursor:pointer}#v170Pop button.on{background:#1A2733;color:#fff;border-color:#1A2733}"; D.head.appendChild(css);
+      const orig = () => [...D.querySelectorAll('#gTf .tf button')];
+      const cur = () => { const b = orig().find(x => x.getAttribute('aria-pressed') === 'true'); return b ? (b.dataset.tf || b.textContent.trim()) : '5m'; };
+      function paint() { const c = $('v170Tf'); if (c) { const t = 'TF · ' + cur(); if (c.textContent !== t) c.textContent = t; } }
+      function open() {
+        let pop = $('v170Pop'), chip = $('v170Tf'); if (!chip) return;
+        if (!pop) { pop = D.createElement('div'); pop.id = 'v170Pop'; pop.hidden = true; D.body.appendChild(pop);
+          pop.addEventListener('click', e => { const b = e.target.closest('[data-tf]'); if (!b) return; const o = orig().find(x => (x.dataset.tf || x.textContent.trim()) === b.dataset.tf); if (o) o.click(); pop.hidden = true; setTimeout(paint, 200); setTimeout(paint, 900); });
+          D.addEventListener('click', e => { if (!pop.hidden && !e.target.closest('#v170Pop') && !e.target.closest('#v170Tf')) pop.hidden = true; }, true); }
+        if (!pop.hidden) { pop.hidden = true; return; }
+        const now = cur(); pop.innerHTML = orig().map(x => { const t = x.dataset.tf || x.textContent.trim(); return '<button type="button" data-tf="' + t + '" class="' + (t === now ? 'on' : '') + '">' + t + '</button>'; }).join('');
+        const r = chip.getBoundingClientRect(); pop.style.top = Math.round(r.bottom + 6) + 'px'; pop.style.left = Math.max(10, Math.min(innerWidth - 270, r.left)) + 'px'; pop.hidden = false;
+      }
+      function mount() {
+        const r = D.querySelector('#gTop .r'); if (!r || $('v170Tf')) { paint(); return; }
+        const b = D.createElement('button'); b.type = 'button'; b.id = 'v170Tf'; b.setAttribute('aria-label', 'Chart timeframe'); b.textContent = 'TF · 5m'; b.addEventListener('click', open);
+        const ind = $('v132IndBtn'); if (ind && ind.parentNode === r) r.insertBefore(b, ind); else r.insertBefore(b, r.firstChild); paint();
+      }
+      setInterval(() => { try { mount(); } catch (e) { } }, 1500); setTimeout(mount, 1200);
+    })();
+  </script>
   <script data-module="v142">
     /* v142 (17 Oct 2026, preview, not deployed) · new indicators + repairs, all inside the one chart panel (v138 style).
        ƒx Indicators (all off by default, nothing feeds the verdict — the tested rules are unchanged):
