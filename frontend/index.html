@@ -50361,7 +50361,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const W = window, D = document, $ = id => D.getElementById(id), SK = 'v160_tg', LK = 'v160_last';
       const LSg = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
       const LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
-      const creds = () => { const p = LSg('vt_alert_prefs_v1', {}) || {}, tok = (p.tgToken || '').trim(), chat = (p.tgChat || '').trim(); return /^\d+:[\w-]{20,}$/.test(tok) && chat ? { tok, chat } : null; };
+      const creds = () => { const own = LSg('v168_tg', null), p = LSg('vt_alert_prefs_v1', {}) || {}, tok = ((own && own.tok) || p.tgToken || '').trim(), chat = ((own && own.chat) || p.tgChat || '').trim(); return /^\d+:[\w-]{20,}$/.test(tok) && chat ? { tok, chat } : null; };
       const on = () => LSg(SK, false) === true;
       const EMO = { green: '🟢', yellow: '🟡', red: '🔴' }, NAME = { green: 'GO', yellow: 'CAUTION', red: 'WAIT' };
       async function send(text) {
@@ -50972,6 +50972,114 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v165Chip')) open(); }, true);
       setTimeout(() => { chip(); load(); }, 4500); setInterval(() => { if (!T) load(); }, 60000);
       W.v165 = { load, open, data: () => DATA };
+    })();
+  </script>
+  <script data-module="v168">
+    /* v168 (24 Oct 2026) · two things you could not find, now one tap away:
+       1) "Top" chip (chart toolbar, and More → Best indicators): which indicators work best for TODAY'S WEEKDAY, THIS WEEK of the month, THIS MONTH,
+          and in the LAST 30 / 90 NIGHTS (recent form, with how many stopped nights each one had flagged). Source: data/indicator_rank_dynamic.js
+          (backend/scripts/fiveyear_indrank.mjs): "lift" = how many points more often a night is stopped when the indicator is in its riskiest 30 %.
+          A badge shows which of them is HOT right now. Recent windows are small samples and are labelled so.
+       2) "✈" chip (chart toolbar, and More → Telegram alerts): bot token, chat id, a "find my chat id" helper, a test message, and the Entry Gauge alert switch.
+          The token stays in this browser only (it is never sent to the desk server). */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id), IST = 19800000;
+      const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const LSg = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+      const LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+      const GRN = '#15803D', RED = '#C53030', AMB = '#B7791F', BLU = '#2B6CB0';
+      const css = D.createElement('style'); css.textContent = ".v168chip{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:700 11px var(--font);white-space:nowrap;flex:0 0 auto}\n        .v168sh{position:fixed;inset:0;z-index:99995;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}\n        .v168sh[hidden]{display:none}\n        .v168sh .c{width:100%;max-width:560px;max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain;background:var(--panel,#fff);color:var(--text,#111);border-radius:18px 18px 0 0;padding:0 12px 20px;box-shadow:0 -8px 30px rgba(0,0,0,.35);font:500 12px/1.4 var(--font)}\n        .v168sh .hd{position:sticky;top:0;background:var(--panel,#fff);padding:12px 0 6px;z-index:2}\n        .v168sh .hd .t{display:flex;justify-content:space-between;align-items:center;font:800 15px var(--font)}\n        .v168sh .hd .t button{border:0;background:none;font-size:24px;line-height:1;color:inherit;cursor:pointer}\n        .v168sh .hd small{display:block;color:var(--muted,#667085);font:500 11px var(--font)}\n        .v168sh .tabs{display:flex;gap:5px;margin-top:6px;overflow-x:auto;scrollbar-width:none}\n        .v168sh .tabs button{flex:0 0 auto;height:28px;padding:0 11px;border-radius:9px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:700 11.5px var(--font);cursor:pointer}\n        .v168sh .tabs button.on{background:#1A2733 !important;color:#fff !important;border-color:#1A2733}\n        .v168sh .ir{padding:8px 0;border-top:1px solid var(--line,#8883)}\n        .v168sh .ir .r1{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font:800 13px var(--font)}\n        .v168sh .ir .bar{height:11px;border-radius:6px;background:rgba(128,128,128,.22);margin:4px 0 3px;overflow:hidden}\n        .v168sh .ir .bar span{display:block;height:100%;border-radius:6px}\n        .v168sh .ir .sub{font:500 11px var(--font);color:var(--muted,#667085)}\n        .v168sh .bd{display:inline-block;padding:1px 7px;border-radius:8px;font:800 9.5px var(--font);color:#fff;margin-left:5px;vertical-align:middle}\n        .v168sh .note{font:500 11px/1.4 var(--font);color:var(--muted,#667085);margin-top:10px}\n        .v168sh .big{font:800 13px/1.35 var(--font);margin-top:8px}\n        .v168sh label{display:block;font:700 10px var(--font);letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#667085);margin:10px 0 3px}\n        .v168sh input[type=text],.v168sh input[type=password]{width:100%;box-sizing:border-box;height:36px;border-radius:10px;border:1px solid var(--line,#8884);background:transparent;color:inherit;padding:0 10px;font:600 13px var(--font)}\n        .v168sh .btn{height:36px;border-radius:10px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:800 12px var(--font);padding:0 12px;cursor:pointer}\n        .v168sh .btn.pri{background:#1A2733;color:#fff;border-color:#1A2733}\n        .v168sh .row{display:flex;gap:8px;margin-top:10px}\n        .v168sh .row .btn{flex:1}\n        .v168sh .sw{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line,#8883);margin-top:12px;font:700 13px var(--font)}\n        .v168sh .sw small{display:block;font:500 11px var(--font);color:var(--muted,#667085)}\n        .v168sh .st{margin-top:8px;font:700 12px var(--font)}`";
+      D.head.appendChild(css);
+
+      /* ======================= Best indicators ======================= */
+      const DN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], MN = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      let tab = (() => { try { return localStorage.getItem('v168_tab') || 'day'; } catch (e) { return 'day'; } })();
+      function when() {
+        const t = new Date(Date.now() + IST), h = t.getUTCHours(); let d = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())); if (h < 7) d = new Date(d.getTime() - 864e5);
+        let wd = d.getUTCDay(), next = false; if (wd === 0 || wd === 6) { wd = 1; next = true; }
+        return { wd, next, wom: Math.min(5, Math.ceil(d.getUTCDate() / 7)), mo: d.getUTCMonth() + 1, d };
+      }
+      function hotNow() {
+        const out = {}; try { const L = W.v151Risk && W.v151Risk.live ? W.v151Risk.live() : null; const items = L && L.parts && L.parts.items; if (items) for (const i of items) out[i.k] = i.pct; } catch (e) { } return out;
+      }
+      function irHtml(rows, nm, now, recent, maxL) {
+        if (!rows || !rows.length) return '<div class="note">Not enough nights in this slice to rank.</div>';
+        return rows.slice(0, 6).map((r, i) => {
+          const w = Math.max(3, Math.min(100, r.lift / maxL * 100)), pct = now[r.k], hot = pct != null && pct >= 70, col = r.lift >= 10 ? GRN : r.lift >= 5 ? BLU : AMB;
+          return '<div class="ir"><div class="r1"><span>' + (i + 1) + '. ' + esc(nm[r.k] || r.k) + (pct == null ? '' : '<span class="bd" style="background:' + (hot ? RED : GRN) + '">' + (hot ? 'HOT NOW' : 'calm now') + '</span>') + '</span><span style="color:' + col + '">' + (r.lift >= 0 ? '+' : '−') + Math.abs(r.lift).toFixed(1) + ' pts</span></div><div class="bar"><span style="width:' + w.toFixed(0) + '%;background:' + col + '"></span></div><div class="sub">' + (recent ? 'Stopped ' + Math.round(r.hot) + '% of nights when hot vs ' + Math.round(r.rest) + '% otherwise · caught ' + r.caught + ' of ' + r.stops + ' stopped nights · ' + r.n + ' hot nights' : 'Stopped ' + Math.round(r.hot) + '% when hot vs ' + Math.round(r.rest) + '% otherwise · ' + r.n + ' hot nights') + '</div></div>';
+        }).join('');
+      }
+      function drawTop() {
+        const sh = $('v168Top'); if (!sh || sh.hidden) return; const c = sh.querySelector('.c'), keep = c.scrollTop, RK = W.__STRANGLE_INDRANK;
+        if (!RK) { c.innerHTML = '<div class="hd"><div class="t"><span>Best indicators</span><button type="button" data-x="1">×</button></div></div><div class="note">Ranking data not loaded.</div>'; return; }
+        const nm = {}; for (const o of RK.order) nm[o.k] = o.l; const w = when(), now = hotNow(); let rows, title, sub, recent = false;
+        if (tab === 'day') { rows = RK.weekday[w.wd]; title = 'Best for ' + DN[w.wd] + ' nights'; sub = (w.next ? 'Weekend: showing the next trading night. ' : '') + (RK.weekday && rows ? rows.length : 0) + ' indicators ranked over ' + RK.nights + ' nights'; }
+        else if (tab === 'week') { rows = RK.weekOfMonth[w.wom]; title = 'Best in week ' + w.wom + ' of the month'; sub = 'Same week of the month, ' + RK.nights + ' nights of history'; }
+        else if (tab === 'month') { rows = RK.month[w.mo]; title = 'Best in ' + MN[w.mo]; sub = 'Every ' + MN[w.mo] + ' in the history'; }
+        else { const R = tab === 'd30' ? RK.recent && RK.recent.d30 : RK.recent && RK.recent.d90; rows = R && R.rank; recent = true; title = tab === 'd30' ? 'Last 30 nights' : 'Last 90 nights'; sub = R ? R.from + ' to ' + R.to + ' · ' + R.stops + ' of ' + R.nights + ' nights stopped · small sample, treat as recent form' : 'Not built yet'; }
+        const maxL = Math.max(1, ...(rows || []).map(r => r.lift));
+        const hots = (rows || []).slice(0, 5).filter(r => now[r.k] != null && now[r.k] >= 70).map(r => nm[r.k] || r.k);
+        let h = '<div class="hd"><div class="t"><span>Best indicators</span><button type="button" aria-label="Close" data-x="1">×</button></div><small>Which indicator flags a stopped-out night best · ' + esc(RK.generated) + '</small><div class="tabs">' + [['day', 'Today'], ['week', 'Week'], ['month', 'Month'], ['d30', 'Last 30'], ['d90', 'Last 90']].map(([k, l]) => '<button type="button" data-tab="' + k + '" class="' + (tab === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
+        h += '<div class="big">' + esc(title) + '</div><div class="note" style="margin-top:2px">' + esc(sub) + '</div>';
+        h += !Object.keys(now).length ? '<div class="note">Live indicator readings are still loading.</div>' : hots.length ? '<div class="big" style="color:' + RED + '">Watch now: ' + esc(hots.join(', ')) + ' ' + (hots.length > 1 ? 'are' : 'is') + ' HOT among the top five.</div>' : '<div class="big" style="color:' + GRN + '">None of the top five is hot right now.</div>';
+        h += irHtml(rows, nm, now, recent, maxL);
+        h += '<div class="note">Points = how many points more often a night is stopped (a leg reaching 2× within 8 h of a 22:30 IST entry) when this indicator is in its riskiest 30%. All nights stop ' + RK.baseStopPct + '%. Modelled on DVOL, not real option prices. "Last 30/90" are small samples. Indicators without history (skew, term, bid/ask, greeks, funding, futures, macro) are not ranked.</div>';
+        c.innerHTML = h; c.scrollTop = keep;
+      }
+      function openTop() {
+        let sh = $('v168Top'); if (!sh) { sh = D.createElement('div'); sh.id = 'v168Top'; sh.className = 'v168sh'; sh.hidden = true; sh.innerHTML = '<div class="c" role="dialog" aria-modal="true" aria-label="Best indicators"></div>'; D.body.appendChild(sh);
+          sh.addEventListener('click', e => { const t = e.target.closest('[data-tab]'); if (t) { tab = t.dataset.tab; try { localStorage.setItem('v168_tab', tab); } catch (x) { } drawTop(); return; } if (e.target === sh || e.target.closest('[data-x]')) sh.hidden = true; }); D.addEventListener('keydown', e => { if (e.key === 'Escape') sh.hidden = true; }); }
+        sh.hidden = false; drawTop(); clearInterval(openTop.t); openTop.t = setInterval(() => { if (sh.hidden) clearInterval(openTop.t); else drawTop(); }, 5000);
+      }
+
+      /* ======================= Telegram settings ======================= */
+      const tgGet = () => { const own = LSg('v168_tg', null), vt = LSg('vt_alert_prefs_v1', {}) || {}; return { tok: (own && own.tok) || vt.tgToken || '', chat: (own && own.chat) || vt.tgChat || '' }; };
+      const tokOk = t => /^\d+:[\w-]{20,}$/.test((t || '').trim());
+      function drawTg(msg) {
+        const sh = $('v168Tg'); if (!sh || sh.hidden) return; const c = sh.querySelector('.c'), g = tgGet(), on = LSg('v160_tg', false) === true, ready = tokOk(g.tok) && (g.chat || '').trim();
+        c.innerHTML = '<div class="hd"><div class="t"><span>Telegram alerts</span><button type="button" aria-label="Close" data-x="1">×</button></div><small>' + (ready ? 'Connected to chat ' + esc(g.chat) : 'Not set up yet') + '</small></div>' +
+          '<div class="note" style="margin-top:6px">1) In Telegram open <b>@BotFather</b> → /newbot → copy the token.  2) Open your new bot and send it any message.  3) Press <b>Find my chat id</b> below, then <b>Save</b> and <b>Send test</b>.</div>' +
+          '<label for="v168tok">Bot token</label><input id="v168tok" type="password" autocomplete="off" spellcheck="false" placeholder="123456789:AA..." value="' + esc(g.tok) + '">' +
+          '<label for="v168chat">Chat id</label><input id="v168chat" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" placeholder="your chat id" value="' + esc(g.chat) + '">' +
+          '<div class="row"><button type="button" class="btn" data-a="find">Find my chat id</button><button type="button" class="btn pri" data-a="save">Save</button><button type="button" class="btn" data-a="test">Send test</button></div>' +
+          '<div class="st" id="v168st" style="color:' + (msg && msg.bad ? RED : GRN) + '">' + (msg ? esc(msg.t) : '') + '</div>' +
+          '<div class="sw"><span>Entry Gauge colour changes<small>A message when the gauge turns green, yellow or red, or a big-move burst starts. Needs this page open.</small></span><button type="button" class="btn ' + (on ? 'pri' : '') + '" data-a="gauge" style="flex:0 0 auto;min-width:74px">' + (on ? 'ON' : 'OFF') + '</button></div>' +
+          '<div class="note">The token is stored in this browser only and goes straight to Telegram; the desk server never sees it. The bell icon (volatility-turn alerts) has its own separate Telegram setting.</div>';
+      }
+      async function tgAct(a) {
+        const sh = $('v168Tg'), tok = ($('v168tok') || {}).value ? $('v168tok').value.trim() : '', chat = ($('v168chat') || {}).value ? $('v168chat').value.trim() : '';
+        if (a === 'gauge') { const on = LSg('v160_tg', false) === true; LSs('v160_tg', !on); if (!on) { const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; if (V) LSs('v160_last', { key: V.color + (V.burst ? ':' + V.burst : ''), at: Date.now() }); } return drawTg({ t: !on ? 'Gauge alerts are ON.' : 'Gauge alerts are OFF.' }); }
+        if (!tokOk(tok)) return drawTg({ t: 'Paste the bot token from @BotFather (looks like 123456789:AA…).', bad: true });
+        if (a === 'save') { LSs('v168_tg', { tok, chat }); return drawTg({ t: chat ? 'Saved.' : 'Token saved. Now find or type your chat id.' }); }
+        if (a === 'find') {
+          try { const r = await fetch('https://api.telegram.org/bot' + tok + '/getUpdates'), j = await r.json(); if (!j.ok) throw new Error(j.description || 'rejected'); const m = (j.result || []).map(u => (u.message || u.edited_message || u.channel_post || {}).chat).filter(Boolean).pop(); if (!m) return drawTg({ t: 'No message found. Send your bot a message in Telegram first, then press again.', bad: true }); LSs('v168_tg', { tok, chat: String(m.id) }); return drawTg({ t: 'Found chat ' + m.id + (m.first_name || m.title ? ' (' + (m.first_name || m.title) + ')' : '') + ' and saved.' }); }
+          catch (e) { return drawTg({ t: 'Could not read Telegram (' + (e.message || 'blocked') + '). Check the token, or type the chat id yourself.', bad: true }); }
+        }
+        if (a === 'test') {
+          if (!chat) return drawTg({ t: 'Add the chat id first.', bad: true }); LSs('v168_tg', { tok, chat });
+          try { const r = await fetch('https://api.telegram.org/bot' + tok + '/sendMessage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chat, text: '✅ Volatility Desk test message. Telegram alerts work.' }) }), j = await r.json(); if (!j.ok) throw new Error(j.description || 'rejected'); return drawTg({ t: 'Test message sent. Check Telegram.' }); }
+          catch (e) { return drawTg({ t: 'Telegram said: ' + (e.message || 'could not send') + '.', bad: true }); }
+        }
+      }
+      function openTg() {
+        let sh = $('v168Tg'); if (!sh) { sh = D.createElement('div'); sh.id = 'v168Tg'; sh.className = 'v168sh'; sh.hidden = true; sh.innerHTML = '<div class="c" role="dialog" aria-modal="true" aria-label="Telegram alerts"></div>'; D.body.appendChild(sh);
+          sh.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (b) { tgAct(b.dataset.a); return; } if (e.target === sh || e.target.closest('[data-x]')) sh.hidden = true; }); D.addEventListener('keydown', e => { if (e.key === 'Escape') sh.hidden = true; }); }
+        sh.hidden = false; drawTg();
+      }
+
+      /* ======================= entry points ======================= */
+      function mount() {
+        const r = D.querySelector('#gTop .r'); if (r && !$('v168ChipTop')) {
+          const mk = (id, html, label, fn) => { const b = D.createElement('button'); b.type = 'button'; b.id = id; b.className = 'v168chip'; b.innerHTML = html; b.setAttribute('aria-label', label); b.addEventListener('click', fn); return b; };
+          const first = r.firstChild; r.insertBefore(mk('v168ChipTop', '🏆 Top', 'Best indicators for today, this week, this month and recent nights', openTop), first); r.insertBefore(mk('v168ChipTg', '✈', 'Telegram alert settings', openTg), first);
+        }
+        const ms = $('moreSheet'); if (ms && !$('v168MoreTop')) {
+          const theme = $('moreTheme'), mk = (id, t, fn) => { const b = D.createElement('button'); b.type = 'button'; b.id = id; b.textContent = t; b.addEventListener('click', () => { ms.hidden = true; fn(); }); return b; };
+          ms.insertBefore(mk('v168MoreTop', 'Best indicators (day · week · month)', openTop), theme); ms.insertBefore(mk('v168MoreTg', 'Telegram alerts', openTg), theme);
+        }
+      }
+      setInterval(() => { try { mount(); } catch (e) { } }, 2000); setTimeout(mount, 1500);
+      W.v168 = { openTop, openTg, mount };
     })();
   </script>
   <script data-module="v142">

@@ -116,6 +116,9 @@ function main(){
   const rankSet=(set)=>BACKTESTED.map(k=>liftOf(set,k)).filter(Boolean).sort((a,b)=>b.lift-a.lift||PRIO[a.k]-PRIO[b.k]);
   const groups=(key,vals)=>Object.fromEntries(vals.map(g=>[g,rankSet(nights.filter(n=>n[key]===g))]));
   const overall=rankSet(nights);
+  // --- RECENT form: the same indicators judged on only the last 30 / 90 nights (small samples, so a lower minimum and a heavier shrink); "caught" = stopped nights the indicator had flagged hot
+  const recentSet=(m)=>{const set=nights.slice(-m);const base=set.filter(n=>n.stop).length;const rows=BACKTESTED.map(k=>{const v=set.filter(n=>n.risk[k]!=null),hot=v.filter(n=>n.risk[k]>=VETO_PCT),cool=v.filter(n=>n.risk[k]<VETO_PCT);if(hot.length<4||cool.length<4)return null;const sh=hot.filter(n=>n.stop).length/hot.length*100,sc=cool.filter(n=>n.stop).length/cool.length*100,lift=(sh-sc)*hot.length/(hot.length+15);return{k,lift:+lift.toFixed(1),hot:+sh.toFixed(1),rest:+sc.toFixed(1),n:hot.length,caught:hot.filter(n=>n.stop).length,stops:base,nights:set.length};}).filter(Boolean).sort((a,b)=>b.lift-a.lift||PRIO[a.k]-PRIO[b.k]);return{from:dkey(set[0].E),to:dkey(set[set.length-1].E),nights:set.length,stops:base,rank:rows};};
+  const recent={d30:recentSet(30),d90:recentSet(90)};
 
   // --- composite weights: backtested lift (floored) + a small bonus for the user's priority; live-only indicators
   //     get the median backtested weight scaled by priority
@@ -161,7 +164,7 @@ function main(){
     order:ORDER.map(([k,l])=>({k,l,prio:PRIO[k],backtested:BACKTESTED.includes(k)})),
     orient:Object.fromEntries(BACKTESTED.map(k=>[k,meta[k].o])), pct:Object.fromEntries(BACKTESTED.map(k=>[k,meta[k].pct])),
     overall, weekday:groups('wd',[1,2,3,4,5]), weekOfMonth:groups('wom',[1,2,3,4,5]), month:groups('mo',[1,2,3,4,5,6,7,8,9,10,11,12]),
-    weights, calibration:cal, composite
+    weights, calibration:cal, composite, recent
   };
   const js=`window.__STRANGLE_INDRANK = ${JSON.stringify(out)};\n`;
   for(const rel of ['../../data/indicator_rank_dynamic.js','../../frontend/public/data/indicator_rank_dynamic.js'])fs.writeFileSync(P(rel),js);
