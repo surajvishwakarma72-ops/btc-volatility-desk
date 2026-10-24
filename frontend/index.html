@@ -48966,7 +48966,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     <table><thead><tr><th>Risk-ADX</th><th>stopped</th><th>avg P&amp;L of credit</th><th>cases</th></tr></thead><tbody>${RMd.oosBands.map(b => `<tr><td class="s">${b.lo}–${b.hi}</td><td class="mono">${b.stop}%</td><td class="mono">${b.pnl >= 0 ? '+' : '−'}${Math.abs(b.pnl)}%</td><td class="mono s">${b.n}</td></tr>`).join('')}</tbody></table>
     <span class="s">Reading it: lower is better, but even the calmest band is stopped 16–18% of the time, so green is "less bad", not safe. The stop rate climbs step by step above 25 and passes 50% above 50.</span>
     ${RMd.journey ? `<table><thead><tr><th>Your journey: New York fear → IV fall or crush → chart</th><th>stopped</th><th>avg P&amp;L</th><th>cases</th></tr></thead><tbody>${RMd.journey.stages.map(r => `<tr><td class="s">${esc(r.label)}</td><td class="mono">${r.stop}%</td><td class="mono">${r.pnl >= 0 ? '+' : '−'}${Math.abs(r.pnl)}%</td><td class="mono s">${r.n}</td></tr>`).join('')}${RMd.journey.confirms.map(r => `<tr><td class="s">chart confirms ${r.confirms} of 4 (IV vs speed &lt; 1, ADX &lt; 25, RV &lt; IV, edge &gt; 0)</td><td class="mono">${r.stop}%</td><td class="mono">${r.pnl >= 0 ? '+' : '−'}${Math.abs(r.pnl)}%</td><td class="mono s">${r.n}</td></tr>`).join('')}<tr><td class="s"><b>GO</b> (≤ 25, not rising, no fear holding, 3+ confirm)</td><td class="mono">${RMd.journey.go.stop}%</td><td class="mono">+${RMd.journey.go.pnl}%</td><td class="mono s">${RMd.journey.go.n}</td></tr><tr><td class="s">everything else</td><td class="mono">${RMd.journey.notGo.stop}%</td><td class="mono">+${RMd.journey.notGo.pnl}%</td><td class="mono s">${RMd.journey.notGo.n}</td></tr></tbody></table>
-    <span class="s">Your read holds up: when IV spiked at the New York open and is still near its peak, nights were stopped far more often. A real fall (IV fading with VoV falling) was calmer, but there are few such cases, so treat it as supported, not proven. A "temporary crush" (IV falling hard while VoV rises) has too few cases (${(RMd.journey.stages.find(x => x.id === 'crush') || {}).n}) to say anything, so the desk only asks you to wait for the chart there. Taking only the first GO hour each night (22:30–01:30 IST) traded ${RMd.journey.nightly.trades} of ${RMd.journey.nightly.nights} nights, ${RMd.journey.nightly.stop}% stopped, total ${RMd.journey.nightly.total} against ${(RMd.strategies[0] || {}).total} for selling every night: fewer trades, fewer stops, and a smaller total.</span>` : ''}
+    <span class="s">Your read holds up: when IV spiked at the New York open and is still near its peak, nights were stopped far more often. A real fall (IV fading with VoV falling) was stopped about as often as a spike that is still high (${(RMd.journey.stages.find(x => x.id === 'real') || {}).stop}% vs ${(RMd.journey.stages.find(x => x.id === 'holding') || {}).stop}%), and there are few such cases, so it is not a reason to relax. A "temporary crush" (IV falling hard while VoV rises) has too few cases (${(RMd.journey.stages.find(x => x.id === 'crush') || {}).n}) to say anything, so the desk only asks you to wait for the chart there. Taking only the first GO hour each night (22:30–01:30 IST) traded ${RMd.journey.nightly.trades} of ${RMd.journey.nightly.nights} nights, ${RMd.journey.nightly.stop}% stopped, total ${RMd.journey.nightly.total} against ${(RMd.strategies[0] || {}).total} for selling every night: fewer trades, fewer stops, and a smaller total.</span>` : ''}
     <span class="s"><b>Weights used</b> (hand-set order: IV vs speed, then ATM IV, then range, then VoV; the sign is whether a high reading was riskier or safer in the data): ${Object.entries(RMd.coef.w).filter(e => e[1]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(e => { const t = Object.values(RMd.coef.w).reduce((x, y) => x + Math.abs(y), 0); return esc(RMd.names[e[0]] || e[0]) + ' ' + (e[1] > 0 ? '+' : '−') + (Math.abs(e[1]) / t * 100).toFixed(0) + '%'; }).join(' · ')}</span>
     <table><thead><tr><th>level now</th><th>falling</th><th>flat</th><th>rising</th></tr></thead><tbody>${RMd.dynamics.map(r => `<tr><td class="s">${r.level}</td>${['falling', 'flat', 'rising'].map(d => `<td class="mono">${r[d].stop}% <span class="s">(${r[d].n})</span></td>`).join('')}</tr>`).join('')}</tbody></table>
     <span class="s">Stopped % by level and the 3-hour direction. 20 falling toward 0 and 20 rising toward 25 are not the same: rising from 20–25 is stopped ${RMd.dynamics[2].rising.stop}% vs ${RMd.dynamics[2].falling.stop}% falling and ${RMd.dynamics[2].flat.stop}% steady. Very calm and still falling (0–10) is the best case at ${RMd.dynamics[0].falling.stop}%.</span>
@@ -50316,6 +50316,51 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }, true);
       setInterval(() => { try { ensure(); } catch (e) { } }, 5000); setTimeout(ensure, 4000); setTimeout(ensure, 9000);
       W.v159 = { ensure, data };
+    })();
+  </script>
+  <script data-module="v160">
+    /* v160 (24 Oct 2026) · Telegram message when the Entry Gauge changes colour (or a big-move burst starts).
+       Uses the bot token + chat id already saved in the bell (Vol turn) settings. It runs in the open desk page, so keep the page open on a phone or PC. */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id), SK = 'v160_tg', LK = 'v160_last';
+      const LSg = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+      const LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+      const creds = () => { const p = LSg('vt_alert_prefs_v1', {}) || {}, tok = (p.tgToken || '').trim(), chat = (p.tgChat || '').trim(); return /^\d+:[\w-]{20,}$/.test(tok) && chat ? { tok, chat } : null; };
+      const on = () => LSg(SK, false) === true;
+      const EMO = { green: '🟢', yellow: '🟡', red: '🔴' }, NAME = { green: 'GO', yellow: 'CAUTION', red: 'WAIT' };
+      async function send(text) {
+        const c = creds(); if (!c) return 'setup';
+        try { await fetch(`https://api.telegram.org/bot${c.tok}/sendMessage`, { method: 'POST', mode: 'no-cors', body: new URLSearchParams({ chat_id: c.chat, text }) }); return 'sent'; } catch (e) { return 'fail'; }
+      }
+      const ist = () => new Date(Date.now() + 19800000).toISOString().slice(11, 16) + ' IST';
+      let cand = null, candN = 0, lastSent = 0;
+      function tick() {
+        if (!on()) return;
+        const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; if (!V || !V.color) return;
+        const key = V.color + (V.burst ? ':' + V.burst : ''), prev = LSg(LK, null);
+        if (key === (prev && prev.key)) { cand = null; candN = 0; return; }
+        if (cand !== key) { cand = key; candN = 1; return; }          // a change must hold for 2 checks (about 40 s), so flicker is not sent
+        if (++candN < 2) return;
+        LSs(LK, { key, at: Date.now() }); cand = null; candN = 0;
+        if (!prev) return;                                              // first run only records the starting colour
+        if (Date.now() - lastSent < 120000) return; lastSent = Date.now();
+        const from = prev.key.split(':')[0], to = V.color, why = V.why && V.why[0] ? '\nWaiting for: ' + V.why[0] : '';
+        const head = to !== from ? `${EMO[to]} Entry Gauge ${NAME[from] || from} → ${NAME[to]} (${Math.round(V.L)})` : `⚡ Big-move burst (${V.burst}) while gauge is ${NAME[to]} (${Math.round(V.L)})`;
+        const verdict = to === 'green' ? 'GO zone: entry allowed if the other checks agree.' : to === 'red' ? 'Do not sell. If short, check your legs.' : 'Not green: wait.';
+        send(`${head}\n${ist()}\n${verdict}${why}`);
+      }
+      function ui() {
+        const pop = $('v159Pop'); if (!pop || pop.hidden || pop.querySelector('.v160')) return;
+        const d = D.createElement('div'); d.className = 'r v160';
+        const c = creds();
+        d.innerHTML = `<div class="t">Telegram alerts</div><div style="display:flex;gap:8px;align-items:center;margin-top:4px"><button type="button" id="v160T" style="flex:1;height:34px;border-radius:10px;border:1px solid var(--line,#ddd);background:${on() ? '#15803D' : 'transparent'};color:${on() ? '#fff' : 'inherit'};font:800 12px var(--font)">${on() ? 'Gauge alerts ON' : 'Gauge alerts OFF'}</button><button type="button" id="v160X" style="height:34px;padding:0 12px;border-radius:10px;border:1px solid var(--line,#ddd);background:transparent;color:inherit;font:700 12px var(--font)">Test</button></div><div class="cap" id="v160M">${c ? 'Sends a message when the gauge turns green, yellow or red, or a big-move burst starts. Needs this page open.' : 'Add your bot token and chat id first: bell icon → Send to → Telegram bot.'}</div>`;
+        pop.appendChild(d);
+        $('v160T').onclick = () => { LSs(SK, !on()); if (on()) { const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; if (V) LSs(LK, { key: V.color + (V.burst ? ':' + V.burst : ''), at: Date.now() }); } d.remove(); ui(); };
+        $('v160X').onclick = async () => { const r = await send('✅ Entry Gauge test from your desk. Telegram alerts work.'); $('v160M').textContent = r === 'sent' ? 'Test message sent. Check Telegram.' : r === 'setup' ? 'Add your bot token and chat id first (bell icon → Send to → Telegram bot).' : 'Could not send.'; };
+      }
+      setInterval(() => { try { tick(); ui(); } catch (e) { } }, 20000);
+      D.addEventListener('click', () => setTimeout(() => { try { ui(); } catch (e) { } }, 80), true);
+      W.v160 = { tick, send, on };
     })();
   </script>
   <script data-module="v142">
