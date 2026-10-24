@@ -48108,13 +48108,13 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
          Data: data/n2n_iv_path.js (Delta N2N straddle IV, 2.6 years, about 135 nights per weekday). Base = the IV at 19:30 IST, the first
          hourly sample after the 19:00 NY open. Honest note: in that backtest what IV did before 22:30 did NOT predict what it did after
          (correlation 0.03), so this level is information about the usual shape, not a rule. */
-      function n2nUsual(e, R, a) {
-        const U = W.__N2N_IV_PATH; if (!U || !U.byWd || !a || !a.length) return null; if (!(R && R.F && R.F.n2n === e)) return null;
+      function n2nUsual(e, R, a, force) {
+        const U = W.__N2N_IV_PATH; if (!U || !U.byWd || !a || !a.length) return null; if (!force && !(R && R.F && R.F.n2n === e)) return null;
         const t = new Date(Date.now() + IST), day = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate())); if (t.getUTCHours() < 7) day.setUTCDate(day.getUTCDate() - 1);
         const wd = day.getUTCDay(), P = U.byWd[wd]; if (!P) return null; const tBase = day.getTime() - IST + (19 * 60 + 30) * 60000;     // 19:30 IST in UTC ms
         const j = lower(a, Math.floor(tBase / 1000)); if (j >= a.length) return null; const base = pct(a[j][4]); if (base == null) return null;
         const at = h => { if (h <= 0) return 0; if (h >= 12) return P.med[12]; const i = Math.floor(h); return P.med[i] + (P.med[i + 1] - P.med[i]) * (h - i); };
-        const h = (Date.now() - tBase) / HR, last = a[a.length - 1], cur = pct(last[4]);
+        const h = (Date.now() - tBase) / HR, nowS = Math.floor(Date.now() / 1000), kk = Math.max(0, lower(a, nowS + 1) - 1), last = a[kk], cur = pct(last[4]);
         return { P, wd, base, tBase, at, h, cur, fell: cur != null ? (cur / base - 1) * 100 : null };
       }
       function usedChip(u) {
@@ -50613,6 +50613,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         #v164Lvl .r2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:500 10px var(--font);color:var(--muted,#667085);margin-top:1px}`;
       D.head.appendChild(css);
       const NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], f = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%';
+      /* the N2N daily expiry key (3rd daily expiry; the list rolls at 17:30 IST), same rule as the plan frame */
+      function n2nKey() { const base = Math.floor((Date.now() + IST - 17.5 * HR) / 86400000); return new Date((base + 3) * 86400000).toISOString().slice(0, 10); }
       function tonight() {
         const t = new Date(Date.now() + IST), h = t.getUTCHours() + t.getUTCMinutes() / 60; let wd = t.getUTCDay(), day = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
         if (h < 7) { wd = (wd + 6) % 7; day -= 86400000; }           // before 07:00 it is still last night
@@ -50629,7 +50631,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (!iv.classList.contains('v164in')) { iv.classList.add('v164in'); kick(); try { W.dispatchEvent(new Event('resize')); } catch (e) { } }
         const T = tonight(), P = U.byWd[T.wd]; if (!P) { box.hidden = true; return; }
         const tot = P.med[12], by2230 = P.med[3], note = 'Backtest: Delta N2N IV, 2.6 years, about ' + P.n + ' nights for this weekday. Usual fall from the NY open (19:30 IST) to 07:30 IST: ' + f(tot) + ', of which ' + f(by2230) + ' by 22:30. Used = fall so far / usual total fall. What IV did before 22:30 did not predict what it did after (correlation 0.03), so this is the usual shape, not a rule.';
-        let live = null; try { const R = W.v121 && W.v121.last, tst = W.v138 && W.v138.__test; if (R && R.F && R.F.n2n && tst) { const u = tst.n2nUsual(R.F.n2n, R, tst.ivCandles(R.F.n2n)); if (u && u.h >= 0 && u.h <= 12.5 && u.fell != null && tot <= -1) live = u; } } catch (e) { }
+        let live = null; try { const tst = W.v138 && W.v138.__test, key = n2nKey(); if (tst && key) { const u = tst.n2nUsual(key, null, tst.ivCandles(key), true); if (u && u.h >= 0 && u.h <= 12.5 && u.fell != null && tot <= -1) live = u; } } catch (e) { }
         let html;
         if (live) {
           const used = Math.max(0, live.fell / tot * 100), room = Math.max(0, 100 - used), now = live.at(live.h), nowPct = Math.max(0, Math.min(100, now / tot * 100)), col = used >= 100 ? '#C53030' : used >= 70 ? '#D69E2E' : '#15803D';
