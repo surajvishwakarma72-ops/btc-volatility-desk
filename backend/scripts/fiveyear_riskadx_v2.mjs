@@ -551,6 +551,34 @@ function main(){
    console.log(' STRICTER GREEN? green hours split by the risk-model score at entry (0 = calmest)');
    const G=O.filter(r=>r.color==='green');row('green, all',G);for(const t of [4,8,12,16,20])row('green and model score <= '+t,G.filter(r=>r.sc<=t));row('green and model score > 12',G.filter(r=>r.sc>12));
    row('yellow, all',O.filter(r=>r.color==='yellow'));row('yellow and model score <= 8',O.filter(r=>r.color==='yellow'&&r.sc<=8));row('red, all',O.filter(r=>r.color==='red'));row('red and rising only',O.filter(r=>r.color==='red'&&r.rising));row('red and not rising',O.filter(r=>r.color==='red'&&!r.rising));}
+  /* ---------- DAY BY DAY, five years: the gauge colour at 22:30 IST, how far BTC moved one way, and how DVOL (the IV proxy) moved over the hold ---------- */
+  const daily=(()=>{
+    const DN=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],rows=[];
+    const iv1=(E)=>dh.get(E)>0?dh.get(E):null;
+    for(const r of moves._rows){ if(r.k!==0)continue;
+      const E=r.E,iv0=iv1(E);if(!(iv0>0))continue;let ivEnd=null,mx=iv0,mn=iv0,n=0;
+      for(let h=1;h<=8;h++){const v=iv1(E+h*HOUR);if(v>0){ivEnd=v;if(v>mx)mx=v;if(v<mn)mn=v;n++;}}
+      if(n<6||ivEnd==null)continue;
+      const dI=ivEnd-iv0,up=r.up/r.S0*100,dn=r.dn/r.S0*100;
+      rows.push({d:dkey(E),wd:new Date(E).getUTCDay(),yr:r.yr,color:r.color,L:Math.round(r.L),S0:Math.round(r.S0),up:+up.toFixed(2),dn:+dn.toFixed(2),big09:Math.max(up,dn)>=0.9,pts800:r.up>=800||r.dn>=800,iv0:+iv0.toFixed(1),ivEnd:+ivEnd.toFixed(1),dI:+dI.toFixed(1),dIpct:+(dI/iv0*100).toFixed(1),maxRise:+(mx-iv0).toFixed(1),maxFall:+(mn-iv0).toFixed(1),stop:!!r.stop,pnl:r.s?+r.s.final.toFixed(1):null,oos:r.oos});}
+    const dis=rows.map(x=>x.dI).sort((a,b)=>a-b);const q=p=>+quant(dis,p).toFixed(2);
+    const TH=[2,4];const isRise=(x,t)=>x.dI>=t,isFall=(x,t)=>x.dI<=-t;
+    const pc=(a,f)=>a.length?+(a.filter(f).length/a.length*100).toFixed(1):null;
+    const sum=a=>({n:a.length,red:pc(a,x=>x.color==='red'),yellow:pc(a,x=>x.color==='yellow'),green:pc(a,x=>x.color==='green'),big09:pc(a,x=>x.big09),pts800:pc(a,x=>x.pts800),stop:pc(a,x=>x.stop),avgDI:a.length?+(a.reduce((t,x)=>t+x.dI,0)/a.length).toFixed(2):null,rise2:pc(a,x=>isRise(x,2)),fall2:pc(a,x=>isFall(x,2)),rise4:pc(a,x=>isRise(x,4)),fall4:pc(a,x=>isFall(x,4)),avgMove:a.length?+(a.reduce((t,x)=>t+Math.max(x.up,x.dn),0)/a.length).toFixed(2):null});
+    const byWd=[1,2,3,4,5].map(w=>({wd:w,name:DN[w],...sum(rows.filter(x=>x.wd===w))}));
+    const byYear=[2021,2022,2023,2024,2025,2026].map(y=>({year:y,oos:y>=2023,...sum(rows.filter(x=>x.yr===y))}));
+    const byColor=['red','yellow','green'].map(c=>({color:c,...sum(rows.filter(x=>x.color===c))}));
+    const byColorOos=['red','yellow','green'].map(c=>({color:c,...sum(rows.filter(x=>x.color===c&&x.oos))}));
+    // does a big IV rise / fall coincide with a big price move, and what happens to the strangle?
+    const ivEff=[['IV rose 2+ pts',x=>isRise(x,2)],['IV rose 4+ pts',x=>isRise(x,4)],['IV flat (within 2 pts)',x=>Math.abs(x.dI)<2],['IV fell 2+ pts',x=>isFall(x,2)],['IV fell 4+ pts',x=>isFall(x,4)]].map(([nm,f])=>({name:nm,...sum(rows.filter(f))}));
+    console.log('DAY BY DAY: '+rows.length+' nights; DVOL change over the 8-hour hold, percentiles 5/25/50/75/95: '+[5,25,50,75,95].map(q).join(' / ')+' points');
+    console.log('  by weekday:');for(const w of byWd)console.log('   '+w.name+' n '+w.n+'  red '+w.red+'% yellow '+w.yellow+'% green '+w.green+'%  0.9% move '+w.big09+'%  800pts '+w.pts800+'%  stopped '+w.stop+'%  avg IV change '+w.avgDI+'  IV +2 '+w.rise2+'%  IV -2 '+w.fall2+'%  IV +4 '+w.rise4+'%  IV -4 '+w.fall4+'%');
+    console.log('  by year:');for(const w of byYear)console.log('   '+w.year+' n '+w.n+'  red '+w.red+'% green '+w.green+'%  0.9% move '+w.big09+'%  stopped '+w.stop+'%  avg IV change '+w.avgDI+'  IV +2 '+w.rise2+'%  IV -2 '+w.fall2+'%');
+    console.log('  by gauge colour at 22:30 (all five years):');for(const w of byColor)console.log('   '+w.color+' n '+w.n+'  0.9% move '+w.big09+'%  stopped '+w.stop+'%  avg IV change '+w.avgDI+'  IV +2 '+w.rise2+'%  IV -2 '+w.fall2+'%  IV +4 '+w.rise4+'%  IV -4 '+w.fall4+'%');
+    console.log('  by IV outcome:');for(const w of ivEff)console.log('   '+w.name.padEnd(24)+' n '+String(w.n).padStart(4)+'  0.9% move '+w.big09+'%  800pts '+w.pts800+'%  stopped '+w.stop+'%');
+    const comp=rows.map(x=>[x.d,x.wd,x.color[0],x.L,x.S0,x.up,x.dn,x.iv0,x.ivEnd,x.dI,x.maxRise,x.maxFall,x.stop?1:0,x.pnl,x.oos?1:0]);
+    return {rows:comp,fields:['date','weekday','colour','level','price','upPct','downPct','iv0','ivEnd','dIv','maxRise','maxFall','stopped','pnlPct','oos'],percentiles:{p5:q(5),p25:q(25),p50:q(50),p75:q(75),p95:q(95)},byWd,byYear,byColor,byColorOos,ivEff,generated:dkey(Date.now()),note:'DVOL (Deribit 30-day BTC volatility index) is the IV proxy for the 5 years; it is not your Delta ATM IV. Entry = 22:30 IST hour; moves and IV change are measured to 8 hours later (about 07:00 IST).'};
+  })();
   moves.refit=refit;gauge.moves=(({_rows,...r})=>r)(moves);
   gauge.learner=learner;
   gauge.reliability=reliability;
@@ -567,6 +595,7 @@ function main(){
     dynamics:dyn,strategies:res,exit:exitRows,regimes:regimeRows,journey,gauge,sessions,patterns:patternRows};
   const js=`window.__STRANGLE_RISKMODEL = ${JSON.stringify(out)};\n`;
   if(!process.env.NOWRITE)for(const rel of ['../../data/risk_model.js','../../frontend/public/data/risk_model.js'])fs.writeFileSync(P(rel),js);
+  if(!process.env.NOWRITE){const dj='window.__STRANGLE_DAILY = '+JSON.stringify(daily)+';\n';for(const rel of ['../../data/daily_gauge.js','../../frontend/public/data/daily_gauge.js'])fs.writeFileSync(P(rel),dj);}
   console.log('\nlogistic weights (on centred percentile rank; + = riskier):',JSON.stringify(out.coef.w),'calibration',JSON.stringify(cal));
 }
 main();
