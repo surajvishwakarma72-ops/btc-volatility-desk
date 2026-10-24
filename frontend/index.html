@@ -50911,7 +50911,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       function card(L, side) {
         const c = L.best, nm = side === 'C' ? 'CALL' : 'PUT', col = side === 'C' ? GREEN : REDC;
-        if (!c) return `<div class="cd"><div class="tt"><span style="color:${col}">${nm}</span></div><div class="big" style="font-size:15px;margin-top:8px">No strike up to Δ 0.15 is listed yet</div><div class="sub" style="font:500 11px/1.4 var(--font);opacity:.75;margin-top:6px">${L.above ? 'Nearest listed is ' + L.above.K + ' at Δ ' + L.above.delta.toFixed(2) + ', above your limit, so it is not used. A new expiry lists a narrow range first; wider strikes appear later.' : 'Nothing listed on this side.'}</div></div>`;
+        if (!c) return `<div class="cd"><div class="tt"><span style="color:${col}">${nm}</span></div><div class="big" style="font-size:15px;margin-top:8px">No strike up to Δ 0.15 is listed yet</div><div class="sub" style="font:500 11px/1.4 var(--font);opacity:.75;margin-top:6px">${L.above ? 'Nearest listed is ' + L.above.K + ' at Δ ' + L.above.delta.toFixed(3) + ', just above your 0.15 limit, so it is not used. A new expiry lists a narrow range first; wider strikes appear later.' : 'Nothing listed on this side.'}</div></div>`;
         const g = c.Prv == null ? null : Math.max(0, Math.min(100, c.Prv / c.mark * 100)), richer = c.rich != null && c.rich > 0;
         const sh = Math.abs(c.dPart) + Math.abs(c.gPart) + Math.abs(c.vPart) || 1, sp = v => Math.abs(v) / sh * 100;
         const risk = c.pTouch, rcol = risk < 0.12 ? GREEN : risk < 0.25 ? AMBER : REDC;
