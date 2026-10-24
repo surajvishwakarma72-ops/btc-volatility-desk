@@ -49804,6 +49804,116 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       document.addEventListener('change', e => { const t = e.target; if (!t || !t.id) return; const F = st(); if (t.id === 'v155yr') { F.year = +t.value; redraw(); } else if (t.id === 'v155big') { F.big = t.checked; redraw(); } else if (t.id === 'v155mv') { F.move = t.checked; redraw(); } }, true);
     })();
   </script>
+  <script data-module="v156">
+    /* v156 (24 Oct 2026) · the Decision page in pictures. One tap switches between PICTURES (this) and DETAILS (the old words and tables).
+       Nothing new is computed: every picture reads the same live gauge, gate and 5-year files the tables read. */
+    (function () {
+      const W = window, D = document, MODE = 'v156_mode', $ = id => D.getElementById(id);
+      const LSg = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, LSs = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+      let mode = LSg(MODE, 'pics'); const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const GR = '#15803D', AM = '#D69E2E', RD = '#C53030', BL = '#2B6CB0', GY = '#9AA7B4', CMAP = { g: GR, r: RD, a: AM, b: BL, n: GY };
+      const css = D.createElement('style'); css.textContent = `
+        #pgDecision.v156-pics > :not(#v156Vis){display:none!important}
+        #v156Vis .vc{background:var(--panel,#fff);border:1px solid var(--line,#e5e7eb);border-radius:14px;padding:12px;margin:8px 0}
+        #v156Vis .vt{font:700 11px var(--font);letter-spacing:.07em;color:var(--muted,#667085);text-transform:uppercase;margin-bottom:6px}
+        #v156Vis .vcap{font:500 12px/1.35 var(--font);color:var(--muted,#667085);margin-top:6px}
+        #v156Vis .vbar{display:flex;gap:6px;align-items:center;justify-content:space-between;margin:2px 0 8px}
+        #v156Vis .vbar button{font:700 12px var(--font);padding:7px 12px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer}
+        #v156Vis .vbar button.on{background:#2F7CC0;border-color:#2F7CC0;color:#fff}
+        #v156Vis .chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+        #v156Vis .chip{display:inline-flex;gap:6px;align-items:center;font:600 12px var(--font);padding:5px 9px;border-radius:999px;border:1px solid var(--line,#ddd);background:var(--panel2,transparent)}
+        #v156Vis .chip i{width:10px;height:10px;border-radius:50%;display:inline-block}
+        #v156Vis .dots{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+        #v156Vis .dots span{display:flex;gap:5px;align-items:center;font:600 11px var(--font);color:var(--text,#111)}
+        #v156Vis .dots i{width:13px;height:13px;border-radius:50%;display:inline-block;flex:none}
+        #v156Vis svg{width:100%;height:auto;display:block}
+        #v156Vis svg text{font-family:var(--font),system-ui,sans-serif;fill:var(--text,#111)}`;
+      D.head.appendChild(css);
+
+      /* ---------- small drawing helpers ---------- */
+      function dial(L, col) {
+        const cx = 110, cy = 108, r = 90, w = 20, pol = (a, rr) => [cx + rr * Math.cos(a * Math.PI / 180), cy - rr * Math.sin(a * Math.PI / 180)];
+        const arc = (l0, l1, c) => { const a0 = 180 - l0 * 1.8, a1 = 180 - l1 * 1.8, P0 = pol(a0, r), P1 = pol(a1, r), P2 = pol(a1, r - w), P3 = pol(a0, r - w); return `<path d="M${P0[0].toFixed(1)} ${P0[1].toFixed(1)} A${r} ${r} 0 0 1 ${P1[0].toFixed(1)} ${P1[1].toFixed(1)} L${P2[0].toFixed(1)} ${P2[1].toFixed(1)} A${r - w} ${r - w} 0 0 0 ${P3[0].toFixed(1)} ${P3[1].toFixed(1)} Z" fill="${c}" opacity=".9"/>`; };
+        const aN = 180 - Math.max(0, Math.min(100, L)) * 1.8, tip = pol(aN, r - 6);
+        return `<svg viewBox="0 0 220 124" role="img" aria-label="gauge level ${Math.round(L)}"><path d="M20 108 A90 90 0 0 1 200 108" fill="none"/>${arc(0, 34, GR)}${arc(34, 66, AM)}${arc(66, 100, RD)}<line x1="${cx}" y1="${cy}" x2="${tip[0].toFixed(1)}" y2="${tip[1].toFixed(1)}" stroke="#111" stroke-width="4" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="7" fill="#111"/><text x="14" y="122" font-size="11" font-weight="700" fill="${GR}">GO</text><text x="206" y="122" font-size="11" font-weight="700" text-anchor="end" fill="${RD}">WAIT</text><text x="${cx}" y="84" font-size="30" font-weight="800" text-anchor="middle" fill="${col}">${Math.round(L)}</text></svg>`;
+      }
+      function bars(items, o) {
+        o = o || {}; const n = items.length, H = o.h || 120, Wd = o.w || 300, pad = 26, bw = Math.min(54, (Wd - 10) / n - 10), mx = o.max || Math.max(1, ...items.map(i => i.v)) * 1.15, gap = (Wd - n * bw) / (n + 1);
+        let g = `<line x1="0" y1="${H - 24}" x2="${Wd}" y2="${H - 24}" stroke="#8884" />`;
+        if (o.ref != null) { const y = H - 24 - (o.ref / mx) * (H - 24 - pad); g += `<line x1="0" y1="${y}" x2="${Wd}" y2="${y}" stroke="#888" stroke-dasharray="4 4"/><text x="${Wd - 2}" y="${y - 3}" font-size="9" text-anchor="end" opacity=".7">${o.refLab || 'average'}</text>`; }
+        items.forEach((it, i) => { const x = gap + i * (bw + gap), h = Math.max(1, (it.v / mx) * (H - 24 - pad)), y = H - 24 - h; g += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="5" fill="${it.c}"${it.hi ? ' stroke="#111" stroke-width="2.5"' : ''}/><text x="${(x + bw / 2).toFixed(1)}" y="${(y - 5).toFixed(1)}" font-size="12" font-weight="800" text-anchor="middle">${it.t != null ? it.t : it.v + (o.unit || '%')}</text><text x="${(x + bw / 2).toFixed(1)}" y="${H - 9}" font-size="10.5" text-anchor="middle">${esc(it.l)}</text>${it.s ? `<text x="${(x + bw / 2).toFixed(1)}" y="${H + 3}" font-size="8.5" text-anchor="middle" opacity=".6">${esc(it.s)}</text>` : ''}`; });
+        return `<svg viewBox="0 0 ${Wd} ${H + 8}" role="img">${g}</svg>`;
+      }
+      function curve(bins) {
+        const Wd = 300, H = 140, L0 = 28, R0 = 8, T0 = 10, B0 = 26, mx = 50, X = v => L0 + v / 100 * (Wd - L0 - R0), Y = v => H - B0 - Math.min(v, mx) / mx * (H - B0 - T0);
+        let g = `<rect x="${X(0)}" y="${T0}" width="${X(34) - X(0)}" height="${H - B0 - T0}" fill="${GR}" opacity=".13"/><rect x="${X(34)}" y="${T0}" width="${X(66) - X(34)}" height="${H - B0 - T0}" fill="${AM}" opacity=".12"/><rect x="${X(66)}" y="${T0}" width="${X(100) - X(66)}" height="${H - B0 - T0}" fill="${RD}" opacity=".13"/>`;
+        for (const v of [0, 10, 20, 30, 40, 50]) g += `<line x1="${L0}" y1="${Y(v)}" x2="${Wd - R0}" y2="${Y(v)}" stroke="#8883"/><text x="${L0 - 4}" y="${Y(v) + 3}" font-size="9" text-anchor="end" opacity=".7">${v}%</text>`;
+        const pts = bins.map(b => [X(b.lo + 5), Y(b.stop)]); g += `<polyline points="${pts.map(q => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ')}" fill="none" stroke="#111" stroke-width="2.5"/>` + pts.map(q => `<circle cx="${q[0].toFixed(1)}" cy="${q[1].toFixed(1)}" r="3.5" fill="#111"/>`).join('');
+        g += [0, 34, 66, 100].map(v => `<text x="${X(v)}" y="${H - 10}" font-size="9.5" text-anchor="middle" opacity=".75">${v}</text>`).join('') + `<text x="${X(17)}" y="${H - B0 - 4}" font-size="9" text-anchor="middle" fill="${GR}" font-weight="700">GO</text><text x="${X(83)}" y="${T0 + 10}" font-size="9" text-anchor="middle" fill="${RD}" font-weight="700">WAIT</text>`;
+        return `<svg viewBox="0 0 ${Wd} ${H}" role="img">${g}</svg>`;
+      }
+      let HEAT = null;
+      function heat(DY) {
+        if (HEAT) return HEAT; const cell = 5.4, gap = 1.2, left = 26, yrs = [2021, 2022, 2023, 2024, 2025, 2026], rowH = 5 * (cell + gap) + 12, Wd = left + 53 * (cell + gap) + 4, Ht = yrs.length * rowH + 4;
+        const doy = d => Math.floor((Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10)) - Date.UTC(+d.slice(0, 4), 0, 1)) / 864e5);
+        let g = ''; yrs.forEach((y, yi) => { const y0 = yi * rowH + 10; g += `<text x="0" y="${y0 + 14}" font-size="10" font-weight="700">${y}</text>`; for (const r of DY.rows) { if (r[0].slice(0, 4) !== String(y)) continue; const col = Math.min(52, Math.floor(doy(r[0]) / 7)), row = r[1] - 1; if (row < 0 || row > 4) continue; const x = left + col * (cell + gap), yy = y0 + row * (cell + gap), c = r[12] ? RD : GR, big = Math.abs(r[9]) >= 2; g += `<rect x="${x.toFixed(1)}" y="${yy.toFixed(1)}" width="${cell}" height="${cell}" rx="1.2" fill="${c}"${big ? ` stroke="${BL}" stroke-width="1.3"` : ''}/>`; } });
+        HEAT = `<svg viewBox="0 0 ${Wd.toFixed(0)} ${Ht}" role="img">${g}</svg>`; return HEAT;
+      }
+
+      /* ---------- the page ---------- */
+      function ist() { const t = new Date(Date.now() + 19800000); return { wd: t.getUTCDay(), h: t.getUTCHours(), m: t.getUTCMinutes() }; }
+      function nextEntry() { const t = ist(), mins = t.h * 60 + t.m; let d = 22 * 60 + 30 - mins; if (d < 0) d += 1440; return d; }
+      const short = (x, n) => { x = String(x || ''); return x.length > n ? x.slice(0, n - 1) + '…' : x; };
+      function build() {
+        const RMd = W.__STRANGLE_RISKMODEL, DY = W.__STRANGLE_DAILY; if (!RMd) return '<div class="vc">Loading the 5-year numbers…</div>';
+        const V = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; let d = null; try { d = W.v139 && W.v139.decide ? W.v139.decide() : null; } catch (e) { }
+        const G = RMd.gauge || {}, Z = G.variants && G.variants.V10, zones = Z ? Z.zones : [], zc = c => zones.find(z => z.color === c) || {}, mv = G.moves && G.moves.grid && G.moves.grid.find(x => x.hours === 1 && x.pct < 1) || {};
+        const live = V && (V.phase === 'entry' || V.phase === 'hold'), L = V ? V.L : 0, lc = !V ? GY : !live ? GY : V.color === 'green' ? GR : V.color === 'red' ? RD : AM;
+        const vw = d ? d.w : '…', vc = d ? (CMAP[d.c] || GY) : GY, reason = d && d.why && d.why[0] ? short(d.why[0], 90) : '';
+        // chips
+        const t = ist(), nowWd = t.h < 7 ? (t.wd + 6) % 7 : t.wd, FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'], wdRow = DY && DY.byWd ? DY.byWd.find(x => x.wd === nowWd) : null;
+        const mins = nextEntry(), win = !V ? ['…', GY] : V.phase === 'entry' ? ['Entry window OPEN', GR] : V.phase === 'hold' ? ['Holding hours', BL] : V.phase === 'ny' ? ['NY open: wait', AM] : ['No entry now · opens in ' + Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm', GY];
+        let iv = null; try { const C = typeof desk === 'object' && desk ? desk.check : null; if (C && Number.isFinite(C.iv) && C.iv > 0) iv = C.iv < 3 ? C.iv * 100 : C.iv; } catch (e) { }
+        const DS = W.__SHADOW_BACKTEST_DATA, TR = DS && DS.sessions ? DS.sessions.filter(x => x.baselineAction === 'TRADE' && x.iv > 0) : [], BK = [[0, 20], [20, 25], [25, 30], [30, 35], [35, 40], [40, 50], [50, 99]];
+        const ivRows = BK.map(([lo, hi]) => { const a = TR.filter(x => x.iv >= lo && x.iv < hi); return { lo, hi, n: a.length, st: a.length ? a.filter(x => x.stoppedAt2x).length / a.length * 100 : null, pnl: a.length ? a.reduce((q, x) => q + x.baselinePnl, 0) / a.length : null, cr: a.length ? a.reduce((q, x) => q + x.cr, 0) / a.length : null }; });
+        const cur = iv != null ? ivRows.find(r => iv >= r.lo && iv < r.hi) : null, ivTone = !cur || cur.n < 15 ? [GY, 'few past trades'] : cur.cr < 250 ? [AM, 'thin credit'] : cur.st <= 8 ? [GR, 'good range'] : [AM, 'more stops'];
+        const news = d && d.checks ? d.checks.find(c => /News/.test(c[0])) : null, imp = V && V.imp ? V.imp : null;
+        const chips = [[win[0], win[1]], wdRow ? [FULL[nowWd] + ': ' + wdRow.stop + '% stopped', wdRow.stop <= 20 ? GR : wdRow.stop >= 28 ? RD : AM] : null, iv != null ? ['IV ' + iv.toFixed(0) + '%: ' + ivTone[1], ivTone[0]] : null, news ? ['News ' + (news[1] ? 'clear' : 'event soon'), news[1] ? GR : RD] : null, imp && imp.ok ? [imp.level >= 2 ? 'BTC moving fast' : imp.level === 1 ? 'Speed rising' : 'BTC calm', imp.level >= 2 ? RD : imp.level === 1 ? AM : GR] : null].filter(Boolean);
+        const CK = [['spd', 'Speed'], ['model', 'Model'], ['fear', 'NY fear'], ['rise', 'Rising'], ['vov', 'VoV'], ['rv', 'RV'], ['edge', 'Edge'], ['adx', 'ADX']];
+        const dots = V && V.soft ? CK.map(([k, lab]) => { const v = V.soft[k]; return `<span><i style="background:${v < 0.2 ? GR : v < 0.5 ? AM : RD}"></i>${lab}</span>`; }).join('') : '';
+        const wdBars = DY && DY.byWd ? bars(DY.byWd.map(w => ({ l: w.name, v: w.stop, c: w.stop <= 20 ? GR : w.stop >= 28 ? RD : AM, hi: w.wd === nowWd })), { ref: DY.rows ? +(DY.byWd.reduce((q, w) => q + w.stop * w.n, 0) / DY.byWd.reduce((q, w) => q + w.n, 0)).toFixed(1) : null }) : '';
+        const ie = DY && DY.ivEff ? DY.ivEff : [], ivBars = ie.length ? bars([{ l: 'IV up 2+', v: ie[0].stop, c: RD, s: ie[0].n + ' nights' }, { l: 'flat', v: ie[2].stop, c: GR, s: ie[2].n + ' nights' }, { l: 'IV down 2+', v: ie[3].stop, c: RD, s: ie[3].n + ' nights' }], { max: 80 }) : '';
+        const rangeBars = ivRows.some(r => r.n) ? bars(ivRows.map(r => ({ l: r.lo + '-' + r.hi, v: r.st == null ? 0 : +r.st.toFixed(1), c: r.n < 15 ? GY : r.st <= 8 ? GR : AM, s: 'n' + r.n, hi: cur === r })), { max: 25, w: 330 }) : '';
+        const colBars = zones.length ? bars(['green', 'yellow', 'red'].map(c => ({ l: c.toUpperCase(), v: zc(c).stop, c: c === 'green' ? GR : c === 'red' ? RD : AM, s: Math.round(zc(c).shareEntry) + '% of hours' })), { max: 40 }) : '';
+        const mvBars = mv.red != null ? bars([{ l: 'GREEN', v: mv.green, c: GR }, { l: 'YELLOW', v: mv.yellow, c: AM }, { l: 'RED', v: mv.red, c: RD }], { max: 35 }) : '';
+        const cal = G.reliability ? curve(G.reliability.bins) : '';
+        return `<div class="vc"><div class="vt">Tonight</div>
+          <div style="display:flex;gap:10px;align-items:center"><div style="flex:1.05">${dial(L, lc)}</div><div style="flex:1;text-align:center"><div style="font:800 34px var(--font);color:${vc};line-height:1">${esc(vw)}</div><div style="font:600 12px/1.35 var(--font);margin-top:6px">${esc(reason)}</div></div></div>
+          <div class="dots">${dots}</div><div class="chips">${chips.map(c => `<span class="chip"><i style="background:${c[1]}"></i>${esc(c[0])}</span>`).join('')}</div>
+          <div class="vcap">The needle is the Entry Gauge: left = GO, right = WAIT. Dots: green fine, amber so-so, red failing.</div></div>
+        ${colBars ? `<div class="vc"><div class="vt">How often a leg was stopped, by gauge colour</div>${colBars}<div class="vcap">5 years, 2023–26 out-of-sample. Lower is better.</div></div>` : ''}
+        ${mvBars ? `<div class="vc"><div class="vt">BTC moved 0.9% within the first hour</div>${mvBars}<div class="vcap">Share of entries followed by a fast move. Green hours see it far less often.</div></div>` : ''}
+        ${wdBars ? `<div class="vc"><div class="vt">Which night is safest (stopped %)</div>${wdBars}<div class="vcap">Dashed line = average. Outlined bar = tonight.</div></div>` : ''}
+        ${ivBars ? `<div class="vc"><div class="vt">What IV did overnight (stopped %)</div>${ivBars}<div class="vcap">A big IV jump up or down went with a big BTC move. Flat IV = calm night.</div></div>` : ''}
+        ${rangeBars ? `<div class="vc"><div class="vt">Your ATM IV range (stopped %, your 1 year)</div>${rangeBars}<div class="vcap">${iv != null ? 'Today ' + iv.toFixed(0) + '%' + (cur && cur.n ? ': ' + cur.n + ' past trades, average result $' + Math.round(cur.pnl) + ' per BTC on a $' + Math.round(cur.cr) + ' credit.' : ': no past trades at this IV.') : 'Outlined bar = today.'} Grey = too few trades.</div></div>` : ''}
+        ${cal ? `<div class="vc"><div class="vt">Gauge level → real stop rate</div>${cal}<div class="vcap">Each dot = 10 gauge points. The higher the level, the more legs were stopped.</div></div>` : ''}
+        ${DY ? `<div class="vc"><div class="vt">Every night, 5 years</div>${heat(DY)}<div class="vcap"><b style="color:${GR}">■</b> ok &nbsp; <b style="color:${RD}">■</b> stopped &nbsp; <b style="color:${BL}">□</b> big IV move. Rows = Mon–Fri of each week.</div></div>` : ''}`;
+      }
+      let last = '';
+      function draw() {
+        const dp = $('pgDecision'); if (!dp) return; let b = $('v156Vis');
+        if (!b) { b = D.createElement('div'); b.id = 'v156Vis'; dp.insertBefore(b, dp.firstChild); } else if (dp.firstChild !== b) dp.insertBefore(b, dp.firstChild);
+        dp.classList.toggle('v156-pics', mode === 'pics');
+        let body = ''; try { body = build(); } catch (e) { console.warn('v156', e); body = '<div class="vc">Could not draw the pictures.</div>'; }
+        const html = `<div class="vbar"><b style="font:800 14px var(--font)">Decision</b><span><button data-m="pics" class="${mode === 'pics' ? 'on' : ''}">Pictures</button> <button data-m="det" class="${mode === 'det' ? 'on' : ''}">Details</button></span></div>${mode === 'pics' ? body : ''}`;
+        if (html !== last) { last = html; b.innerHTML = html; }
+      }
+      D.addEventListener('click', e => { const t = e.target.closest && e.target.closest('#v156Vis [data-m]'); if (t) { mode = t.dataset.m; LSs(MODE, mode); last = ''; draw(); } }, true);
+      setInterval(() => { try { const dp = $('pgDecision'); if (dp && dp.classList.contains('on') && !D.hidden) draw(); } catch (e) { } }, 4000);
+      D.addEventListener('click', e => { if (e.target.closest && e.target.closest('[data-page]')) setTimeout(draw, 400); }, true); setTimeout(draw, 3000);
+      W.v156 = { draw, mode: () => mode };
+    })();
+  </script>
   <script data-module="v142">
     /* v142 (17 Oct 2026, preview, not deployed) · new indicators + repairs, all inside the one chart panel (v138 style).
        ƒx Indicators (all off by default, nothing feeds the verdict — the tested rules are unchanged):
