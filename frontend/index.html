@@ -50716,6 +50716,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         } catch (e) { return null; }
       };
 
+      const readRv = () => { try { const t = ((D.querySelector('#tkRv .v') || {}).textContent || '').replace(/[^0-9.]/g, ''); const v = parseFloat(t); return v > 1 && v < 300 ? v / 100 : null; } catch (e) { return null; } };
       /* ---------- load + analyse ---------- */
       let DATA = null, busy = false, lastErr = null;
       async function load() {
@@ -50725,7 +50726,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const r = await fetch('https://api.india.delta.exchange/v2/tickers?contract_types=call_options,put_options&underlying_asset_symbols=BTC&expiry_date=' + dd);
           if (!r.ok) throw new Error('tickers ' + r.status); const j = await r.json(), A = (j.result || []).filter(x => x.greeks && x.quotes && +x.mark_price > 0);
           if (!A.length) throw new Error('no strikes listed for ' + dd);
-          const F = +A[0].spot_price, T0 = (expMs(k) - Date.now()) / (365 * DAY), Hh = Math.max(0.25, (next7() - Date.now()) / HR), drift = usualDrift(); const sd = A.map(x => +x.quotes.mark_iv).filter(Boolean);
+          const rv = readRv(), F = +A[0].spot_price, T0 = (expMs(k) - Date.now()) / (365 * DAY), Hh = Math.max(0.25, (next7() - Date.now()) / HR), drift = usualDrift(); const sd = A.map(x => +x.quotes.mark_iv).filter(Boolean);
           const atm = A.filter(x => x.contract_type === 'call_options').sort((a, b) => Math.abs(+a.strike_price - F) - Math.abs(+b.strike_price - F))[0], ivAtm = atm ? +atm.quotes.mark_iv : sd[0];
           const mk = (x, call) => {
             const K = +x.strike_price, s = +x.quotes.mark_iv, P = +x.mark_price, bid = +x.quotes.best_bid || 0, ask = +x.quotes.best_ask || 0, d = Math.abs(+x.greeks.delta), Tn = Math.max(1e-6, T0);
@@ -50734,8 +50735,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             const vegaPt = bs(F, K, Tn, s + 0.01, call) - P, drPts = drift ? ivAtm * 100 * drift.pct / 100 : 0, vegaDrift = -vegaPt * (-drPts);   // IV falls by drPts points -> price falls -> seller gains
             const ds = 0.009, F1 = call ? F * (1 + ds) : F * (1 - ds), P1 = bs(F1, K, Tn, s, call), dPart = d * F * ds, gPart = (P1 - P) - dPart, P2 = bs(F1, K, Tn, s + 0.03, call), vPart = P2 - P1;
             const stopMove = moveTo(F, K, Tn, s, call, stopPx), sigN = s * Math.sqrt(Hl / 8760), pTouch = stopMove == null ? 0.0 : Math.min(1, 2 * (1 - N(stopMove / sigN)));
-            const ev = sell * (1 - 2 * pTouch), spr = ask > 0 && bid > 0 ? (ask - bid) / ((ask + bid) / 2) : null;
-            return { sym: x.symbol, K, call, delta: d, iv: s, mark: P, bid, ask, sell, th1, thTo, vegaPt, vegaDrift, drPts, dPart, gPart, vPart, shock: P2 - P, P2, stopPx, stopMove, pTouch, ev, spr, thetaTotal: -(+x.greeks.theta) };
+            const Prv = rv ? bs(F, K, Tn, rv, call) : null, rich = Prv == null ? null : P - Prv, edge07 = rv ? thTo * (1 - (rv / s) * (rv / s)) : null, ev = sell * (1 - 2 * pTouch), spr = ask > 0 && bid > 0 ? (ask - bid) / ((ask + bid) / 2) : null;
+            return { Prv, rich, edge07, sym: x.symbol, K, call, delta: d, iv: s, mark: P, bid, ask, sell, th1, thTo, vegaPt, vegaDrift, drPts, dPart, gPart, vPart, shock: P2 - P, P2, stopPx, stopMove, pTouch, ev, spr, thetaTotal: -(+x.greeks.theta) };
           };
           const side = call => {
             const L = A.filter(x => (x.contract_type === 'call_options') === call).map(x => mk(x, call)).sort((a, b) => call ? a.K - b.K : b.K - a.K);
@@ -50743,7 +50744,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             let best = null; for (const c of band) { if (!best || c.ev > best.ev * 1.05 || (c.ev >= best.ev * 0.95 && c.delta < best.delta)) best = c; }
             return { list: band, best, fallback: fb };
           };
-          DATA = { k, F, T0, Hh, ivAtm, drift, C: side(true), P: side(false), at: Date.now() }; lastErr = null;
+          DATA = { rv, k, F, T0, Hh, ivAtm, drift, C: side(true), P: side(false), at: Date.now() }; lastErr = null;
         } catch (e) { lastErr = String(e.message || e); } finally { busy = false; }
         chip(); draw();
       }
@@ -50767,7 +50768,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const dom = (() => { const o = [['BTC move, straight line (delta)', sp(c.dPart)], ['BTC move, curve (gamma)', sp(c.gPart)], ['IV rise (vega)', sp(c.vPart)]].sort((a, b) => b[1] - a[1]); return o[0][0]; })();
         const newPx = c.P2, x = newPx / c.mark;
         return `<div class="leg"><h4><span>${name} ${c.K} · Δ ${c.delta.toFixed(2)}</span><span>sell ${$$(c.sell)} <small style="font-weight:500;opacity:.7">(mark ${$$(c.mark)}, bid ${$$(c.bid)} / ask ${$$(c.ask)})</small></span></h4>
-          <div class="row"><span>Theta</span><b>${$$(c.th1)} per hour · ${$$(c.thTo)} by 07:00 (${Math.round(c.thTo / c.mark * 100)}% of price)</b></div>
+          ${c.Prv == null ? '' : premiumHtml(c)}<div class="row"><span>Theta</span><b>${$$(c.th1)} per hour · ${$$(c.thTo)} by 07:00 (${Math.round(c.thTo / c.mark * 100)}% of price)</b></div>
           <div class="row"><span>IV (vega)</span><b>${$$(c.vegaPt)} per IV point · usual overnight drift ${c.drPts ? (c.drPts >= 0 ? '+' : '−') + Math.abs(c.drPts).toFixed(1) + ' pts' : 'n/a'} ${c.drPts ? '→ ' + sgn(-c.vegaDrift * 1) : ''}</b></div>
           <div class="row"><span>Delta + gamma</span><b>BTC 0.9% against you: ${sgn(c.dPart)} from delta, ${sgn(c.gPart)} from gamma</b></div>
           <div class="row"><span>Bad night</span><b>BTC 0.9% against + IV +3 pts: price ${$$(c.mark)} → ${$$(newPx)} (${x.toFixed(2)}×)</b></div>
@@ -50775,6 +50776,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted,#667085)"><span style="color:#C05621">■ delta ${sp(c.dPart).toFixed(0)}%</span><span style="color:#B7791F">■ gamma ${sp(c.gPart).toFixed(0)}%</span><span style="color:#2B6CB0">■ IV ${sp(c.vPart).toFixed(0)}%</span></div>
           <div class="row"><span>Stop at 2× (${$$(c.stopPx)})</span><b>BTC ${c.stopMove == null ? '>15%' : (c.call ? '+' : '−') + (c.stopMove * 100).toFixed(1) + '%'} away (IV unchanged) · touch before 07:00 ≈ <span style="color:${c.pTouch < 0.12 ? GRN : c.pTouch < 0.2 ? AMB : RED}">${pc(c.pTouch)}</span></b></div>
           <div class="why">Biggest driver of the loss: <b>${dom}</b>. Theta pays ${$$(c.thTo)} to 07:00 against a 0.9% move costing ${sgn(c.dPart + c.gPart)}.${c.spr != null && c.spr > 0.08 ? ' <span style="color:' + RED + '">Wide spread (' + (c.spr * 100).toFixed(0) + '%): you give away part of the credit.</span>' : ''}</div></div>`;
+      }
+      function premiumHtml(c) {
+        const g = Math.max(0, Math.min(100, c.Prv / c.mark * 100)), r = Math.max(0, 100 - g), richer = c.rich > 0;
+        return `<div class="row" style="border-top:0"><span>Premium ${$$(c.mark)} is made of</span><b>${richer ? $$(c.Prv) + ' gamma cost at realised vol + ' + $$(c.rich) + ' IV richness' : 'worth ' + $$(c.Prv) + ' at realised vol, ' + $$(-c.rich) + ' more than you collect: gamma costs more than the IV pays'}</b></div><div class="bar" title="gamma cost at realised vol vs IV richness"><span style="width:${g.toFixed(0)}%;background:#B7791F"></span><span style="width:${r.toFixed(0)}%;background:${richer ? '#15803D' : '#C53030'}"></span></div><div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted,#667085)"><span style="color:#B7791F">■ gamma cost ${g.toFixed(0)}%</span><span style="color:${richer ? '#15803D' : '#C53030'}">■ IV richness ${richer ? r.toFixed(0) : 0}%</span></div><div class="row"><span>IV vs RV</span><b>${(c.iv * 100).toFixed(1)}% vs ${(DATA.rv * 100).toFixed(1)}% → theta earns ${(Math.pow(c.iv / DATA.rv, 2)).toFixed(2)}× what gamma costs; by 07:00 net ${sgn(c.edge07)} per contract</b></div>`;
       }
       function candTable(L, side) {
         if (!L.list.length) return ''; const rows = L.list.map(c => `<tr class="${c === L.best ? 'pick' : ''}"><td>${c.K}</td><td>${c.delta.toFixed(3)}</td><td>${$$(c.bid)}/${$$(c.ask)}</td><td>${$$(c.th1)}</td><td>${c.stopMove == null ? '>15' : (c.stopMove * 100).toFixed(1)}%</td><td>${pc(c.pTouch)}</td></tr>`).join('');
@@ -50785,7 +50790,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         let h = `<div class="hd"><div class="t"><span>Strike picker · delta 0.10 to 0.15</span><button type="button" aria-label="Close" data-v165x="1">×</button></div><small>${d ? 'Expiry ' + d.k + ' · BTC ' + Math.round(d.F).toLocaleString('en-US') + ' · ATM IV ' + (d.ivAtm * 100).toFixed(1) + '% · ' + d.Hh.toFixed(1) + ' h to 07:00 IST · updated ' + new Date(d.at + IST).toISOString().slice(11, 19) + ' IST' : (lastErr || 'loading…')}</small><div class="seg">${[['cur', 'Current'], ['nxt', 'Next'], ['n2n', 'N2N']].map(([k, l]) => `<button type="button" data-v165s="${k}" class="${slot === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
         if (d) {
           const C = d.C.best, P = d.P.best;
-          if (C && P) h += `<div class="why" style="margin-top:8px">Pick: sell <b style="color:${GRN}">${C.K} call (Δ ${C.delta.toFixed(2)})</b> + <b style="color:${RED}">${P.K} put (Δ ${P.delta.toFixed(2)})</b> · credit ${$$(C.sell + P.sell)} · stop is ${C.stopMove == null ? '>15' : (C.stopMove * 100).toFixed(1)}% up on the call / ${P.stopMove == null ? '>15' : (P.stopMove * 100).toFixed(1)}% down on the put${Math.min(C.stopMove == null ? 1 : C.stopMove, P.stopMove == null ? 1 : P.stopMove) < 0.009 ? ' <b style="color:'+RED+'">(closer than a 0.9% move: premium is too thin to absorb it)</b>' : ''} · theta ${$$(C.th1 + P.th1)}/h · chance at least one leg touches its 2× stop before 07:00 ≈ ${pc(1 - (1 - C.pTouch) * (1 - P.pTouch))}</div>`;
+          if (C && P) h += `<div class="why" style="margin-top:8px">Pick: sell <b style="color:${GRN}">${C.K} call (Δ ${C.delta.toFixed(2)})</b> + <b style="color:${RED}">${P.K} put (Δ ${P.delta.toFixed(2)})</b> · credit ${$$(C.sell + P.sell)}${d.rv ? ' · IV ' + (d.ivAtm * 100).toFixed(1) + '% vs realised ' + (d.rv * 100).toFixed(1) + '%: ' + (d.ivAtm > d.rv * 1.1 ? 'IV is richer than gamma' : d.ivAtm >= d.rv * 0.95 ? 'IV about equal to realised, little edge' : 'IV is BELOW realised, gamma is richer') : ''} · stop is ${C.stopMove == null ? '>15' : (C.stopMove * 100).toFixed(1)}% up on the call / ${P.stopMove == null ? '>15' : (P.stopMove * 100).toFixed(1)}% down on the put${Math.min(C.stopMove == null ? 1 : C.stopMove, P.stopMove == null ? 1 : P.stopMove) < 0.009 ? ' <b style="color:'+RED+'">(closer than a 0.9% move: premium is too thin to absorb it)</b>' : ''} · theta ${$$(C.th1 + P.th1)}/h · chance at least one leg touches its 2× stop before 07:00 ≈ ${pc(1 - (1 - C.pTouch) * (1 - P.pTouch))}</div>`;
           h += legHtml(d.C, 'C') + candTable(d.C, 'C') + legHtml(d.P, 'P') + candTable(d.P, 'P');
           h += `<div class="note">The pick is the strike in the 0.10–0.15 band with the best premium × (1 − 2 × touch chance), lower delta winning a near tie, and it never crosses 0.15. Prices are Delta's live marks and best bid/ask in dollars per BTC; the model reprices the option with Black-76 at the mark IV, so it ignores skew moves and fills. The touch chance uses the option's own IV as BTC's volatility; in the 2.6-year Delta backtest (N2N IV mostly 35–46%) 0.10-delta legs were stopped at 2× on about 15% of nights each, and the stop needed a median BTC move of about 2.2%; at a low IV like today the same delta sits much closer to spot, so the stop is closer and the risk higher. Theta is shown at today's rate; it speeds up near expiry. Information only: nothing here places an order.</div>`;
         }
