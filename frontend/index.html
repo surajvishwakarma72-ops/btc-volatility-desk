@@ -51117,7 +51117,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const r = chip.getBoundingClientRect(); pop.style.top = Math.round(r.bottom + 6) + 'px'; pop.style.left = Math.max(10, Math.min(innerWidth - 270, r.left)) + 'px'; pop.hidden = false;
       }
       function mount() {
-        const r = D.querySelector('#gTop .r'); if (!r || $('v170Tf')) { paint(); return; }
+        const r = D.querySelector('#gTop .r');
+        if (r && $('v170Tf')) { const ind = $('v132IndBtn'), ids = ['v168ChipTop', 'v168ChipTg', 'v170Tf']; if (ind && ind.parentNode === r && !(ind.previousElementSibling === $('v170Tf') && $('v170Tf').previousElementSibling === $('v168ChipTg') && $('v168ChipTg').previousElementSibling === $('v168ChipTop'))) for (const id of ids) { const c = $(id); if (c) r.insertBefore(c, ind); } }   // the Indicators menu rebuilds the row: keep Top, ✈ and TF in front of it
+        if (!r || $('v170Tf')) { paint(); return; }
         const b = D.createElement('button'); b.type = 'button'; b.id = 'v170Tf'; b.setAttribute('aria-label', 'Chart timeframe'); b.textContent = 'TF · 5m'; b.addEventListener('click', open);
         const ind = $('v132IndBtn'); if (ind && ind.parentNode === r) r.insertBefore(b, ind); else r.insertBefore(b, r.firstChild); paint();
       }
