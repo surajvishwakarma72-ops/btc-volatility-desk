@@ -12,6 +12,10 @@ describe('isAllowed', () => {
     expect(isAllowed('https://www.okx.com/api/v5/public/liquidation-orders?instType=SWAP')).toBe(true);
     expect(isAllowed('https://api.llama.fi/hacks')).toBe(true);
   });
+  it('allows the Yahoo chart path for the world-index strip only', () => {
+    expect(isAllowed('https://query1.finance.yahoo.com/v8/finance/chart/%5EGSPC?range=1d&interval=1d')).toBe(true);
+    expect(isAllowed('https://query1.finance.yahoo.com/v1/finance/search?q=x')).toBe(false);
+  });
   it('allows the open-interest paths the frontend actually calls (regression: were bypassing the gateway)', () => {
     expect(isAllowed('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=5m')).toBe(true);
     expect(isAllowed('https://www.okx.com/api/v5/rubik/stat/contracts/open-interest-volume?ccy=BTC&period=5m')).toBe(true);

@@ -15,6 +15,7 @@ const RULES: Rule[] = [
   { host: 'www.okx.com', prefixes: ['/api/v5/public/', '/api/v5/rubik/'] },
   { host: 'cryptocurrency.cv', prefixes: ['/api/'] },
   { host: 'api.llama.fi', prefixes: ['/hacks'] },
+  { host: 'query1.finance.yahoo.com', prefixes: ['/v8/finance/chart/'] },   // world-index strip: public day change of major stock indices
 ];
 
 export function isAllowed(rawUrl: string): boolean {

@@ -11,6 +11,7 @@ const cache = new Map<string, CacheEntry>();
 
 function ttlFor(url: string): number {
   if (url.includes('/history/candles') || url.includes('get_volatility_index_data') || url.includes('/klines') || url.includes('.zip')) return 30_000;
+  if (url.includes('finance.yahoo.com')) return 60_000; // index day-change strip
   return 2_000; // quotes / orderbook / tickers
 }
 

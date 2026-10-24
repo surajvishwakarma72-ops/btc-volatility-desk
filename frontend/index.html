@@ -591,7 +591,7 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
         }).catch(function (err) { if (viaG && !(sig && sig.aborted)) return F(u0, init); throw err; });
       }
       P.lowQueue = function () { return { queued: LOW.length, active: lowActive, ready: P.ready }; };
-      var GW_HOSTS = { 'api.india.delta.exchange': ['/v2/products', '/v2/tickers', '/v2/history/candles', '/v2/l2orderbook/', '/v2/trades/'], 'www.deribit.com': ['/api/v2/public/'], 'fapi.binance.com': ['/fapi/', '/futures/data/'], 'api.binance.com': ['/api/v3/'], 'data-api.binance.vision': ['/api/v3/'], 'data.binance.vision': ['/data/'], 'www.okx.com': ['/api/v5/public/', '/api/v5/rubik/'], 'cryptocurrency.cv': ['/api/'], 'api.llama.fi': ['/hacks'] };
+      var GW_HOSTS = { 'api.india.delta.exchange': ['/v2/products', '/v2/tickers', '/v2/history/candles', '/v2/l2orderbook/', '/v2/trades/'], 'www.deribit.com': ['/api/v2/public/'], 'fapi.binance.com': ['/fapi/', '/futures/data/'], 'api.binance.com': ['/api/v3/'], 'data-api.binance.vision': ['/api/v3/'], 'data.binance.vision': ['/data/'], 'www.okx.com': ['/api/v5/public/', '/api/v5/rubik/'], 'cryptocurrency.cv': ['/api/'], 'api.llama.fi': ['/hacks'], 'query1.finance.yahoo.com': ['/v8/finance/chart/'] };
       function gwRewrite(u) { try { if (location.protocol === 'file:') return u; var p = new URL(u, location.href); var ps = GW_HOSTS[p.hostname]; if (ps && ps.some(function (x) { return p.pathname.indexOf(x) === 0; })) return '/api/v1/mkt?u=' + encodeURIComponent(p.href); } catch (e) { } return u; }
       if (F) W.fetch = function (input, init) {
         var u0 = typeof input === 'string' ? input : (input && input.url) || '';
@@ -50361,6 +50361,81 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       setInterval(() => { try { tick(); ui(); } catch (e) { } }, 20000);
       D.addEventListener('click', () => setTimeout(() => { try { ui(); } catch (e) { } }, 80), true);
       W.v160 = { tick, send, on };
+    })();
+  </script>
+  <script data-module="v161">
+    /* v161 (24 Oct 2026) · World market walking strip at the very top: day change of the major coins (Binance 24 h) and of the Asia, London and US
+       stock indices (Yahoo day change through the desk gateway, cached 60 s). Green up, red down. A market that is not trading right now is dimmed and
+       marked "closed". It scrolls by itself; touch or hover pauses it; with "reduce motion" it stays still and can be swiped. */
+    (function () {
+      const W = window, D = document, GRN = '#35BB7D', RED = '#EF5A5E';
+      const COINS = [['BTC', 'BTCUSDT'], ['ETH', 'ETHUSDT'], ['BNB', 'BNBUSDT'], ['SOL', 'SOLUSDT'], ['XRP', 'XRPUSDT'], ['DOGE', 'DOGEUSDT'], ['ADA', 'ADAUSDT'], ['AVAX', 'AVAXUSDT'], ['LINK', 'LINKUSDT'], ['TON', 'TONUSDT']];
+      const GROUPS = [
+        { id: 'asia', name: 'ASIA', list: [['Nikkei', '^N225'], ['Hang Seng', '^HSI'], ['Nifty 50', '^NSEI'], ['Shanghai', '000001.SS']] },
+        { id: 'lon', name: 'LONDON', list: [['FTSE 100', '^FTSE'], ['DAX', '^GDAXI']] },
+        { id: 'us', name: 'US', list: [['S&P 500', '^GSPC'], ['Nasdaq', '^IXIC'], ['Dow', '^DJI']] }];
+      const css = D.createElement('style'); css.textContent = `
+        :root{--ws-h:22px;--tk-h:52px !important}
+        @media (max-width:760px){:root{--tk-h:50px !important}}
+        .tk{height:calc(var(--tk-h) - var(--ws-h)) !important;top:var(--ws-h) !important}
+        #v161Strip{position:sticky;top:0;z-index:71;height:var(--ws-h);overflow:hidden;white-space:nowrap;background:#0B141C;border-bottom:1px solid var(--line2,#233);display:flex;align-items:center;font:700 11px var(--font);font-variant-numeric:tabular-nums;color:#CBD5E0}
+        :root[data-theme="light"] #v161Strip{background:#E8EDF2;color:#1A2733}
+        #v161Strip .trk{display:inline-flex;align-items:center;gap:0;will-change:transform}
+                #v161Strip .g{display:inline-flex;align-items:center;gap:12px;padding:0 14px;border-right:1px solid #8884}
+        #v161Strip .h{font:800 9.5px var(--font);letter-spacing:.09em;padding:2px 6px;border-radius:4px;background:#8883}
+        #v161Strip .i{display:inline-flex;align-items:center;gap:5px}
+        #v161Strip .i b{font-weight:800}
+        #v161Strip .i.cl{opacity:.5}
+        #v161Strip .cl-t{font:600 8.5px var(--font);opacity:.8;text-transform:uppercase}
+                @media (prefers-reduced-motion:reduce){#v161Strip{overflow-x:auto}}`;
+      D.head.appendChild(css);
+      const DATA = { coins: null, idx: {} };
+      const fmt = p => (p >= 0 ? '▲ +' : '▼ −') + Math.abs(p).toFixed(Math.abs(p) >= 10 ? 1 : 2) + '%';
+      const item = (name, p, closed) => p == null ? `<span class="i cl"><b>${name}</b><span>…</span></span>` : `<span class="i${closed ? ' cl' : ''}"><b>${name}</b><span style="color:${p >= 0 ? GRN : RED}">${fmt(p)}</span>${closed ? '<span class="cl-t">closed</span>' : ''}</span>`;
+      function html() {
+        const g = [`<span class="g"><span class="h">CRYPTO 24h</span>${COINS.map(([n, sym]) => item(n, DATA.coins ? DATA.coins[sym] : null, false)).join('')}</span>`];
+        for (const G of GROUPS) g.push(`<span class="g"><span class="h">${G.name}</span>${G.list.map(([n, sym]) => { const d = DATA.idx[sym]; return item(n, d ? d.p : null, d ? d.closed : false); }).join('')}</span>`);
+        return g.join('');
+      }
+      function paint() {
+        const el = D.getElementById('v161Strip'); if (!el) return; const trk = el.querySelector('.trk'), h = html();
+        if (trk.dataset.h === h) return; trk.dataset.h = h; trk.innerHTML = h + h;                // twice, so the loop is seamless
+        walk(trk);
+      }
+      /* the phone rules switch every CSS animation off (v105.14), so the walk is a Web Animation: one transform, nothing repainted */
+      let ANI = null, HOLD = false;
+      function walk(trk) {
+        try { if (ANI) ANI.cancel(); ANI = null; if (!trk.animate || matchMedia('(prefers-reduced-motion:reduce)').matches) return; const w = trk.scrollWidth / 2; if (w < 50) return;
+          ANI = trk.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-' + w + 'px)' }], { duration: Math.max(40, w / 38) * 1000, iterations: Infinity }); if (HOLD) ANI.pause(); } catch (e) { }
+      }
+      const hold = on => { HOLD = on; try { if (ANI) on ? ANI.pause() : ANI.play(); } catch (e) { } };
+      function mount() {
+        if (D.getElementById('v161Strip')) return true; const tk = D.getElementById('tk'); if (!tk) return false;
+        const el = D.createElement('div'); el.id = 'v161Strip'; el.setAttribute('role', 'marquee'); el.setAttribute('aria-label', 'World markets: day change of major coins and Asia, London and US indices'); el.innerHTML = '<div class="trk"></div>';
+        tk.parentNode.insertBefore(el, tk);
+        el.addEventListener('touchstart', () => hold(true), { passive: true }); el.addEventListener('touchend', () => setTimeout(() => hold(false), 2500), { passive: true }); el.addEventListener('mouseenter', () => hold(true)); el.addEventListener('mouseleave', () => hold(false));
+        paint(); return true;
+      }
+      async function loadCoins() {
+        try {
+          const q = encodeURIComponent(JSON.stringify(COINS.map(c => c[1]))), r = await fetch('https://api.binance.com/api/v3/ticker/24hr?symbols=' + q); if (!r.ok) throw 0; const a = await r.json(), o = {};
+          for (const t of a) { const p = parseFloat(t.priceChangePercent); if (Number.isFinite(p)) o[t.symbol] = p; } DATA.coins = o;
+        } catch (e) { }
+      }
+      async function loadIdx(sym) {
+        try {
+          const r = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(sym) + '?range=1d&interval=1d'); if (!r.ok) throw 0; const j = await r.json(), m = j.chart && j.chart.result && j.chart.result[0] && j.chart.result[0].meta; if (!m) throw 0;
+          const px = m.regularMarketPrice, pc = m.chartPreviousClose != null ? m.chartPreviousClose : m.previousClose, p = Number.isFinite(m.regularMarketChangePercent) ? m.regularMarketChangePercent : (px && pc ? (px / pc - 1) * 100 : null);
+          if (p == null) throw 0; DATA.idx[sym] = { p, closed: !m.regularMarketTime || Date.now() / 1000 - m.regularMarketTime > 1500 };
+        } catch (e) { }
+      }
+      async function refresh() {
+        if (!mount()) return; const syms = GROUPS.flatMap(G => G.list.map(x => x[1]));
+        await Promise.all([loadCoins(), ...syms.map(loadIdx)]); paint();
+      }
+      const boot = () => { try { refresh(); } catch (e) { } };
+      setTimeout(boot, 1500); setInterval(boot, 60000);
+      W.v161 = { refresh, data: DATA };
     })();
   </script>
   <script data-module="v142">
