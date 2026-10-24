@@ -50648,6 +50648,161 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       W.v164 = { render };
     })();
   </script>
+  <script data-module="v165">
+    /* v165 (24 Oct 2026) · Strike picker chip at the top: the call and the put to sell, delta 0.10 to 0.15 (never above 0.15), picked by risk.
+       Tap it for the sheet: every strike inside the band on each side, the pick, and what each leg's price is made of.
+       Per leg (Black-76 on Delta's mark IV, r = 0; delta and prices straight from Delta's live tickers):
+         - Theta: what one hour, and the time to 07:00 IST, earns you with BTC and IV unchanged.
+         - Vega: dollars per IV point, and the usual overnight IV drift (weekday median, Delta N2N backtest) in dollars.
+         - Delta + gamma: what a 0.9 % BTC move against you does to the price, split into the straight-line part (delta) and the curve part (gamma).
+         - Bad-night shock = BTC 0.9 % against + IV up 3 points: the dollars from delta, gamma and vega, and which one drives the loss.
+         - Stop distance: the BTC move that takes the leg to the stop (2x the sell price) with IV unchanged, and the chance BTC touches it before 07:00
+           (reflection principle, IV as the volatility). This chance is the "risk factor": the pick is the strike with the best premium x (1 - 2 x chance),
+           lower delta wins a near tie. */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id), IST = 19800000, HR = 3600000, DAY = 86400000;
+      const GRN = '#15803D', RED = '#C53030', AMB = '#B7791F';
+      const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const css = D.createElement('style'); css.textContent = `
+        #v165Chip{order:1;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;font:800 10.5px var(--font);white-space:nowrap}
+        #v165Chip b{font-weight:800}
+        #v165Chip .c{color:${GRN}} #v165Chip .p{color:${RED}}
+        #v165Sh{position:fixed;inset:0;z-index:99996;background:rgba(0,0,0,.45);display:flex;align-items:flex-end;justify-content:center}
+        #v165Sh[hidden]{display:none}
+        #v165Sh .c{width:100%;max-width:560px;max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain;background:var(--panel,#fff);color:var(--text,#111);border-radius:18px 18px 0 0;padding:0 12px 20px;box-shadow:0 -8px 30px rgba(0,0,0,.35);font:500 12px/1.4 var(--font)}
+        #v165Sh .hd{position:sticky;top:0;background:var(--panel,#fff);padding:12px 0 6px;z-index:2}
+        #v165Sh .hd .t{display:flex;justify-content:space-between;align-items:center;font:800 15px var(--font)}
+        #v165Sh .hd .t button{border:0;background:none;font-size:24px;line-height:1;color:inherit;cursor:pointer}
+        #v165Sh .hd small{display:block;color:var(--muted,#667085);font:500 11px var(--font)}
+        #v165Sh .seg{display:flex;gap:6px;margin-top:6px}
+        #v165Sh .seg button{flex:1;height:28px;border-radius:9px;border:1px solid var(--line,#8884);background:transparent;color:inherit;font:700 12px var(--font);cursor:pointer}
+        #v165Sh .seg button.on{background:#1A2733 !important;color:#fff !important;border-color:#1A2733}
+        #v165Sh .leg{border:1px solid var(--line,#8884);border-radius:12px;padding:9px 10px;margin-top:10px}
+        #v165Sh .leg h4{margin:0 0 4px;font:800 13px var(--font);display:flex;justify-content:space-between;gap:8px}
+        #v165Sh table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+        #v165Sh td,#v165Sh th{padding:3px 4px;text-align:right;border-top:1px solid var(--line,#8883);font-size:11.5px}
+        #v165Sh th{font-weight:700;color:var(--muted,#667085);font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+        #v165Sh td:first-child,#v165Sh th:first-child{text-align:left}
+        #v165Sh tr.pick td{font-weight:800;background:rgba(21,128,61,.10)}
+        #v165Sh .row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-top:1px solid var(--line,#8883)}
+        #v165Sh .row span:first-child{color:var(--muted,#667085)}
+        #v165Sh .row b{text-align:right}
+        #v165Sh .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:4px 0}
+        #v165Sh .note{font:500 11px/1.4 var(--font);color:var(--muted,#667085);margin-top:8px}
+        #v165Sh .why{margin-top:6px;font:600 12px/1.4 var(--font)}`;
+      D.head.appendChild(css);
+
+      /* ---------- Black-76, r = 0 ---------- */
+      function erf(x) { const sg = Math.sign(x); x = Math.abs(x); const t = 1 / (1 + 0.3275911 * x); return sg * (1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x)); }
+      const N = x => 0.5 * (1 + erf(x / Math.SQRT2));
+      function bs(F, K, T, s, call) { if (T <= 0) return Math.max(0, call ? F - K : K - F); const sd = s * Math.sqrt(T), d1 = (Math.log(F / K) + 0.5 * sd * sd) / sd, d2 = d1 - sd; return call ? F * N(d1) - K * N(d2) : K * N(-d2) - F * N(-d1); }
+      /* BTC move (as a fraction, against the seller) that takes the price to `target` with IV and time unchanged; null if not reached within 15 % */
+      function moveTo(F, K, T, s, call, target) {
+        let lo = 0, hi = 0.15; const px = m => bs(call ? F * (1 + m) : F * (1 - m), K, T, s, call); if (px(hi) < target) return null;
+        for (let i = 0; i < 40; i++) { const mid = (lo + hi) / 2; px(mid) < target ? lo = mid : hi = mid; } return (lo + hi) / 2;
+      }
+
+      /* ---------- the N2N / Next / Cur expiry ---------- */
+      const SLOT = { cur: 1, nxt: 2, n2n: 3 }; let slot = 'n2n';
+      const keyOf = idx => new Date(idx * DAY).toISOString().slice(0, 10);
+      const expKey = () => keyOf(Math.floor((Date.now() + IST - 17.5 * HR) / DAY) + SLOT[slot]);
+      const expMs = k => Date.parse(k + 'T12:00:00Z');                                  // dailies expire 12:00 UTC = 17:30 IST
+      const next7 = () => { const t = new Date(Date.now() + IST); let m = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate(), 7) - IST; if (m <= Date.now()) m += DAY; return m; };
+      const usualDrift = () => {                                                       // usual IV change (%, relative) from now to 07:30 IST tonight, weekday median of the N2N backtest
+        try {
+          const U = W.__N2N_IV_PATH; if (!U) return null; const t = new Date(Date.now() + IST), h = t.getUTCHours() + t.getUTCMinutes() / 60; let wd = t.getUTCDay(); if (h < 7) wd = (wd + 6) % 7; if (wd < 1 || wd > 5) return null;
+          const P = U.byWd[wd]; if (!P) return null; const base = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate() - (h < 7 ? 1 : 0))).getTime() - IST + (19 * 60 + 30) * 60000, hh = (Date.now() - base) / HR;
+          const at = x => { if (x <= 0) return 0; if (x >= 12) return P.med[12]; const i = Math.floor(x); return P.med[i] + (P.med[i + 1] - P.med[i]) * (x - i); }; return { pct: P.med[12] - at(hh), wd };
+        } catch (e) { return null; }
+      };
+
+      /* ---------- load + analyse ---------- */
+      let DATA = null, busy = false, lastErr = null;
+      async function load() {
+        if (busy) return; busy = true;
+        try {
+          const k = expKey(), dd = k.slice(8, 10) + '-' + k.slice(5, 7) + '-' + k.slice(0, 4);
+          const r = await fetch('https://api.india.delta.exchange/v2/tickers?contract_types=call_options,put_options&underlying_asset_symbols=BTC&expiry_date=' + dd);
+          if (!r.ok) throw new Error('tickers ' + r.status); const j = await r.json(), A = (j.result || []).filter(x => x.greeks && x.quotes && +x.mark_price > 0);
+          if (!A.length) throw new Error('no strikes listed for ' + dd);
+          const F = +A[0].spot_price, T0 = (expMs(k) - Date.now()) / (365 * DAY), Hh = Math.max(0.25, (next7() - Date.now()) / HR), drift = usualDrift(); const sd = A.map(x => +x.quotes.mark_iv).filter(Boolean);
+          const atm = A.filter(x => x.contract_type === 'call_options').sort((a, b) => Math.abs(+a.strike_price - F) - Math.abs(+b.strike_price - F))[0], ivAtm = atm ? +atm.quotes.mark_iv : sd[0];
+          const mk = (x, call) => {
+            const K = +x.strike_price, s = +x.quotes.mark_iv, P = +x.mark_price, bid = +x.quotes.best_bid || 0, ask = +x.quotes.best_ask || 0, d = Math.abs(+x.greeks.delta), Tn = Math.max(1e-6, T0);
+            const sell = bid > 0 ? bid : P, stopPx = 2 * sell, Hl = Math.min(Hh, Tn * 8760);
+            const th1 = P - bs(F, K, Tn - 1 / 8760, s, call), thTo = P - bs(F, K, Math.max(1e-6, Tn - Hl / 8760), s, call);
+            const vegaPt = bs(F, K, Tn, s + 0.01, call) - P, drPts = drift ? ivAtm * 100 * drift.pct / 100 : 0, vegaDrift = -vegaPt * (-drPts);   // IV falls by drPts points -> price falls -> seller gains
+            const ds = 0.009, F1 = call ? F * (1 + ds) : F * (1 - ds), P1 = bs(F1, K, Tn, s, call), dPart = d * F * ds, gPart = (P1 - P) - dPart, P2 = bs(F1, K, Tn, s + 0.03, call), vPart = P2 - P1;
+            const stopMove = moveTo(F, K, Tn, s, call, stopPx), sigN = s * Math.sqrt(Hl / 8760), pTouch = stopMove == null ? 0.0 : Math.min(1, 2 * (1 - N(stopMove / sigN)));
+            const ev = sell * (1 - 2 * pTouch), spr = ask > 0 && bid > 0 ? (ask - bid) / ((ask + bid) / 2) : null;
+            return { sym: x.symbol, K, call, delta: d, iv: s, mark: P, bid, ask, sell, th1, thTo, vegaPt, vegaDrift, drPts, dPart, gPart, vPart, shock: P2 - P, P2, stopPx, stopMove, pTouch, ev, spr, thetaTotal: -(+x.greeks.theta) };
+          };
+          const side = call => {
+            const L = A.filter(x => (x.contract_type === 'call_options') === call).map(x => mk(x, call)).sort((a, b) => call ? a.K - b.K : b.K - a.K);
+            let band = L.filter(x => x.delta >= 0.10 && x.delta <= 0.15), fb = false; if (!band.length) { const below = L.filter(x => x.delta < 0.10).sort((a, b) => b.delta - a.delta)[0]; if (below) { band = [below]; fb = true; } }
+            let best = null; for (const c of band) { if (!best || c.ev > best.ev * 1.05 || (c.ev >= best.ev * 0.95 && c.delta < best.delta)) best = c; }
+            return { list: band, best, fallback: fb };
+          };
+          DATA = { k, F, T0, Hh, ivAtm, drift, C: side(true), P: side(false), at: Date.now() }; lastErr = null;
+        } catch (e) { lastErr = String(e.message || e); } finally { busy = false; }
+        chip(); draw();
+      }
+
+      /* ---------- the chip at the top ---------- */
+      function chip() {
+        const hdr = D.querySelector('header.top.hdr'); if (!hdr) return; let b = $('v165Chip');
+        if (!b) { b = D.createElement('button'); b.type = 'button'; b.id = 'v165Chip'; b.setAttribute('aria-label', 'Strike picker: call and put to sell, delta 0.10 to 0.15'); const ta = hdr.querySelector('.top-actions'); hdr.insertBefore(b, ta || null); }
+        const C = DATA && DATA.C.best, P = DATA && DATA.P.best;
+        const h = C && P ? `<span class="c">C <b>${(C.delta).toFixed(2)}</b> ${C.K}</span><span class="p">P <b>${(P.delta).toFixed(2)}</b> ${P.K}</span>` : (lastErr ? 'Strikes ⚠' : 'Strikes…');
+        if (b.dataset.h !== h) { b.dataset.h = h; b.innerHTML = h; }
+      }
+
+      /* ---------- the sheet ---------- */
+      const $$ = v => '$' + (Math.abs(v) >= 100 ? Math.round(v) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
+      const sgn = v => (v >= 0 ? '+' : '−') + $$(Math.abs(v));
+      const pc = v => (v * 100).toFixed(v < 0.1 ? 1 : 0) + '%';
+      function legHtml(L, side) {
+        const c = L.best, name = side === 'C' ? 'CALL' : 'PUT'; if (!c) return `<div class="leg"><h4>${name}</h4>No strike with delta up to 0.15 listed.</div>`;
+        const shock = Math.abs(c.dPart) + Math.abs(c.gPart) + Math.abs(c.vPart), sp = x => shock ? Math.abs(x) / shock * 100 : 0;
+        const dom = (() => { const o = [['BTC move, straight line (delta)', sp(c.dPart)], ['BTC move, curve (gamma)', sp(c.gPart)], ['IV rise (vega)', sp(c.vPart)]].sort((a, b) => b[1] - a[1]); return o[0][0]; })();
+        const newPx = c.P2, x = newPx / c.mark;
+        return `<div class="leg"><h4><span>${name} ${c.K} · Δ ${c.delta.toFixed(2)}</span><span>sell ${$$(c.sell)} <small style="font-weight:500;opacity:.7">(mark ${$$(c.mark)}, bid ${$$(c.bid)} / ask ${$$(c.ask)})</small></span></h4>
+          <div class="row"><span>Theta</span><b>${$$(c.th1)} per hour · ${$$(c.thTo)} by 07:00 (${Math.round(c.thTo / c.mark * 100)}% of price)</b></div>
+          <div class="row"><span>IV (vega)</span><b>${$$(c.vegaPt)} per IV point · usual overnight drift ${c.drPts ? (c.drPts >= 0 ? '+' : '−') + Math.abs(c.drPts).toFixed(1) + ' pts' : 'n/a'} ${c.drPts ? '→ ' + sgn(-c.vegaDrift * 1) : ''}</b></div>
+          <div class="row"><span>Delta + gamma</span><b>BTC 0.9% against you: ${sgn(c.dPart)} from delta, ${sgn(c.gPart)} from gamma</b></div>
+          <div class="row"><span>Bad night</span><b>BTC 0.9% against + IV +3 pts: price ${$$(c.mark)} → ${$$(newPx)} (${x.toFixed(2)}×)</b></div>
+          <div class="bar" title="share of the bad-night rise">${[[c.dPart, '#C05621'], [c.gPart, '#B7791F'], [c.vPart, '#2B6CB0']].map(([v, col]) => `<span style="width:${sp(v).toFixed(0)}%;background:${col}"></span>`).join('')}</div>
+          <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted,#667085)"><span style="color:#C05621">■ delta ${sp(c.dPart).toFixed(0)}%</span><span style="color:#B7791F">■ gamma ${sp(c.gPart).toFixed(0)}%</span><span style="color:#2B6CB0">■ IV ${sp(c.vPart).toFixed(0)}%</span></div>
+          <div class="row"><span>Stop at 2× (${$$(c.stopPx)})</span><b>BTC ${c.stopMove == null ? '>15%' : (c.call ? '+' : '−') + (c.stopMove * 100).toFixed(1) + '%'} away (IV unchanged) · touch before 07:00 ≈ <span style="color:${c.pTouch < 0.12 ? GRN : c.pTouch < 0.2 ? AMB : RED}">${pc(c.pTouch)}</span></b></div>
+          <div class="why">Biggest driver of the loss: <b>${dom}</b>. Theta pays ${$$(c.thTo)} to 07:00 against a 0.9% move costing ${sgn(c.dPart + c.gPart)}.${c.spr != null && c.spr > 0.08 ? ' <span style="color:' + RED + '">Wide spread (' + (c.spr * 100).toFixed(0) + '%): you give away part of the credit.</span>' : ''}</div></div>`;
+      }
+      function candTable(L, side) {
+        if (!L.list.length) return ''; const rows = L.list.map(c => `<tr class="${c === L.best ? 'pick' : ''}"><td>${c.K}</td><td>${c.delta.toFixed(3)}</td><td>${$$(c.bid)}/${$$(c.ask)}</td><td>${$$(c.th1)}</td><td>${c.stopMove == null ? '>15' : (c.stopMove * 100).toFixed(1)}%</td><td>${pc(c.pTouch)}</td></tr>`).join('');
+        return `<table><tr><th>${side === 'C' ? 'Call' : 'Put'} strike</th><th>Δ</th><th>Bid/Ask</th><th>θ/h</th><th>Stop at</th><th>Risk</th></tr>${rows}</table>${L.fallback ? '<div class="note">No strike listed between 0.10 and 0.15; this is the nearest below.</div>' : ''}`;
+      }
+      function draw() {
+        const sh = $('v165Sh'); if (!sh || sh.hidden) return; const c = sh.querySelector('.c'), keep = c.scrollTop; const d = DATA;
+        let h = `<div class="hd"><div class="t"><span>Strike picker · delta 0.10 to 0.15</span><button type="button" aria-label="Close" data-v165x="1">×</button></div><small>${d ? 'Expiry ' + d.k + ' · BTC ' + Math.round(d.F).toLocaleString('en-US') + ' · ATM IV ' + (d.ivAtm * 100).toFixed(1) + '% · ' + d.Hh.toFixed(1) + ' h to 07:00 IST · updated ' + new Date(d.at + IST).toISOString().slice(11, 19) + ' IST' : (lastErr || 'loading…')}</small><div class="seg">${[['cur', 'Current'], ['nxt', 'Next'], ['n2n', 'N2N']].map(([k, l]) => `<button type="button" data-v165s="${k}" class="${slot === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>`;
+        if (d) {
+          const C = d.C.best, P = d.P.best;
+          if (C && P) h += `<div class="why" style="margin-top:8px">Pick: sell <b style="color:${GRN}">${C.K} call (Δ ${C.delta.toFixed(2)})</b> + <b style="color:${RED}">${P.K} put (Δ ${P.delta.toFixed(2)})</b> · credit ${$$(C.sell + P.sell)} · stop is ${C.stopMove == null ? '>15' : (C.stopMove * 100).toFixed(1)}% up on the call / ${P.stopMove == null ? '>15' : (P.stopMove * 100).toFixed(1)}% down on the put${Math.min(C.stopMove == null ? 1 : C.stopMove, P.stopMove == null ? 1 : P.stopMove) < 0.009 ? ' <b style="color:'+RED+'">(closer than a 0.9% move: premium is too thin to absorb it)</b>' : ''} · theta ${$$(C.th1 + P.th1)}/h · chance at least one leg touches its 2× stop before 07:00 ≈ ${pc(1 - (1 - C.pTouch) * (1 - P.pTouch))}</div>`;
+          h += legHtml(d.C, 'C') + candTable(d.C, 'C') + legHtml(d.P, 'P') + candTable(d.P, 'P');
+          h += `<div class="note">The pick is the strike in the 0.10–0.15 band with the best premium × (1 − 2 × touch chance), lower delta winning a near tie, and it never crosses 0.15. Prices are Delta's live marks and best bid/ask in dollars per BTC; the model reprices the option with Black-76 at the mark IV, so it ignores skew moves and fills. The touch chance uses the option's own IV as BTC's volatility; in the 2.6-year Delta backtest (N2N IV mostly 35–46%) 0.10-delta legs were stopped at 2× on about 15% of nights each, and the stop needed a median BTC move of about 2.2%; at a low IV like today the same delta sits much closer to spot, so the stop is closer and the risk higher. Theta is shown at today's rate; it speeds up near expiry. Information only: nothing here places an order.</div>`;
+        }
+        c.innerHTML = h; c.scrollTop = keep;
+      }
+      let T = 0;
+      function open() {
+        let sh = $('v165Sh'); if (!sh) { sh = D.createElement('div'); sh.id = 'v165Sh'; sh.hidden = true; sh.innerHTML = '<div class="c" role="dialog" aria-modal="true" aria-label="Strike picker"></div>'; D.body.appendChild(sh);
+          sh.addEventListener('click', e => { const s = e.target.closest('[data-v165s]'); if (s) { slot = s.dataset.v165s; DATA = null; draw(); load(); return; } if (e.target === sh || e.target.closest('[data-v165x]')) close(); }); D.addEventListener('keydown', e => { if (e.key === 'Escape' && !sh.hidden) close(); }); }
+        sh.hidden = false; draw(); load(); clearInterval(T); T = setInterval(load, 15000);
+      }
+      function close() { const sh = $('v165Sh'); if (sh) sh.hidden = true; clearInterval(T); T = 0; }
+      D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v165Chip')) open(); }, true);
+      setTimeout(() => { chip(); load(); }, 4500); setInterval(() => { if (!T) load(); }, 60000);
+      W.v165 = { load, open, data: () => DATA };
+    })();
+  </script>
   <script data-module="v142">
     /* v142 (17 Oct 2026, preview, not deployed) · new indicators + repairs, all inside the one chart panel (v138 style).
        ƒx Indicators (all off by default, nothing feeds the verdict — the tested rules are unchanged):
