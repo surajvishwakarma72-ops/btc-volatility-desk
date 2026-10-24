@@ -30528,8 +30528,8 @@ Signs follow Settings → Dealer positioning.`;
       let mArr = [], hArr = [];
       function reindex() { mArr = sorted(DV.m); hArr = sorted(DV.h); DV.ver++; DV.ready = mArr.length > 30; bars.clear(); }
       async function loadCache() {
+        try { const b = await mcGet(K_H); if (b?.d?.length) { merge(DV.h, b.d); trim(DV.h, H_DAYS * 24 * HR); reindex(); } } catch (e) { }   // v172: the hourly cache (small) first, so the Entry Gauge can read while the minute cache (large) is still loading
         try { const a = await mcGet(K_M); if (a?.d?.length) merge(DV.m, a.d); } catch (e) { }
-        try { const b = await mcGet(K_H); if (b?.d?.length) merge(DV.h, b.d); } catch (e) { }
         trim(DV.m, M_DAYS * 24 * HR); trim(DV.h, H_DAYS * 24 * HR); reindex();
       }
       let busy = false;
@@ -30541,6 +30541,7 @@ Signs follow Settings → Dealer positioning.`;
           const fromM = full || !lastM ? Math.max(now - M_DAYS * 24 * HR, lastM ? lastM - 10 * MIN : 0) : lastM - 10 * MIN;
           if (full && lastM && lastM < now - M_DAYS * 24 * HR + HR) {/* cache too old, fetch everything */ }
           if (!hArr.length) { try { merge(DV.h, await fetchRange(now - 10 * 24 * HR, now, 3600)); reindex(); } catch (e) { } }   // v152: ten days of hourly DVOL first (one request) so Risk-ADX can read within seconds on a fresh phone
+          if (hArr.length && now - hArr[hArr.length - 1][0] > 90 * MIN) { try { merge(DV.h, await fetchRange(hArr[hArr.length - 1][0] - 2 * HR, now, 3600)); DV.hAt = now; reindex(); } catch (e) { } }   // v172: the recent hours first (a tiny request) so the Entry Gauge can read before the minute top-up finishes
           merge(DV.m, await fetchRange(fromM, now, 60));
           if (full || now - DV.hAt > 30 * MIN) {
             const lastH = hArr.length ? hArr[hArr.length - 1][0] : 0;
@@ -49557,7 +49558,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       /* the same score for whoever needs it without the lane (Decision page, clock): from the chart's own bars, cached 20 s */
       const LV = { at: 0, v: null };
-      function live() { if (Date.now() - LV.at < 20000) return LV.v; LV.at = Date.now(); try { const R = W.paRes && W.paRes(); LV.v = R && R.bars && R.bars.length ? compute({ b: R.bars }) : null; } catch (e) { LV.v = null; } return LV.v; }
+      function live() { if (Date.now() - LV.at < (LV.v && LV.v.last != null ? 20000 : 1000)) return LV.v; LV.at = Date.now(); try { const R = W.paRes && W.paRes(); LV.v = R && R.bars && R.bars.length ? compute({ b: R.bars }) : null; } catch (e) { LV.v = null; } return LV.v; }
       /* IMPULSE WATCH: the desk's impulse meter (BTC speed over 5 minutes against normal for this hour, minute by minute) plus a string of big 5-minute candles,
          fed straight into the gauge so it reacts in seconds, not at the next hourly bar. Thresholds and hit rates: backend/scripts/impulse_study.mjs (data/impulse_study.js) */
       function impWatch() {
@@ -51140,6 +51141,22 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       document.head.appendChild(css);
     })();
   </script>
+  <script data-module="v172">
+    /* v172 (25 Oct 2026) · Entry Gauge blank right after the page opens: the lanes repaint at 5 s and then every 15 s, but the price bars the gauge needs
+       arrive at about 6 s, so the gauge stayed empty until the next scheduled repaint. Now: once the bars exist and the gauge still says "loading" (or has no score),
+       repaint every second (first 90 s only) until it shows. */
+    (function () {
+      const W = window, D = document; let n = 0;
+      const t = setInterval(() => {
+        if (++n > 90) return clearInterval(t);
+        try {
+          const l = D.getElementById('v151Risk'); if (!l || l.classList.contains('v127-off') || D.hidden) return;
+          const R = W.paRes && W.paRes(); if (!R || !R.bars || R.bars.length < 400 || !W.v142 || !W.v142.paintAll) return;
+          const tx = (l.innerText || '').replace(/\s+/g, ' '); if (/loading the 5-year|waiting for DVOL/.test(tx) || !/\d/.test(tx.slice(0, 40))) W.v142.paintAll(); else clearInterval(t);
+        } catch (e) { }
+      }, 1000);
+    })();
+  </script>
   <script data-module="v142">
     /* v142 (17 Oct 2026, preview, not deployed) · new indicators + repairs, all inside the one chart panel (v138 style).
        ƒx Indicators (all off by default, nothing feeds the verdict — the tested rules are unchanged):
@@ -51741,7 +51758,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const zs = RMg && V && live ? (RMg.zones.find(z => z.color === V.color) || null) : null;
           const fl = P && P.flags && P.flags.length ? P.flags.map(x => ((W.v151Risk.data() && W.v151Risk.data().order.find(q => q.k === x.k)) || {}).l + ' ' + x.txt).join(' · ') : '';
           st(o, cls);
-          setLeg(o, `<b>ENTRY GAUGE</b>${V ? `<span class="${cls}">${V.L.toFixed(0)} ${word}</span><span class="${acls}">${arrow}${V.dL != null ? (V.dL >= 0 ? '+' : '−') + Math.abs(V.dL).toFixed(0) + '/3h' : ''}</span>` : '<span class="m">—</span>'}${V && V.imp && V.imp.level > 0 ? `<span class="${V.imp.level >= 2 ? 'r' : 'a'}">${esc(V.imp.text)}</span>` : V && V.burst ? `<span class="r">BIG MOVE · last hour ${V.rr.toFixed(1)}× normal range</span>` : ''}${V && V.rising ? '<span class="r">RISING: the line is climbing, treat it as red</span>' : ''}${V && V.pat ? `<span class="r">Bearish pattern: ${esc(V.pat)}</span>` : ''}${V && V.phase === 'entry' && V.failing.length ? `<span class="m">waiting for: ${esc(V.why.filter(x => !/^BIG MOVE/.test(x)).slice(0, 2).join(' · '))}</span>` : ''}${stg ? `<span class="${J.stage === 'holding' ? 'r' : J.stage === 'real' ? 'g' : 'm'}">${esc(stg)}</span>` : ''}${zs ? `<span class="m">${zs.stop}% stopped in ${zs.color} hours${(() => { const g = W.__STRANGLE_RISKMODEL.gauge.moves && W.__STRANGLE_RISKMODEL.gauge.moves.grid && W.__STRANGLE_RISKMODEL.gauge.moves.grid.find(x => x.hours === 1 && x.pct < 1); return g ? ', ' + g[zs.color] + '% saw a 0.9% move within 1 h' : ''; })()} (5-yr, out-of-sample)</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
+          setLeg(o, `<b>ENTRY GAUGE</b>${V ? `<span class="${cls}">${V.L.toFixed(0)} ${word}</span><span class="${acls}">${arrow}${V.dL != null ? (V.dL >= 0 ? '+' : '−') + Math.abs(V.dL).toFixed(0) + '/3h' : ''}</span>` : '<span class="m">waiting for DVOL…</span>'}${V && V.imp && V.imp.level > 0 ? `<span class="${V.imp.level >= 2 ? 'r' : 'a'}">${esc(V.imp.text)}</span>` : V && V.burst ? `<span class="r">BIG MOVE · last hour ${V.rr.toFixed(1)}× normal range</span>` : ''}${V && V.rising ? '<span class="r">RISING: the line is climbing, treat it as red</span>' : ''}${V && V.pat ? `<span class="r">Bearish pattern: ${esc(V.pat)}</span>` : ''}${V && V.phase === 'entry' && V.failing.length ? `<span class="m">waiting for: ${esc(V.why.filter(x => !/^BIG MOVE/.test(x)).slice(0, 2).join(' · '))}</span>` : ''}${stg ? `<span class="${J.stage === 'holding' ? 'r' : J.stage === 'real' ? 'g' : 'm'}">${esc(stg)}</span>` : ''}${zs ? `<span class="m">${zs.stop}% stopped in ${zs.color} hours${(() => { const g = W.__STRANGLE_RISKMODEL.gauge.moves && W.__STRANGLE_RISKMODEL.gauge.moves.grid && W.__STRANGLE_RISKMODEL.gauge.moves.grid.find(x => x.hours === 1 && x.pct < 1); return g ? ', ' + g[zs.color] + '% saw a 0.9% move within 1 h' : ''; })()} (5-yr, out-of-sample)</span>` : ''}${fl ? `<span class="a">flags: ${esc(fl)}</span>` : ''}${P && P.priceOnly ? '<span class="a">price-only (DVOL loading)</span>' : ''}`);
           o.last = V ? V.L : null; o.meaning = null;
         }
         if (k === 'macro') {
