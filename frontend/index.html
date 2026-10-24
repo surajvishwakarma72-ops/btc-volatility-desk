@@ -613,6 +613,8 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
   <script>/* v152: one time, the desk opens as the BTC chart only; the auto layout that switched everything on when a trade opened is off (it stays available as a tick in the Indicators menu) */
     try { if (!localStorage.getItem("v152_clean")) { localStorage.setItem("v152_clean", "1"); localStorage.setItem("v139_auto", "false"); var __on = JSON.parse(localStorage.getItem("v133_ind") || "{}"); Object.keys(__on).forEach(function (k) { __on[k] = (k === "strk" || k === "legs"); }); __on.strk = true; __on.legs = true; localStorage.setItem("v133_ind", JSON.stringify(__on)); } } catch (e) { }</script>
   <meta name="robots" content="noindex,nofollow">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="mobile-web-app-capable" content="yes">
@@ -46518,7 +46520,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         // v150: ATM IV gets 2.2 lane shares, Speed vs IV and ADX 1.4, every other lane one; the lanes' part of the panel
         // grows with the extra shares (33 % at equal shares, at most 48 %), the candles take the rest
         const wt = l => l.id === 'v138Iv' ? 2.2 : l.id === 'v151Risk' ? 3.2 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
-        const share = nL ? Math.min(0.48, 0.33 * nW / nL) : 0.33;
+        const share = nL ? Math.min(phone ? 0.36 : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
         for (const l of lanes) { const hh = Math.round(lh * wt(l)) + (l.id === axId ? axX : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
@@ -50513,6 +50515,56 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function close() { const sh = $('v162Sh'); if (sh) sh.hidden = true; clearInterval(T); T = 0; }
       D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v161Strip')) open(); }, true);
       W.v162 = { open, close };
+    })();
+  </script>
+  <script data-module="v163">
+    /* v163 (24 Oct 2026) · opens in full screen, and the phone chrome is smaller so the BTC chart gets the room.
+       - Full screen: browsers only allow it after a touch or click, so the first tap on the desk switches the chart to the desk's own
+         full-screen mode (same as the full-screen button). Installed as an app (Add to Home Screen) it is already full screen and the
+         mode is applied at once. Leaving full screen yourself is remembered (button or Esc): it then stays off until you press the button.
+       - Smaller fonts and panels on phones: slimmer world strip, ticker, header chips, chart toolbar and tab bar. */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id), K = 'v163_fs_off';
+      const css = D.createElement('style'); css.textContent = `
+        @media (max-width:760px){
+          :root{--ws-h:18px;--tk-h:42px !important;--hdr-h:56px;--tab-h:46px}
+          #v161Strip{font-size:10px}
+          #v161Strip .h{font-size:8.5px;padding:1px 5px}
+          html body .tk{font-size:11px !important}
+          html body .tk .live{padding:0 8px !important}
+          html body .top.hdr{padding-top:2px !important;padding-bottom:2px !important;gap:3px 6px !important}
+          html body .top.hdr h1.brand{font-size:12px !important}
+          html body .top.hdr button,html body .top.hdr .chip,html body .top.hdr #flashRibbon *,html body .top.hdr #v147StrategyNearFri *,html body .top.hdr #v100Master *{font-size:10.5px !important}
+          html body .top.hdr button,html body .top.hdr #v100Master button{min-height:22px !important;padding-top:2px !important;padding-bottom:2px !important}
+          html body #v159Hit{height:22px;font-size:10px}
+          html body #v159Hit svg{width:18px;height:18px}
+          html body #gTop.tb{padding:2px 4px !important;gap:2px 5px !important}
+          html body #gTop button,html body #gTop select{font-size:10.5px !important}
+          html body #gTop .g-tf button{min-height:22px !important;padding:0 6px !important}
+          html body #gTop .g-tools button,html body #gTop .r button{min-height:22px !important;height:24px !important;padding:0 7px !important}
+          html body #tabbar,html body .tabbar{min-height:var(--tab-h) !important}
+          html body .tabbar button,html body .tabbar a{font-size:10px !important;padding-top:3px !important;padding-bottom:3px !important}
+          html body .tabbar svg{width:18px !important;height:18px !important}
+        }`;
+      D.head.appendChild(css);
+      const on = () => D.body.classList.contains('gfs'), off = () => { try { return localStorage.getItem(K) === '1'; } catch (e) { return false; } };
+      const setOff = v => { try { v ? localStorage.setItem(K, '1') : localStorage.removeItem(K); } catch (e) { } };
+      let auto = false;
+      function enter() {
+        if (off() || on() || auto) return; const b = $('fsBtn'); if (!b) return;
+        auto = true; try { b.click(); } catch (e) { } setTimeout(() => { auto = false; }, 600);
+      }
+      // the user's own full-screen toggle is remembered
+      D.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#fsBtn'); if (!b || auto) return; setTimeout(() => setOff(!on()), 50); }, true);
+      D.addEventListener('keydown', e => { if (e.key === 'Escape') setTimeout(() => { if (!on() && !auto) setOff(true); }, 120); });
+      D.addEventListener('fullscreenchange', () => { if (!D.fullscreenElement && !auto) setTimeout(() => { if (!on()) setOff(true); }, 120); });
+      const standalone = (() => { try { return matchMedia('(display-mode: fullscreen)').matches || matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch (e) { return false; } })();
+      if (standalone) { let n = 0; const t = setInterval(() => { if (on() || off() || ++n > 40) { clearInterval(t); return; } if ($('fsBtn')) { enter(); clearInterval(t); } }, 500); }
+      else {
+        const once = () => { D.removeEventListener('pointerup', once, true); D.removeEventListener('keydown', once, true); if (!$('v162Sh') || $('v162Sh').hidden) enter(); };
+        D.addEventListener('pointerup', once, true);
+      }
+      W.v163 = { enter };
     })();
   </script>
   <script data-module="v142">

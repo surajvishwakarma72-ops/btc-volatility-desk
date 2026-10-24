@@ -1,0 +1,22 @@
+{
+  "name": "Suraj Vishwakarma Volatility Desk",
+  "short_name": "Vol Desk",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": [
+    "fullscreen",
+    "standalone"
+  ],
+  "orientation": "portrait",
+  "background_color": "#0B141C",
+  "theme_color": "#0B141C",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
