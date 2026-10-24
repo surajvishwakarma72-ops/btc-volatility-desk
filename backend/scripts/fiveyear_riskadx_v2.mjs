@@ -501,6 +501,57 @@ function main(){
     console.log('  for reference, logloss of "just the running stop rate": '+(llb/nb).toFixed(4));
     return {features:FN,w0:w0.map(x=>+x.toFixed(4)),runs:res.map(r=>({lr:r.lr,lam:r.lam,logloss:r.logloss,frozen:r.frozenLogloss,auc:r.auc,frozenAuc:r.frozenAuc})),best:{lr:best.lr,lam:best.lam,logloss:best.logloss,frozen:best.frozenLogloss,auc:best.auc,frozenAuc:best.frozenAuc,cum:best.cum},baseLogloss:+(llb/nb).toFixed(4),trainN:train.length,testN:test.length};
   })();
+  /* ---------- BIG MOVES after entry: did BTC go 0.9 % (or 800 points) to one side within the 8-hour hold, by gauge colour (V10), all 5 years ---------- */
+  const moves=(()=>{
+    const V=VARIANTS.V10,by=new Map();for(const s of samples){let a=by.get(s.E0);if(!a){a=[];by.set(s.E0,a);}a.push(s);}
+    const rows=[];
+    for(const [E0,a] of by){const yr=a[0].yr,F=FMforYear(yr<2023?2023:yr),S=gaugeSeries(E0,F,yr,V);if(!S.length)continue;
+      for(const s of a){const p=S.find(q=>q.E===s.E);if(!p)continue;const b0=byT.get(s.E);if(!b0)continue;const S0=b0.c;let hu=0,hd=0,hu3=0,hd3=0,ok=0;const mu=[0],md=[0];
+        for(let h=1;h<=8;h++){const b=byT.get(s.E+h*HOUR);if(!b){mu.push(hu);md.push(hd);continue;}ok++;const u=b.h-S0,d=S0-b.l;if(u>hu)hu=u;if(d>hd)hd=d;if(h<=3){if(u>hu3)hu3=u;if(d>hd3)hd3=d;}mu.push(hu);md.push(hd);}
+        if(ok<6)continue;rows.push({E:s.E,E0,yr:s.yr,k:s.k,color:p.color,L:p.L,sc:p.sc,rising:p.rising,S0,up:hu,dn:hd,up3:hu3,dn3:hd3,mu,md,stop:s.stop,oos:s.yr>=2023,wd:s.wd,s});}}
+    const P=0.009,f1=r=>r.up>=P*r.S0||r.dn>=P*r.S0,fPts=r=>r.up>=800||r.dn>=800;
+    const stat=a=>{const n=a.length;if(!n)return {n:0};const pc=x=>+(a.filter(x).length/n*100).toFixed(1);return {n,either:pc(f1),up:pc(r=>r.up>=P*r.S0),down:pc(r=>r.dn>=P*r.S0),both:pc(r=>r.up>=P*r.S0&&r.dn>=P*r.S0),pts800:pc(fPts),first3h:pc(r=>r.up3>=P*r.S0||r.dn3>=P*r.S0),avgMax:+(mean(a.map(r=>Math.max(r.up,r.dn)/r.S0*100))).toFixed(2),stop:pc(r=>r.stop)};};
+    const byColor=(a)=>Object.fromEntries(['red','yellow','green'].map(c=>[c,stat(a.filter(r=>r.color===c))]));
+    const all=byColor(rows),oos=byColor(rows.filter(r=>r.oos));
+    const years=[2021,2022,2023,2024,2025,2026].map(y=>({year:y,oos:y>=2023,...byColor(rows.filter(r=>r.yr===y)),all:stat(rows.filter(r=>r.yr===y))}));
+    const lastE0=Math.max(...rows.map(r=>r.E0)),rec=d=>({days:d,...byColor(rows.filter(r=>r.E0>lastE0-d*DAY))});
+    const aucMove=(a,lab)=>+auc(a.filter(lab).map(r=>r.L),a.filter(r=>!lab(r)).map(r=>r.L)).toFixed(3);
+    const O=rows.filter(r=>r.oos);
+    // bootstrap over nights: green minus red rate of 0.9 % moves
+    const byN=new Map();for(const r of O){let a=byN.get(r.E0);if(!a){a=[];byN.set(r.E0,a);}a.push(r);}const ks=[...byN.keys()];let sd0=777;const rnd=()=>{sd0=(sd0*1664525+1013904223)>>>0;return sd0/4294967296;};const gaps=[],gr=[],rd=[];
+    for(let b=0;b<400;b++){const smp=[];for(let i=0;i<ks.length;i++)for(const r of byN.get(ks[(rnd()*ks.length)|0]))smp.push(r);const g=smp.filter(r=>r.color==='green'),d=smp.filter(r=>r.color==='red');if(g.length<20||d.length<20)continue;const a=g.filter(f1).length/g.length*100,c=d.filter(f1).length/d.length*100;gr.push(a);rd.push(c);gaps.push(c-a);}
+    const ci=a=>{a.sort((x,y)=>x-y);return [+quant(a,2.5).toFixed(1),+quant(a,50).toFixed(1),+quant(a,97.5).toFixed(1)];};
+    const out={threshold:'0.9 % of the entry price (about 730-800 points) or 800 points, either side, within the 8-hour hold',n:rows.length,nOos:O.length,all,oos,years,recent:[rec(90),rec(30)],auc:{move:aucMove(O,f1),pts800:aucMove(O,fPts),stop:aucMove(O,r=>r.stop)},boot:{green:ci(gr),red:ci(rd),gap:ci(gaps),pGreenCalmer:+(gaps.filter(x=>x>0).length/gaps.length).toFixed(3)},baseOos:stat(O),baseAll:stat(rows)};
+    const line=(nm,o)=>console.log('  '+nm.padEnd(8)+' n '+String(o.n).padStart(5)+'  0.9% move either side '+String(o.either).padStart(5)+'%  up '+String(o.up).padStart(5)+'%  down '+String(o.down).padStart(5)+'%  both '+String(o.both).padStart(4)+'%  800pts '+String(o.pts800).padStart(5)+'%  first 3h '+String(o.first3h).padStart(5)+'%  avg biggest '+o.avgMax+'%  stopped '+o.stop+'%');
+    console.log('BIG MOVES AFTER ENTRY (gauge V10; '+out.n+' entry hours 2021-26, '+out.nOos+' out-of-sample 2023-26; 2021-22 colours use the 2023 model, so they are in-sample)');
+    console.log(' all five years:');for(const c of ['red','yellow','green'])line(c,all[c]);line('ALL',out.baseAll);
+    console.log(' out-of-sample 2023-26:');for(const c of ['red','yellow','green'])line(c,oos[c]);line('ALL',out.baseOos);
+    for(const y of years){console.log(' '+y.year+(y.oos?'':' (in-sample)')+':  red '+y.red.either+'% (n'+y.red.n+')  yellow '+y.yellow.either+'% (n'+y.yellow.n+')  green '+y.green.either+'% (n'+y.green.n+')  all '+y.all.either+'%');}
+    for(const r of out.recent)console.log(' last '+r.days+' days:  red '+r.red.either+'% (n'+r.red.n+')  yellow '+r.yellow.either+'% (n'+r.yellow.n+')  green '+r.green.either+'% (n'+r.green.n+')');
+    console.log(' bootstrap (400, whole nights, out-of-sample): green '+out.boot.green.join(' / ')+'%  red '+out.boot.red.join(' / ')+'%  red minus green '+out.boot.gap.join(' / ')+'  P(green calmer) '+out.boot.pGreenCalmer);
+    console.log(' AUC of the gauge level: for a 0.9% move '+out.auc.move+', for 800 points '+out.auc.pts800+', for a stopped leg '+out.auc.stop);
+    const GRID=[[1,0.009],[3,0.009],[8,0.009],[3,0.015],[8,0.015],[8,0.025]];const lab=(h,pc)=>r=>r.mu[h]>=pc*r.S0||r.md[h]>=pc*r.S0;
+    out.grid=GRID.map(([h,pc])=>{const f=lab(h,pc);const c=x=>+(x.filter(f).length/x.length*100).toFixed(1);return {hours:h,pct:pc*100,all:c(O),red:c(O.filter(r=>r.color==='red')),yellow:c(O.filter(r=>r.color==='yellow')),green:c(O.filter(r=>r.color==='green')),auc:aucMove(O,f)};});
+    console.log(' how often (out-of-sample) BTC moved a given % to ONE side within a window after entry, by colour:');
+    for(const g of out.grid)console.log('   within '+g.hours+'h, '+g.pct+'%:  all '+g.all+'%   red '+g.red+'%   yellow '+g.yellow+'%   green '+g.green+'%   AUC of the level '+g.auc);
+    out._rows=rows;return out;
+  })();
+  const refit=(()=>{ // which checks matter for BIG MOVES? ridge logistic on the soft check values, fitted on 2021-22, scored on 2023-26
+    const rows=moves._rows.filter(r=>r.s.lx),tr=rows.filter(r=>!r.oos),te=rows.filter(r=>r.oos);const FN=['spd','model','fear','rise','vov','rv','edge','adx','bear','burst'];const out={};
+    const defs={m1:(r)=>r.mu[1]>=0.009*r.S0||r.md[1]>=0.009*r.S0,m3:(r)=>r.mu[3]>=0.009*r.S0||r.md[3]>=0.009*r.S0,m8:(r)=>r.mu[8]>=0.015*r.S0||r.md[8]>=0.015*r.S0,stop:(r)=>r.stop};
+    console.log(' REFIT: weight of each check for each label (ridge logistic, fitted 2021-22), AUC on 2023-26 against the current gauge level');
+    console.log('   features: '+FN.join(' '));
+    for(const [k,f] of Object.entries(defs)){const w=fitLogit(tr.map(r=>r.s.lx),tr.map(r=>f(r)?1:0),3);const sc=r=>{let z=w[0];for(let i=0;i<r.s.lx.length;i++)z+=w[i+1]*r.s.lx[i];return z;};
+      const a1=auc(te.filter(f).map(sc),te.filter(r=>!f(r)).map(sc)),a2=auc(te.filter(f).map(r=>r.L),te.filter(r=>!f(r)).map(r=>r.L));out[k]={w:w.map(x=>+x.toFixed(2)),aucFit:+a1.toFixed(3),aucGauge:+a2.toFixed(3)};
+      console.log('   '+k.padEnd(5)+' weights '+w.slice(1).map(x=>x.toFixed(2)).join(' ')+'  | AUC refit '+a1.toFixed(3)+' vs current gauge '+a2.toFixed(3));}
+    console.log('   current hand weights (scaled to 1): '+['spd','model','fear','rise','vov','rv','edge','adx'].map(k=>(GW[k]/GWT).toFixed(2)).join(' '));
+    return out;})();
+  {const O=moves._rows.filter(r=>r.oos),f1=r=>r.mu[1]>=0.009*r.S0||r.md[1]>=0.009*r.S0,f3=r=>r.mu[3]>=0.009*r.S0||r.md[3]>=0.009*r.S0,f8=r=>r.mu[8]>=0.015*r.S0||r.md[8]>=0.015*r.S0;
+   const pc=(a,f)=>a.length?(a.filter(f).length/a.length*100).toFixed(1):'-';const strict=[];moves.strict=strict;const row=(nm,a)=>{strict.push({name:nm,n:a.length,m1:+pc(a,f1),m3:+pc(a,f3),m8:+pc(a,f8),stop:+pc(a,r=>r.stop)});console.log('  '+nm.padEnd(46)+' n '+String(a.length).padStart(4)+'  0.9% in 1h '+String(pc(a,f1)).padStart(5)+'%  in 3h '+String(pc(a,f3)).padStart(5)+'%  1.5% in 8h '+String(pc(a,f8)).padStart(5)+'%  stopped '+String(pc(a,r=>r.stop)).padStart(5)+'%');};
+   console.log(' STRICTER GREEN? green hours split by the risk-model score at entry (0 = calmest)');
+   const G=O.filter(r=>r.color==='green');row('green, all',G);for(const t of [4,8,12,16,20])row('green and model score <= '+t,G.filter(r=>r.sc<=t));row('green and model score > 12',G.filter(r=>r.sc>12));
+   row('yellow, all',O.filter(r=>r.color==='yellow'));row('yellow and model score <= 8',O.filter(r=>r.color==='yellow'&&r.sc<=8));row('red, all',O.filter(r=>r.color==='red'));row('red and rising only',O.filter(r=>r.color==='red'&&r.rising));row('red and not rising',O.filter(r=>r.color==='red'&&!r.rising));}
+  moves.refit=refit;gauge.moves=(({_rows,...r})=>r)(moves);
   gauge.learner=learner;
   gauge.reliability=reliability;
   gauge.weights=GW;gauge.note='red >= 66; green = L < 34 and the main checks pass; yellow otherwise. Rises at once (faster when momentum builds), falls after two better hours (at once when momentum is spent).';
