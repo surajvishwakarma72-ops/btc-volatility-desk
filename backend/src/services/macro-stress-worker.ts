@@ -129,7 +129,6 @@ export class MacroStressWorker {
 
   private quotes = new Map<string, MarketQuote>();
   private priceHistory = new Map<string, Array<{ t: number; p: number }>>();
-  private btcHistory: Array<{ t: number; p: number }> = [];
 
   private historicalCurve: StressPoint[] = [];
   private currentSnapshot: MacroStressSnapshot | null = null;
