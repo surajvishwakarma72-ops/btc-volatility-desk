@@ -20676,8 +20676,8 @@ The floating P&L pill still shows the live P&L on top of everything. */
         constructor() { this._r = new C3DRenderer(); }
         renderer() { return this._r; }
         update(d, o) { this._r.update(d, o); }
-        priceValueBuilder(d) { const c = d.close; return [d.high != null ? d.high : c, d.low != null ? d.low : c, c]; }
-        isWhitespace(d) { return d == null || d.close == null || d.open == null; }
+        priceValueBuilder(d) { const c = d.close, f = Number.isFinite; return [f(d.high) ? d.high : c, f(d.low) ? d.low : c, c]; }   // v173: a non-finite high / low falls back to the close
+        isWhitespace(d) { return d == null || !Number.isFinite(d.close) || !Number.isFinite(d.open); }   // v173: NaN / Infinity candles are gaps (the library threw 'Value is null' on them)
         defaultOptions() { return Object.assign({}, C3D.def || {}, { color: '#26a69a', upColor: '#26a69a', downColor: '#ef5350', borderVisible: true, borderColor: '#378658', borderUpColor: '#26a69a', borderDownColor: '#ef5350', wickVisible: true, wickColor: '#737375', wickUpColor: '#26a69a', wickDownColor: '#ef5350' }); }
         destroy() { }
       }
