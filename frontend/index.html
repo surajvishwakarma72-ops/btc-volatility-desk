@@ -46511,7 +46511,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         // vol charts first: each gets a fixed, readable strip; the BTC block takes what is left
         const each = vols.length ? Math.max(150, Math.min(240, Math.round(Hb * (vols.length >= 3 ? 0.17 : vols.length === 2 ? 0.2 : 0.25)))) : 0;
         const volsH = vols.length ? vols.length * (each + 2) + 8 : 0; if (volsH) Hb = Math.max(320, Hb - volsH);
-        const hd = ($('gTop') ? $('gTop').offsetHeight : 34) + ($('gBot') ? $('gBot').offsetHeight : 24) + ($('gTabs') && $('gTabs').offsetHeight || 0) + 4;
+        const hd = ($('gTop') ? $('gTop').offsetHeight : 34) + ($('gBot') ? $('gBot').offsetHeight : 24) + ($('gTabs') && $('gTabs').offsetHeight || 0) + 4 + (($('v164Lvl') && $('v164Lvl').offsetHeight) || 0);
         const lanes = ['cvLane', 'macroStressLane', 'v138Iv', 'v138Rv', 'v138Vov', 'v138Dv', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v138Legs', ...((W.v142 && W.v142.ids()) || [])].map($).filter(e => e && getComputedStyle(e).display !== 'none');
         const adx = $('paAdxBox'), adxOn = adx && getComputedStyle(adx).display !== 'none'; const nL = lanes.length + (adxOn ? 1 : 0);
         set(cp, 'height', Hb + 'px'); set(cp, 'min-height', Hb + 'px'); set(cp, 'max-height', Hb + 'px');
@@ -50588,6 +50588,59 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         D.addEventListener('pointerup', once, true);
       }
       W.v163 = { enter };
+    })();
+  </script>
+  <script data-module="v164">
+    /* v164 (24 Oct 2026) · "IV fall level" strip right above the IV chart, readable on phones (the IV chart's own legend chips are hidden on narrow screens).
+       Shows how much of tonight's USUAL N2N IV fall (NY open 19:30 IST -> 07:30 IST, per weekday, 2.6-year Delta backtest) is already used:
+       a 0-100% bar with a tick for "usual by now", the numbers, and the room left. Outside the NY-to-7am window (or on a weekend) it shows the
+       usual fall of the next night so the percentages are always visible. Honest note in the hover text: in the backtest the fall before
+       22:30 did not predict the fall after (correlation 0.03), so this is the usual shape, not a rule. */
+    (function () {
+      const W = window, D = document, $ = id => D.getElementById(id), IST = 19800000, HR = 3600000;
+      const css = D.createElement('style'); css.textContent = `
+        #v164Lvl{box-sizing:border-box;padding:3px 8px 4px;border-bottom:1px solid var(--line,#8883);background:var(--panel,transparent);font:600 11px/1.25 var(--font);font-variant-numeric:tabular-nums;color:var(--text,#111)}
+        #v164Lvl[hidden]{display:none}
+        #v164Lvl .r1{display:flex;align-items:center;gap:8px}
+        #v164Lvl .t{font:800 9.5px var(--font);letter-spacing:.07em;color:var(--muted,#667085);white-space:nowrap}
+        #v164Lvl .bar{position:relative;flex:1;height:9px;border-radius:5px;background:rgba(128,128,128,.28);overflow:visible}
+        #v164Lvl .bar u{position:absolute;left:0;top:0;bottom:0;border-radius:5px;display:block}
+        #v164Lvl .bar s{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text,#111);display:block}
+        #v164Lvl .pc{font:800 12px var(--font);white-space:nowrap;min-width:92px;text-align:right}
+        #v164Lvl .r2{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:500 10px var(--font);color:var(--muted,#667085);margin-top:1px}`;
+      D.head.appendChild(css);
+      const NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], f = x => (x >= 0 ? '+' : '−') + Math.abs(x).toFixed(1) + '%';
+      let lastH = 0;
+      function tonight() {
+        const t = new Date(Date.now() + IST), h = t.getUTCHours() + t.getUTCMinutes() / 60; let wd = t.getUTCDay(), day = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+        if (h < 7) { wd = (wd + 6) % 7; day -= 86400000; }           // before 07:00 it is still last night
+        let label = 'Tonight';
+        if (wd === 6 || wd === 0 || (h >= 7 && wd === 5 && false)) { wd = 1; label = 'Next'; }
+        return { wd, label, h, day };
+      }
+      function render() {
+        const iv = $('v138Iv'); let box = $('v164Lvl'); const U = W.__N2N_IV_PATH;
+        const on = iv && getComputedStyle(iv).display !== 'none' && U && U.byWd;
+        if (!on) { if (box && !box.hidden) { box.hidden = true; kick(); } return; }
+        if (!box) { box = D.createElement('div'); box.id = 'v164Lvl'; iv.parentNode.insertBefore(box, iv); }
+        if (box.nextElementSibling !== iv) iv.parentNode.insertBefore(box, iv);
+        const T = tonight(), P = U.byWd[T.wd]; if (!P) { box.hidden = true; return; }
+        const tot = P.med[12], by2230 = P.med[3], note = 'Backtest: Delta N2N IV, 2.6 years, about ' + P.n + ' nights for this weekday. Usual fall from the NY open (19:30 IST) to 07:30 IST: ' + f(tot) + ', of which ' + f(by2230) + ' by 22:30. Used = fall so far / usual total fall. What IV did before 22:30 did not predict what it did after (correlation 0.03), so this is the usual shape, not a rule.';
+        let live = null; try { const R = W.v121 && W.v121.last, tst = W.v138 && W.v138.__test; if (R && R.F && R.F.n2n && tst) { const u = tst.n2nUsual(R.F.n2n, R, tst.ivCandles(R.F.n2n)); if (u && u.h >= 0 && u.h <= 12.5 && u.fell != null && tot <= -1) live = u; } } catch (e) { }
+        let html;
+        if (live) {
+          const used = Math.max(0, live.fell / tot * 100), room = Math.max(0, 100 - used), now = live.at(live.h), nowPct = Math.max(0, Math.min(100, now / tot * 100)), col = used >= 100 ? '#C53030' : used >= 70 ? '#D69E2E' : '#15803D';
+          html = `<div class="r1"><span class="t">IV FALL USED · ${NAMES[T.wd].toUpperCase()}</span><span class="bar"><u style="width:${Math.min(100, used).toFixed(0)}%;background:${col}"></u><s style="left:calc(${nowPct.toFixed(0)}% - 1px)"></s></span><span class="pc" style="color:${col}">${used > 200 ? '>200' : used.toFixed(0)}% · room ${room.toFixed(0)}%</span></div><div class="r2">so far ${f(live.fell)} · usual by now ${f(now)} (tick) · total by 07:30 ${f(tot)}</div>`;
+        } else {
+          html = `<div class="r1"><span class="t">USUAL FALL · ${T.label.toUpperCase()} ${NAMES[T.wd].toUpperCase()}</span><span class="bar"><u style="width:${Math.min(100, by2230 / tot * 100).toFixed(0)}%;background:#7A8794"></u></span><span class="pc">${f(tot)}</span></div><div class="r2">${f(by2230)} by 22:30 · ${f(tot - by2230)} after · live level from the NY open (N2N)</div>`;
+        }
+        if (box.dataset.h !== html) { box.dataset.h = html; box.innerHTML = html; } box.title = note;
+        if (box.hidden) { box.hidden = false; } const h = box.offsetHeight; if (h !== lastH) { lastH = h; kick(); }
+      }
+      function kick() { try { W.v133 && W.v133.fit && W.v133.fit(); } catch (e) { } }
+      setInterval(() => { try { render(); } catch (e) { } }, 4000); setTimeout(() => { try { render(); } catch (e) { } }, 2500);
+      D.addEventListener('click', () => setTimeout(() => { try { render(); } catch (e) { } }, 600), true);
+      W.v164 = { render };
     })();
   </script>
   <script data-module="v142">
