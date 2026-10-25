@@ -51510,7 +51510,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         ctx.textBaseline = 'bottom'; ctx.fillStyle = 'rgba(21,128,61,.95)'; ctx.fillText('SELL ZONE · GO', 8 * hr, y0 - 6 * vr);
         const ts = o.ch && o.ch.timeScale ? o.ch.timeScale() : null; if (!ts || !o.runs) return;
         for (const r of o.runs) { const ca = ts.logicalToCoordinate(r.i0), cb = ts.logicalToCoordinate(r.i1); if (ca == null || cb == null) continue; const bw = r.i1 > r.i0 ? Math.abs(cb - ca) / (r.i1 - r.i0) : 2, xa = ca - bw / 2, xb = cb + bw / 2; const x0 = Math.max(0, xa * hr), x1 = Math.min(W_, xb * hr); if (x1 <= x0) continue;
-          ctx.fillStyle = 'rgba(120,130,142,.30)'; ctx.fillRect(x0, y100, x1 - x0, y0 - y100);
+          ctx.fillStyle = 'rgba(120,130,142,.10)'; ctx.fillRect(x0, y100, x1 - x0, y0 - y100);   // a light tint only, so the coloured line stays clearly visible
           if (x1 - x0 > 90 * hr) { ctx.fillStyle = 'rgba(70,80,92,.9)'; ctx.textBaseline = 'middle'; ctx.fillText(r.phase === 'ny' ? 'NY OPEN · NO ENTRY YET' : 'NO ENTRY · ASIA / LONDON', x0 + 8 * hr, (y100 + y0) / 2); } }
       }
       function drawDiv(o, sc) {
@@ -51740,7 +51740,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const runs = []; let cur = null;
           const pts = B.b.map((bar, i) => {
             const S = RR.state && RR.state[i]; if (!S) return blank(B, i); vals[i] = S.L;
-            const live = S.phase === 'entry' || S.phase === 'hold', col = !live ? GY : S.color === 'green' ? GR : S.color === 'red' ? (S.L >= 80 ? DK : RD) : AM;
+            const live = S.phase === 'entry' || S.phase === 'hold', col = !S.color ? GY : S.color === 'green' ? GR : S.color === 'red' ? (S.L >= 80 ? DK : RD) : AM;   // the line keeps its red / yellow / green colour in the Asia and London hours too
             if (!live) { if (cur && cur.phase === S.phase) cur.i1 = i; else { cur = { i0: i, i1: i, phase: S.phase }; runs.push(cur); } } else cur = null;
             return { time: bar.time, value: S.L, color: col };
           });
