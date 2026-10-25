@@ -19,7 +19,8 @@ describe('paper routes', () => {
     const routes: Array<[string, string]> = [
       ['GET', '/paper/account'], ['GET', '/paper/board'], ['GET', '/paper/book?symbol=BTCUSD'], ['POST', '/paper/preview'], ['POST', '/paper/orders'],
       ['DELETE', '/paper/orders/00000000-0000-0000-0000-000000000000'], ['POST', '/paper/orders/cancel-all'], ['GET', '/paper/orders'], ['GET', '/paper/fills'],
-      ['POST', '/paper/leverage'], ['POST', '/paper/reset'], ['POST', '/paper/strategy'], ['POST', '/paper/strategy/preview'], ['POST', '/paper/margin-mode'], ['GET', '/paper/flow'],
+      ['POST', '/paper/leverage'], ['POST', '/paper/reset'], ['POST', '/paper/strategy'], ['POST', '/paper/strategy/preview'], ['POST', '/paper/margin-mode'], ['GET', '/paper/flow'], ['GET', '/paper/strategies'],
+      ['POST', '/paper/strategy/00000000-0000-0000-0000-000000000000/close'], ['POST', '/paper/strategy/00000000-0000-0000-0000-000000000000/stops'],
     ];
     for (const [method, url] of routes) {
       const res = await app.inject({ method: method as 'GET', url });

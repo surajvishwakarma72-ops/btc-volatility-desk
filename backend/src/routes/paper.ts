@@ -24,7 +24,8 @@ export const orderBody = z.object({
 });
 
 export const strategyBody = z.object({
-  legs: z.array(z.object({ symbol, side: z.enum(['buy', 'sell']), lots: z.number().int().min(1).max(1_000_000) })).min(1).max(8),
+  legs: z.array(z.object({ symbol, side: z.enum(['buy', 'sell']), lots: z.number().int().min(1).max(1_000_000), stop: price.nullable().optional() })).min(1).max(8),
+  name: z.string().trim().max(120).optional(),
 });
 
 export const paperRoutes: FastifyPluginAsync = async (fastify) => {
@@ -117,11 +118,40 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     const b = strategyBody.safeParse(req.body);
     if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid strategy');
     try {
-      const r = await paperTerminal.placeBasket(b.data.legs);
+      const r = await paperTerminal.placeBasket(b.data.legs, b.data.name);
       return r.ok ? { success: true, ...r } : reply.code(400).send({ success: false, error: r.reason });
     } catch (e) {
       return fail(reply, e);
     }
+  });
+
+  // Executed strategies: net PnL, each leg's PnL and stop, and the controls to edit stops or close everything.
+  fastify.get('/strategies', auth, async (_req, reply) => {
+    try {
+      return { success: true, ...(await paperTerminal.strategies()) };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  fastify.post('/strategy/:id/close', limited, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return bad(reply, 'invalid strategy id');
+    try {
+      const r = await paperTerminal.closeStrategy(id);
+      return r.ok ? { success: true } : reply.code(400).send({ success: false, error: r.reason });
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  fastify.post('/strategy/:id/stops', limited, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return bad(reply, 'invalid strategy id');
+    const b = z.object({ stops: z.array(z.object({ symbol, stop: price.nullable() })).min(1).max(8) }).safeParse(req.body);
+    if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid stops');
+    const r = await paperTerminal.setStops(id, b.data.stops);
+    return r.ok ? { success: true } : reply.code(400).send({ success: false, error: r.reason });
   });
 
   // Portfolio margin or standard margin, like the margin-mode switch on Delta.

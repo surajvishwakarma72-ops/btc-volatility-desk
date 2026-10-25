@@ -71,6 +71,29 @@ CREATE TABLE IF NOT EXISTS paper_fills (
   note text
 );
 CREATE INDEX IF NOT EXISTS paper_fills_at_idx ON paper_fills (at);
+CREATE TABLE IF NOT EXISTS paper_strategies (
+  id uuid PRIMARY KEY,
+  name text NOT NULL,
+  status text NOT NULL DEFAULT 'open',
+  opened_at timestamptz NOT NULL DEFAULT now(),
+  closed_at timestamptz,
+  close_reason text,
+  margin_at_entry numeric NOT NULL DEFAULT 0,
+  net_premium numeric NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS paper_strategy_legs (
+  id bigserial PRIMARY KEY,
+  strategy_id uuid NOT NULL,
+  symbol text NOT NULL,
+  side text NOT NULL,
+  lots integer NOT NULL,
+  entry_price numeric NOT NULL,
+  stop_price numeric,
+  exit_price numeric,
+  entry_fee numeric NOT NULL DEFAULT 0,
+  exit_fee numeric NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS paper_strategy_legs_idx ON paper_strategy_legs (strategy_id);
 `;
 
 const START_BALANCE = Number(process.env.PAPER_START_USD ?? 10_000);
@@ -502,7 +525,7 @@ export class PaperTerminal {
   reset(balance: number) {
     return this.serial(async () => {
       await ensurePaperSchema();
-      await pool.query('DELETE FROM paper_fills; DELETE FROM paper_orders; DELETE FROM paper_positions; DELETE FROM paper_account;');
+      await pool.query('DELETE FROM paper_fills; DELETE FROM paper_orders; DELETE FROM paper_positions; DELETE FROM paper_strategy_legs; DELETE FROM paper_strategies; DELETE FROM paper_account;');
       await pool.query('INSERT INTO paper_account (id, cash, start_balance) VALUES (1, $1, $1)', [balance]);
     });
   }
@@ -648,7 +671,7 @@ export class PaperTerminal {
   }
 
   /** Place every leg at once as market orders, or none. */
-  placeBasket(legs: BasketLeg[]) {
+  placeBasket(legs: BasketLeg[], name?: string) {
     return this.serial(async () => {
       this.idle = false;
       await this.ensure();
@@ -656,8 +679,21 @@ export class PaperTerminal {
       const st = await this.load();
       const p = await this.planBasket(st, snap, legs);
       if (!('planned' in p) || !p.ok) return { ok: false, reason: p.reason ?? 'could not plan the strategy', orders: [] as OrderRow[] };
+      // stops: a sold option defaults to 2x its sell price, and a stop must sit on the losing side of the fill
+      const stops: Array<number | null> = [];
+      for (let i = 0; i < p.planned.length; i++) {
+        const leg = p.planned[i]!;
+        const asked = legs[i]!.stop;
+        const stop = asked === undefined ? (leg.side === 'sell' && leg.inst.kind === 'option' ? roundToTick(leg.price * DEFAULT_STOP_MULT, leg.inst.tick) : null) : asked;
+        if (stop != null && (leg.side === 'sell' ? stop <= leg.price : stop >= leg.price)) {
+          return { ok: false, reason: `${leg.inst.symbol}: a ${leg.side === 'sell' ? 'sold' : 'bought'} leg filled near ${leg.price.toFixed(1)} needs its stop ${leg.side === 'sell' ? 'above' : 'below'} that, not at ${stop}`, orders: [] as OrderRow[] };
+        }
+        stops.push(stop);
+      }
+      const marginBefore = this.view(st, st.positions.values(), snap).margin;
       const basketId = randomUUID();
       const orders: OrderRow[] = [];
+      const legFees: number[] = [];
       for (const leg of p.planned) {
         const o: OrderRow = {
           id: randomUUID(), createdAt: Date.now(), symbol: leg.inst.symbol, kind: leg.inst.kind, side: leg.side, type: 'market', lots: leg.lots, filledLots: 0,
@@ -672,9 +708,188 @@ export class PaperTerminal {
         const sim = this.simulate(st, leg.inst, snap, leg.side, leg.lots, leg.price, false, lev);
         await this.commit(st, o, leg.inst, sim, leg.lots, leg.price, false, leg.best, 'strategy leg');
         orders.push(o);
+        legFees.push(sim.fee);
+      }
+      const label = name?.trim() || p.planned.map((l) => `${l.side === 'sell' ? 'S' : 'B'} ${l.inst.option ? `${l.inst.option.strike}${l.inst.option.type === 'call' ? 'C' : 'P'}` : l.inst.symbol}`).join(' · ');
+      await pool.query(
+        `INSERT INTO paper_strategies (id, name, margin_at_entry, net_premium) VALUES ($1,$2,$3,$4)`,
+        [basketId, label.slice(0, 120), Math.max(p.view.margin - marginBefore, 0), p.netPremium],
+      );
+      for (let i = 0; i < p.planned.length; i++) {
+        const leg = p.planned[i]!;
+        await pool.query(
+          `INSERT INTO paper_strategy_legs (strategy_id, symbol, side, lots, entry_price, stop_price, entry_fee) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+          [basketId, leg.inst.symbol, leg.side, leg.lots, leg.price, stops[i], legFees[i]],
+        );
       }
       await this.afterFills(st, snap);
-      return { ok: true, basketId, orders, netPremium: p.netPremium, fees: p.fees, payoff: p.payoff };
+      return { ok: true, basketId, orders, netPremium: p.netPremium, fees: p.fees, payoff: p.payoff, stops };
+    });
+  }
+
+  // ---------- strategy positions: net and per-leg PnL, per-leg stops, close all ----------
+
+  private markOf(q: Quote | undefined): number | null {
+    return q ? (q.mark > 0 ? q.mark : (q.bid + q.ask) / 2) : null;
+  }
+
+  /**
+   * Close every still-open leg of one strategy with reverse market orders against the live books (the remainder at the
+   * mark if the book is too thin), record each leg's exit price and fee, and mark the strategy closed.
+   */
+  private async closeStrategyLegs(st: State, snap: MarketSnapshot, id: string, reason: string): Promise<boolean> {
+    const legs = (await pool.query('SELECT * FROM paper_strategy_legs WHERE strategy_id = $1 AND exit_price IS NULL ORDER BY id', [id])).rows as any[];
+    const q = this.quoteFn(snap);
+    for (const l of legs) {
+      const lots = Number(l.lots);
+      const inst = snap.insts.get(l.symbol);
+      const pos = st.positions.get(l.symbol);
+      const mark = this.markOf(q(l.symbol));
+      if (!inst || !pos) {
+        // the contract expired or the position was closed another way: price it where we last can
+        const opt = parseOptionSymbol(l.symbol);
+        const px = opt && opt.expiryMs <= Date.now() ? intrinsicAtExpiry(opt.type, opt.strike, snap.spot) : mark ?? Number(l.entry_price);
+        await pool.query('UPDATE paper_strategy_legs SET exit_price = $2 WHERE id = $1', [l.id, px]);
+        continue;
+      }
+      const side: Side = l.side === 'buy' ? 'sell' : 'buy';
+      const o: OrderRow = {
+        id: randomUUID(), createdAt: Date.now(), symbol: l.symbol, kind: inst.kind, side, type: 'market', lots, filledLots: 0, price: null, stopPrice: null,
+        reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'strategy close', ocoGroup: null, basketId: id,
+      };
+      await pool.query(
+        `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason, basket_id) VALUES ($1,$2,$3,$4,'market',$5,true,'working','strategy close',$6)`,
+        [o.id, o.symbol, o.kind, o.side, o.lots, id],
+      );
+      await this.takeFromBook(st, o, inst, snap);
+      if (o.filledLots < lots) {
+        const rest = lots - o.filledLots;
+        const px = mark ?? Number(l.entry_price);
+        const sim = this.simulate(st, inst, snap, side, rest, px, false, pos.leverage);
+        await this.commit(st, o, inst, sim, rest, px, false, px, 'strategy close at the mark: the book was too thin');
+      }
+      await pool.query('UPDATE paper_strategy_legs SET exit_price = $2, exit_fee = $3 WHERE id = $1', [l.id, o.avgPrice, o.fee]);
+    }
+    await pool.query(`UPDATE paper_strategies SET status = 'closed', closed_at = now(), close_reason = $2 WHERE id = $1 AND status = 'open'`, [id, reason]);
+    return true;
+  }
+
+  /** Close all legs of a strategy now. */
+  closeStrategy(id: string, reason = 'closed by you') {
+    return this.serial(async () => {
+      await this.ensure();
+      const s = (await pool.query(`SELECT status FROM paper_strategies WHERE id = $1`, [id])).rows[0] as { status: string } | undefined;
+      if (!s) return { ok: false, reason: 'no strategy with that id' };
+      if (s.status !== 'open') return { ok: false, reason: 'that strategy is already closed' };
+      const snap = await this.market.snapshot(1_500);
+      const st = await this.load();
+      await this.closeStrategyLegs(st, snap, id, reason);
+      await this.afterFills(st, snap);
+      return { ok: true };
+    });
+  }
+
+  /** Change the stop of individual legs of an open strategy; null removes a stop. */
+  setStops(id: string, stops: Array<{ symbol: string; stop: number | null }>) {
+    return this.serial(async () => {
+      await this.ensure();
+      const s = (await pool.query(`SELECT status FROM paper_strategies WHERE id = $1`, [id])).rows[0] as { status: string } | undefined;
+      if (!s) return { ok: false, reason: 'no strategy with that id' };
+      if (s.status !== 'open') return { ok: false, reason: 'that strategy is already closed' };
+      const legs = (await pool.query('SELECT * FROM paper_strategy_legs WHERE strategy_id = $1 AND exit_price IS NULL', [id])).rows as any[];
+      for (const c of stops) {
+        const l = legs.find((x) => x.symbol === c.symbol);
+        if (!l) return { ok: false, reason: `${c.symbol} is not an open leg of this strategy` };
+        if (c.stop != null) {
+          const entry = Number(l.entry_price);
+          if (l.side === 'sell' ? c.stop <= entry : c.stop >= entry) {
+            return { ok: false, reason: `${c.symbol}: the stop for a ${l.side === 'sell' ? 'sold' : 'bought'} leg must be ${l.side === 'sell' ? 'above' : 'below'} its entry ${entry.toFixed(1)}` };
+          }
+        }
+      }
+      for (const c of stops) {
+        await pool.query('UPDATE paper_strategy_legs SET stop_price = $3 WHERE strategy_id = $1 AND symbol = $2 AND exit_price IS NULL', [id, c.symbol, c.stop]);
+      }
+      return { ok: true };
+    });
+  }
+
+  /** Close any open strategy whose leg has reached its stop. The whole strategy goes, not just that leg. */
+  private async checkStops(st: State, snap: MarketSnapshot): Promise<void> {
+    const rows = (await pool.query(
+      `SELECT l.* FROM paper_strategy_legs l JOIN paper_strategies s ON s.id = l.strategy_id
+       WHERE s.status = 'open' AND l.exit_price IS NULL AND l.stop_price IS NOT NULL ORDER BY l.id`,
+    )).rows as any[];
+    if (!rows.length) return;
+    const q = this.quoteFn(snap);
+    const done = new Set<string>();
+    for (const l of rows) {
+      if (done.has(l.strategy_id)) continue;
+      const mark = this.markOf(q(l.symbol));
+      if (mark == null) continue;
+      const closeSide: Side = l.side === 'sell' ? 'buy' : 'sell';
+      if (!stopTriggered(closeSide, Number(l.stop_price), mark)) continue;
+      done.add(l.strategy_id);
+      await this.closeStrategyLegs(st, snap, l.strategy_id, `stop: ${l.symbol} reached ${mark.toFixed(1)}, its stop was ${Number(l.stop_price).toFixed(1)}`);
+    }
+  }
+
+  /** Strategies whose positions are gone (expired, settled, liquidated) are closed at their settlement or the mark. */
+  private async syncStrategies(st: State, snap: MarketSnapshot): Promise<void> {
+    const open = (await pool.query(`SELECT DISTINCT l.strategy_id FROM paper_strategy_legs l JOIN paper_strategies s ON s.id = l.strategy_id WHERE s.status = 'open' AND l.exit_price IS NULL`)).rows as any[];
+    for (const r of open) {
+      const legs = (await pool.query('SELECT symbol FROM paper_strategy_legs WHERE strategy_id = $1 AND exit_price IS NULL', [r.strategy_id])).rows as any[];
+      if (legs.every((l) => !st.positions.has(l.symbol))) {
+        const expired = legs.every((l) => (parseOptionSymbol(l.symbol)?.expiryMs ?? Infinity) <= Date.now());
+        await this.closeStrategyLegs(st, snap, r.strategy_id, expired ? 'expired and settled' : 'positions were closed (liquidation or manual orders)');
+      }
+    }
+  }
+
+  /** Open strategies with live per-leg and net PnL, then the most recent closed ones. */
+  strategies(closedLimit = 30) {
+    return this.serial(async () => {
+      await this.ensure();
+      const ss = (await pool.query(
+        `SELECT * FROM paper_strategies WHERE status = 'open'
+         UNION ALL (SELECT * FROM paper_strategies WHERE status <> 'open' ORDER BY closed_at DESC LIMIT $1)`,
+        [closedLimit],
+      )).rows as any[];
+      if (!ss.length) return { open: [], closed: [], marketError: null as string | null };
+      const ids = ss.map((s) => `'${String(s.id).replace(/[^0-9a-f-]/gi, '')}'`).join(',');
+      const ls = (await pool.query(`SELECT * FROM paper_strategy_legs WHERE strategy_id IN (${ids}) ORDER BY id`)).rows as any[];
+      let snap: MarketSnapshot | null = null;
+      let marketError: string | null = null;
+      if (ss.some((s) => s.status === 'open')) {
+        try { snap = await this.market.snapshot(3_000); } catch (e) { marketError = (e as Error).message; }
+      }
+      const q = snap ? this.quoteFn(snap) : null;
+      const out = ss.map((s) => {
+        const legs = ls.filter((l) => l.strategy_id === s.id).map((l) => {
+          const entry = Number(l.entry_price);
+          const exit = l.exit_price == null ? null : Number(l.exit_price);
+          const mark = exit == null && q ? this.markOf(q(l.symbol)) : null;
+          const ref = exit ?? mark;
+          const sign = l.side === 'buy' ? 1 : -1;
+          const stop = l.stop_price == null ? null : Number(l.stop_price);
+          const fee = Number(l.entry_fee) + Number(l.exit_fee);
+          return {
+            symbol: l.symbol, side: l.side as Side, lots: Number(l.lots), entry, mark, exit, stop, fee,
+            pnl: ref == null ? null : sign * (ref - entry) * Number(l.lots) * 0.001,
+            // how far the leg's price still has to move to hit its stop, as a share of the stop price
+            stopDistancePct: exit == null && stop != null && mark != null && stop > 0 ? ((l.side === 'sell' ? stop - mark : mark - stop) / stop) * 100 : null,
+          };
+        });
+        const known = legs.every((l) => l.pnl != null);
+        const gross = known ? legs.reduce((a, l) => a + (l.pnl as number), 0) : null;
+        const fees = legs.reduce((a, l) => a + l.fee, 0);
+        return {
+          id: s.id as string, name: s.name as string, status: s.status as string, openedAt: new Date(s.opened_at).getTime(),
+          closedAt: s.closed_at ? new Date(s.closed_at).getTime() : null, closeReason: (s.close_reason ?? null) as string | null,
+          marginAtEntry: Number(s.margin_at_entry), netPremium: Number(s.net_premium), legs, grossPnl: gross, fees, netPnl: gross == null ? null : gross - fees,
+        };
+      });
+      return { open: out.filter((s) => s.status === 'open'), closed: out.filter((s) => s.status !== 'open'), marketError };
     });
   }
 
@@ -691,8 +906,10 @@ export class PaperTerminal {
         const snap = await this.market.snapshot(1_500);
         this.lastTickAt = Date.now();
         await this.settleExpired(st, snap);
+        await this.checkStops(st, snap);
         await this.runWorking(st, snap);
         await this.afterFills(st, snap);
+        await this.syncStrategies(st, snap);
         this.lastError = null;
       } catch (e) {
         this.lastError = (e as Error).message;
@@ -854,4 +1071,12 @@ export interface BasketLeg {
   symbol: string;
   side: Side;
   lots: number;
+  /**
+   * Stop price for this leg, on the option's own price. Left out: a sold option stops at 2x its sell price and a bought
+   * option has no stop. null: no stop. When any leg's mark reaches its stop the whole strategy is closed.
+   */
+  stop?: number | null;
 }
+
+/** The default stop: 2x the sell price for a sold option, none for anything else. */
+export const DEFAULT_STOP_MULT = 2;
