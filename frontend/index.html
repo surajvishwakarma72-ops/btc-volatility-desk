@@ -20464,7 +20464,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
         </div>
       </section>
 
-          <section class="page" id="pgBot" aria-label="Bot: paper trading monitor and replay">
+          <section class="page" id="pgBot" aria-label="Bot: live paper trading monitor">
         <div id="btRoot"></div>
       </section>
 
@@ -58053,8 +58053,8 @@ document.addEventListener('click', function(e) {
 #pgBot .bt-login input{width:100%;box-sizing:border-box;margin:8px 0}
 @media (max-width:760px){#pgBot .bt-grid{grid-template-columns:1fr}#pgBot .bt-top h2{font-size:16px}}
 </style><script id="botPage">
-/* Bot page: live paper-trading monitor and 13-month replay. Read-only except pause/resume/kill.
-   Live data comes from the authenticated /api/v1/bot/* routes; replay data from data/bot_replay.json. */
+/* Bot page: live paper-trading monitor. Records only the trades the bot really took. Read-only except pause/resume/kill.
+   Live data comes from the authenticated /api/v1/bot/* routes. */
 (function botPage() {
   'use strict';
   const D = document, $ = id => D.getElementById(id);
@@ -58110,7 +58110,7 @@ document.addEventListener('click', function(e) {
       '<div class="nx-note">Futures strategies have no fixed start: they trade when a sweep or signal appears inside their window. All times are IST.</div>';
   }
 
-  const S = { view: 'live', replay: null, replayErr: null, live: null, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
+  const S = { view: 'live', live: null, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
     sel: { strat: null, split: 'byWeekday', timeline: null, askOut: null }, busy: false, killArm: 0 };
 
   async function api(path, opt) {
@@ -58232,12 +58232,8 @@ document.addEventListener('click', function(e) {
     if (!tok()) return `<div class="bt-card bt-login"><h3>Log in</h3><div class="bt-note">The live bot data is private. Use your desk password.</div><input type="password" id="btPw" placeholder="Desk password" autocomplete="current-password"><button type="button" class="bt-btn" data-bt="login">Log in</button>${S.loginErr ? `<div class="bt-note warn">${esc(S.loginErr)}</div>` : ''}</div>`;
     const st = S.status; let h = '';
     if (S.liveErr) h += `<div class="bt-card"><div class="bt-note warn">${esc(S.liveErr)}</div></div>`;
-    if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded. The Replay tab shows how the same rules would have done on 13 months of history.</div></div>`;
-    if (S.top) {
-      const t = S.top, usedLive = t.live && (t.live.confident || !t.replay);
-      h += topCard(usedLive ? t.live : (t.replay || t.live), usedLive ? 'live paper trades' : '13-month replay');
-      if (!usedLive && t.live) h += `<div class="bt-note" style="margin:-4px 0 10px">Live paper trades so far: ${esc(t.live.reason)}</div>`;
-    }
+    if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded until it is switched on; then every trade it takes appears here.</div></div>`;
+    if (S.top && S.top.live) h += topCard(S.top.live, 'live paper trades');
     h += `<div class="bt-card"><h3>Running positions</h3>${S.positions.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Margin</th><th>Net PnL</th><th>% margin</th><th>To TP</th><th>Stop distance</th><th>Time exit</th><th>Spot</th></tr></thead><tbody>${S.positions.map(p => {
       const fut = p.exit && p.exit.kind === 'futures';
       const tp = fut ? null : (p.exit && p.exit.tpPctOfMargin != null && p.pnl ? p.exit.tpPctOfMargin * p.marginUsd - p.pnl.netPnl : null);
@@ -58258,34 +58254,17 @@ document.addEventListener('click', function(e) {
     return h;
   }
 
-  function replayView() {
-    if (S.replayErr) return `<div class="bt-card"><div class="bt-note warn">Replay results are not available: ${esc(S.replayErr)}. Generate them with <b>npx tsx src/scripts/bot-replay.ts</b> in the backend folder.</div></div>`;
-    const r = S.replay; if (!r) return '<div class="bt-card"><div class="bt-note">Loading replay…</div></div>';
-    const c = r.config || {};
-    let h = `<div class="bt-card"><h3>Replay · ${esc(r.range.from)} to ${esc(r.range.to)} (${r.range.days} days)</h3><div class="sub">${esc(r.method)}</div><div class="bt-row"><span class="bt-chip">Lots <b>${c.lots}</b></span><span class="bt-chip">Half-spread <b>${pct(c.halfSpreadPct, 1)}</b></span><span class="bt-chip">Option fee <b>${(c.feeRate * 100).toFixed(2)}%</b> (cap ${(c.feePremiumCap * 100).toFixed(1)}%)</span><span class="bt-chip">Body delta <b>${c.bodyDelta}</b></span><span class="bt-chip warn">Variants tested <b>${r.trials}</b></span></div>`;
-    h += `<div class="bt-note warn" style="margin-top:8px">Read with care: option prices are modelled from spot and ATM IV with one flat IV per expiry (no skew), the window is one regime, and ${r.trials} variants were tested together, so the best-looking line is likelier to be luck than a real edge. A positive replay is a reason to paper trade, not to go live.</div></div>`;
-    const fc = r.futuresConfig;
-    if (fc) {
-      const rej = Object.entries(r.futuresPlanRejections || {}).map(([k, v]) => `<li>${esc(/fee/.test(k) ? 'Fee guard: round-trip fees were over ' + (fc.maxFeeToRisk * 100).toFixed(0) + '% of the risked amount' : /wider/.test(k) ? 'Stop wider than the ' + usd(fc.maxStopUsd, 0) + ' limit' : /liquidation/.test(k) ? 'Stop too wide for the liquidation guard' : /cannot buy/.test(k) ? 'Risk too small to buy one lot' : k.replace(/#/g, 'N'))}: <b>${v}</b></li>`).join('');
-      const ft = (r.futuresTrades || []).slice(-12).reverse();
-      h += `<div class="bt-card"><h3>Futures strategies · how they are tested</h3><div class="sub">${esc(r.futuresNote || '')}</div><div class="bt-row"><span class="bt-chip">Risk per trade <b>${usd(fc.riskUsd, 0)}</b></span><span class="bt-chip">Max lots <b>${fc.maxLots}</b></span><span class="bt-chip">Target <b>${fc.targetR}R</b></span><span class="bt-chip">Breakeven at <b>${fc.breakevenR}R</b></span><span class="bt-chip">Trail from <b>${fc.trailStartR}R</b></span><span class="bt-chip">Max hold <b>${(fc.maxHoldMin / 60).toFixed(0)} h</b></span><span class="bt-chip">Max leverage <b>${fc.maxLeverage}x</b></span><span class="bt-chip">Taker fee <b>${(fc.takerRate * 100).toFixed(2)}%</b> + GST</span></div>${rej ? `<div class="bt-note" style="margin-top:6px">Signals skipped before trading, by reason:</div><ul class="bt-note" style="margin:4px 0 8px 18px">${rej}</ul><div class="bt-note">At a ${usd(fc.riskUsd, 0)} risk and the 25-lot cap, a tight stop leaves the round-trip fee above ${(fc.maxFeeToRisk * 100).toFixed(0)}% of the risk, so the fee guard skips it. A bigger risk per trade or maker (post-only) entries would let more of them through.</div>` : ''}${ft.length ? `<div class="bt-scroll" style="margin-top:8px"><table class="bt-t"><thead><tr><th>Latest trades</th><th>Side</th><th>Lots</th><th>Entry</th><th>Exit</th><th>Exit reason</th><th>Net PnL</th><th>Why it entered</th></tr></thead><tbody>${ft.map((x) => `<tr><td>${esc(name(x.strategy))} · ${esc(x.dateKey)}</td><td>${esc(x.dir)}</td><td>${x.lots}</td><td>${Math.round(x.entry)}</td><td>${Math.round(x.exit)}</td><td>${esc(x.exitReason)}</td><td ${cls(x.netPnl)}>${usd(x.netPnl)}</td><td style="text-align:left;white-space:normal;min-width:220px">${esc(x.note)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
-    }
-    if (S.top && S.top.replay) h = topCard(S.top.replay, '13-month replay') + h;
-    h += renderAnalytics(r.analytics, r.runs, 'replay');
-    return h;
-  }
-
   /* ---------- drawing, loading, events ---------- */
   function draw() {
-    const tabs = `<div class="bt"><div class="bt-top"><h2>Bot</h2><span class="bt-seg"><button type="button" data-bt-view="live" class="${S.view === 'live' ? 'on' : ''}">Live paper</button><button type="button" data-bt-view="replay" class="${S.view === 'replay' ? 'on' : ''}">Replay</button></span>`;
+    const tabs = `<div class="bt"><div class="bt-top"><h2>Bot</h2>`;
     const st = S.status; let chips = '';
-    if (S.view === 'live' && st) {
+    if (st) {
       chips = `<span class="bt-chip ${st.engine === 'running' ? 'ok' : 'bad'}">Engine <b>${esc(st.enabled ? st.engine : 'off')}</b></span><span class="bt-chip">Mode <b>${esc(st.mode)}</b></span>` +
         (st.enabled ? `<span class="bt-chip ${st.paused ? 'warn' : 'ok'}">${st.paused ? 'Paused' : 'Active'}</span>${st.killSwitch ? '<span class="bt-chip bad"><b>KILL SWITCH ON</b></span>' : ''}<span class="bt-chip">Last tick <b>${st.lastTickAt ? IST(st.lastTickAt) + ' IST' : '-'}</b></span>` : '') +
         (st.lastError ? `<span class="bt-chip bad">Error <b>${esc(st.lastError).slice(0, 70)}</b></span>` : '');
     }
-    const act = S.view === 'live' && st && st.enabled && tok() ? `<span class="bt-sp"></span>${st.paused ? '<button type="button" class="bt-btn" data-bt="resume">Resume</button>' : '<button type="button" class="bt-btn" data-bt="pause">Pause entries</button>'}${st.killSwitch ? '<button type="button" class="bt-btn" data-bt="killreset">Reset kill switch</button>' : `<button type="button" class="bt-btn danger" data-bt="kill">${S.killArm > Date.now() ? 'Click again: close everything' : 'Kill switch'}</button>`}` : '';
-    const body = S.view === 'live' ? liveView() : replayView();
+    const act = st && st.enabled && tok() ? `<span class="bt-sp"></span>${st.paused ? '<button type="button" class="bt-btn" data-bt="resume">Resume</button>' : '<button type="button" class="bt-btn" data-bt="pause">Pause entries</button>'}${st.killSwitch ? '<button type="button" class="bt-btn" data-bt="killreset">Reset kill switch</button>' : `<button type="button" class="bt-btn danger" data-bt="kill">${S.killArm > Date.now() ? 'Click again: close everything' : 'Kill switch'}</button>`}` : '';
+    const body = liveView();
     const keep = { y: window.scrollY }; const ae = D.activeElement && D.activeElement.id; const av = ae && $(ae) ? $(ae).value : null;
     root.innerHTML = tabs + chips + act + '</div><div class="bt-next" id="btNext"></div>' + body + '</div>';
     renderNext();
@@ -58317,11 +58296,6 @@ document.addEventListener('click', function(e) {
     // redraw only when the data changed, so a refresh every 5 s never flickers or resets what you are reading
     S.sig = JSON.stringify([S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (force || S.sig !== before) draw();
-  }
-  async function loadReplay() {
-    if (S.replay || S.replayErr) return;
-    try { const r = await fetch('data/bot_replay.json', { cache: 'no-cache' }); if (!r.ok) throw new Error('HTTP ' + r.status); S.replay = await r.json(); } catch (e) { S.replayErr = e.message; }
-    draw();
   }
   async function openRun(id) {
     try {
@@ -58372,9 +58346,8 @@ document.addEventListener('click', function(e) {
   async function act(path) { try { await api(path, { method: 'POST' }); } catch (e) { S.liveErr = e.message; } await loadLive(); }
 
   root.addEventListener('click', e => {
-    const t = e.target.closest('[data-bt],[data-bt-view],[data-bt-split],[data-bt-run],[data-bt-rb]'); if (!t) return;
+    const t = e.target.closest('[data-bt],[data-bt-split],[data-bt-run],[data-bt-rb]'); if (!t) return;
     if (t.dataset.btRb) { rollback(t.dataset.btRb); return; }
-    if (t.dataset.btView) { S.view = t.dataset.btView; draw(); if (S.view === 'replay') loadReplay(); else loadLive(true); return; }
     if (t.dataset.btSplit) { S.sel.split = t.dataset.btSplit; draw(); return; }
     if (t.dataset.btRun) { openRun(t.dataset.btRun); return; }
     const a = t.dataset.bt;
@@ -58391,15 +58364,15 @@ document.addEventListener('click', function(e) {
   function onBotPage() { return D.body.dataset.page === 'pgBot'; }
   function enter() {
     draw();
-    if (S.view === 'live') loadLive(true); else loadReplay();
+    loadLive(true);
     clearInterval(timer);
-    timer = setInterval(() => { if (!D.hidden && onBotPage() && S.view === 'live') loadLive(); }, REFRESH_MS);
+    timer = setInterval(() => { if (!D.hidden && onBotPage()) loadLive(); }, REFRESH_MS);
   }
   function leave() { clearInterval(timer); timer = 0; }
   let wasOn = false;
   const sync = () => { const on = onBotPage(); if (on && !wasOn) enter(); else if (!on && wasOn) leave(); wasOn = on; };
   new MutationObserver(sync).observe(D.body, { attributes: true, attributeFilter: ['data-page'] });
-  D.addEventListener('visibilitychange', () => { if (!D.hidden && onBotPage() && S.view === 'live') loadLive(); });
+  D.addEventListener('visibilitychange', () => { if (!D.hidden && onBotPage()) loadLive(); });
   draw();
   sync();
 })();
@@ -58804,7 +58777,7 @@ document.addEventListener('click', function(e) {
 #askPanel .ak-t td{padding:3px 7px;border-bottom:1px solid var(--line,#223648);white-space:nowrap}
 @media (max-width:760px){#askFab{bottom:78px;right:12px;padding:9px 14px}#askPanel{left:8px;right:8px;width:auto;max-width:none;bottom:130px;height:min(60vh,calc(100vh - 200px))}}
 </style><script id="askWidget">
-/* Ask me: a floating chat that answers from the desk's own data (database, live feeds, replay).
+/* Ask me: a floating chat that answers from the desk's own data (database, live feeds).
    It calls POST /api/v1/ask, which is rule-based and read-only: no AI model, no outside service. */
 (function askWidget() {
   'use strict';
@@ -58812,7 +58785,7 @@ document.addEventListener('click', function(e) {
   if (D.getElementById('askFab')) return;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { try { return localStorage.getItem('desk_jwt'); } catch (x) { return null; } } };
-  const S = { open: false, msgs: [], busy: false, suggestions: ['Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Replay summary', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
+  const S = { open: false, msgs: [], busy: false, suggestions: ['Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
 
   const fab = D.createElement('button');
   fab.id = 'askFab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Ask me about the desk data'); fab.setAttribute('aria-expanded', 'false');
@@ -58843,7 +58816,7 @@ document.addEventListener('click', function(e) {
       body = '<div class="ak-login"><div class="ak-note">Your desk data is private. Log in with your desk password to ask questions.</div><input id="akPw" type="password" placeholder="Desk password" autocomplete="current-password"><button type="button" class="ak-send" data-ak="login">Log in</button>' + (S.loginErr ? '<div class="ak-err">' + esc(S.loginErr) + '</div>' : '') + '</div>';
     } else {
       body = '<div class="ak-msgs" id="akMsgs">' +
-        (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me about anything in your terminal. I can read every table in your database (try "what data do you have?" or "summarise bot runs"), your positions and PnL, why a trade stopped, what happened at a given minute, the live market and the replay results. I can also explain any concept on the terminal, such as Risk-ADX, N2N, the entry gauge or the GO/WAIT gate, from your own docs. I answer only from what is recorded and I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
+        (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me about anything in your terminal. I can read every table in your database (try "what data do you have?" or "summarise bot runs"), your positions and PnL, why a trade stopped, what happened at a given minute, and the live market. I can also explain any concept on the terminal, such as Risk-ADX, N2N, the entry gauge or the GO/WAIT gate, from your own docs. I answer only from what is recorded and I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
         S.msgs.map(m => m.role === 'user'
           ? '<div class="ak-user">' + esc(m.text) + '</div>'
           : '<div class="ak-bot">' + text(m.text) + table(m.table) + (m.sources && m.sources.length ? '<div class="ak-src">From: ' + esc(m.sources.join(', ')) + '</div>' : '') + (m.suggestions && m.suggestions.length ? chips(m.suggestions) : '') + '</div>').join('') +

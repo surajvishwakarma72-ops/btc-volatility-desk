@@ -8,7 +8,6 @@ import { STRATEGY_NAMES } from '../lib/ask/parse.js';
 import { botEngine } from '../services/bot/bot-engine.js';
 import { ensureBotSchema, getConfig, getParams, setConfig } from '../services/bot/bot-store.js';
 import { LEARNED_STRATEGIES, autoLearnOn, rollbackLast, runLearning } from '../services/bot/learner.js';
-import { loadReplay } from '../services/bot/replay-file.js';
 
 /**
  * Read-only query surface for the paper trading bot, plus pause/resume/kill. Every route needs
@@ -194,7 +193,7 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
   };
 
   // Full analytics (by day/week/month/IV/gate/exit, exit what-if grid, average PnL curves) over closed
-  // live paper runs, built with the same code that summarises the historical replay.
+  // live paper runs.
   fastify.get('/analytics', auth, async () => {
     const records = await loadRecords();
     return { success: true, runs: records.length, analytics: buildAnalytics(records) };
@@ -221,18 +220,16 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  // The best-performing strategy book, from live paper results and from the 13-month replay, with the reason.
+  // The best-performing strategy book among the live paper trades the bot actually took, with the reason.
   fastify.get('/top', auth, async () => {
     const label = (key: string) => {
       const [s, b] = key.split('|');
       return (STRATEGY_NAMES[s!] ?? s) + (b ? ` (${b} book)` : '');
     };
     const live = buildAnalytics(await loadRecords()).byStrategy;
-    const replay = loadReplay()?.analytics?.byStrategy ?? [];
     return {
       success: true,
       live: pickTop(live, { label }),
-      replay: pickTop(replay, { label, minTrades: 60 }),
     };
   });
 

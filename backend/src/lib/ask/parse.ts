@@ -296,7 +296,6 @@ export const SUGGESTIONS = [
   'Summarise bot runs',
   'What is Risk-ADX?',
   'Explain N2N',
-  'Replay summary',
   'Recent errors',
   'What is the NY short rule?',
 ];

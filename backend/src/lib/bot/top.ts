@@ -2,7 +2,7 @@ import type { GroupStats } from './analytics.js';
 
 /**
  * Picks the best-performing strategy book from per-book statistics and explains why, in plain words.
- * Pure: the same function ranks live paper results and the historical replay.
+ * Pure: ranks the live paper results.
  */
 export interface TopPick {
   key: string;

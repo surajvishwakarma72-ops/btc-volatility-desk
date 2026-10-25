@@ -10,7 +10,7 @@ import { dataOverview, loadCatalog, tableSummary } from './explore.js';
 /**
  * Answers a question using ONLY the desk's own data: the Postgres tables (bot runs, fills, minute
  * records, events, manual trades, nightly reviews, audits, alerts, indicator snapshots), the live
- * in-memory market state, and the stored replay results. No model and no network: every number is
+ * in-memory market state. No model and no network: every number is
  * read from a row or computed from rows, and each answer lists the sources it used.
  */
 export interface Answer {
@@ -29,7 +29,6 @@ export interface AskContext {
     botStatus(): { engine: string; mode: string; lastTickAt: number | null; lastError: string | null };
     positions(): Promise<any[]>;
     market(): { spot: number | null; mark: number | null; funding: number | null; oi: number | null; dvol: number | null; macro: { score: number; zone: string; direction: string; nextEvent: string; tradeRule: string } | null };
-    replay(): any | null;
     /** Entries still inside their wait window (short strangles keep checking for 2h / 3h). */
     waiting?(): Array<{ key: string; attempts: number; lastReason: string | null; windowEndMs: number }>;
   };
@@ -103,7 +102,7 @@ async function safe(a: Answer, fn: () => Promise<Answer>): Promise<Answer> {
 async function positions(p: Parsed, c: AskContext): Promise<Answer> {
   const sources = ['live paper positions'];
   if (!c.live.botEnabled()) {
-    return { intent: 'positions', sources, text: 'The paper bot is switched off (BOT_ENABLED is not set on the server), so there are no running positions. The Replay tab and my answers about history still work.' };
+    return { intent: 'positions', sources, text: 'The paper bot is switched off (BOT_ENABLED is not set on the server), so there are no running positions. Once it is switched on, every trade it takes is recorded here.' };
   }
   let list = await c.live.positions();
   const want = ids(p);
@@ -300,24 +299,6 @@ async function ranking(p: Parsed, c: AskContext): Promise<Answer> {
     const liveTop = pickTop([...byBook.entries()].map(([k, v]) => groupStats(k, v)), { minTrades: 20, label: (k) => { const [s, b] = k.split('|'); return `${nm(s!)}${b === 'gated' ? ' (gated)' : ''}`; } });
     if (liveTop) lines.push(`Top performer (live paper): ${liveTop.reason}`);
   } else lines.push(`Only ${rows.length} closed live paper trade${rows.length === 1 ? '' : 's'} so far, too few to rank. Rankings need at least 5.`);
-  const rep = c.live.replay();
-  const repTop = rep?.analytics?.byStrategy ? pickTop(rep.analytics.byStrategy, { minTrades: 60, label: (k: string) => { const [s, b] = k.split('|'); return `${nm(s!)}${b === 'gated' ? ' (gated)' : ''}`; } }) : null;
-  if (repTop) lines.push(`Top performer (13-month replay): ${repTop.reason}`);
-  if (rep?.runs?.length) {
-    const sess = new Map<string, { n: number; sum: number }>();
-    for (const r of rep.runs) {
-      if (want && !want.includes(r.strategy)) continue;
-      const s = SESSION_OF[r.strategy] ?? r.strategy;
-      const g = sess.get(s) ?? sess.set(s, { n: 0, sum: 0 }).get(s)!;
-      g.n++; g.sum += r.netPnl;
-    }
-    const arr = [...sess.entries()].map(([k, g]) => ({ k, ...g, avg: g.sum / g.n })).sort((a, b) => b.avg - a.avg);
-    if (arr.length) {
-      lines.push(`Replay (${rep.range.from} to ${rep.range.to}): best session by average PnL per trade is ${arr[0]!.k} (${usd(arr[0]!.avg)}), worst is ${arr[arr.length - 1]!.k} (${usd(arr[arr.length - 1]!.avg)}). Every strategy was negative in that replay, so "best" means "loses least".`);
-      tables.push({ head: ['Session (replay)', 'Trades', 'Avg / trade', 'Total'], rows: arr.map((g) => [g.k, g.n, usd(g.avg), usd(g.sum)]) });
-      sources.push('replay results');
-    }
-  }
   return { intent: 'ranking', sources, text: lines.join('\n'), table: tables[0] ? mergeTables(tables) : undefined };
 }
 
@@ -346,20 +327,8 @@ async function exitQuality(p: Parsed, c: AskContext): Promise<Answer> {
   const sources = ['bot_runs'];
   if (rows.length) lines.push('Live paper trades: on average each trade reached its peak, then finished lower by the "gave back" amount below.');
   else lines.push('No closed live paper trades yet, so there is no live exit analysis.');
-  const rep = c.live.replay();
-  const grid = (rep?.analytics?.exitGrid ?? []).filter((g: any) => !want || want.includes(g.strategy));
   let table: Answer['table'];
   if (rows.length) table = { head: ['Strategy', 'Trades', 'Avg final', 'Avg peak', 'Avg gave back'], rows: rows.map((r) => [`${nm(r.strategy)}${r.book === 'gated' ? ' (gated)' : ''}`, r.n, usd(r.net), usd(r.peak), usd(r.giveback)]) };
-  if (grid.length) {
-    sources.push('replay results');
-    const best = grid.map((g: any) => {
-      const top = [...g.points].sort((a: any, b: any) => b.avgPnl - a.avgPnl)[0];
-      return { name: `${nm(g.strategy)}${g.book === 'gated' ? ' (gated)' : ''}`, actual: g.actual, offset: top.offsetMin, avg: top.avgPnl };
-    });
-    lines.push('Replay what-if: if every trade had been closed at one fixed time after entry, the best fixed time versus the real rule was:');
-    const t2 = { head: ['Strategy', 'Real rule avg', 'Best fixed exit', 'Avg at that exit'], rows: best.map((b: any) => [b.name, usd(b.actual), b.offset >= 60 ? `${b.offset / 60} h after entry` : `${b.offset} min after entry`, usd(b.avg)]) };
-    table = table ? mergeTables([table, t2]) : t2;
-  }
   return { intent: 'exit_quality', sources, text: lines.join('\n'), table };
 }
 
@@ -387,19 +356,10 @@ async function market(_p: Parsed, c: AskContext): Promise<Answer> {
   return { intent: 'market', sources, text: lines.join('\n') };
 }
 
-async function replay(p: Parsed, c: AskContext): Promise<Answer> {
-  const rep = c.live.replay();
-  if (!rep) return { intent: 'replay', sources: [], text: 'The replay results file is not available on this server. Generate it with: npx tsx src/scripts/bot-replay.ts' };
-  const want = ids(p);
-  const rows = (rep.analytics.byStrategy as any[]).filter((g) => !want || want.includes(g.key.split('|')[0]));
-  const lines = [
-    `Replay ${rep.range.from} to ${rep.range.to} (${rep.range.days} days), ${rep.trials} strategy/book variants. Method: ${rep.method}`,
-    rows.length ? `Best of ${scopeLabel(p)} by net PnL: ${nm(rows.slice().sort((a, b) => b.netPnl - a.netPnl)[0].key.split('|')[0])}: ${usd(rows.slice().sort((a, b) => b.netPnl - a.netPnl)[0].netPnl, 0)}. ${rows.every((g) => g.netPnl < 0) ? 'All of them lost money after fees and spread.' : ''}` : 'Nothing matched.',
-    'Caveats: option prices are modelled from spot and one ATM IV per expiry (no skew), one market regime, and many variants were tested together, so treat results as a reason to be careful, not proof.',
-  ];
+async function replay(_p: Parsed, _c: AskContext): Promise<Answer> {
   return {
-    intent: 'replay', sources: ['replay results'], text: lines.join('\n'),
-    table: { head: ['Strategy', 'Trades', 'Net PnL', 'Avg', 'Win', 'Stop', 'Max DD'], rows: rows.map((g) => [nm(g.key.split('|')[0]) + (g.key.endsWith('gated') ? ' (gated)' : ''), g.trades, usd(g.netPnl, 0), usd(g.avgPnl), pct(g.winRate), pct(g.stopRate), usd(-g.maxDrawdown, 0)]) },
+    intent: 'replay', sources: [],
+    text: 'The Bot page and my answers use only the trades the paper bot actually took live, recorded as they happened. Backtests are not shown in the app any more; the research reports are files in backend/src/backtest/output.',
   };
 }
 
@@ -516,14 +476,13 @@ function help(): Answer {
   return {
     intent: 'help', sources: [],
     text: [
-      'I answer from your own data only: the database, the live market feeds and the stored replay. I never guess; if something is not recorded I will say so. Ask me things like:',
+      'I answer from your own data only: the database, the live market feeds. I never guess; if something is not recorded I will say so. Ask me things like:',
       '- Running positions / how is the NY short doing',
       "- Today's PnL, this week by strategy, last 30 days of the Asia short strangle",
       '- Why was the last trade stopped? / Why no trade today?',
       '- What was happening at 10:05 (or 22:30 yesterday)?',
       '- Which session is best? / How much did it give back from the peak? / best exit time',
       '- Market now (spot, DVOL, funding, macro)',
-      '- Replay summary / replay of the futures',
       '- What is the calendar spread rule?',
       '- Recent errors, last alerts, my manual trades, nightly reviews, recalibration, audit',
       '- What data do you have? / summarise bot runs / describe indicator snapshots last 7 days (any table in the database)',
@@ -734,7 +693,7 @@ export async function answer(question: string, c: AskContext): Promise<Answer> {
 function notFound(): Answer {
   return {
         intent: 'unknown', sources: [],
-        text: "I could not match that to something I know. I answer from your own data (any table in the database, the live market, the replay results) and from the terminal's glossary and docs. I only report what was recorded: I do not predict prices or tell you what to trade. Try one of these, or ask \"what data do you have?\":",
+        text: "I could not match that to something I know. I answer from your own data (any table in the database, the live market) and from the terminal's glossary and docs. I only report what was recorded: I do not predict prices or tell you what to trade. Try one of these, or ask \"what data do you have?\":",
         suggestions: SUGGESTIONS,
   };
 }

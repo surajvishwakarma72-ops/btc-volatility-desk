@@ -110,7 +110,7 @@ export async function dataOverview(c: ExploreContext): Promise<ExploreAnswer> {
     text: [
       `The database has ${rows.length} readable tables, ${withData} of them with data, ${total.toLocaleString('en-US')} rows in total.`,
       'Ask me to summarise any one (for example "summarise bot runs" or "describe indicator snapshots") or ask about a period ("alert logs last 7 days").',
-      'Besides the database I can read the live market feeds, the stored replay results and the terminal\'s written docs and glossary. Some history lives only in your browser\'s own storage (for example the IV charts\' cached ticks); that is not in the database and I cannot see it.',
+      'Besides the database I can read the live market feeds and the terminal\'s written docs and glossary. Some history lives only in your browser\'s own storage (for example the IV charts\' cached ticks); that is not in the database and I cannot see it.',
       'For safety I never show user accounts, API credentials or push-device tokens.',
     ].join('\n'),
     table: { head: ['Table', 'Rows', 'First record', 'Latest record', 'What it holds'], rows },

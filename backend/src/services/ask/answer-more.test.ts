@@ -29,7 +29,6 @@ const live = (over: Record<string, unknown> = {}) => ({
   botStatus: () => ({ engine: 'running', mode: 'paper', lastTickAt: NOW, lastError: null }),
   positions: async () => [] as any[],
   market: () => ({ spot: 80_800.4, mark: 80_810, funding: 0.0001, oi: 123_456, dvol: 38.1, macro: null }),
-  replay: () => null as any,
   ...over,
 });
 const ctx = (l = live()) => ({ q: async (sql: string, params?: unknown[]) => (await pool.query(sql, params as never)).rows, now: NOW, live: l, knowledge: () => [...GLOSSARY], notes: notesStore });

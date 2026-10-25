@@ -7,7 +7,6 @@ import { DOCS_INDEX } from '../lib/ask/docs-index.generated.js';
 import { answer, type AskContext } from '../services/ask/answer.js';
 import { botEngine } from '../services/bot/bot-engine.js';
 import { ensureBotSchema } from '../services/bot/bot-store.js';
-import { loadReplay } from '../services/bot/replay-file.js';
 import { deribitWorker } from '../services/deribit-flow-worker.js';
 import { deltaWorker } from '../services/delta-market-worker.js';
 import { macroStressWorker } from '../services/macro-stress-worker.js';
@@ -62,14 +61,13 @@ export function buildContext(): AskContext {
           macro: m ? { score: m.score, zone: m.zone, direction: m.direction, nextEvent: m.nextEvent, tradeRule: m.tradeRule } : null,
         };
       },
-      replay: loadReplay,
     },
   };
 }
 
 /**
  * The desk's own question-answering endpoint. Rule-based and read-only: it parses the question,
- * reads the database / live state / replay results, and returns an answer with its sources.
+ * reads the database / live state, and returns an answer with its sources.
  * It never calls an outside service and cannot change anything.
  */
 export const askRoutes: FastifyPluginAsync = async (fastify) => {

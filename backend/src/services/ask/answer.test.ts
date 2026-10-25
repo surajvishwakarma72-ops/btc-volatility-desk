@@ -31,7 +31,6 @@ const live = (over: Record<string, unknown> = {}) => ({
   botStatus: () => ({ engine: 'running', mode: 'paper', lastTickAt: NOW, lastError: null }),
   positions: async () => [] as any[],
   market: () => ({ spot: 80_800.4, mark: 80_810, funding: 0.0001, oi: 123_456, dvol: 38.1, macro: { score: 22, zone: 'calm', direction: 'RISK-ON', nextEvent: 'No Tier-1 in 6h', tradeRule: 'Normal size.' } }),
-  replay: () => null as any,
   ...over,
 });
 const DOCS = [{ id: 'TEST.md#0', title: 'Zebra protocol', keywords: [], text: 'The zebra protocol says to restart the striped gateway every Tuesday before the herd migrates, and to log the migration in the savanna ledger.', source: 'TEST.md' }];
@@ -210,18 +209,14 @@ describe('ranking and exit quality', () => {
     expect(a.table!.rows.length).toBeGreaterThan(4);
   });
 
-  it('uses the replay for sessions and exit what-ifs when it is available', async () => {
-    const replay = {
-      range: { from: '2025-10-02', to: '2026-10-18', days: 382 },
-      runs: [{ strategy: 'NY_SHORT', netPnl: -1.5 }, { strategy: 'NY_SHORT', netPnl: -1.5 }, { strategy: 'ASIA_SHORT', netPnl: -3 }, { strategy: 'ASIA_SHORT', netPnl: -3 }],
-      analytics: { exitGrid: [{ strategy: 'ASIA_SHORT', book: 'always', actual: -3.63, points: [{ offsetMin: 240, avgPnl: -1.66, winRate: 0.44 }, { offsetMin: 1440, avgPnl: -3.63, winRate: 0.27 }] }] },
-    };
-    const r = await answer('which session is best?', ctx(live({ replay: () => replay })));
-    expect(r.text).toMatch(/Replay.*best session by average PnL per trade is New York/);
-    expect(r.text).toMatch(/loses least/);
-    const e = await answer('best exit time for the asia strangle', ctx(live({ replay: () => replay })));
-    expect(e.intent).toBe('exit_quality');
-    expect(e.table!.rows[0]).toEqual(['Asia short strangle (10:00 IST)', '-$3.63', '4 h after entry', '-$1.66']);
+  it('ranking uses only live trades: too few says so, enough names the session and the top performer with its reason', async () => {
+    expect((await answer('which session is best?', ctx())).text).toMatch(/too few to rank/);
+    for (let i = 0; i < 6; i++) await run({ strategy: 'NY_SHORT', date: '2026-10-2' + (i % 8), entry: istMs('2026-10-15', 22, 30) + i * 86_400_000, exit: istMs('2026-10-16', 7) + i * 86_400_000, net: 2, reason: 'time' });
+    for (let i = 0; i < 6; i++) await run({ strategy: 'ASIA_SHORT', date: '2026-10-2' + (i % 8), entry: istMs('2026-10-15', 10) + i * 86_400_000, exit: istMs('2026-10-15', 16) + i * 86_400_000, net: -3, reason: 'stop' });
+    const r = await answer('which session is best?', ctx());
+    expect(r.text).toMatch(/Best session by average PnL per trade: New York/);
+    expect(r.text).toMatch(/Top performer \(live paper\)/);
+    expect(r.text).not.toMatch(/[Rr]eplay/);
   });
 
   it('live exit quality reports peak versus final and the give-back', async () => {
@@ -231,7 +226,7 @@ describe('ranking and exit quality', () => {
   });
 });
 
-describe('positions, market, replay, events and desk records', () => {
+describe('positions, market, events and desk records', () => {
   it('positions: says the bot is off, none running, or lists them with distances', async () => {
     expect((await answer('running positions', ctx(live({ botEnabled: () => false })))).text).toMatch(/switched off/);
     expect((await answer('running positions', ctx())).text).toMatch(/No running positions/);
@@ -259,18 +254,10 @@ describe('positions, market, replay, events and desk records', () => {
     expect(a.sources).toContain('indicator_snapshots');
   });
 
-  it('replay: summarises per-strategy results and states the caveats; reports a missing file', async () => {
-    expect((await answer('replay summary', ctx())).text).toMatch(/not available/);
-    const rep = {
-      range: { from: '2025-10-02', to: '2026-10-18', days: 382 }, trials: 14, method: 'BS repricing',
-      runs: [], analytics: { byStrategy: [{ key: 'NY_SHORT|always', trades: 382, netPnl: -587, avgPnl: -1.54, winRate: 0.51, stopRate: 0.39, maxDrawdown: 634 }, { key: 'ASIA_SHORT|always', trades: 382, netPnl: -859, avgPnl: -2.25, winRate: 0.49, stopRate: 0.35, maxDrawdown: 884 }] },
-    };
-    const a = await answer('replay summary', ctx(live({ replay: () => rep })));
-    expect(a.text).toMatch(/All of them lost money/);
-    expect(a.text).toMatch(/flat|no skew/);
-    expect(a.table!.rows).toHaveLength(2);
-    const one = await answer('replay of the ny short', ctx(live({ replay: () => rep })));
-    expect(one.table!.rows).toHaveLength(1);
+  it('a question about backtests says the page only records live trades', async () => {
+    const a = await answer('replay summary', ctx());
+    expect(a.intent).toBe('replay');
+    expect(a.text).toMatch(/only the trades the paper bot actually took live/);
   });
 
   it('events show recent warnings and errors, and the engine state', async () => {
