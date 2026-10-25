@@ -26,6 +26,9 @@ export function evaluateGate(dvolMax: number = DVOL_MAX): GateVerdict {
   const reasons: string[] = [];
   if (dvol == null) reasons.push('DVOL unavailable');
   else if (dvol >= dvolMax) reasons.push(`DVOL ${dvol.toFixed(1)} >= ${dvolMax}`);
+  // a macro reading that has not been measured, or whose feeds are failing, must not pass as "calm"
+  if (!macro.hasData) reasons.push('macro data not loaded yet');
+  else if (macro.status === 'degraded') reasons.push('macro feeds degraded');
   if (macro.zone !== 'calm') reasons.push(`macro zone ${macro.zone}`);
   const eventInWindow = !!macro.nextEvent && !/^(No Tier-1|loading)/.test(macro.nextEvent);
   return {
