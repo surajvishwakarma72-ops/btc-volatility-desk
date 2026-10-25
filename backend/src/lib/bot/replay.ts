@@ -211,7 +211,9 @@ function replayAt(
   const w: Window = { entryAtMs, exitAtMs };
   const head = data.barsBetween(entryAtMs - 15 * MIN, entryAtMs + 15 * MIN);
   const entryBar = head.find((b) => b.t >= entryAtMs - MIN) ?? null;
-  if (!entryBar || entryBar.t > entryAtMs + 15 * MIN) return null;
+  // a retried entry must use a bar from its own moment (within the retry step); only the calendar, which does not retry, keeps the wider 15 minutes
+  const tol = id === 'CAL_BACK' ? 15 * MIN : REPLAY_RETRY_MIN * MIN;
+  if (!entryBar || entryBar.t > entryAtMs + tol) return null;
   const t0 = entryAtMs;
   const spot0 = entryBar.c;
 

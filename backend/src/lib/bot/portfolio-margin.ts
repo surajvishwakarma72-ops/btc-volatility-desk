@@ -32,6 +32,17 @@ export interface PortfolioMarginResult {
 
 const YEAR_MS = 365 * 86_400_000;
 
+/**
+ * The scenario model above under-states what Delta actually asks for: for 100 lots of a ~0.12 delta short strangle it gave
+ * about $80 where Delta shows $100 to $300. Everything it returns is scaled by this one factor (default 2.5, so about $200)
+ * (sold legs only) so the paper account, the chain's sell margin, the strategy builder and the bot's "% of margin" exits all use the same,
+ * closer number. Change it with MARGIN_CALIBRATION once you have a real Delta figure to compare against.
+ */
+export const MARGIN_CALIBRATION = (() => {
+  const v = Number(process.env.MARGIN_CALIBRATION ?? 2.5);
+  return Number.isFinite(v) && v > 0 && v <= 20 ? v : 2.5;
+})();
+
 function tiered(notional: number, base: number, cap: number, slope: number, knee: number, atKnee: number): number {
   // base up to $100K, linear slope to the knee, then cap
   if (notional <= 100_000) return base;
@@ -119,5 +130,8 @@ export function portfolioMargin(
   }, 0);
   const floor = mfShort + mfLong;
 
-  return { margin: Math.max(riskMargin, floor), riskMargin, floor, notional, spans, worstScenario: worst };
+  // only positions with a sold leg are scaled: a bought option's margin is simply the premium paid, which the model already gets right
+  const k = shorts.length ? MARGIN_CALIBRATION : 1;
+  const w = worst as PortfolioMarginResult['worstScenario'];
+  return { margin: Math.max(riskMargin, floor) * k, riskMargin: riskMargin * k, floor: floor * k, notional, spans, worstScenario: w ? { ...w, loss: w.loss * k } : null };
 }

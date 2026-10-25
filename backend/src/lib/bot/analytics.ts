@@ -176,7 +176,10 @@ export function avgCurves(runs: RunRecord[], stepMin = 15): Array<{ strategy: st
 
 export function buildAnalytics(runs: RunRecord[]) {
   return {
-    totals: groupStats('all', runs),
+    // The gated book trades the SAME trades as the always book on the days its gate says GO, so adding both would count
+    // those trades twice. Totals use every trade of the always book (and the futures); the gated book keeps its own rows
+    // in byStrategy as "the same trades, only when the gate said GO".
+    totals: groupStats('all', runs.filter((r) => r.book !== 'gated')),
     byStrategy: groupBy(runs, (r) => `${r.strategy}|${r.book}`),
     byWeekday: groupBy(runs, (r) => `${r.strategy}|${r.book}|${WD[r.weekday]}`),
     byMonth: groupBy(runs, (r) => `${r.strategy}|${r.book}|${r.dateKey.slice(0, 7)}`),

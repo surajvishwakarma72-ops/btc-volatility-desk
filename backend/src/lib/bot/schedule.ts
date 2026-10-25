@@ -14,7 +14,7 @@ interface Slot {
   exitMin: number;
   /**
    * Wait window: if no valid trade is found at the entry time the bot keeps re-checking for this many
-   * minutes and enters the first time the conditions pass. 0 means the short 10-minute restart grace only.
+   * minutes and enters the first time the conditions pass. 0 means the short 10-minute restart grace only (no strategy uses it now).
    */
   waitMin: number;
 }
@@ -22,14 +22,14 @@ interface Slot {
 /**
  * Entry and forced-exit clock per strategy (IST).
  * CAL_BACK is signal-driven (backwardation), so it has no fixed slot.
- * The short strangles wait up to 2h (Asia) and 3h (New York) for a valid entry; the exit time never moves,
- * so a late entry simply has a shorter hold.
+ * The short strangles wait up to 2h (Asia) and 3h (New York) for a valid entry, the long straddles and the calendar spread
+ * 30 minutes (so one bad data minute cannot cost the day's trade); the exit time never moves, so a late entry just holds for less time.
  */
 export const SLOTS: Record<Exclude<StrategyId, 'CAL_BACK'>, Slot> = {
   ASIA_SHORT: { entryMin: 10 * 60, exitMin: 16 * 60, waitMin: 120 },
   NY_SHORT: { entryMin: 22 * 60 + 30, exitMin: 24 * 60 + 7 * 60, waitMin: 180 },
-  EVE_LONG: { entryMin: 17 * 60 + 30, exitMin: 21 * 60, waitMin: 0 },
-  PRE_LONG: { entryMin: 5 * 60, exitMin: 9 * 60, waitMin: 0 },
+  EVE_LONG: { entryMin: 17 * 60 + 30, exitMin: 21 * 60, waitMin: 30 },
+  PRE_LONG: { entryMin: 5 * 60, exitMin: 9 * 60, waitMin: 30 },
 };
 
 export const RESTART_GRACE_MS = 10 * 60_000;
@@ -109,11 +109,15 @@ export function floorToMinute(ms: number): number {
 
 export { MIN, HR, DAY };
 
-/** The calendar spread's daily check, due from 18:00 IST for `graceMs` (a late restart still enters, a stale one never). */
-export function dueCalendar(nowMs: number, graceMs = 10 * MIN): { dateKey: string; entryAtMs: number } | null {
+/** The calendar spread keeps checking for backwardation this long after 18:00 IST. */
+export const CAL_WAIT_MS = 30 * MIN;
+
+/** The calendar spread's daily check: due from 18:00 IST for 30 minutes (a restart or a bad data minute still enters, a stale setup never does). */
+export function dueCalendar(nowMs: number, windowMs = CAL_WAIT_MS): { dateKey: string; entryAtMs: number; windowEndMs: number; final: boolean } | null {
   for (const dateKey of [istDateKey(nowMs), istDateKey(nowMs - DAY)]) {
     const entryAtMs = istMidnightMs(dateKey) + CAL_ENTRY_MIN_IST * MIN;
-    if (nowMs >= entryAtMs && nowMs < entryAtMs + graceMs) return { dateKey, entryAtMs };
+    const windowEndMs = entryAtMs + windowMs;
+    if (nowMs >= entryAtMs && nowMs < windowEndMs) return { dateKey, entryAtMs, windowEndMs, final: nowMs >= windowEndMs - MIN };
   }
   return null;
 }

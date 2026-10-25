@@ -35,12 +35,14 @@ describe('schedule', () => {
     expect(istMidnightMs('2026-10-26')).toBe(Date.parse('2026-10-25T18:30:00Z'));
   });
 
-  it('long straddles only get the short restart grace', () => {
+  it('every strategy retries through its window: long straddles for 30 minutes, flagging the last minute as final', () => {
     const entry = runWindow('EVE_LONG', '2026-10-26').entryAtMs;
     expect(dueEntries(entry - MIN).some((d) => d.id === 'EVE_LONG')).toBe(false);
-    expect(dueEntries(entry + 9 * MIN).some((d) => d.id === 'EVE_LONG')).toBe(true);
-    expect(dueEntries(entry + 11 * MIN).some((d) => d.id === 'EVE_LONG')).toBe(false);
-    expect(dueEntries(entry).find((d) => d.id === 'EVE_LONG')!.final).toBe(true);
+    expect(dueEntries(entry + 29 * MIN - 1).find((d) => d.id === 'EVE_LONG')).toMatchObject({ final: false });
+    expect(dueEntries(entry + 29 * MIN).find((d) => d.id === 'EVE_LONG')).toMatchObject({ final: true });
+    expect(dueEntries(entry + 30 * MIN).some((d) => d.id === 'EVE_LONG')).toBe(false);
+    const pre = runWindow('PRE_LONG', '2026-10-26').entryAtMs;
+    expect(dueEntries(pre + 20 * MIN).some((d) => d.id === 'PRE_LONG')).toBe(true);
   });
 
   it('the Asia short strangle waits 2h and the New York one 3h, flagging the last minute as final', () => {

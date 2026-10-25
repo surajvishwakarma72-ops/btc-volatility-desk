@@ -319,7 +319,7 @@ export async function setConfig(patch: { paused?: boolean; killSwitch?: boolean 
 
 export async function pnlSince(sinceMs: number): Promise<number> {
   const r = await pool.query<{ s: string | null }>(
-    `SELECT COALESCE(SUM(net_pnl),0) AS s FROM bot_runs WHERE status='closed' AND exit_at >= to_timestamp($1/1000.0)`,
+    `SELECT COALESCE(SUM(net_pnl),0) AS s FROM bot_runs WHERE status='closed' AND book <> 'gated' AND exit_at >= to_timestamp($1/1000.0)`,
     [sinceMs],
   );
   return Number(r.rows[0]?.s ?? 0);

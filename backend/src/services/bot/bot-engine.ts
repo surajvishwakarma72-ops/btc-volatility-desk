@@ -16,6 +16,19 @@ import { FuturesLive } from './futures-live.js';
 import { evaluateGate } from './gate.js';
 import { paperExecute, type PlannedLeg } from './paper-broker.js';
 
+/** Node's AggregateError (failed connections) and wrapped fetch errors have an empty message; say what actually failed. */
+export function describeError(e: unknown): string {
+  const err = e as { message?: string; code?: string; errors?: unknown[]; cause?: unknown; name?: string } | null;
+  if (!err) return 'unknown error';
+  const parts: string[] = [];
+  if (err.message) parts.push(err.message);
+  if (Array.isArray(err.errors)) for (const x of err.errors.slice(0, 3)) parts.push(describeError(x));
+  if (err.cause && err.cause !== e) parts.push(describeError(err.cause));
+  if (err.code && !parts.some((p) => p.includes(err.code!))) parts.push(err.code);
+  const out = [...new Set(parts.filter(Boolean))].join('; ');
+  return out || err.name || String(e);
+}
+
 const LOTS = Number(process.env.BOT_OPTION_LOTS ?? 100);
 const CONTRACT_VALUE = 0.001;
 const TICK_MS = 5_000;
@@ -69,6 +82,8 @@ export class BotEngine {
   private shadows = new Map<string, { id: string; legs: Leg[]; plannedExitAtMs: number }>();
   private paramCache = new Map<string, { at: number; params: LearnParams }>();
   private learnedDay = '';
+  private lastCfg: { paused: boolean; kill_switch: boolean } = { paused: false, kill_switch: false };
+  private lastCfgWarnAt = 0;
   private chain: ChainSnapshot | null = null;
   private lastMinute = 0;
   readonly futures = new FuturesLive({
@@ -192,7 +207,18 @@ export class BotEngine {
     this.busy = true;
     const now = Date.now();
     try {
-      const cfg = await getConfig();
+      // a database blip must not stop exits and monitoring: fall back to the last known switches for this tick
+      let cfg: { paused: boolean; kill_switch: boolean };
+      try {
+        cfg = await getConfig();
+        this.lastCfg = cfg;
+      } catch (e) {
+        cfg = this.lastCfg;
+        if (now - this.lastCfgWarnAt > 5 * 60_000) {
+          this.lastCfgWarnAt = now;
+          console.error('[bot] config read failed, using the last known switches:', describeError(e));
+        }
+      }
       this.lastTickAt = now;
       const errors: string[] = [];
 
@@ -203,23 +229,30 @@ export class BotEngine {
         if (cfg.kill_switch) {
           for (const run of this.open.values()) await this.exit(run, chain, now, 'stop', 'kill switch');
         } else {
+          // Entries and exits fail separately: a failed entry attempt (a database blip, a thin book) is retried next minute and
+          // must never stop the positions already open from being monitored and closed.
           if (!cfg.paused) {
+            const attempt = async (label: string, fn: () => Promise<void>) => {
+              try { await fn(); } catch (e) { errors.push(`entry ${label}: ${describeError(e)}`); }
+            };
             for (const due of dueEntries(now)) {
               for (const book of ['always', 'gated'] as const) {
                 if (book === 'gated' && !SHORT_VOL.has(due.id)) continue;
-                await this.enter(due.id, due.dateKey, book, due.window, chain, now, due.final, due.windowEndMs);
+                await attempt(`${due.id}/${book}`, () => this.enter(due.id, due.dateKey, book, due.window, chain!, now, due.final, due.windowEndMs));
               }
             }
             const cal = dueCalendar(now);
             if (cal) {
               const front = chain.expiries[0];
-              if (front) await this.enter('CAL_BACK', cal.dateKey, 'always', { entryAtMs: cal.entryAtMs, exitAtMs: front - DEFAULT_CALENDAR.hardCloseBeforeMs }, chain, now, true, cal.entryAtMs + 10 * MIN);
+              if (front) await attempt('CAL_BACK', () => this.enter('CAL_BACK', cal.dateKey, 'always', { entryAtMs: cal.entryAtMs, exitAtMs: front - DEFAULT_CALENDAR.hardCloseBeforeMs }, chain!, now, cal.final, cal.windowEndMs));
             }
           }
-          for (const run of [...this.open.values()]) await this.monitor(run, chain, now);
+          for (const run of [...this.open.values()]) {
+            try { await this.monitor(run, chain, now); } catch (e) { errors.push(`monitor ${run.key}: ${describeError(e)}`); }
+          }
         }
       } catch (e) {
-        errors.push(`options: ${(e as Error).message}`);
+        errors.push(`options: ${describeError(e)}`);
       }
 
       // Futures (1m candles + the perpetual order book).
@@ -227,7 +260,7 @@ export class BotEngine {
         if (cfg.kill_switch) await this.futures.flatten(now, 'kill switch');
         else await this.futures.tick(now, { allowEntries: !cfg.paused });
       } catch (e) {
-        errors.push(`futures: ${(e as Error).message}`);
+        errors.push(`futures: ${describeError(e)}`);
       }
 
       if (!cfg.kill_switch) await this.maybeLearn(now);
@@ -245,7 +278,7 @@ export class BotEngine {
         try { await this.futures.record(minute); } catch (e) { console.error('[bot] futures record failed', (e as Error).message); }
       }
     } catch (e) {
-      this.lastError = (e as Error).message;
+      this.lastError = describeError(e);
       console.error('[bot] tick failed:', this.lastError);
       await logEvent({ type: 'tick_error', severity: 'error', message: this.lastError });
     } finally {

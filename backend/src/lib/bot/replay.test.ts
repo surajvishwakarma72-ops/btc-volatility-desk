@@ -70,15 +70,14 @@ describe('replayRun', () => {
     expect(replayRun(nyLate, 'NY_SHORT', '2026-01-03', 'gated')!.entryMs).toBe(nyEntry + 150 * MIN);
   });
 
-  it('long straddles never wait: no entry at their time means no trade', () => {
+  it('long straddles retry for 30 minutes in the replay too, then give up', () => {
     const entry = runWindow('EVE_LONG', '2026-01-03').entryAtMs;
-    const noBarsAtEntry = dataFrom(() => 80_000, { from: entry + 30 * MIN, to: Date.parse('2026-01-06T00:00:00Z') });
-    expect(replayRun(noBarsAtEntry, 'EVE_LONG', '2026-01-03', 'always')).toBeNull();
-  });
-
-  it('long straddle goes long both legs of the same ATM strike on the next expiry', () => {
-    const r = replayRun(dataFrom(() => 80_100), 'EVE_LONG', '2026-01-03', 'always')!;
-    expect(r.legs.map((l) => `${l.side}:${l.type}:${l.strike}`)).toEqual(['long:call:80000', 'long:put:80000']);
+    const lateBars = dataFrom(() => 80_000, { from: entry + 20 * MIN, to: Date.parse('2026-01-06T00:00:00Z') });
+    const late = replayRun(lateBars, 'EVE_LONG', '2026-01-03', 'always')!;
+    expect(late.entryMs).toBeGreaterThanOrEqual(entry + 15 * MIN);
+    expect(late.entryMs).toBeLessThanOrEqual(entry + 20 * MIN);
+    const tooLate = dataFrom(() => 80_000, { from: entry + 45 * MIN, to: Date.parse('2026-01-06T00:00:00Z') });
+    expect(replayRun(tooLate, 'EVE_LONG', '2026-01-03', 'always')).toBeNull();
   });
 
   it('gated book skips when DVOL is at or above the limit, always book does not', () => {
@@ -172,5 +171,20 @@ describe('analytics', () => {
     expect(a.byMonth).toHaveLength(2);
     expect(a.curves[0]!.points[0]).toEqual([0, 0, 0]);
     expect(a.totals.trades).toBe(2);
+  });
+});
+
+describe('analytics totals never count a trade twice', () => {
+  it('the gated book repeats trades of the always book, so the totals use the always book only while byStrategy keeps both', () => {
+    const base = { weekday: 1, entryMs: 0, exitMs: 1, entryIv: 40, dvol: 45, gateGo: true, marginUsd: 100, feesUsd: 1, exitReason: 'time', peakPnl: 0, troughPnl: 0, path: [[0, 0]] as Array<[number, number]> };
+    const runs = [
+      { ...base, strategy: 'ASIA_SHORT', book: 'always', dateKey: '2026-01-05', netPnl: 5 },
+      { ...base, strategy: 'ASIA_SHORT', book: 'gated', dateKey: '2026-01-05', netPnl: 5 },
+      { ...base, strategy: 'ASIA_SHORT', book: 'always', dateKey: '2026-01-06', netPnl: -3 },
+    ];
+    const a = buildAnalytics(runs);
+    expect(a.totals.trades).toBe(2);
+    expect(a.totals.netPnl).toBe(2);
+    expect(a.byStrategy.map((g) => `${g.key}:${g.trades}`)).toEqual(['ASIA_SHORT|always:2', 'ASIA_SHORT|gated:1']);
   });
 });

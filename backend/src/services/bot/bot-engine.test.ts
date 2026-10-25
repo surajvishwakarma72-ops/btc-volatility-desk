@@ -7,18 +7,19 @@ import type { Book, ChainSnapshot } from './delta-public.js';
  * Engine integration test on a real Postgres (PGlite, WASM) with Delta market data and the gate
  * mocked. Time is controlled via Date only, so the 5-second timer never runs: ticks are manual.
  */
-const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, marks: new Map<string, number>(), ivs: new Map<string, number>(), gateGo: true }));
+const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, marks: new Map<string, number>(), ivs: new Map<string, number>(), gateGo: true, failConfig: false }));
 
 vi.mock('../../db/index.js', () => ({
   pool: {
     query: async (text: string, params?: unknown[]) => {
+      if (h.failConfig && text.includes('FROM bot_config')) throw new AggregateError([new Error('connect ETIMEDOUT 10.0.0.1:5432')], '');
       if (!params || params.length === 0) {
         const res = await h.db.exec(text);
         const last = res[res.length - 1];
         return { rows: last?.rows ?? [], rowCount: last?.rows?.length ?? 0 };
       }
       const r = await h.db.query(text, params);
-      return { rows: r.rows, rowCount: r.affectedRows ?? r.rows.length };
+      return { rows: r.rows, rowCount: r.affectedRows || r.rows.length };
     },
   },
 }));
@@ -99,6 +100,7 @@ beforeEach(async () => {
   h.marks.clear();
   h.ivs.clear();
   h.gateGo = true;
+  h.failConfig = false;
   await store.ensureBotSchema();
   await pool.query('DELETE FROM bot_minute_marks; DELETE FROM bot_minute_context; DELETE FROM bot_events; DELETE FROM bot_fills; DELETE FROM bot_legs; DELETE FROM bot_runs; DELETE FROM bot_params; DELETE FROM bot_learning; DELETE FROM bot_shadow_marks;');
   await store.setConfig({ paused: false, killSwitch: false });
@@ -333,15 +335,32 @@ describe('bot engine on a real Postgres', () => {
     expect(Number(run.margin_usd)).toBeGreaterThan(0);
   });
 
-  it('calendar: records a skipped run (with the reason) when the curve is not in backwardation', async () => {
+  it('calendar: keeps checking for 30 minutes, then records a skipped run with the reason when the curve never reaches backwardation', async () => {
     h.ivs.set('C-CF', 38); h.ivs.set('P-CF', 38); h.ivs.set('C-CB', 45); h.ivs.set('P-CB', 45);
     const e = await newEngine();
     vi.setSystemTime(istToUtc('2026-10-25', 18, 1, 0));
+    await e.tick();
+    expect(await q(`SELECT 1 FROM bot_runs WHERE strategy = 'CAL_BACK'`)).toHaveLength(0);
+    expect(e.waitingEntries().map((w) => w.key)).toContain('CAL_BACK:2026-10-25:always');
+    vi.setSystemTime(istToUtc('2026-10-25', 18, 29, 20));
     await e.tick();
     const run = (await q(`SELECT status, tags FROM bot_runs WHERE strategy = 'CAL_BACK'`))[0];
     expect(run.status).toBe('skipped');
     expect(run.tags.reason).toMatch(/no backwardation/);
     expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_skipped' AND message LIKE '%no backwardation%'`)).not.toHaveLength(0);
+  });
+
+  it('calendar: enters later in its window once the curve goes into backwardation', async () => {
+    h.ivs.set('C-CF', 38); h.ivs.set('P-CF', 38); h.ivs.set('C-CB', 45); h.ivs.set('P-CB', 45);
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-25', 18, 1, 0));
+    await e.tick();
+    h.ivs.set('C-CF', 58); h.ivs.set('P-CF', 58); h.ivs.set('C-CB', 40); h.ivs.set('P-CB', 40);
+    vi.setSystemTime(istToUtc('2026-10-25', 18, 12, 0));
+    await e.tick();
+    const run = (await q(`SELECT status, tags FROM bot_runs WHERE strategy = 'CAL_BACK'`))[0];
+    expect(run.status).toBe('open');
+    expect(run.tags.enteredAfterWaitMin).toBe(12);
   });
 
   it('calendar: exits when spot leaves the breakeven band, closing all four legs', async () => {
@@ -407,12 +426,172 @@ describe('bot engine on a real Postgres', () => {
     expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_failed'`)).not.toHaveLength(0);
   });
 
-  it('a long straddle gets no wait window: a failure at its time is recorded at once', async () => {
+  it('a long straddle keeps retrying for 30 minutes and enters when the quote comes back', async () => {
     const e = await newEngine();
     h.marks.set('C-ATM', -5); // ask below zero: not a tradable quote
     vi.setSystemTime(istToUtc('2026-10-26', 17, 30, 20));
     await e.tick();
-    const r = await q(`SELECT status FROM bot_runs WHERE strategy = 'EVE_LONG'`);
-    expect(r).toEqual([{ status: 'failed' }]);
+    expect(await q(`SELECT 1 FROM bot_runs WHERE strategy = 'EVE_LONG'`)).toHaveLength(0);
+    h.marks.delete('C-ATM');
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 41, 20));
+    await e.tick();
+    const r = (await q(`SELECT status, tags FROM bot_runs WHERE strategy = 'EVE_LONG'`))[0];
+    expect(r.status).toBe('open');
+    expect(r.tags.enteredAfterWaitMin).toBe(11);
+  });
+
+  it('a long straddle whose quote never returns is recorded as failed when its 30 minutes end', async () => {
+    const e = await newEngine();
+    h.marks.set('C-ATM', -5);
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 30, 20));
+    await e.tick();
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 59, 20));
+    await e.tick();
+    expect(await q(`SELECT status FROM bot_runs WHERE strategy = 'EVE_LONG'`)).toEqual([{ status: 'failed' }]);
+  });
+});
+
+describe('every strategy on its timeline: entry, take profit, stop, time exit', () => {
+  const run = async (key: string) => (await q('SELECT status, exit_reason, net_pnl, gross_pnl, fees_entry, fees_exit, planned_exit_at FROM bot_runs WHERE run_key = $1', [key]))[0];
+
+  it('evening long straddle: enters 17:30, stops at -10% of margin, takes profit at +50%, otherwise leaves at 21:00 IST', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 30, 20));
+    await e.tick();
+    expect((await run('EVE_LONG:2026-10-26:always'))!.status).toBe('open');
+    vi.setSystemTime(istToUtc('2026-10-26', 20, 59, 0));
+    await e.tick();
+    expect((await run('EVE_LONG:2026-10-26:always'))!.status).toBe('open');
+    vi.setSystemTime(istToUtc('2026-10-26', 21, 0, 5));
+    await e.tick();
+    expect(await run('EVE_LONG:2026-10-26:always')).toMatchObject({ status: 'closed', exit_reason: 'time' });
+  });
+
+  it('long straddle stop-loss at -10% of its premium-based margin', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 30, 20));
+    await e.tick();
+    h.marks.set('C-ATM', 380); h.marks.set('P-ATM', 380);
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 45, 0));
+    await e.tick();
+    const r = await run('EVE_LONG:2026-10-26:always');
+    expect(r).toMatchObject({ status: 'closed', exit_reason: 'sl' });
+    expect(Number(r!.net_pnl)).toBeLessThan(0);
+  });
+
+  it('pre-dawn long straddle: enters 05:00 and leaves at 09:00 IST', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 5, 0, 20));
+    await e.tick();
+    expect((await run('PRE_LONG:2026-10-26:always'))!.status).toBe('open');
+    vi.setSystemTime(istToUtc('2026-10-26', 9, 0, 5));
+    await e.tick();
+    expect(await run('PRE_LONG:2026-10-26:always')).toMatchObject({ status: 'closed', exit_reason: 'time' });
+  });
+
+  it('New York short strangle: enters 22:30, leaves at 07:00 the next morning, and a 2x stop closes both legs at once', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 22, 30, 20));
+    await e.tick();
+    expect((await run('NY_SHORT:2026-10-26:always'))!.status).toBe('open');
+    vi.setSystemTime(istToUtc('2026-10-27', 6, 59, 0));
+    await e.tick();
+    expect((await run('NY_SHORT:2026-10-26:always'))!.status).toBe('open');
+    vi.setSystemTime(istToUtc('2026-10-27', 7, 0, 5));
+    await e.tick();
+    expect(await run('NY_SHORT:2026-10-26:always')).toMatchObject({ status: 'closed', exit_reason: 'time' });
+  });
+
+  it('a sold leg reaching 2x its sell price closes the whole New York strangle', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 22, 30, 20));
+    await e.tick();
+    h.marks.set('P-BODY', 200);
+    vi.setSystemTime(istToUtc('2026-10-26', 23, 10, 0));
+    await e.tick();
+    expect(await run('NY_SHORT:2026-10-26:always')).toMatchObject({ status: 'closed', exit_reason: 'stop' });
+    const legs = await q(`SELECT exit_price FROM bot_legs l JOIN bot_runs r ON r.id = l.run_id WHERE r.run_key = 'NY_SHORT:2026-10-26:always'`);
+    expect(legs.every((l) => l.exit_price != null)).toBe(true);
+  });
+
+  it('a short strangle takes profit at 10% of margin', async () => {
+    const e = await newEngine();
+    h.marks.set('C-BODY', 400); h.marks.set('P-BODY', 380); // a realistic premium: 10% of a Delta-sized margin is about $20
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    h.marks.set('C-BODY', 2); h.marks.set('P-BODY', 2);
+    vi.setSystemTime(istToUtc('2026-10-26', 11, 0, 0));
+    await e.tick();
+    const r = await run('ASIA_SHORT:2026-10-26:always');
+    expect(r).toMatchObject({ status: 'closed', exit_reason: 'tp' });
+    expect(Number(r!.net_pnl)).toBeGreaterThan(0);
+  });
+
+  it('a restart in the middle of a position keeps managing it and still exits on time', async () => {
+    const e1 = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e1.tick();
+    const e2 = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 12, 0, 0));
+    await e2.tick();
+    expect((await run('ASIA_SHORT:2026-10-26:always'))!.status).toBe('open');
+    vi.setSystemTime(istToUtc('2026-10-26', 16, 0, 5));
+    await e2.tick();
+    expect(await run('ASIA_SHORT:2026-10-26:always')).toMatchObject({ status: 'closed', exit_reason: 'time' });
+  });
+
+  it('a database blip on the config read does not stop a stop-loss from firing', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    h.failConfig = true;
+    h.marks.set('C-BODY', 210);
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 5, 0));
+    await e.tick();
+    h.failConfig = false;
+    expect(e.lastError).toBeNull(); // the engine fell back to its last known switches, so this is not even an error
+    expect(await run('ASIA_SHORT:2026-10-26:always')).toMatchObject({ status: 'closed', exit_reason: 'stop' });
+  });
+
+  it('a failed entry attempt during a blip is reported with its real reason and never stops open positions from being closed', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    h.failConfig = true;
+    h.marks.set('C-BODY', 210); // the Asia strangle is stopped...
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 31, 0)); // ...while the evening straddle's entry attempt hits the blip
+    await e.tick();
+    h.failConfig = false;
+    expect(await run('ASIA_SHORT:2026-10-26:always')).toMatchObject({ status: 'closed' });
+    expect(e.lastError).toMatch(/entry EVE_LONG\/always: connect ETIMEDOUT/);
+  });
+
+  it('recorded PnL reconciles: net = sum of leg PnL minus entry and exit fees, for every closed run', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    h.marks.set('C-BODY', 210);
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 5, 0));
+    await e.tick();
+    const runs = await q(`SELECT id, net_pnl, gross_pnl, fees_entry, fees_exit FROM bot_runs WHERE status = 'closed'`);
+    expect(runs.length).toBeGreaterThan(0);
+    for (const r of runs) {
+      const legs = await q('SELECT side, lots, entry_price, exit_price FROM bot_legs WHERE run_id = $1', [r.id]);
+      const legSum = legs.reduce((s, l) => s + (l.side === 'short' ? Number(l.entry_price) - Number(l.exit_price) : Number(l.exit_price) - Number(l.entry_price)) * l.lots * 0.001, 0);
+      expect(Number(r.gross_pnl)).toBeCloseTo(legSum, 6);
+      expect(Number(r.net_pnl)).toBeCloseTo(legSum - Number(r.fees_entry) - Number(r.fees_exit), 6);
+    }
+  });
+});
+
+import { describeError } from './bot-engine.js';
+
+describe('describeError', () => {
+  it('says what failed for the empty-message errors databases and fetch throw', () => {
+    expect(describeError(new AggregateError([new Error('connect ETIMEDOUT 1.2.3.4:5432'), Object.assign(new Error(''), { code: 'ENETUNREACH' })], ''))).toMatch(/ETIMEDOUT.*ENETUNREACH/);
+    expect(describeError(Object.assign(new TypeError('fetch failed'), { cause: new Error('socket hang up') }))).toBe('fetch failed; socket hang up');
+    expect(describeError(new Error('plain'))).toBe('plain');
+    expect(describeError(null)).toBe('unknown error');
+    expect(describeError(new Error(''))).toBe('Error');
   });
 });
