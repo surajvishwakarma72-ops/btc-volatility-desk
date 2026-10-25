@@ -58017,6 +58017,13 @@ document.addEventListener('click', function(e) {
 #pgBot button.bt-btn:hover{border-color:var(--focus)}
 #pgBot button.bt-btn.danger{border-color:var(--up);color:var(--up)}
 #pgBot .bt-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 10px;box-shadow:var(--shadow)}
+#pgBot details.bt-fold{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 10px}
+#pgBot .bt-today th:nth-child(n+2):nth-child(-n+4),#pgBot .bt-today td:nth-child(n+2):nth-child(-n+4){text-align:left}
+#pgBot details.bt-fold>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+#pgBot details.bt-fold>.bt-card{border:0;box-shadow:none;padding:8px 0 0;margin:0}
+#pgBot .bt-chip.warn b{color:var(--warn)}
+#pgBot .bt-chip.bad b{color:var(--up)}
+#pgBot .bt-chip.ok b{color:var(--down)}
 #pgBot .bt-card h3{margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 #pgBot .bt-card .sub{font-size:12px;color:var(--faint);margin:-2px 0 8px;line-height:1.45}
 #pgBot .bt-star{border-color:var(--focus,#9CC9EE);animation:btFlash 2.6s ease-in-out infinite}
@@ -58111,7 +58118,7 @@ document.addEventListener('click', function(e) {
       '<div class="nx-note">Futures strategies have no fixed start: they trade when a sweep or signal appears inside their window. All times are IST.</div>';
   }
 
-  const S = { view: 'live', live: null, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
+  const S = { view: 'live', live: null, today: null, open: {}, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
     sel: { strat: null, split: 'byWeekday', timeline: null, askOut: null }, busy: false, killArm: 0 };
 
   async function api(path, opt) {
@@ -58228,13 +58235,50 @@ document.addEventListener('click', function(e) {
     return h + '</div>';
   }
 
+  /* ---------- Today timeline, trades table, folded extras ---------- */
+  const fold = (key, title, inner) => inner ? '<details class="bt-fold" data-bt-fold="' + key + '"' + (S.open[key] ? ' open' : '') + '><summary>' + esc(title) + '</summary>' + inner + '</details>' : '';
+  const SLOT_STATE = { upcoming: ['Upcoming', 'dim'], waiting: ['Waiting for entry', 'warn'], open: ['Open', 'ok'], closed: ['Closed', ''], dropped: ['No trade', 'bad'], missed: ['Missed', 'bad'] };
+  const EXIT_TEXT = { tp: 'take profit', stop: 'stop loss', time: 'time exit', kill: 'kill switch', manual: 'manual' };
+  const exitText = r => r ? (EXIT_TEXT[r] || r) : '';
+  function todayCard() {
+    const T = S.today; if (!T) return '';
+    const now = T.now || Date.now();
+    const rows = T.slots.map(sl => {
+      const [lbl, c] = SLOT_STATE[sl.state] || [sl.state, ''];
+      const run = sl.run, g = sl.gated, live = sl.live;
+      const net = sl.state === 'open' ? (live ? live.netPnl : null) : run ? run.netPnl : null;
+      let note = '';
+      if (sl.state === 'closed') note = exitText(run.exitReason) + (run.exitDetail ? ' · ' + run.exitDetail : '');
+      else if (sl.state === 'open') note = 'planned exit ' + (sl.plannedExitAtMs ? IST(sl.plannedExitAtMs).slice(6) : '-') + ' IST' + (live ? ' · ' + (live.pctOfMargin * 100).toFixed(1) + '% of margin' : '');
+      else if (sl.state === 'waiting') note = (sl.reason || '') + ' · keeps trying until ' + IST(sl.windowEndMs).slice(6) + ' IST';
+      else note = sl.reason || '';
+      if (run && run.tags && run.tags.enteredAfterWaitMin) note += (note ? ' · ' : '') + 'entered after waiting ' + run.tags.enteredAfterWaitMin + ' min';
+      const day = sl.dateKey === T.slots[T.slots.length - 1].dateKey || sl.entryAtMs > now - 18 * 3600000 ? '' : ' <span class="dim">' + esc(sl.dateKey) + '</span>';
+      const click = run && run.id ? ' class="click" data-bt-run="' + esc(run.id) + '"' : '';
+      return '<tr' + click + '><td>' + esc(IST(sl.entryAtMs).slice(6)) + ' IST' + day + '</td><td>' + esc(STRAT[sl.id] || sl.id) + '</td><td><span class="bt-chip ' + c + '"><b>' + lbl + '</b></span></td><td class="bt-why">' + esc(note) + '</td><td ' + cls(net) + '>' + (net == null ? '-' : usd(net)) + '</td></tr>';
+    }).join('');
+    const done = T.slots.filter(x => x.state === 'closed' && x.run).reduce((a, x) => a + (x.run.netPnl || 0), 0), openN = T.slots.filter(x => x.state === 'open').reduce((a, x) => a + (x.live ? x.live.netPnl : 0), 0);
+    return '<div class="bt-card"><h3>Today</h3><div class="sub">Each strategy at its time: waiting for a valid entry, open, closed (and why) or not traded (and why). Net PnL is after fees and slippage. Closed today <b ' + cls(done) + '>' + usd(done) + '</b> · open now <b ' + cls(openN) + '>' + usd(openN) + '</b>. Click a row to see its trade.</div>' +
+      '<div class="bt-scroll"><table class="bt-t bt-today"><thead><tr><th>Entry time</th><th>Strategy</th><th>Status</th><th>What happened</th><th>Net PnL</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+  }
+  function tradesCard() {
+    const runs = S.runs.filter(r => r.status === 'closed' || r.status === 'open');
+    const tl = S.sel.timeline;
+    const num = v => v == null ? null : Number(v);
+    const body = runs.length ? '<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Strategy</th><th>Date</th><th>Entry (IST)</th><th>Exit (IST)</th><th>Why it exited</th><th>Gross</th><th>Fees</th><th>Slippage</th><th>Net PnL</th></tr></thead><tbody>' + runs.slice(0, 40).map(r => {
+      const fees = r.fees_entry == null ? null : Number(r.fees_entry) + Number(r.fees_exit || 0), open = r.status === 'open';
+      return '<tr class="click ' + (tl && tl.id === r.id ? 'sel' : '') + '" data-bt-run="' + esc(r.id) + '"><td>' + esc(name(r.strategy + '|' + r.book)) + '</td><td>' + esc(r.date_key) + '</td><td>' + (r.entry_at ? esc(IST(new Date(r.entry_at).getTime()).slice(6)) : '-') + '</td><td>' + (open ? '<span class="dim">open</span>' : r.exit_at ? esc(IST(new Date(r.exit_at).getTime()).slice(6)) : '-') + '</td><td>' + esc(exitText(r.exit_reason)) + '</td><td ' + cls(num(r.gross_pnl)) + '>' + (r.gross_pnl == null ? '-' : usd(Number(r.gross_pnl))) + '</td><td class="dim">' + (fees == null ? '-' : usd(fees)) + '</td><td class="dim">' + (r.slippage_usd == null ? '-' : usd(Number(r.slippage_usd))) + '</td><td ' + cls(num(r.net_pnl)) + '>' + (r.net_pnl == null ? '-' : '<b>' + usd(Number(r.net_pnl)) + '</b>') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="bt-note">No trades yet. The first ones appear after a strategy enters.</div>';
+    const detail = tl ? '<h3 style="margin-top:10px">Trade timeline · ' + esc(name(tl.strategy + '|' + tl.book)) + '</h3><div class="sub">' + esc(tl.summary || '') + '</div>' + lineChart([{ label: 'Net PnL', points: tl.points, color: '#58A6D6', marks: tl.marks }], { title: 'Trade PnL timeline', fmtX: v => (v / 60).toFixed(1) + 'h' }) : '';
+    return '<div class="bt-card"><h3>Trades</h3><div class="sub">Net PnL = gross PnL minus fees (spread and slippage are already in the fill prices). The always book trades every day; the gated book repeats the same trade only when the gate said GO, so it is not added again in the totals. Click a trade for its minute-by-minute chart.</div>' + body + detail + '</div>';
+  }
+
   /* ---------- live view ---------- */
   function liveView() {
     if (!tok()) return `<div class="bt-card bt-login"><h3>Log in</h3><div class="bt-note">The live bot data is private. Use your desk password.</div><input type="password" id="btPw" placeholder="Desk password" autocomplete="current-password"><button type="button" class="bt-btn" data-bt="login">Log in</button>${S.loginErr ? `<div class="bt-note warn">${esc(S.loginErr)}</div>` : ''}</div>`;
     const st = S.status; let h = '';
     if (S.liveErr) h += `<div class="bt-card"><div class="bt-note warn">${esc(S.liveErr)}</div></div>`;
     if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded until it is switched on; then every trade it takes appears here.</div></div>`;
-    if (S.top && S.top.live) h += topCard(S.top.live, 'live paper trades');
+    h += todayCard();
     h += `<div class="bt-card"><h3>Running positions</h3>${S.positions.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Margin</th><th>Net PnL</th><th>% margin</th><th>To TP</th><th>Stop distance</th><th>Time exit</th><th>Spot</th></tr></thead><tbody>${S.positions.map(p => {
       const fut = p.exit && p.exit.kind === 'futures';
       const tp = fut ? null : (p.exit && p.exit.tpPctOfMargin != null && p.pnl ? p.exit.tpPctOfMargin * p.marginUsd - p.pnl.netPnl : null);
@@ -58243,15 +58287,14 @@ document.addEventListener('click', function(e) {
       const futTp = fut ? Math.abs(p.exit.target - p.spot) : null, futSl = fut ? Math.abs(p.spot - p.exit.stop) : null;
       return `<tr class="click" data-bt-run="${esc(p.id)}"><td>${esc(name(p.strategy + '|' + p.book))}${fl ? ` <span class="dim">${esc(fl.side)} ${fl.lots} lots @ ${Math.round(fl.entryPrice)}</span>` : ''}</td><td>${usd(p.marginUsd)}</td><td ${cls(p.pnl && p.pnl.netPnl)}>${p.pnl ? usd(p.pnl.netPnl) : '-'}</td><td ${cls(p.pnl && p.pnl.pctOfMargin)}>${p.pnl ? pct(p.pnl.pctOfMargin, 1) : '-'}</td><td>${fut ? usd(futTp, 0) + ' of price' : tp == null ? '-' : usd(tp)}</td><td>${fut ? usd(futSl, 0) + ' of price' : stops.length ? usd(Math.min(...stops)) : '-'}</td><td>${p.minutesToTimeExit == null ? '-' : (p.minutesToTimeExit / 60).toFixed(1) + ' h'}</td><td>${Math.round(p.spot)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="bt-note">No open positions.</div>'}</div>`;
 
-    h += dropsCard();
-    h += `<div class="bt-grid"><div class="bt-card"><h3>Recent runs</h3>${S.runs.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Date</th><th>Status</th><th>Exit</th><th>Net PnL</th></tr></thead><tbody>${S.runs.slice(0, 40).map(r => `<tr class="click ${S.sel.timeline && S.sel.timeline.id === r.id ? 'sel' : ''}" data-bt-run="${esc(r.id)}"><td>${esc(name(r.strategy + '|' + r.book))}</td><td>${esc(r.date_key)}</td><td>${esc(r.status)}</td><td>${esc(r.exit_reason || '')}</td><td ${cls(r.net_pnl == null ? null : Number(r.net_pnl))}>${r.net_pnl == null ? '-' : usd(Number(r.net_pnl))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="bt-note">No runs recorded yet.</div>'}</div>`;
-    const tl = S.sel.timeline;
-    h += `<div class="bt-card"><h3>Trade timeline${tl ? ' · ' + esc(name(tl.strategy + '|' + tl.book)) : ''}</h3>${tl ? `<div class="sub">${esc(tl.summary || '')}</div>${lineChart([{ label: 'Net PnL', points: tl.points, color: '#58A6D6', marks: tl.marks }], { title: 'Trade PnL timeline', fmtX: v => (v / 60).toFixed(1) + 'h' })}` : '<div class="bt-note">Click a run to see its PnL minute by minute, with the exit marked and how much was given back from the peak.</div>'}</div></div>`;
+    h += tradesCard();
 
-    h += `<div class="bt-card"><h3>Ask: what was happening at a given minute?</h3><div class="bt-row"><input id="btAskT" placeholder="HH:MM (IST)" size="8"><input id="btAskD" placeholder="YYYY-MM-DD (today)" size="14"><button type="button" class="bt-btn" data-bt="ask">Look up</button></div>${S.sel.askOut ? `<pre class="bt-pre">${esc(S.sel.askOut)}</pre>` : '<div class="bt-note">Shows every position, the market context and every decision the bot recorded at that minute.</div>'}</div>`;
-    h += `<div class="bt-card"><h3>Recent events</h3>${S.events.length ? `<pre class="bt-pre">${S.events.slice(0, 40).map(e => `${IST(new Date(e.at).getTime())}  ${String(e.severity).toUpperCase().padEnd(5)} ${e.type}: ${e.message}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No events yet.</div>'}</div>`;
-    h += learnCard();
-    h += S.live ? renderAnalytics(S.live.analytics, null, 'live paper') : '';
+    h += fold('ask', 'Ask the bot: what was happening at a given minute?', `<div class="bt-card"><h3>Ask: what was happening at a given minute?</h3><div class="bt-row"><input id="btAskT" placeholder="HH:MM (IST)" size="8"><input id="btAskD" placeholder="YYYY-MM-DD (today)" size="14"><button type="button" class="bt-btn" data-bt="ask">Look up</button></div>${S.sel.askOut ? `<pre class="bt-pre">${esc(S.sel.askOut)}</pre>` : '<div class="bt-note">Shows every position, the market context and every decision the bot recorded at that minute.</div>'}</div>`);
+    h += fold('events', 'Recent events', `<div class="bt-card"><h3>Recent events</h3>${S.events.length ? `<pre class="bt-pre">${S.events.slice(0, 40).map(e => `${IST(new Date(e.at).getTime())}  ${String(e.severity).toUpperCase().padEnd(5)} ${e.type}: ${e.message}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No events yet.</div>'}</div>`);
+    h += fold('top', 'Top performer', S.top && S.top.live ? topCard(S.top.live, 'live paper trades') : '');
+    h += fold('drops', 'Why the bot did not trade, day by day', dropsCard());
+    h += fold('learn', 'Auto-learn: champion versus challenger', learnCard());
+    h += fold('stats', 'Scoreboard and break-downs by weekday, month, entry IV, gate and exit reason', S.live ? renderAnalytics(S.live.analytics, null, 'live paper') : '');
     return h;
   }
 
@@ -58283,6 +58326,7 @@ document.addEventListener('click', function(e) {
       S.status = await api('/status');
       const [runs, events] = await Promise.all([api('/runs?limit=60'), api('/events?limit=60')]);
       S.runs = runs.runs; S.events = events.events;
+      try { S.today = await api('/today'); } catch (e) { S.today = null; }
       if (S.status.enabled) { try { S.positions = (await api('/positions')).positions; } catch (e) { S.positions = []; } } else S.positions = [];
       // the analytics query is the heavy one: once a minute is plenty
       // dropped trades and waiting entries change minute by minute, so they ride the 5 s refresh
@@ -58295,7 +58339,7 @@ document.addEventListener('click', function(e) {
     } catch (e) { S.liveErr = e.message; if (e.status === 401) S.status = null; }
     S.busy = false;
     // redraw only when the data changed, so a refresh every 5 s never flickers or resets what you are reading
-    S.sig = JSON.stringify([S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
+    S.sig = JSON.stringify([S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (force || S.sig !== before) draw();
   }
   async function openRun(id) {
@@ -58346,6 +58390,7 @@ document.addEventListener('click', function(e) {
   }
   async function act(path) { try { await api(path, { method: 'POST' }); } catch (e) { S.liveErr = e.message; } await loadLive(); }
 
+  root.addEventListener('toggle', e => { const k = e.target && e.target.dataset && e.target.dataset.btFold; if (k) S.open[k] = e.target.open; }, true);
   root.addEventListener('click', e => {
     const t = e.target.closest('[data-bt],[data-bt-split],[data-bt-run],[data-bt-rb]'); if (!t) return;
     if (t.dataset.btRb) { rollback(t.dataset.btRb); return; }
@@ -58446,11 +58491,26 @@ document.addEventListener('click', function(e) {
 #pgPaper .pp-sumgrid div{display:flex;flex-direction:column;gap:1px;font-size:13px}
 #pgPaper .pp-sumgrid .dim{font-size:11px;letter-spacing:.04em;text-transform:uppercase}
 #pgPaper .pp-t select.pp-in{width:auto;padding:3px 6px;font-size:13px}
+#pgPaper .pp-step{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--focus);color:#06130d;font-size:12px;margin-right:6px}
+#pgPaper .pp-bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;margin:0 0 8px}
+#pgPaper .pp-bar label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+#pgPaper .pp-margin{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;margin:0 0 8px;padding:8px 10px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2)}
+#pgPaper .pp-margin b{font-size:22px;font-variant-numeric:tabular-nums}
+#pgPaper .pp-strat{border:1px solid var(--line2);border-radius:10px;padding:10px 12px;margin:0 0 10px;background:var(--panel2)}
+#pgPaper .pp-strat-top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:flex-start;margin:0 0 8px}
+#pgPaper .pp-strat-name{font-weight:700;font-size:14px}
+#pgPaper .pp-strat-net{display:flex;flex-direction:column;align-items:flex-end}
+#pgPaper .pp-strat-net b{font-size:26px;font-variant-numeric:tabular-nums}
+#pgPaper .pp-strat-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+#pgPaper button.pp-btn.danger{border-color:var(--up);color:var(--up)}
+#pgPaper details>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+@media (max-width:760px){#pgPaper .opt{display:none}#pgPaper .pp-strat-net{align-items:flex-start}}
 @media (max-width:980px){#pgPaper .pp-cols{grid-template-columns:1fr}}
 </style>
 <script data-block="paper-page">
-/* Paper Trade page: a Delta-style terminal on fake money against the real Delta order books.
-   Own account (cash, orders, positions, fills), separate from the bot. Data from /api/v1/paper/*. */
+/* Paper Trade page: one panel in three steps. 1 pick strikes on the option chain, 2 check the strategy and its margin, 3 execute.
+   Executed strategies are listed underneath with net PnL, each leg's PnL and stop, and one button to close everything.
+   Fake money against the real Delta order books; separate from the bot. Data from /api/v1/paper/*. */
 (function paperPage() {
   'use strict';
   const D = document, $ = id => D.getElementById(id);
@@ -58463,10 +58523,13 @@ document.addEventListener('click', function(e) {
   const IST = ms => new Date(ms + 19800000).toISOString().slice(5, 16).replace('T', ' ');
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const dayLbl = ms => { const d = new Date(ms); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()]; };
-  const PERP = 'BTCUSD';
+  const STOP_MULT = 2;
 
-  const S = { acct: null, board: null, expiry: null, sel: null, t: { side: 'buy', type: 'market', lots: '10', price: '', stop: '', reduce: false, lev: 10, tp: '', sl: '' },
-    preview: null, msg: null, orders: [], fills: [], hist: 'orders', book: null, loginErr: null, err: null, busy: false, scrolled: false, built: false };
+  const S = {
+    acct: null, board: null, expiry: null, strat: { open: [], closed: [] }, flow: null, flowAt: 0, flowErr: null,
+    sb: { legs: [], baseLots: 100, preview: null, busy: false, msg: null, tpl: 3 },
+    edit: null, arm: null, smsg: null, msg: null, loginErr: null, err: null, scrolled: false, built: false, closedSig: '',
+  };
 
   async function api(path, opt) {
     const t = tok(); if (!t) { const e = new Error('Not logged in'); e.status = 401; throw e; }
@@ -58479,182 +58542,79 @@ document.addEventListener('click', function(e) {
     return j;
   }
 
-  /* ---------- helpers over the board ---------- */
-  function rowOf(symbol) {
-    const b = S.board; if (!b) return null;
-    for (const s of b.strikes) { if (s.call && s.call.symbol === symbol) return s.call; if (s.put && s.put.symbol === symbol) return s.put; }
-    return null;
-  }
+  /* ---------- helpers over the chain ---------- */
   function labelOf(symbol) {
-    if (symbol === PERP) return 'BTC perpetual (BTCUSD)';
     const m = /^([CP])-BTC-(\d+)-(\d{2})(\d{2})(\d{2})$/.exec(symbol); if (!m) return symbol;
     return (m[1] === 'C' ? 'Call ' : 'Put ') + Number(m[2]).toLocaleString('en-US') + ' · ' + Number(m[3]) + ' ' + MON[Number(m[4]) - 1];
   }
-  const isPerp = s => s === PERP;
-  function quoteOf(symbol) {
-    if (isPerp(symbol)) { const p = S.board && S.board.perp; return p ? { bid: p.bid, ask: p.ask, mark: p.mark } : null; }
-    const r = rowOf(symbol); return r ? { bid: r.bid, ask: r.ask, mark: r.mark } : null;
-  }
-  function select(symbol, side) {
-    S.sel = symbol; if (side) S.t.side = side; S.preview = null; S.msg = null; S.book = null;
-    const q = quoteOf(symbol);
-    if (q && S.t.type === 'limit') { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; }
-    syncTicket(); renderMsg(); renderBook(); loadBook(); schedulePreview();
-  }
+  const strikesList = () => (S.board ? S.board.strikes.map(s => s.strike) : []);
+  const atmIndex = () => { const k = strikesList(); let bi = 0, bd = Infinity; k.forEach((x, i) => { const d = Math.abs(x - S.board.spot); if (d < bd) { bd = d; bi = i; } }); return bi; };
+  function rowFor(leg) { const row = S.board && S.board.strikes.find(s => s.strike === leg.strike); return row ? (leg.type === 'call' ? row.call : row.put) : null; }
+  const sbSymbol = leg => { const r = rowFor(leg); return r ? r.symbol : null; };
+  const legMark = (symbol, side) => S.sb.legs.some(l => sbSymbol(l) === symbol && l.side === side) ? (side === 'buy' ? ' lg-buy' : ' lg-sell') : '';
+  /** What this leg would fill at right now (sell at the bid, buy at the ask) and the stop that "auto" means. */
+  function legFill(l) { const r = rowFor(l); return r ? (l.side === 'buy' ? r.ask : r.bid) : null; }
+  function autoStop(l) { const f = legFill(l), r = rowFor(l); if (l.side !== 'sell' || !f) return null; const t = (r && r.tick) || 0.1; return Math.round(f * STOP_MULT / t) * t; }
 
-  /* ---------- rendering ---------- */
+  /* ---------- skeleton ---------- */
   function build() {
     root.innerHTML = '<div class="pp"><div class="pp-top"><h2>Paper Trade</h2><span id="ppHead" class="pp-sp"></span><span id="ppBtns"></span></div>' +
-      '<div class="pp-note" style="margin:-4px 0 10px">Fake money, real Delta order books. Market orders walk the live book, so slippage and fees are what Delta would charge. This is separate from the bot and cannot place a real order.</div>' +
+      '<div class="pp-note" style="margin:-4px 0 10px">Fake money, real Delta order books. Three steps: pick strikes on the chain, check the margin, execute. Every strategy gets a stop on each sold leg, and if any leg hits its stop the whole strategy is closed. Separate from the bot; it cannot place a real order.</div>' +
       '<div id="ppLogin"></div>' +
-      '<div class="pp-cols"><div class="pp-stack">' +
-      '<div class="pp-card"><div style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><span class="pp-seg" id="ppMktTabs"><button type="button" data-pp-mtab="board" class="on">Option board</button><button type="button" data-pp-mtab="builder">Strategy builder</button></span></div><div id="ppPerp" class="pp-perp"></div><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-note">Option expiry</span><select id="ppExp" class="pp-in" style="width:auto"></select><span class="pp-note" id="ppBoardAt"></span></div><div id="ppBoardWrap"><div class="pp-scroll board" id="ppBoard"></div><div class="pp-note" style="margin-top:6px">Click an ask to buy it or a bid to sell it. The highlighted row is the strike nearest spot. <b>Sell margin</b> is the extra margin selling the lot size in the ticket would need (in your margin mode, counting what you already hold); red means you could not carry it.</div></div><div id="ppBuilder" hidden></div></div>' +
-      '<div class="pp-card"><h3>Positions</h3><div id="ppPos" class="pp-scroll"></div></div>' +
-      '<div class="pp-card"><h3>Portfolio</h3><div id="ppPortfolio"></div></div>' +
-      '<div class="pp-card"><h3>Working orders</h3><div id="ppWork" class="pp-scroll"></div></div>' +
-      '<div class="pp-card"><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-seg" id="ppHistTabs"><button type="button" data-pp-hist="orders" class="on">Order history</button><button type="button" data-pp-hist="fills">Fills</button></span></div><div id="ppHist" class="pp-scroll"></div></div>' +
-      '</div><div class="pp-stack">' +
-      '<div class="pp-card"><h3>Order ticket</h3><div class="pp-tk">' +
-      '<div id="ppTkLabel" class="pp-contract">Pick a contract on the board</div><div id="ppTkQuote" class="pp-note"></div>' +
-      '<span class="pp-seg side" id="ppSide"><button type="button" data-pp-side="buy" class="on buy">Buy / Long</button><button type="button" data-pp-side="sell">Sell / Short</button></span>' +
-      '<span class="pp-seg" id="ppType"><button type="button" data-pp-type="market" class="on">Market</button><button type="button" data-pp-type="limit">Limit</button><button type="button" data-pp-type="stop_market">Stop</button></span>' +
-      '<label>Size (lots; 1 lot = 0.001 BTC)<input type="number" id="ppLots" min="1" step="1" value="10"></label>' +
-      '<div class="chips" id="ppLotChips">' + [1, 10, 100, 500].map(n => '<button type="button" class="pp-btn small" data-pp-lots="' + n + '">' + n + '</button>').join('') + '</div>' +
-      '<label id="ppPriceW" hidden>Limit price<input type="number" id="ppPrice" step="any"></label>' +
-      '<label id="ppStopW" hidden>Stop (trigger) price<input type="number" id="ppStop" step="any"></label>' +
-      '<label id="ppLevW" hidden>Leverage: <b id="ppLevV">10x</b><input type="range" id="ppLev" min="1" max="100" value="10"></label>' +
-      '<div class="row2" id="ppBrk"><label>Take profit<input type="number" id="ppTp" step="any" placeholder="optional"></label><label>Stop loss<input type="number" id="ppSl" step="any" placeholder="optional"></label></div>' +
-      '<label class="chk"><input type="checkbox" id="ppRO"> Reduce only</label>' +
-      '<div id="ppPrev" class="pp-prev">Estimate appears here: average fill from the live book, fee, slippage and margin.</div>' +
-      '<button type="button" class="pp-go buy" id="ppGo" data-pp-act="submit" disabled>Pick a contract</button>' +
-      '<div id="ppMsg"></div></div></div>' +
-      '<div class="pp-card"><h3>Order book · <span id="ppBookName">-</span></h3><div id="ppBookBody" class="pp-book"></div></div>' +
-      '</div></div></div>';
+      '<div class="pp-card"><h3><span class="pp-step">1</span> Pick strikes on the option chain</h3>' +
+      '<div class="pp-bar"><label>Expiry <select id="ppExp" class="pp-in" style="width:auto"></select></label><label>Lots per new leg <input type="number" id="ppBase" class="pp-in" style="width:90px" min="1" step="1" value="100"></label><span class="pp-note" id="ppBoardAt"></span></div>' +
+      '<div class="pp-scroll board" id="ppBoard"></div>' +
+      '<div class="pp-note" style="margin-top:6px">Click an <b>ask</b> to <b>buy</b> that strike or a <b>bid</b> (or its <b>Sell margin</b>) to <b>sell</b> it. Pick as many strikes as you like, click again to remove, click the other side to flip. Chosen legs are outlined: green = buy, red = sell. <b>Sell margin</b> is the extra margin selling the lots above would need on your account.</div></div>' +
+      '<div class="pp-card"><h3><span class="pp-step">2</span> Your strategy</h3><div id="ppBuilder"></div></div>' +
+      '<div class="pp-card"><h3><span class="pp-step">3</span> Execute</h3><div id="ppExec"></div></div>' +
+      '<div class="pp-card"><h3>Your open strategies</h3><div id="ppStratMsg"></div><div id="ppStrats"></div></div>' +
+      '<div class="pp-card"><details id="ppClosedD"><summary>Closed strategies</summary><div id="ppClosed" class="pp-scroll"></div></details></div>' +
+      '<div class="pp-card"><details id="ppAcctD"><summary>Account details, other positions and net greeks</summary><div id="ppAcct"></div></details></div></div>';
     S.built = true; wire();
   }
 
   function renderHead() {
     const a = S.acct, v = a && a.view, ac = a && a.account;
+    const openPnl = S.strat.open.reduce((s, x) => s + (x.netPnl || 0), 0);
     $('ppHead').innerHTML = !ac ? '' : [
-      ['Equity', v ? usd(v.equity) : '-', ''], ['Cash', usd(ac.cash), ''], ['Margin used', v ? usd(v.margin) : '-', ''], ['Available', v ? usd(v.available) : '-', v && v.available < 0 ? 'warn' : ''],
-      ['Unrealised', v ? usd((a.positions || []).reduce((s, p) => s + (p.unrealized || 0), 0)) : '-', ''],
-      ['Realised', usd(ac.realizedTotal), ''], ['Fees paid', usd(ac.feesTotal), ''],
-      ['Return', v ? ((v.equity / ac.startBalance - 1) * 100).toFixed(2) + '%' : '-', ''],
+      ['Equity', v ? usd(v.equity) : '-', ''], ['Available', v ? usd(v.available) : '-', v && v.available < 0 ? 'warn' : ''], ['Margin used', v ? usd(v.margin) : '-', ''],
+      ['Open strategies PnL', usd(openPnl), ''], ['Realised', usd(ac.realizedTotal), ''], ['Fees paid', usd(ac.feesTotal), ''],
     ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ');
-    const mm = (S.acct && S.acct.marginMode) || 'portfolio';
+    const mm = (a && a.marginMode) || 'portfolio';
     $('ppBtns').innerHTML = tok() ? '<span class="pp-seg" title="Portfolio margin nets hedged option legs together (condors and spreads need little margin). Standard margin charges every short option on its own."><button type="button" data-pp-mode="portfolio" class="' + (mm === 'portfolio' ? 'on' : '') + '">Portfolio margin</button><button type="button" data-pp-mode="standard" class="' + (mm === 'standard' ? 'on' : '') + '">Standard margin</button></span> <button type="button" class="pp-btn" data-pp-act="reset">Reset account</button>' : '';
-  }
-
-  function renderPerp() {
-    const b = S.board; if (!b) { $('ppPerp').innerHTML = ''; return; }
-    const p = b.perp, sel = S.sel === PERP;
-    $('ppPerp').innerHTML = '<span><b>BTCUSD</b> perpetual</span><span>Mark <b>' + px(p.mark) + '</b></span><span class="neg">Sell <b data-pp-q="' + PERP + '|sell" style="cursor:pointer">' + px(p.bid) + '</b></span><span class="pos">Buy <b data-pp-q="' + PERP + '|buy" style="cursor:pointer">' + px(p.ask) + '</b></span>' +
-      '<span class="dim">Funding ' + (p.funding == null ? '-' : Number(p.funding).toFixed(4) + '%') + '</span><span class="dim">Max ' + b.perpInfo.maxLeverage + 'x · taker ' + (b.perpInfo.takerRate * 100).toFixed(3) + '% + GST</span>' + (sel ? '<span class="pp-chip"><b>selected</b></span>' : '');
   }
 
   function renderBoard() {
     const b = S.board; const el = $('ppBoard');
-    if (!b) { el.innerHTML = '<div class="pp-note">Loading the option board…</div>'; return; }
+    if (!b) { el.innerHTML = '<div class="pp-note">' + (tok() ? 'Loading the option chain…' : 'Log in to load the option chain.') + '</div>'; return; }
     const sel = $('ppExp'), sig = b.expiries.join(',');
     if (sel.dataset.sig !== sig) { sel.dataset.sig = sig; sel.innerHTML = b.expiries.map(e => '<option value="' + e + '">' + dayLbl(e) + ' · ' + IST(e).slice(6) + ' IST</option>').join(''); }
     sel.value = String(b.expiry);
     $('ppBoardAt').textContent = 'Spot ' + px(b.spot, 0) + ' · updated ' + new Date(b.at).toLocaleTimeString();
     let atm = null, best = Infinity; for (const s of b.strikes) { const d = Math.abs(s.strike - b.spot); if (d < best) { best = d; atm = s.strike; } }
-    const mcell = r => r.sellMargin == null ? '<td class="dim">-</td>' : '<td class="mg' + (r.sellOk === false ? ' neg' : '') + '" data-pp-q="' + r.symbol + '|sell" style="cursor:pointer" title="' + (r.sellOk === false ? 'Not enough available margin to sell this size. ' : '') + 'Extra margin to sell ' + (b.lots || '') + ' lots (' + esc(b.marginMode || 'portfolio') + ' margin), premium received about ' + usd(r.bid * (b.lots || 0) * 0.001) + '">' + usd(r.sellMargin, 0) + '</td>';
+    const mcell = r => r.sellMargin == null ? '<td class="dim">-</td>' : '<td class="mg' + (r.sellOk === false ? ' neg' : '') + legMark(r.symbol, 'sell') + '" data-pp-q="' + r.symbol + '|sell" style="cursor:pointer" title="' + (r.sellOk === false ? 'Not enough available margin to sell this size. ' : '') + 'Extra margin to sell ' + (b.lots || '') + ' lots (' + esc(b.marginMode || 'portfolio') + ' margin), premium received about ' + usd(r.bid * (b.lots || 0) * 0.001) + '">' + usd(r.sellMargin, 0) + '</td>';
     const side = (r, which) => {
       if (!r) return '<td class="dim">-</td>'.repeat(7);
-      const sy = r.symbol, on = S.sel === sy && S.sb.tab !== 'builder' ? ' sel' : '', onS = on + legMark(sy, 'sell'), onB = on + legMark(sy, 'buy');
+      const sy = r.symbol;
       const cells = [
-        '<td class="dim">' + (r.oi ? r.oi.toFixed(1) : '-') + '</td>', '<td class="dim">' + (r.iv ? r.iv.toFixed(1) : '-') + '</td>', '<td>' + (r.delta ? Math.abs(r.delta).toFixed(2) : '-') + '</td>',
+        '<td class="dim opt">' + (r.oi ? r.oi.toFixed(1) : '-') + '</td>', '<td class="dim opt">' + (r.iv ? r.iv.toFixed(1) : '-') + '</td>', '<td>' + (r.delta ? Math.abs(r.delta).toFixed(2) : '-') + '</td>',
         mcell(r),
-        '<td class="q sell' + onS + '" data-pp-q="' + sy + '|sell" title="Sell at the bid (' + r.bidSize + ' lots)">' + px(r.bid, 1) + '</td>', '<td class="q buy' + onB + '" data-pp-q="' + sy + '|buy" title="Buy at the ask (' + r.askSize + ' lots)">' + px(r.ask, 1) + '</td>', '<td class="dim">' + px(r.mark, 1) + '</td>'];
+        '<td class="q sell' + legMark(sy, 'sell') + '" data-pp-q="' + sy + '|sell" title="Sell at the bid (' + r.bidSize + ' lots)">' + px(r.bid, 1) + '</td>', '<td class="q buy' + legMark(sy, 'buy') + '" data-pp-q="' + sy + '|buy" title="Buy at the ask (' + r.askSize + ' lots)">' + px(r.ask, 1) + '</td>', '<td class="dim opt">' + px(r.mark, 1) + '</td>'];
       return (which === 'call' ? cells : cells.slice().reverse()).join('');
     };
-    const head = '<tr><th colspan="7" class="grp pos">Calls</th><th></th><th colspan="7" class="grp neg">Puts</th></tr><tr><th>OI</th><th>IV</th><th>Δ</th><th title="Extra margin needed to SELL the lot size in the ticket, on top of what you already hold">Sell margin</th><th>Bid</th><th>Ask</th><th>Mark</th><th>Strike</th><th>Mark</th><th>Ask</th><th>Bid</th><th title="Extra margin needed to SELL the lot size in the ticket, on top of what you already hold">Sell margin</th><th>Δ</th><th>IV</th><th>OI</th></tr>';
+    const head = '<tr><th colspan="7" class="grp pos">Calls</th><th></th><th colspan="7" class="grp neg">Puts</th></tr><tr><th class="opt">OI</th><th class="opt">IV</th><th>Δ</th><th title="Extra margin needed to SELL the lots above, on top of what you already hold">Sell margin</th><th>Bid</th><th>Ask</th><th class="opt">Mark</th><th>Strike</th><th class="opt">Mark</th><th>Ask</th><th>Bid</th><th title="Extra margin needed to SELL the lots above, on top of what you already hold">Sell margin</th><th>Δ</th><th class="opt">IV</th><th class="opt">OI</th></tr>';
     const keepTop = el.scrollTop;
     el.innerHTML = '<table class="pp-t"><thead>' + head + '</thead><tbody>' + b.strikes.map(s => '<tr' + (s.strike === atm ? ' class="atm" id="ppAtm"' : '') + '>' + side(s.call, 'call') + '<td class="k">' + s.strike.toLocaleString('en-US') + '</td>' + side(s.put, 'put') + '</tr>').join('') + '</tbody></table>';
     el.scrollTop = keepTop;
     if (!S.scrolled) { const a = $('ppAtm'); if (a) { el.scrollTop = Math.max(0, a.offsetTop - el.clientHeight / 2); S.scrolled = true; } }
   }
 
-  function renderPositions() {
-    const a = S.acct; const el = $('ppPos');
-    if (!a || !a.positions || !a.positions.length) { el.innerHTML = '<div class="pp-note">No open positions.</div>'; return; }
-    el.innerHTML = '<table class="pp-t"><thead><tr><th>Contract</th><th>Size</th><th>Entry</th><th>Mark</th><th>Unrealised</th><th>Margin</th><th>Liq. price</th><th>Lev</th><th></th></tr></thead><tbody>' + a.positions.map(p =>
-      '<tr><td>' + esc(labelOf(p.symbol)) + '</td><td class="' + (p.lots > 0 ? 'pos' : 'neg') + '">' + (p.lots > 0 ? '+' : '') + p.lots + '</td><td>' + px(p.avgEntry, 1) + '</td><td>' + px(p.mark, 1) + '</td><td class="' + sgn(p.unrealized) + '">' + usd(p.unrealized) + '</td><td>' + (p.margin == null ? '<span class="dim">portfolio</span>' : usd(p.margin)) + '</td><td>' + (p.liquidationPrice ? px(p.liquidationPrice, 0) : '<span class="dim">-</span>') + '</td><td>' + (p.kind === 'perp' ? p.leverage + 'x' : '<span class="dim">-</span>') + '</td><td><button type="button" class="pp-btn small" data-pp-close="' + esc(p.symbol) + '">Close</button></td></tr>').join('') + '</tbody></table>';
-  }
-
-  function renderWorking() {
-    const w = S.acct && S.acct.working || []; const el = $('ppWork');
-    if (!w.length) { el.innerHTML = '<div class="pp-note">No working orders.</div>'; return; }
-    el.innerHTML = '<table class="pp-t"><thead><tr><th>Contract</th><th>Side</th><th>Type</th><th>Size</th><th>Price</th><th>Filled</th><th></th></tr></thead><tbody>' + w.map(o =>
-      '<tr><td>' + esc(labelOf(o.symbol)) + (o.reduceOnly ? ' <span class="dim">reduce-only</span>' : '') + '</td><td class="' + (o.side === 'buy' ? 'pos' : 'neg') + '">' + o.side + '</td><td>' + esc(o.type.replace('_', ' ')) + '</td><td>' + o.lots + '</td><td>' + (o.type === 'stop_market' ? 'stop ' + px(o.stopPrice, 1) : px(o.price, 1)) + '</td><td>' + o.filledLots + '</td><td><button type="button" class="pp-btn small" data-pp-cancel="' + esc(o.id) + '">Cancel</button></td></tr>').join('') +
-      '</tbody></table><div style="margin-top:6px"><button type="button" class="pp-btn small" data-pp-act="cancelall">Cancel all</button></div>';
-  }
-
-  function renderHist() {
-    const el = $('ppHist'); D.querySelectorAll('#ppHistTabs button').forEach(b => b.classList.toggle('on', b.dataset.ppHist === S.hist));
-    if (S.hist === 'fills') {
-      el.innerHTML = S.fills.length ? '<table class="pp-t"><thead><tr><th>Time (IST)</th><th>Contract</th><th>Side</th><th>Size</th><th>Price</th><th>Fee</th><th>Liquidity</th><th>Slippage</th><th>Realised</th></tr></thead><tbody>' + S.fills.map(f =>
-        '<tr><td>' + esc(IST(f.at)) + '</td><td>' + esc(labelOf(f.symbol)) + (f.note ? ' <span class="dim" title="' + esc(f.note) + '">·</span>' : '') + '</td><td class="' + (f.side === 'buy' ? 'pos' : 'neg') + '">' + f.side + '</td><td>' + f.lots + '</td><td>' + px(f.price, 2) + '</td><td>' + usd(f.fee) + '</td><td>' + (f.maker ? 'maker' : 'taker') + '</td><td>' + usd(f.slippageUsd) + '</td><td class="' + sgn(f.realized) + '">' + (f.realized ? usd(f.realized) : '-') + '</td></tr>').join('') + '</tbody></table>' : '<div class="pp-note">No fills yet.</div>';
-    } else {
-      el.innerHTML = S.orders.length ? '<table class="pp-t"><thead><tr><th>Time (IST)</th><th>Contract</th><th>Side</th><th>Type</th><th>Size</th><th>Avg fill</th><th>Fee</th><th>Status</th><th>Note</th></tr></thead><tbody>' + S.orders.map(o =>
-        '<tr><td>' + esc(IST(o.createdAt)) + '</td><td>' + esc(labelOf(o.symbol)) + '</td><td class="' + (o.side === 'buy' ? 'pos' : 'neg') + '">' + o.side + '</td><td>' + esc(o.type.replace('_', ' ')) + '</td><td>' + o.filledLots + '/' + o.lots + '</td><td>' + (o.avgPrice ? px(o.avgPrice, 2) : '-') + '</td><td>' + (o.fee ? usd(o.fee) : '-') + '</td><td class="' + (o.status === 'rejected' ? 'neg' : o.status === 'filled' ? 'pos' : 'dim') + '">' + o.status + '</td><td style="white-space:normal;text-align:left;min-width:200px">' + esc(o.reason || '') + '</td></tr>').join('') + '</tbody></table>' : '<div class="pp-note">No orders yet.</div>';
-    }
-  }
-
-  function renderBook() {
-    $('ppBookName').textContent = S.sel ? labelOf(S.sel) : '-';
-    const b = S.book; const el = $('ppBookBody');
-    if (!b) { el.innerHTML = '<div class="pp-note" style="grid-column:1/3">Select a contract to see its live order book.</div>'; return; }
-    const n = 8, bids = b.bids.slice(0, n), asks = b.asks.slice(0, n);
-    let h = '<div class="dim"><span>Bid price</span><span>lots</span></div><div class="dim"><span>Ask price</span><span>lots</span></div>';
-    for (let i = 0; i < n; i++) h += (bids[i] ? '<div class="b"><span>' + px(bids[i][0], 2) + '</span><span>' + bids[i][1] + '</span></div>' : '<div></div>') + (asks[i] ? '<div class="a"><span>' + px(asks[i][0], 2) + '</span><span>' + asks[i][1] + '</span></div>' : '<div></div>');
-    el.innerHTML = h;
-  }
-
-  function syncTicket() {
-    const t = S.t, sym = S.sel, perp = isPerp(sym);
-    $('ppTkLabel').textContent = sym ? labelOf(sym) : 'Pick a contract on the board';
-    const q = sym && quoteOf(sym); $('ppTkQuote').innerHTML = q ? 'Bid <b>' + px(q.bid, 2) + '</b> · Ask <b>' + px(q.ask, 2) + '</b> · Mark <b>' + px(q.mark, 2) + '</b>' : '';
-    D.querySelectorAll('#ppSide button').forEach(b => { const on = b.dataset.ppSide === t.side; b.classList.toggle('on', on); b.classList.toggle('buy', b.dataset.ppSide === 'buy'); b.classList.toggle('sell', b.dataset.ppSide === 'sell'); });
-    D.querySelectorAll('#ppType button').forEach(b => b.classList.toggle('on', b.dataset.ppType === t.type));
-    $('ppPriceW').hidden = t.type !== 'limit'; $('ppStopW').hidden = t.type !== 'stop_market'; $('ppLevW').hidden = !perp; $('ppBrk').hidden = t.type === 'stop_market' || t.reduce;
-    $('ppLevV').textContent = t.lev + 'x';
-    const go = $('ppGo'); go.disabled = !sym || S.busy; go.className = 'pp-go ' + t.side;
-    go.textContent = !sym ? 'Pick a contract' : (t.side === 'buy' ? (perp ? 'Buy / Long ' : 'Buy ') : (perp ? 'Sell / Short ' : 'Sell ')) + t.lots + ' lots' + (t.type === 'market' ? ' at market' : t.type === 'limit' ? ' (limit)' : ' (stop)');
-    if (perp && S.board) $('ppLev').max = S.board.perpInfo.maxLeverage;
-  }
-
-  function renderPreview() {
-    const p = S.preview, el = $('ppPrev');
-    if (!S.sel) { el.textContent = 'Click a bid to sell or an ask to buy. The estimate here shows the margin the order needs, the fill from the live book, fees and slippage.'; return; }
-    if (!p) {
-      const row = rowOf(S.sel);
-      el.innerHTML = row && row.sellMargin != null && S.t.side === 'sell' ? 'Estimated margin to sell <b>' + esc(S.t.lots) + '</b> lots: <b>' + usd(row.sellMargin) + '</b> <span class="dim">(from the chain, checking the live book\u2026)</span>' : 'Checking the live book\u2026';
-      return;
-    }
-    if (!p.ok && p.marginRequired == null) { el.innerHTML = '<span class="neg">' + esc(p.reason || 'Not possible') + '</span>'; return; }
-    if (!p.fills && p.marginRequired == null) { el.textContent = p.note || ''; return; }
-    const prem = p.premium == null ? '' : (p.premium >= 0 ? 'Premium received ' : 'Premium paid ') + '<b>' + usd(Math.abs(p.premium)) + '</b><br>';
-    const mreq = p.marginRequired == null ? '' : '<div style="font-size:14px;margin:0 0 4px">Estimated margin required: <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(Math.max(p.marginRequired, 0)) + '</b> <span class="dim">(' + esc(p.marginMode || 'portfolio') + ' margin)</span></div>';
-    el.innerHTML = mreq + prem + (p.fills ? 'Fills <b>' + p.fills + '</b> lots at avg <b>' + px(p.avgPrice, 2) + '</b> (best ' + px(p.bestPrice, 2) + ')<br>' : 'Assumed fill price <b>' + px(p.avgPrice, 2) + '</b><br>') + 'Fee <b>' + usd(p.fee) + '</b> \u00b7 slippage <b>' + usd(p.slippageUsd) + '</b><br>Margin after <b>' + usd(p.marginAfter) + '</b> \u00b7 available after <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b>' + (p.note ? '<br><span class="dim">' + esc(p.note) + '</span>' : '') + (p.reason ? '<br><span class="neg">' + esc(p.reason) + '</span>' : '');
-  }
-
-  function renderMsg() { $('ppMsg').innerHTML = S.msg ? '<div class="pp-msg ' + S.msg.k + '">' + esc(S.msg.t) + '</div>' : ''; }
-
-  function renderLogin() {
-    const el = $('ppLogin');
-    if (tok()) { el.innerHTML = S.err ? '<div class="pp-card"><div class="pp-note warn">' + esc(S.err) + '</div></div>' : ''; return; }
-    el.innerHTML = '<div class="pp-card"><h3>Log in</h3><div class="pp-note">Your paper account is private. Use your desk password.</div><div style="display:flex;gap:8px;margin-top:8px;max-width:360px"><input type="password" id="ppPw" class="pp-in" placeholder="Desk password" autocomplete="current-password"><button type="button" class="pp-btn" data-pp-act="login">Log in</button></div>' + (S.loginErr ? '<div class="pp-note warn">' + esc(S.loginErr) + '</div>' : '') + '</div>';
-  }
-
-  /* ---------- strategy builder: several option legs, one payoff, one ticket ---------- */
+  /* ---------- step 2: the strategy ---------- */
   const TEMPLATES = [
     ['Long straddle', 'Buy the call and put at the nearest strike: profits from a big move either way.', (a) => [['buy', 'call', a, 1], ['buy', 'put', a, 1]]],
     ['Short straddle', 'Sell the call and put at the nearest strike: profits if BTC stays put.', (a) => [['sell', 'call', a, 1], ['sell', 'put', a, 1]]],
     ['Long strangle', 'Buy an OTM call and an OTM put: a cheaper bet on a big move.', (a) => [['buy', 'call', a + 2, 1], ['buy', 'put', a - 2, 1]]],
-    ['Short strangle', 'Sell an OTM call and an OTM put: the desk\'s core trade. Loss is unlimited beyond the strikes.', (a) => [['sell', 'call', a + 2, 1], ['sell', 'put', a - 2, 1]]],
+    ['Short strangle', 'Sell an OTM call and an OTM put: the desk\'s core trade. Loss is unlimited beyond the strikes, which is what the 2x stops are for.', (a) => [['sell', 'call', a + 2, 1], ['sell', 'put', a - 2, 1]]],
     ['Bull call spread', 'Buy a call, sell a higher call: capped profit and loss, bullish.', (a) => [['buy', 'call', a, 1], ['sell', 'call', a + 2, 1]]],
     ['Bear put spread', 'Buy a put, sell a lower put: capped profit and loss, bearish.', (a) => [['buy', 'put', a, 1], ['sell', 'put', a - 2, 1]]],
     ['Bull put spread', 'Sell a put, buy a lower put: a credit if BTC holds up.', (a) => [['sell', 'put', a - 1, 1], ['buy', 'put', a - 3, 1]]],
@@ -58663,16 +58623,8 @@ document.addEventListener('click', function(e) {
     ['Iron butterfly', 'Sell the straddle, buy wings: biggest credit near the strike, capped risk.', (a) => [['sell', 'call', a, 1], ['sell', 'put', a, 1], ['buy', 'call', a + 3, 1], ['buy', 'put', a - 3, 1]]],
     ['Long call butterfly', 'Buy one call below, sell two at the middle, buy one above: profits near the middle.', (a) => [['buy', 'call', a - 2, 1], ['sell', 'call', a, 2], ['buy', 'call', a + 2, 1]]],
   ];
-  S.sb = { legs: [], baseLots: 100, preview: null, busy: false, msg: null, tpl: 0, tab: 'board' };
+  const newLeg = (side, type, strike, lots) => ({ side, type, strike, lots, smode: 'auto', stop: '' });
 
-  const strikesList = () => (S.board ? S.board.strikes.map(s => s.strike) : []);
-  const atmIndex = () => { const k = strikesList(); let bi = 0, bd = Infinity; k.forEach((x, i) => { const d = Math.abs(x - S.board.spot); if (d < bd) { bd = d; bi = i; } }); return bi; };
-  function sbSymbol(leg) {
-    const row = S.board && S.board.strikes.find(s => s.strike === leg.strike);
-    const r = row && (leg.type === 'call' ? row.call : row.put);
-    return r ? r.symbol : null;
-  }
-  const legMark = (symbol, side) => (S.sb && S.sb.tab === 'builder' && S.sb.legs.some(l => sbSymbol(l) === symbol && l.side === side)) ? (side === 'buy' ? ' lg-buy' : ' lg-sell') : '';
   /** Click a bid to sell or an ask to buy: adds the leg, switches it if it was the other side, removes it if it was already that side. */
   function sbToggle(symbol, side) {
     const b = S.board; let hit = null;
@@ -58680,20 +58632,21 @@ document.addEventListener('click', function(e) {
     if (!hit) return;
     const i = S.sb.legs.findIndex(l => l.type === hit.type && l.strike === hit.strike);
     if (i >= 0 && S.sb.legs[i].side === side) S.sb.legs.splice(i, 1);
-    else if (i >= 0) S.sb.legs[i].side = side;
+    else if (i >= 0) { S.sb.legs[i].side = side; S.sb.legs[i].smode = 'auto'; }
     else if (S.sb.legs.length >= 8) { S.sb.msg = { k: 'bad', t: 'A strategy can have up to 8 legs.' }; renderBuilder(); return; }
-    else S.sb.legs.push({ side, type: hit.type, strike: hit.strike, lots: Math.max(1, Math.floor(Number(S.sb.baseLots)) || 1) });
-    S.sb.msg = null; S.sb.preview = null; renderBuilder(); sbSchedule();
+    else S.sb.legs.push(newLeg(side, hit.type, hit.strike, Math.max(1, Math.floor(Number(S.sb.baseLots)) || 1)));
+    S.sb.msg = null; S.sb.preview = null; renderBoard(); renderBuilder(); sbSchedule();
   }
   function sbApply(i) {
-    const k = strikesList(); if (!k.length) { S.sb.msg = { k: 'bad', t: 'The option board has not loaded yet.' }; renderBuilder(); return; }
+    const k = strikesList(); if (!k.length) { S.sb.msg = { k: 'bad', t: 'The option chain has not loaded yet.' }; renderBuilder(); return; }
     const a = atmIndex(), tpl = TEMPLATES[i], legs = tpl[2](a);
-    if (legs.some(l => l[2] < 0 || l[2] >= k.length)) { S.sb.msg = { k: 'bad', t: 'This expiry does not list enough strikes around the money for ' + tpl[0] + '. Pick another expiry or build the legs by hand.' }; renderBuilder(); return; }
+    if (legs.some(l => l[2] < 0 || l[2] >= k.length)) { S.sb.msg = { k: 'bad', t: 'This expiry does not list enough strikes around the money for ' + tpl[0] + '. Pick another expiry or click the legs on the chain.' }; renderBuilder(); return; }
     const base = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 1);
-    S.sb.legs = legs.map(l => ({ side: l[0], type: l[1], strike: k[l[2]], lots: base * l[3] }));
-    S.sb.msg = null; S.sb.preview = null; renderBuilder(); sbSchedule();
+    S.sb.legs = legs.map(l => newLeg(l[0], l[1], k[l[2]], base * l[3]));
+    S.sb.msg = null; S.sb.preview = null; renderBoard(); renderBuilder(); sbSchedule();
   }
-  const sbBody = () => ({ legs: S.sb.legs.map(l => ({ symbol: sbSymbol(l), side: l.side, lots: Math.floor(Number(l.lots)) || 0 })) });
+  function legStop(l) { if (l.smode === 'none') return null; if (l.smode === 'custom' && l.stop !== '' && isFinite(Number(l.stop))) return Number(l.stop); return undefined; }
+  const sbBody = () => ({ legs: S.sb.legs.map(l => { const o = { symbol: sbSymbol(l), side: l.side, lots: Math.floor(Number(l.lots)) || 0 }, st = legStop(l); if (st !== undefined) o.stop = st; return o; }) });
   let sbTimer = 0, sbKey = '';
   function sbSchedule() {
     clearTimeout(sbTimer);
@@ -58701,7 +58654,7 @@ document.addEventListener('click', function(e) {
     sbTimer = setTimeout(async () => {
       const b = sbBody(); if (b.legs.some(l => !l.symbol || l.lots < 1)) { S.sb.preview = { ok: false, reason: 'Every leg needs a listed strike and at least 1 lot.' }; renderSbSummary(); return; }
       const key = JSON.stringify(b); sbKey = key;
-      try { const j = await api('/strategy/preview', { method: 'POST', body: b }); if (sbKey === key) { S.sb.preview = j.preview; renderSbSummary(); } }
+      try { const j = await api('/strategy/preview', { method: 'POST', body: { legs: b.legs.map(l => ({ symbol: l.symbol, side: l.side, lots: l.lots })) } }); if (sbKey === key) { S.sb.preview = j.preview; renderSbSummary(); } }
       catch (e) { S.sb.preview = { ok: false, reason: e.message }; renderSbSummary(); }
     }, 350);
   }
@@ -58710,10 +58663,10 @@ document.addEventListener('click', function(e) {
     S.sb.busy = true; renderSbSummary();
     try {
       const j = await api('/strategy', { method: 'POST', body: sbBody() });
-      S.sb.msg = { k: 'ok', t: 'Strategy placed: ' + j.orders.length + ' legs filled together' + (j.payoff ? '' : '') + '. Net premium ' + usd(j.netPremium) + ', fees ' + usd(j.fees) + '.' };
-      S.sb.legs = []; S.sb.preview = null;
-    } catch (e) { S.sb.msg = { k: 'bad', t: 'Not placed: ' + e.message }; }
-    S.sb.busy = false; renderBuilder(); await refresh(true);
+      S.sb.msg = { k: 'ok', t: 'Executed: ' + j.orders.length + ' legs filled together. Net premium ' + usd(j.netPremium) + ', fees ' + usd(j.fees) + '. It is listed under Your open strategies below.' };
+      S.sb.legs = []; S.sb.preview = null; S.smsg = null;
+    } catch (e) { S.sb.msg = { k: 'bad', t: 'Not executed: ' + e.message }; }
+    S.sb.busy = false; renderBuilder(); await refresh();
   }
 
   function payoffSvg(p, spot) {
@@ -58724,7 +58677,7 @@ document.addEventListener('click', function(e) {
     const X = v => L + (v - x0) / (x1 - x0) * (W - L - R), Y = v => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
     const line = pts.map(q => X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1)).join(' ');
     const zero = Y(0).toFixed(1);
-    let area = '<polygon fill="rgba(53,187,125,.16)" points="' + L + ',' + zero + ' ' + line + ' ' + (W - R) + ',' + zero + '" />';
+    const area = '<polygon fill="rgba(53,187,125,.16)" points="' + L + ',' + zero + ' ' + line + ' ' + (W - R) + ',' + zero + '" />';
     const be = (p.breakevens || []).map(b => '<circle cx="' + X(b).toFixed(1) + '" cy="' + zero + '" r="3.5" fill="var(--warn,#D69E2E)"><title>Breakeven ' + Math.round(b) + '</title></circle>').join('');
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;max-width:520px" role="img" aria-label="Payoff at expiry">' +
       '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + zero + '" y2="' + zero + '" stroke="var(--line2)" stroke-dasharray="4 3"/>' +
@@ -58735,58 +58688,77 @@ document.addEventListener('click', function(e) {
       '<text x="' + X(spot).toFixed(1) + '" y="' + (T + 8) + '" font-size="10" text-anchor="middle" fill="var(--focus,#9CC9EE)">spot</text></svg>';
   }
 
+  const marginOf = p => Math.max(p.marginRequired == null ? p.marginAfter : p.marginRequired, 0);
   function renderSbSummary() {
     const el = $('ppSbSum'); if (!el) return;
     const p = S.sb.preview, go = $('ppSbGo');
-    if (go) { go.disabled = S.sb.busy || !p || !p.ok; go.textContent = S.sb.busy ? 'Placing…' : 'Place strategy (' + S.sb.legs.length + ' legs at market)'; }
-    if (!S.sb.legs.length) { el.innerHTML = '<div class="pp-note">Pick a template above, or add legs yourself. The payoff at expiry, margin and cost appear here before you place anything.</div>'; return; }
+    const n = S.sb.legs.length;
+    if (go) {
+      go.disabled = S.sb.busy || !p || !p.ok || !n;
+      go.textContent = S.sb.busy ? 'Executing…' : !n ? 'Pick strikes first' : p && p.ok ? 'Execute ' + n + ' legs at market · margin ' + usd(marginOf(p), 0) : 'Execute ' + n + ' legs at market';
+    }
+    if (!n) { el.innerHTML = '<div class="pp-note">No legs yet. Click bids and asks on the chain above, or choose a template. The estimated margin, payoff and cost appear here before anything is placed.</div>'; return; }
     if (!p) { el.innerHTML = '<div class="pp-note">Checking the live books…</div>'; return; }
     if (!p.ok && !p.legs) { el.innerHTML = '<div class="pp-msg bad">' + esc(p.reason || 'Not possible') + '</div>'; return; }
     const pf = p.payoff, lim = v => v == null ? 'Unlimited' : usd(v);
-    let h = '<div class="pp-sumgrid"><div><span class="dim">Net premium</span><b class="' + (p.netPremium >= 0 ? 'pos' : 'neg') + '">' + (p.netPremium >= 0 ? 'Credit ' : 'Debit ') + usd(Math.abs(p.netPremium)) + '</b></div>' +
+    let h = '<div class="pp-margin"><span class="dim">Estimated margin required (' + esc(p.marginMode) + ')</span><b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(marginOf(p)) + '</b><span class="dim">Available after: <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b></span></div>';
+    h += '<div class="pp-sumgrid"><div><span class="dim">Net premium</span><b class="' + (p.netPremium >= 0 ? 'pos' : 'neg') + '">' + (p.netPremium >= 0 ? 'Credit ' : 'Debit ') + usd(Math.abs(p.netPremium)) + '</b></div>' +
       '<div><span class="dim">Max profit</span><b class="pos">' + (pf ? lim(pf.maxProfit) : 'n/a') + '</b></div><div><span class="dim">Max loss</span><b class="neg">' + (pf ? lim(pf.maxLoss) : 'n/a') + '</b></div>' +
       '<div><span class="dim">Breakeven</span><b>' + (pf && pf.breakevens.length ? pf.breakevens.map(b => Math.round(b).toLocaleString('en-US')).join(' / ') : '-') + '</b></div>' +
-      '<div><span class="dim">Fees + slippage</span><b>' + usd(p.fees) + ' + ' + usd(p.slippageUsd) + '</b></div>' +
-      '<div><span class="dim">Margin required (' + esc(p.marginMode) + ')</span><b>' + usd(Math.max(p.marginRequired == null ? p.marginAfter : p.marginRequired, 0)) + '</b></div><div><span class="dim">Margin after</span><b>' + usd(p.marginAfter) + '</b></div>' +
-      '<div><span class="dim">Available after</span><b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b></div></div>';
-    if (!pf) h += '<div class="pp-note">The payoff chart needs every leg to share one expiry.</div>'; else h += payoffSvg(pf, S.board ? S.board.spot : 0);
-    h += '<div class="pp-note">Fills at the live book: ' + (p.legs || []).map(l => (l.side === 'buy' ? 'buy ' : 'sell ') + l.lots + ' ' + esc(labelOf(l.symbol)) + ' @ ' + px(l.avgPrice, 1)).join(' · ') + '</div>';
+      '<div><span class="dim">Fees + slippage</span><b>' + usd(p.fees) + ' + ' + usd(p.slippageUsd) + '</b></div></div>';
+    h += pf ? payoffSvg(pf, S.board ? S.board.spot : 0) : '<div class="pp-note">The payoff chart needs every leg to share one expiry.</div>';
+    h += '<div class="pp-note">Fills from the live book: ' + (p.legs || []).map(l => (l.side === 'buy' ? 'buy ' : 'sell ') + l.lots + ' ' + esc(labelOf(l.symbol)) + ' @ ' + px(l.avgPrice, 1)).join(' · ') + '</div>';
     if (!p.ok) h += '<div class="pp-msg bad">' + esc(p.reason) + '</div>';
     el.innerHTML = h;
+  }
+
+  /** The quote and auto-stop columns follow the live chain without rebuilding the inputs the user may be typing in. */
+  function updateLegQuotes() {
+    D.querySelectorAll('[data-lq]').forEach(td => { const l = S.sb.legs[Number(td.dataset.lq)]; if (l) td.textContent = px(legFill(l), 1); });
+    D.querySelectorAll('[data-ls]').forEach(sp => { const l = S.sb.legs[Number(sp.dataset.ls)]; if (l) sp.textContent = l.smode === 'auto' ? (autoStop(l) ? '≈ ' + px(autoStop(l), 1) : '') : ''; });
   }
 
   function renderBuilder() {
     const el = $('ppBuilder'); if (!el) return;
     const k = strikesList(), sb = S.sb;
     const opt = (v, cur, t) => '<option value="' + v + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + t + '</option>';
-    let h = '<div class="pp-msg ok" style="margin:0 0 8px"><b>Pick legs straight from the option chain above:</b> click an <b>ask</b> to add a Buy leg, a <b>bid</b> to add a Sell leg (or the sell-margin cell), click as many strikes as you like, click a leg again to remove it, click the other side to flip it. Chosen legs are outlined green (buy) and red (sell).</div>';
-    h += '<div class="pp-note" style="margin:0 0 8px">Build a multi-leg options strategy on one expiry, like Delta\'s strategy builder. Every leg is checked together (so a hedged position is margined as one), and the whole thing fills at once or not at all.</div>';
-    h += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px"><select id="ppTpl" class="pp-in" style="width:auto">' + TEMPLATES.map((t, i) => opt(i, sb.tpl, t[0])).join('') + '</select>' +
-      '<label class="pp-note" style="display:flex;align-items:center;gap:6px">Lots per leg <input type="number" id="ppSbBase" class="pp-in" style="width:90px" min="1" step="1" value="' + esc(sb.baseLots) + '"></label>' +
-      '<button type="button" class="pp-btn" data-pp-act="sbapply">Use template</button><button type="button" class="pp-btn" data-pp-act="sbclear">Clear</button></div>';
+    let h = '<div class="pp-bar"><label>Template <select id="ppTpl" class="pp-in" style="width:auto">' + TEMPLATES.map((t, i) => opt(i, sb.tpl, t[0])).join('') + '</select></label>' +
+      '<button type="button" class="pp-btn" data-pp-act="sbapply">Use template</button><button type="button" class="pp-btn" data-pp-act="sbclear">Clear</button><button type="button" class="pp-btn" data-pp-act="sbadd"' + (sb.legs.length >= 8 ? ' disabled' : '') + '>+ Add leg</button></div>';
     h += '<div class="pp-note" id="ppTplNote" style="margin:-2px 0 8px">' + esc(TEMPLATES[sb.tpl][1]) + '</div>';
-    h += '<div id="ppFlow" style="margin:0 0 10px"></div>';
     if (sb.legs.length) {
-      h += '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Side</th><th>Type</th><th>Strike</th><th>Lots</th><th>Quote</th><th>Flow (4h)</th><th></th></tr></thead><tbody>' + sb.legs.map((l, i) => {
-        const row = S.board && S.board.strikes.find(s => s.strike === l.strike), r = row && (l.type === 'call' ? row.call : row.put);
+      h += '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Side</th><th>Type</th><th>Strike</th><th>Lots</th><th>Fills at</th><th title="If this leg\'s price reaches the stop, every leg of the strategy is closed. Auto = 2x the sell price for a sold leg, none for a bought leg.">Stop price (closes all)</th><th class="opt">Flow (4h)</th><th></th></tr></thead><tbody>' + sb.legs.map((l, i) => {
+        const dis = l.side === 'sell' ? 'Auto 2x' : 'Auto (none)';
         return '<tr><td><select data-sb="side" data-i="' + i + '" class="pp-in">' + opt('buy', l.side, 'Buy') + opt('sell', l.side, 'Sell') + '</select></td>' +
           '<td><select data-sb="type" data-i="' + i + '" class="pp-in">' + opt('call', l.type, 'Call') + opt('put', l.type, 'Put') + '</select></td>' +
           '<td><select data-sb="strike" data-i="' + i + '" class="pp-in">' + k.map(x => opt(x, l.strike, x.toLocaleString('en-US'))).join('') + '</select></td>' +
           '<td><input type="number" data-sb="lots" data-i="' + i + '" class="pp-in" style="width:80px" min="1" step="1" value="' + esc(l.lots) + '"></td>' +
-          '<td class="dim">' + (r ? 'bid ' + px(r.bid, 1) + ' / ask ' + px(r.ask, 1) : 'not listed') + '</td>' +
-          '<td class="dim" data-sbflow="' + i + '" style="white-space:normal;min-width:130px"></td>' +
+          '<td data-lq="' + i + '">' + px(legFill(l), 1) + '</td>' +
+          '<td style="white-space:nowrap"><select data-sb="smode" data-i="' + i + '" class="pp-in" style="width:auto">' + opt('auto', l.smode, dis) + opt('custom', l.smode, 'Custom') + opt('none', l.smode, 'No stop') + '</select> ' +
+          (l.smode === 'custom' ? '<input type="number" data-sb="stop" data-i="' + i + '" class="pp-in" style="width:90px" min="0" step="any" value="' + esc(l.stop) + '" placeholder="price">' : '<span class="dim" data-ls="' + i + '"></span>') + '</td>' +
+          '<td class="dim opt" data-sbflow="' + i + '" style="white-space:normal;min-width:130px"></td>' +
           '<td><button type="button" class="pp-btn small" data-pp-sbdel="' + i + '">Remove</button></td></tr>';
       }).join('') + '</tbody></table></div>';
     }
-    h += '<div style="margin:8px 0"><button type="button" class="pp-btn small" data-pp-act="sbadd"' + (sb.legs.length >= 8 ? ' disabled' : '') + '>+ Add leg</button></div>';
-    h += '<div id="ppSbSum"></div><div style="margin-top:8px"><button type="button" class="pp-go buy" id="ppSbGo" data-pp-act="sbplace" disabled>Place strategy</button></div>';
-    if (sb.msg) h += '<div class="pp-msg ' + sb.msg.k + '" style="margin-top:8px">' + esc(sb.msg.t) + '</div>';
-    el.innerHTML = h; renderSbSummary(); updateFlowUi(); renderBoard();
+    h += '<div id="ppSbSum" style="margin-top:8px"></div>';
+    h += '<details id="ppFlowD" style="margin-top:8px"><summary>Option flow: what traders bought and sold</summary><div id="ppFlow"></div></details>';
+    const keep = D.getElementById('ppFlowD');
+    const wasOpen = keep ? keep.open : false;
+    el.innerHTML = h; $('ppFlowD').open = wasOpen;
+    renderSbSummary(); updateFlowUi(); updateLegQuotes(); renderExec();
+  }
+
+  function renderExec() {
+    const el = $('ppExec'); if (!el) return;
+    const sb = S.sb;
+    el.innerHTML = '<button type="button" class="pp-go buy" id="ppSbGo" data-pp-act="sbplace" disabled>Pick strikes first</button>' +
+      '<div class="pp-note" style="margin-top:6px">Fills every leg at once from the live book, or none. Margin is checked for the whole package.</div>' +
+      (sb.msg ? '<div class="pp-msg ' + sb.msg.k + '" style="margin-top:8px">' + esc(sb.msg.t) + '</div>' : '');
+    renderSbSummary();
   }
 
   /* option flow: what traders bought and sold (Deribit BTC options), by window, by strike and the biggest prints */
   async function loadFlow() {
-    try { S.flow = await api('/flow'); S.flowAt = Date.now(); S.flowErr = null; } catch (e) { S.flowErr = e.message; }
+    S.flowAt = Date.now(); try { S.flow = await api('/flow'); S.flowErr = null; } catch (e) { S.flowErr = e.message; }
     updateFlowUi();
   }
   const btc = v => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
@@ -58802,8 +58774,8 @@ document.addEventListener('click', function(e) {
     D.querySelectorAll('[data-sbflow]').forEach(td => { const l = S.sb.legs[Number(td.dataset.sbflow)]; if (l) td.innerHTML = legFlow(l); });
     const el = $('ppFlow'); if (!el) return;
     const f = S.flow;
-    if (!f) { el.innerHTML = '<div class="pp-note">' + (S.flowErr ? 'Option flow is unavailable: ' + esc(S.flowErr) : 'Loading option flow\u2026') + '</div>'; return; }
-    let t = '<div class="pp-note" style="margin:0 0 4px"><b>Option flow</b> \u00b7 what traders bought and sold in BTC options on Deribit (the biggest options venue), as of ' + new Date(f.asOf).toLocaleTimeString() + '. It records what happened and does not predict anything.</div>';
+    if (!f) { el.innerHTML = '<div class="pp-note">' + (S.flowErr ? 'Option flow is unavailable: ' + esc(S.flowErr) : 'Loading option flow…') + '</div>'; return; }
+    let t = '<div class="pp-note" style="margin:4px 0">What traders bought and sold in BTC options on Deribit (the biggest options venue), as of ' + new Date(f.asOf).toLocaleTimeString() + '. It records what happened and does not predict anything.</div>';
     if (f.windows && f.windows.length) {
       t += '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Window</th><th>Calls bought</th><th>Calls sold</th><th>Puts bought</th><th>Puts sold</th><th>Blocks</th><th>Read</th></tr></thead><tbody>' + f.windows.map(w =>
         '<tr><td>' + w.hours + ' h</td><td class="pos">' + btc(w.callBuy) + '</td><td class="neg">' + btc(w.callSell) + '</td><td class="pos">' + btc(w.putBuy) + '</td><td class="neg">' + btc(w.putSell) + '</td><td>' + btc(w.blockVol) + '</td><td style="text-align:left;white-space:normal;min-width:240px">' + esc(w.read) + '</td></tr>').join('') + '</tbody></table></div><div class="pp-note">Volumes in BTC from the desk\'s own 15-minute flow records.</div>';
@@ -58811,99 +58783,83 @@ document.addEventListener('click', function(e) {
     if (f.big && f.big.length) {
       t += '<div class="pp-note" style="margin:6px 0 2px">Biggest prints in the last 24 hours:</div><div class="pp-note">' + f.big.slice(0, 5).map(b => {
         const m = /^BTC-([0-9A-Z]+)-([0-9]+)-([CP])$/.exec(b.instrument) || [];
-        return new Date(b.at + 19800000).toISOString().slice(11, 16) + ' IST \u00b7 ' + (b.direction === 'buy' ? 'bought ' : 'sold ') + btc(b.amount) + ' BTC of the ' + (m[2] ? Number(m[2]).toLocaleString('en-US') : '?') + ' ' + (m[3] === 'C' ? 'call' : 'put') + ' (' + esc(m[1] || '') + ')' + (b.iv ? ' at IV ' + b.iv.toFixed(1) : '') + ' \u00b7 ' + usd(b.premiumUsd, 0) + ' premium' + (b.block ? ' \u00b7 block trade' : '');
+        return new Date(b.at + 19800000).toISOString().slice(11, 16) + ' IST · ' + (b.direction === 'buy' ? 'bought ' : 'sold ') + btc(b.amount) + ' BTC of the ' + (m[2] ? Number(m[2]).toLocaleString('en-US') : '?') + ' ' + (m[3] === 'C' ? 'call' : 'put') + ' (' + esc(m[1] || '') + ')' + (b.iv ? ' at IV ' + b.iv.toFixed(1) : '') + ' · ' + usd(b.premiumUsd, 0) + ' premium' + (b.block ? ' · block trade' : '');
       }).join('<br>') + '</div>';
     }
     if (f.note) t += '<div class="pp-note warn">' + esc(f.note) + '</div>';
     el.innerHTML = t;
   }
 
-  function setMktTab(tab) {
-    S.sb.tab = tab;
-    D.querySelectorAll('#ppMktTabs button').forEach(b => b.classList.toggle('on', b.dataset.ppMtab === tab));
-    $('ppBoardWrap').hidden = false; $('ppBuilder').hidden = tab !== 'builder'; renderBoard();
-    if (tab === 'builder') { renderBuilder(); if (!S.flow || Date.now() - (S.flowAt || 0) > 30000) loadFlow(); }
+  /* ---------- your open strategies ---------- */
+  function stratCard(s) {
+    const ed = S.edit && S.edit.id === s.id, arm = S.arm && S.arm.id === s.id && S.arm.until > Date.now();
+    const rows = s.legs.map(l => {
+      const mult = l.stop && l.entry ? l.stop / l.entry : null;
+      const stopCell = ed
+        ? '<input type="number" class="pp-in" style="width:90px" min="0" step="any" data-pp-stopin="' + esc(l.symbol) + '" value="' + esc(S.edit.stops[l.symbol] == null ? '' : S.edit.stops[l.symbol]) + '" placeholder="none">'
+        : (l.stop ? px(l.stop, 1) + (l.side === 'sell' && mult ? ' <span class="dim">(' + mult.toFixed(1) + 'x)</span>' : '') : '<span class="dim">none</span>');
+      const near = l.stopDistancePct != null && l.stopDistancePct < 25;
+      return '<tr><td>' + esc(labelOf(l.symbol)) + '</td><td class="' + (l.side === 'buy' ? 'pos' : 'neg') + '">' + (l.side === 'buy' ? 'Buy' : 'Sell') + '</td><td>' + l.lots + '</td><td>' + px(l.entry, 1) + '</td><td>' + px(l.mark, 1) + '</td><td class="' + sgn(l.pnl) + '"><b>' + usd(l.pnl) + '</b></td><td>' + stopCell + '</td><td class="' + (near ? 'neg' : 'dim') + '">' + (l.stopDistancePct == null ? '-' : l.stopDistancePct.toFixed(0) + '% away') + '</td></tr>';
+    }).join('');
+    const btns = ed
+      ? '<button type="button" class="pp-btn" data-pp-save="' + s.id + '">Save stops</button> <button type="button" class="pp-btn" data-pp-editx="1">Cancel</button>'
+      : '<button type="button" class="pp-btn" data-pp-edit="' + s.id + '">Edit stops</button>';
+    return '<div class="pp-strat"><div class="pp-strat-top"><div><div class="pp-strat-name">' + esc(s.name) + '</div><div class="pp-note">Opened ' + esc(IST(s.openedAt)) + ' IST · margin at entry ' + usd(s.marginAtEntry, 0) + ' · fees so far ' + usd(s.fees) + '</div></div>' +
+      '<div class="pp-strat-net"><span class="dim">Net PnL</span><b class="' + sgn(s.netPnl) + '">' + usd(s.netPnl) + '</b></div></div>' +
+      '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Leg</th><th>Side</th><th>Lots</th><th>Entry</th><th>Mark</th><th>Leg PnL</th><th>Stop</th><th>To stop</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="pp-strat-btns">' + btns + ' <button type="button" class="pp-btn ' + (arm ? 'danger' : '') + '" data-pp-closeall="' + s.id + '">' + (arm ? 'Click again to close all' : 'Close all') + '</button><span class="pp-note">If any leg reaches its stop, every leg is closed automatically.</span></div></div>';
   }
-  async function setMode(mode) {
-    try { await api('/margin-mode', { method: 'POST', body: { mode } }); S.msg = { k: 'ok', t: 'Margin mode: ' + mode + '.' }; }
-    catch (e) { S.msg = { k: 'bad', t: e.message }; }
-    await refresh(true);
-    if (S.msg && S.msg.k === 'bad') window.alert(S.msg.t);
+  function renderStrats() {
+    const el = $('ppStrats'); if (!el) return;
+    if (!tok()) { el.innerHTML = ''; return; }
+    if (D.activeElement && D.activeElement.tagName === 'INPUT' && el.contains(D.activeElement)) return;
+    $('ppStratMsg').innerHTML = S.smsg ? '<div class="pp-msg ' + S.smsg.k + '" style="margin:0 0 8px">' + esc(S.smsg.t) + '</div>' : '';
+    const open = S.strat.open;
+    el.innerHTML = open.length ? open.map(stratCard).join('') : '<div class="pp-note">Nothing open. Execute a strategy above and it will appear here with its net PnL, the PnL of each leg and its stops.</div>';
+  }
+  function renderClosed() {
+    const c = S.strat.closed, sig = JSON.stringify(c.map(s => [s.id, s.netPnl])); if (sig === S.closedSig) return; S.closedSig = sig;
+    $('ppClosedD').querySelector('summary').textContent = 'Closed strategies (' + c.length + ')';
+    $('ppClosed').innerHTML = c.length ? '<table class="pp-t"><thead><tr><th>Strategy</th><th>Opened (IST)</th><th>Closed (IST)</th><th>Gross</th><th>Fees</th><th>Net PnL</th><th>Why it closed</th></tr></thead><tbody>' + c.map(s =>
+      '<tr><td>' + esc(s.name) + '</td><td>' + esc(IST(s.openedAt)) + '</td><td>' + (s.closedAt ? esc(IST(s.closedAt)) : '-') + '</td><td class="' + sgn(s.grossPnl) + '">' + usd(s.grossPnl) + '</td><td>' + usd(s.fees) + '</td><td class="' + sgn(s.netPnl) + '"><b>' + usd(s.netPnl) + '</b></td><td style="text-align:left;white-space:normal;min-width:220px">' + esc(s.closeReason || '') + '</td></tr>').join('') + '</tbody></table>' : '<div class="pp-note">No closed strategies yet.</div>';
+  }
+  async function stratAction(fn, okText) {
+    try { await fn(); S.smsg = { k: 'ok', t: okText }; } catch (e) { S.smsg = { k: 'bad', t: e.message }; }
+    S.edit = null; S.arm = null; await refresh();
   }
 
-  function renderPortfolio() {
-    const a = S.acct, v = a && a.view, g = a && a.greeks, el = $('ppPortfolio'); if (!el) return;
+  /* ---------- account details ---------- */
+  function renderAcct() {
+    const a = S.acct, v = a && a.view, g = a && a.greeks, el = $('ppAcct'); if (!el) return;
     if (!v) { el.innerHTML = '<div class="pp-note">Account numbers appear once market data loads.</div>'; return; }
     const cell = (k, val, cls) => '<div><span class="dim">' + k + '</span><b class="' + (cls || '') + '">' + val + '</b></div>';
-    const mm = a.marginMode === 'standard' ? 'Standard margin' : 'Portfolio margin';
     const use = v.equity > 0 ? (v.margin / v.equity * 100) : 0;
-    el.innerHTML = '<div class="pp-sumgrid">' + cell('Margin mode', mm) + cell('Equity', usd(v.equity)) + cell('Margin used', usd(v.margin) + ' (' + use.toFixed(1) + '%)') +
-      cell('Perpetual margin', usd(v.perpMargin)) + cell('Options margin', usd(v.optionMargin)) + cell('Available', usd(v.available), v.available < 0 ? 'neg' : '') +
-      cell('Options value', usd(v.optionsValue)) + cell('Perpetual unrealised', usd(v.perpUnrealized), sgn(v.perpUnrealized)) + '</div>' +
-      (g ? '<div class="pp-sumgrid">' + cell('Net delta (BTC)', g.delta.toFixed(4)) + cell('Net gamma', g.gamma.toFixed(6)) + cell('Theta / day', usd(g.theta)) + cell('Vega / vol point', usd(g.vega)) + '</div>' : '') +
-      '<div class="pp-note">' + (a.marginMode === 'standard' ? 'Standard margin charges each short option on its own; hedged legs get no credit.' : 'Portfolio margin stresses all options together (price and volatility scenarios), so spreads and condors need far less margin than their legs would alone.') + '</div>';
+    let h = '<div class="pp-sumgrid">' + cell('Margin mode', a.marginMode === 'standard' ? 'Standard margin' : 'Portfolio margin') + cell('Equity', usd(v.equity)) + cell('Cash', usd(a.account.cash)) + cell('Margin used', usd(v.margin) + ' (' + use.toFixed(1) + '%)') +
+      cell('Available', usd(v.available), v.available < 0 ? 'neg' : '') + cell('Options value', usd(v.optionsValue)) + '</div>';
+    if (g) h += '<div class="pp-sumgrid">' + cell('Net delta (BTC)', g.delta.toFixed(4)) + cell('Net gamma', g.gamma.toFixed(6)) + cell('Theta / day', usd(g.theta)) + cell('Vega / vol point', usd(g.vega)) + '</div>';
+    const pos = a.positions || [];
+    h += '<div class="pp-note" style="margin:6px 0 2px">All open positions on the account (strategies above are built from these):</div>' + (pos.length ? '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Contract</th><th>Size</th><th>Entry</th><th>Mark</th><th>Unrealised</th><th></th></tr></thead><tbody>' + pos.map(p =>
+      '<tr><td>' + esc(labelOf(p.symbol)) + '</td><td class="' + (p.lots > 0 ? 'pos' : 'neg') + '">' + (p.lots > 0 ? '+' : '') + p.lots + '</td><td>' + px(p.avgEntry, 1) + '</td><td>' + px(p.mark, 1) + '</td><td class="' + sgn(p.unrealized) + '">' + usd(p.unrealized) + '</td><td><button type="button" class="pp-btn small" data-pp-close="' + esc(p.symbol) + '">Close</button></td></tr>').join('') + '</tbody></table></div>' : '<div class="pp-note">No open positions.</div>');
+    el.innerHTML = h;
   }
 
-  function drawAll() { if (!S.built) build(); renderLogin(); renderHead(); renderPerp(); renderBoard(); renderPositions(); renderPortfolio(); renderWorking(); renderHist(); renderBook(); syncTicket(); renderPreview(); renderMsg(); }
+  function renderLogin() {
+    const el = $('ppLogin');
+    if (tok()) { el.innerHTML = S.err ? '<div class="pp-card"><div class="pp-note warn">' + esc(S.err) + '</div></div>' : ''; return; }
+    el.innerHTML = '<div class="pp-card"><h3>Log in</h3><div class="pp-note">Your paper account is private. Use your desk password.</div><div style="display:flex;gap:8px;margin-top:8px;max-width:360px"><input type="password" id="ppPw" class="pp-in" placeholder="Desk password" autocomplete="current-password"><button type="button" class="pp-btn" data-pp-act="login">Log in</button></div>' + (S.loginErr ? '<div class="pp-note warn">' + esc(S.loginErr) + '</div>' : '') + '</div>';
+  }
 
-  /* ---------- data ---------- */
-  let preTimer = 0, lastPreKey = '';
-  function reqBody() {
-    const t = S.t, n = v => (v === '' || v == null ? undefined : Number(v));
-    const b = { symbol: S.sel, side: t.side, type: t.type, lots: Math.floor(Number(t.lots)) || 0 };
-    if (t.type === 'limit') b.price = n(t.price);
-    if (t.type === 'stop_market') b.stopPrice = n(t.stop);
-    if (t.reduce) b.reduceOnly = true;
-    if (isPerp(S.sel)) b.leverage = Number(t.lev);
-    if (t.type !== 'stop_market' && !t.reduce) { if (n(t.tp)) b.takeProfit = n(t.tp); if (n(t.sl)) b.stopLoss = n(t.sl); }
-    return b;
-  }
-  function schedulePreview() {
-    clearTimeout(preTimer); if (!S.sel || !tok()) return;
-    preTimer = setTimeout(async () => {
-      const b = reqBody(); if (b.lots < 1 || (b.type === 'limit' && !b.price) || (b.type === 'stop_market' && !b.stopPrice)) { S.preview = null; renderPreview(); return; }
-      const key = JSON.stringify(b); lastPreKey = key;
-      try { const j = await api('/preview', { method: 'POST', body: b }); if (lastPreKey === key) { S.preview = j.preview; renderPreview(); } } catch (e) { S.preview = { ok: false, reason: e.message }; renderPreview(); }
-    }, 350);
-  }
-  async function loadBook() {
-    if (!S.sel || !tok()) return; const sym = S.sel;
-    try { const j = await api('/book?symbol=' + encodeURIComponent(sym)); if (S.sel === sym) { S.book = { bids: j.bids, asks: j.asks }; renderBook(); } } catch (e) { }
-  }
-  async function refresh(all) {
-    if (!tok()) { drawAll(); return; }
-    if (S.busy) return;
-    try {
-      S.err = null;
-      const [a, b] = await Promise.all([api('/account'), api('/board?lots=' + (Math.max(1, Math.floor(Number(S.t.lots)) || 100)) + (S.expiry ? '&expiry=' + S.expiry : ''))]);
-      S.acct = a; S.board = b; S.expiry = b.expiry;
-      if (all || S.hist === 'orders') S.orders = (await api('/orders?limit=40')).orders;
-      if (all || S.hist === 'fills') S.fills = (await api('/fills?limit=40')).fills;
-      if (S.sel) loadBook();
-      if (S.sb && S.sb.tab === 'builder' && Date.now() - (S.flowAt || 0) > 30000) loadFlow();
-    } catch (e) { S.err = e.message; if (e.status === 401) { S.acct = null; } }
-    drawAll();
-  }
-  async function submit() {
-    if (!S.sel || S.busy) return; const b = reqBody();
-    S.busy = true; syncTicket();
-    try {
-      const j = await api('/orders', { method: 'POST', body: b }); const o = j.order;
-      const brk = j.children && j.children.length ? ' Take-profit / stop-loss attached.' : '';
-      S.msg = o.status === 'rejected' ? { k: 'bad', t: 'Rejected: ' + o.reason }
-        : o.status === 'working' ? { k: 'ok', t: 'Order is working' + (o.filledLots ? ' (' + o.filledLots + ' filled)' : '') + '.' + brk }
-          : o.status === 'cancelled' ? { k: o.filledLots ? 'ok' : 'bad', t: (o.filledLots ? 'Partly filled: ' + o.filledLots + ' lots at ' + px(o.avgPrice, 2) + '. ' : 'Not filled. ') + (o.reason || '') }
-            : { k: 'ok', t: 'Filled ' + o.filledLots + ' lots at avg ' + px(o.avgPrice, 2) + ', fee ' + usd(o.fee) + '.' + brk };
-    } catch (e) { S.msg = { k: 'bad', t: e.message }; }
-    S.busy = false; await refresh(true);
+  async function setMode(mode) {
+    let err = null;
+    try { await api('/margin-mode', { method: 'POST', body: { mode } }); } catch (e) { err = e.message; }
+    S.sb.msg = err ? { k: 'bad', t: err } : { k: 'ok', t: 'Margin mode: ' + mode + '.' };
+    await refresh(); renderExec(); sbSchedule();
   }
   async function closePos(sym) {
     const p = (S.acct && S.acct.positions || []).find(x => x.symbol === sym); if (!p) return;
-    try {
-      const j = await api('/orders', { method: 'POST', body: { symbol: sym, side: p.lots > 0 ? 'sell' : 'buy', type: 'market', lots: Math.abs(p.lots), reduceOnly: true } });
-      S.msg = j.order.status === 'filled' ? { k: 'ok', t: 'Closed ' + labelOf(sym) + ' at ' + px(j.order.avgPrice, 2) + '.' } : { k: 'bad', t: 'Close: ' + (j.order.reason || j.order.status) };
-    } catch (e) { S.msg = { k: 'bad', t: e.message }; }
-    await refresh(true);
+    try { await api('/orders', { method: 'POST', body: { symbol: sym, side: p.lots > 0 ? 'sell' : 'buy', type: 'market', lots: Math.abs(p.lots), reduceOnly: true } }); S.smsg = { k: 'ok', t: 'Closed ' + labelOf(sym) + '.' }; }
+    catch (e) { S.smsg = { k: 'bad', t: e.message }; }
+    await refresh();
   }
   async function login() {
     const pw = ($('ppPw') || {}).value || ''; S.loginErr = null;
@@ -58916,44 +58872,81 @@ document.addEventListener('click', function(e) {
     await refresh(true);
   }
 
+  /* ---------- data ---------- */
+  function drawAll() {
+    if (!S.built) build();
+    renderLogin(); renderHead(); renderBoard(); renderStrats(); renderClosed(); renderAcct(); updateLegQuotes();
+    if (!$('ppSbSum')) renderBuilder();
+  }
+  let busy = false;
+  async function refresh(first) {
+    if (!tok()) { drawAll(); return; }
+    if (busy) return; busy = true;
+    try {
+      S.err = null;
+      const lots = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 100);
+      const [a, b, st] = await Promise.all([api('/account'), api('/board?lots=' + lots + (S.expiry ? '&expiry=' + S.expiry : '')), api('/strategies')]);
+      S.acct = a; S.board = b; S.expiry = b.expiry; S.strat = { open: st.open || [], closed: st.closed || [] };
+      if (Date.now() - S.flowAt > 60000) loadFlow();
+    } catch (e) { S.err = e.message; if (e.status === 401) { S.acct = null; } }
+    busy = false; drawAll();
+    if (first && S.sb.legs.length) sbSchedule();
+  }
+
   /* ---------- events ---------- */
   function wire() {
     root.addEventListener('click', async e => {
-      const t = e.target.closest('[data-pp-q],[data-pp-side],[data-pp-type],[data-pp-lots],[data-pp-act],[data-pp-close],[data-pp-cancel],[data-pp-hist],[data-pp-mode],[data-pp-mtab],[data-pp-sbdel]'); if (!t) return; const d = t.dataset;
+      const t = e.target.closest('[data-pp-q],[data-pp-act],[data-pp-close],[data-pp-mode],[data-pp-sbdel],[data-pp-edit],[data-pp-editx],[data-pp-save],[data-pp-closeall]'); if (!t) return; const d = t.dataset;
       if (d.ppMode) { setMode(d.ppMode); return; }
-      if (d.ppMtab) { setMktTab(d.ppMtab); return; }
-      if (d.ppSbdel != null) { S.sb.legs.splice(Number(d.ppSbdel), 1); S.sb.preview = null; renderBuilder(); sbSchedule(); return; }
-      if (d.ppQ) { const [sy, sd] = d.ppQ.split('|'); if (S.sb.tab === 'builder' && sy !== PERP) { sbToggle(sy, sd); return; } select(sy, sd); renderBoard(); renderPerp(); if (window.innerWidth <= 980) { try { $('ppTkLabel').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (er) { } } return; }
-      if (d.ppSide) { S.t.side = d.ppSide; const q = S.sel && quoteOf(S.sel); if (q && S.t.type === 'limit') { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; } syncTicket(); schedulePreview(); return; }
-      if (d.ppType) { S.t.type = d.ppType; const q = S.sel && quoteOf(S.sel); if (d.ppType === 'limit' && q && !S.t.price) { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; } syncTicket(); schedulePreview(); return; }
-      if (d.ppLots) { S.t.lots = d.ppLots; $('ppLots').value = d.ppLots; syncTicket(); schedulePreview(); return; }
-      if (d.ppHist) { S.hist = d.ppHist; refresh(true); return; }
+      if (d.ppSbdel != null) { S.sb.legs.splice(Number(d.ppSbdel), 1); S.sb.preview = null; renderBoard(); renderBuilder(); sbSchedule(); return; }
+      if (d.ppQ) { const [sy, sd] = d.ppQ.split('|'); sbToggle(sy, sd); return; }
       if (d.ppClose) { closePos(d.ppClose); return; }
-      if (d.ppCancel) { try { await api('/orders/' + d.ppCancel, { method: 'DELETE' }); } catch (er) { S.msg = { k: 'bad', t: er.message }; } refresh(true); return; }
+      if (d.ppEdit) { const s = S.strat.open.find(x => x.id === d.ppEdit); if (s) { S.edit = { id: s.id, stops: Object.fromEntries(s.legs.map(l => [l.symbol, l.stop == null ? '' : l.stop])) }; S.smsg = null; renderStrats(); } return; }
+      if (d.ppEditx) { S.edit = null; renderStrats(); return; }
+      if (d.ppSave) {
+        const id = d.ppSave, vals = {};
+        D.querySelectorAll('[data-pp-stopin]').forEach(i => { vals[i.dataset.ppStopin] = i.value.trim(); });
+        const stops = Object.keys(vals).map(symbol => ({ symbol, stop: vals[symbol] === '' ? null : Number(vals[symbol]) }));
+        if (stops.some(x => x.stop != null && !(x.stop > 0))) { S.smsg = { k: 'bad', t: 'A stop must be a price above zero, or empty for no stop.' }; S.edit = null; renderStrats(); return; }
+        if (D.activeElement && D.activeElement.blur) D.activeElement.blur();
+        stratAction(() => api('/strategy/' + id + '/stops', { method: 'POST', body: { stops } }), 'Stops saved.'); return;
+      }
+      if (d.ppCloseall) {
+        const id = d.ppCloseall;
+        if (S.arm && S.arm.id === id && S.arm.until > Date.now()) { stratAction(() => api('/strategy/' + id + '/close', { method: 'POST' }), 'Strategy closed: every leg exited at the live book.'); return; }
+        S.arm = { id, until: Date.now() + 5000 }; renderStrats(); setTimeout(renderStrats, 5100); return;
+      }
       if (d.ppAct === 'sbapply') sbApply(S.sb.tpl);
-      else if (d.ppAct === 'sbclear') { S.sb.legs = []; S.sb.preview = null; S.sb.msg = null; renderBuilder(); }
-      else if (d.ppAct === 'sbadd') { const k = strikesList(); if (k.length && S.sb.legs.length < 8) { S.sb.legs.push({ side: 'buy', type: 'call', strike: k[atmIndex()], lots: Math.max(1, Math.floor(Number(S.sb.baseLots)) || 1) }); S.sb.preview = null; renderBuilder(); sbSchedule(); } }
+      else if (d.ppAct === 'sbclear') { S.sb.legs = []; S.sb.preview = null; S.sb.msg = null; renderBoard(); renderBuilder(); }
+      else if (d.ppAct === 'sbadd') { const k = strikesList(); if (k.length && S.sb.legs.length < 8) { S.sb.legs.push(newLeg('buy', 'call', k[atmIndex()], Math.max(1, Math.floor(Number(S.sb.baseLots)) || 1))); S.sb.preview = null; renderBoard(); renderBuilder(); sbSchedule(); } }
       else if (d.ppAct === 'sbplace') sbPlace();
-      else if (d.ppAct === 'submit') submit();
       else if (d.ppAct === 'login') login();
-      else if (d.ppAct === 'cancelall') { try { await api('/orders/cancel-all', { method: 'POST' }); } catch (er) { S.msg = { k: 'bad', t: er.message }; } refresh(true); }
       else if (d.ppAct === 'reset') {
-        const v = window.prompt('Reset the paper account? This erases all positions, orders and history.\nEnter the starting balance in USD (you will be asked to type RESET next).', '10000'); if (v == null) return;
-        const bal = Number(v); if (!(bal >= 100)) { S.msg = { k: 'bad', t: 'Balance must be at least 100.' }; renderMsg(); return; }
+        const v = window.prompt('Reset the paper account? This erases all positions, strategies and history.\nEnter the starting balance in USD (you will be asked to type RESET next).', '10000'); if (v == null) return;
+        const bal = Number(v); if (!(bal >= 100)) { S.sb.msg = { k: 'bad', t: 'Balance must be at least 100.' }; renderExec(); return; }
         if ((window.prompt('Type RESET to confirm') || '') !== 'RESET') return;
-        try { await api('/reset', { method: 'POST', body: { balance: bal, confirm: 'RESET' } }); S.msg = { k: 'ok', t: 'Account reset to ' + usd(bal, 0) + '.' }; } catch (er) { S.msg = { k: 'bad', t: er.message }; }
-        refresh(true);
+        try { await api('/reset', { method: 'POST', body: { balance: bal, confirm: 'RESET' } }); S.sb.msg = { k: 'ok', t: 'Account reset to ' + usd(bal, 0) + '.' }; S.sb.legs = []; S.sb.preview = null; } catch (er) { S.sb.msg = { k: 'bad', t: er.message }; }
+        renderBuilder(); refresh();
       }
     });
-    const bind = (id, key) => $(id).addEventListener('input', e => { S.t[key] = e.target.type === 'checkbox' ? e.target.checked : (key === 'lev' ? Number(e.target.value) : e.target.value); syncTicket(); schedulePreview(); });
-    $('ppLots').addEventListener('input', () => { clearTimeout(S.lotsT); S.lotsT = setTimeout(() => refresh(false), 600); });
-    bind('ppLots', 'lots'); bind('ppPrice', 'price'); bind('ppStop', 'stop'); bind('ppLev', 'lev'); bind('ppTp', 'tp'); bind('ppSl', 'sl'); bind('ppRO', 'reduce');
-    $('ppExp').addEventListener('change', e => { S.expiry = Number(e.target.value); S.scrolled = false; S.sb.legs = []; S.sb.preview = null; S.sb.msg = null; refresh(false).then(() => { if (S.sb.tab === 'builder') renderBuilder(); }); });
+    $('ppBase').addEventListener('input', e => { S.sb.baseLots = e.target.value; clearTimeout(S.lotsT); S.lotsT = setTimeout(() => refresh(), 600); });
+    $('ppExp').addEventListener('change', e => { S.expiry = Number(e.target.value); S.scrolled = false; S.sb.legs = []; S.sb.preview = null; S.sb.msg = null; refresh().then(renderBuilder); });
+    root.addEventListener('toggle', e => { if (e.target.id === 'ppFlowD' && e.target.open) loadFlow(); }, true);
     root.addEventListener('change', e => {
       const t = e.target; if (!t || !t.dataset) return;
       if (t.id === 'ppTpl') { S.sb.tpl = Number(t.value); const n = $('ppTplNote'); if (n) n.textContent = TEMPLATES[S.sb.tpl][1]; return; }
-      if (t.id === 'ppSbBase') { S.sb.baseLots = t.value; return; }
-      if (t.dataset.sb) { const l = S.sb.legs[Number(t.dataset.i)]; if (!l) return; const k = t.dataset.sb; l[k] = (k === 'strike' || k === 'lots') ? Number(t.value) : t.value; S.sb.preview = null; renderBuilder(); sbSchedule(); }
+      if (t.dataset.sb) {
+        const l = S.sb.legs[Number(t.dataset.i)]; if (!l) return; const k = t.dataset.sb;
+        l[k] = (k === 'strike' || k === 'lots') ? Number(t.value) : t.value;
+        if (k === 'side') l.smode = 'auto';
+        if (k === 'smode' && t.value === 'custom' && l.stop === '') { const a = autoStop(l); l.stop = a ? String(a) : ''; }
+        S.sb.preview = null; renderBoard(); renderBuilder(); sbSchedule();
+      }
+    });
+    root.addEventListener('input', e => {
+      const t = e.target; if (!t || !t.dataset) return;
+      if (t.dataset.ppStopin !== undefined && S.edit) { S.edit.stops[t.dataset.ppStopin] = t.value; return; }
+      if (t.dataset.sb === 'stop') { const l = S.sb.legs[Number(t.dataset.i)]; if (l) l.stop = t.value; }
     });
     root.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'ppPw') login(); });
   }
@@ -58961,11 +58954,11 @@ document.addEventListener('click', function(e) {
   /* ---------- lifecycle: poll only while the page is open and visible ---------- */
   let timer = 0, wasOn = false;
   const on = () => D.body.dataset.page === 'pgPaper';
-  function enter() { drawAll(); refresh(true); clearInterval(timer); timer = setInterval(() => { if (!D.hidden && on()) refresh(false); }, 3000); }
+  function enter() { drawAll(); refresh(true); clearInterval(timer); timer = setInterval(() => { if (!D.hidden && on()) refresh(); }, 3000); }
   function leave() { clearInterval(timer); timer = 0; }
   const sync = () => { const o = on(); if (o && !wasOn) enter(); else if (!o && wasOn) leave(); wasOn = o; };
   new MutationObserver(sync).observe(D.body, { attributes: true, attributeFilter: ['data-page'] });
-  D.addEventListener('visibilitychange', () => { if (!D.hidden && on()) refresh(false); });
+  D.addEventListener('visibilitychange', () => { if (!D.hidden && on()) refresh(); });
   drawAll(); sync();
 })();
 </script>
