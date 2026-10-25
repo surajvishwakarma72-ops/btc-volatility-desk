@@ -1,4 +1,7 @@
 import { SLOTS } from '../../lib/bot/schedule.js';
+import { groupStats, type RunRecord } from '../../lib/bot/analytics.js';
+import { pickTop } from '../../lib/bot/top.js';
+import { findSensitive } from '../../lib/ask/sensitive.js';
 
 import { KNOWLEDGE_MAX_UNKNOWN, KNOWLEDGE_MIN_COVERAGE, KNOWLEDGE_MIN_SCORE, searchKnowledge, type KnowledgeEntry } from '../../lib/ask/knowledge.js';
 import { STRATEGY_NAMES, SUGGESTIONS, isForecast, parseQuestion, type Intent, type Parsed } from '../../lib/ask/parse.js';
@@ -27,9 +30,24 @@ export interface AskContext {
     positions(): Promise<any[]>;
     market(): { spot: number | null; mark: number | null; funding: number | null; oi: number | null; dvol: number | null; macro: { score: number; zone: string; direction: string; nextEvent: string; tradeRule: string } | null };
     replay(): any | null;
+    /** Entries still inside their wait window (short strangles keep checking for 2h / 3h). */
+    waiting?(): Array<{ key: string; attempts: number; lastReason: string | null; windowEndMs: number }>;
   };
   /** The terminal's written knowledge: glossary plus text from the docs and tooltips. */
   knowledge?: () => KnowledgeEntry[];
+  /** The user's own taught notes ("teach: question => answer"). */
+  notes?: {
+    all(): Promise<Note[]>;
+    add(q: string, a: string): Promise<Note>;
+    remove(id: number): Promise<boolean>;
+  };
+}
+
+export interface Note {
+  id: number;
+  q: string;
+  a: string;
+  at: number;
 }
 
 const IST = 19_800_000;
@@ -217,15 +235,24 @@ async function whyNoTrade(p: Parsed, c: AskContext): Promise<Answer> {
        AND ($3::text[] IS NULL OR strategy = ANY($3)) ORDER BY at`,
     [dayStart, dayStart + DAY, want],
   );
+  const waiting = (c.live.waiting?.() ?? []).filter((w) => w.key.split(':')[1] === day && (!want || want.includes(w.key.split(':')[0]!)));
   const traded = runs.filter((r) => r.status === 'open' || r.status === 'closed');
   const notTraded = runs.filter((r) => r.status === 'skipped' || r.status === 'failed');
   const lines: string[] = [];
   if (traded.length) lines.push(`Traded on ${day}: ${traded.map((r) => `${nm(r.strategy)}${r.book === 'gated' ? ' (gated)' : ''}`).join(', ')}.`);
   if (notTraded.length) {
     lines.push(`Did not trade on ${day}:`);
-    for (const r of notTraded) lines.push(`- ${nm(r.strategy)}${r.book === 'gated' ? ' (gated)' : ''}: ${r.status}${r.tags?.reason ? `, ${r.tags.reason}` : r.tags?.gate && !r.tags.gate.go ? `, gate WAIT (${(r.tags.gate.reasons ?? []).join('; ')})` : ''}`);
+    for (const r of notTraded) {
+      const seen: string[] = (r.tags?.reasonsSeen ?? []).map((x: any) => String(x.reason));
+      const tried = Number(r.tags?.attempts ?? 1);
+      lines.push(`- ${nm(r.strategy)}${r.book === 'gated' ? ' (gated)' : ''}: ${r.status}${r.tags?.reason ? `, ${r.tags.reason}` : r.tags?.gate && !r.tags.gate.go ? `, gate WAIT (${(r.tags.gate.reasons ?? []).join('; ')})` : ''}${tried > 1 ? `; it kept trying through its wait window (${tried} checks)` : ''}${seen.length > 1 ? `; reasons seen along the way: ${seen.join(' | ')}` : ''}`);
+    }
   }
-  if (!runs.length) {
+  for (const w of waiting) {
+    const left = Math.max(0, Math.round((w.windowEndMs - c.now) / 60_000));
+    lines.push(`Still waiting: ${nm(w.key.split(':')[0]!)}${w.key.endsWith(':gated') ? ' (gated)' : ''} has checked ${w.attempts} time${w.attempts === 1 ? '' : 's'} and will keep trying for another ${left} minute${left === 1 ? '' : 's'}. Right now: ${w.lastReason ?? 'checking'}.`);
+  }
+  if (!runs.length && !waiting.length) {
     lines.push(c.live.botEnabled() ? `The bot recorded no runs for ${day}.` : 'The paper bot is switched off, so nothing was entered or recorded.');
     lines.push('Entry times (IST): ' + [...Object.entries(SLOTS).map(([k, v]) => `${k} ${String(Math.floor(v.entryMin / 60)).padStart(2, '0')}:${String(v.entryMin % 60).padStart(2, '0')}`), 'CAL_BACK 18:00', 'futures: when a sweep or signal appears'].join(', ') + '.');
   }
@@ -242,7 +269,7 @@ async function ranking(p: Parsed, c: AskContext): Promise<Answer> {
   const per = p.period ?? { from: 0, to: c.now + DAY, label: 'all time' };
   const want = ids(p);
   const rows = await c.q(
-    `SELECT strategy, book, entry_at, net_pnl::float AS net FROM bot_runs WHERE status = 'closed' AND exit_at >= to_timestamp($1/1000.0) AND exit_at < to_timestamp($2/1000.0) AND ($3::text[] IS NULL OR strategy = ANY($3))`,
+    `SELECT strategy, book, entry_at, exit_at, exit_reason, peak_pnl::float AS peak, margin_usd::float AS margin, (COALESCE(fees_entry,0) + COALESCE(fees_exit,0))::float AS fees, net_pnl::float AS net FROM bot_runs WHERE status = 'closed' AND exit_at >= to_timestamp($1/1000.0) AND exit_at < to_timestamp($2/1000.0) AND ($3::text[] IS NULL OR strategy = ANY($3))`,
     [per.from, per.to, want],
   );
   const lines: string[] = [];
@@ -264,8 +291,18 @@ async function ranking(p: Parsed, c: AskContext): Promise<Answer> {
     tables.push({ head: ['Session', 'Trades', 'Avg / trade', 'Total', 'Win'], rows: bySess.map((g) => [g.key, g.n, usd(g.avg), usd(g.sum), pct(g.wins / g.n)]) });
     tables.push({ head: ['Strategy', 'Trades', 'Avg / trade', 'Total', 'Win'], rows: bySt.map((g) => [g.key, g.n, usd(g.avg), usd(g.sum), pct(g.wins / g.n)]) });
     tables.push({ head: ['Weekday', 'Trades', 'Avg / trade', 'Total', 'Win'], rows: byDay.map((g) => [g.key, g.n, usd(g.avg), usd(g.sum), pct(g.wins / g.n)]) });
+    const byBook = new Map<string, RunRecord[]>();
+    for (const r of rows) {
+      const k = `${r.strategy}|${r.book}`;
+      const rec: RunRecord = { strategy: r.strategy, book: r.book, dateKey: '', weekday: 0, entryMs: new Date(r.entry_at).getTime(), exitMs: new Date(r.exit_at).getTime(), entryIv: null, dvol: null, gateGo: null, marginUsd: r.margin ?? 0, feesUsd: r.fees ?? 0, netPnl: r.net, exitReason: r.exit_reason ?? 'unknown', peakPnl: r.peak ?? r.net, troughPnl: Math.min(r.net, 0), path: [] };
+      (byBook.get(k) ?? byBook.set(k, []).get(k)!).push(rec);
+    }
+    const liveTop = pickTop([...byBook.entries()].map(([k, v]) => groupStats(k, v)), { minTrades: 20, label: (k) => { const [s, b] = k.split('|'); return `${nm(s!)}${b === 'gated' ? ' (gated)' : ''}`; } });
+    if (liveTop) lines.push(`Top performer (live paper): ${liveTop.reason}`);
   } else lines.push(`Only ${rows.length} closed live paper trade${rows.length === 1 ? '' : 's'} so far, too few to rank. Rankings need at least 5.`);
   const rep = c.live.replay();
+  const repTop = rep?.analytics?.byStrategy ? pickTop(rep.analytics.byStrategy, { minTrades: 60, label: (k: string) => { const [s, b] = k.split('|'); return `${nm(s!)}${b === 'gated' ? ' (gated)' : ''}`; } }) : null;
+  if (repTop) lines.push(`Top performer (13-month replay): ${repTop.reason}`);
   if (rep?.runs?.length) {
     const sess = new Map<string, { n: number; sum: number }>();
     for (const r of rep.runs) {
@@ -491,6 +528,10 @@ function help(): Answer {
       '- Recent errors, last alerts, my manual trades, nightly reviews, recalibration, audit',
       '- What data do you have? / summarise bot runs / describe indicator snapshots last 7 days (any table in the database)',
       '- What is Risk-ADX? / explain N2N / difference between contango and backwardation (concepts from the terminal and its docs)',
+      '- Why did the bot not trade today? (it shows the reasons it saw during the 2h / 3h wait window)',
+      '- What has auto-learn changed? / which strategy is the top performer, and why?',
+      '- My paper account (cash, positions, working orders, last fills)',
+      '- Teach me: type "teach: your question => your answer" and I will answer it from then on; "what have I taught you" lists notes, "forget note 3" removes one',
     ].join('\n'),
     suggestions: SUGGESTIONS,
   };
@@ -511,6 +552,124 @@ async function tableNamedInQuestion(question: string, c: AskContext): Promise<st
   return null;
 }
 
+// ---------- auto-learn, the user's paper account, and the user's own notes ----------
+
+const LEARN_DEFAULTS = { dvolMax: 65, stopMultiple: 2, tpPct: 0.1 };
+const LEARNED = ['ASIA_SHORT', 'NY_SHORT'];
+const rulesText = (p: { dvolMax: number; stopMultiple: number; tpPct: number }) =>
+  `stop at ${p.stopMultiple}x the sold price, take profit at ${Math.round(p.tpPct * 100)}% of margin, gated-book DVOL limit ${p.dvolMax >= 1000 ? 'off' : p.dvolMax}`;
+
+async function learning(_p: Parsed, c: AskContext): Promise<Answer> {
+  const [params, log] = await Promise.all([
+    c.q('SELECT strategy, params FROM bot_params'),
+    c.q('SELECT at, strategy, kind, reason FROM bot_learning ORDER BY at DESC, id DESC LIMIT 40'),
+  ]);
+  const lines = ['Auto-learn (paper only): each night after 09:30 IST the bot replays slightly different rules over its own recorded days and promotes one only if it clears every bar (30+ days, a real daily gain, a significance test corrected for the number of challengers, no worse a drawdown, 14 days since the last change).'];
+  for (const s of LEARNED) {
+    const row = params.find((r) => r.strategy === s);
+    const cur = { ...LEARN_DEFAULTS, ...(row?.params ?? {}) };
+    const changed = Object.keys(LEARN_DEFAULTS).some((k) => (cur as any)[k] !== (LEARN_DEFAULTS as any)[k]);
+    lines.push(`${nm(s)} is trading with: ${rulesText(cur)}${changed ? ' (changed by auto-learn)' : ' (the starting rules)'}.`);
+    const last = log.find((r) => r.strategy === s && r.kind === 'evaluation');
+    if (last) lines.push(`  Last review ${when(last.at)}: ${String(last.reason).slice(0, 320)}`);
+  }
+  const changes = log.filter((r) => r.kind !== 'evaluation').slice(0, 6);
+  if (changes.length) {
+    lines.push('Rule changes so far:');
+    for (const r of changes) lines.push(`- ${when(r.at)} ${String(r.kind).toUpperCase()}: ${String(r.reason).slice(0, 260)}`);
+  } else if (!log.length) {
+    lines.push(c.live.botEnabled()
+      ? 'No review has run yet: it runs once a day after 09:30 IST and needs 30 full recorded days before it can change anything.'
+      : 'The paper bot is switched off, so nothing has been recorded to learn from yet.');
+  } else lines.push('It has reviewed but not changed any rule yet.');
+  return { intent: 'learning', sources: ['bot_params', 'bot_learning'], text: lines.join('\n') };
+}
+
+async function paper(_p: Parsed, c: AskContext): Promise<Answer> {
+  const [acct, pos, work, fills] = await Promise.all([
+    c.q('SELECT cash::float AS cash, start_balance::float AS start, realized_total::float AS realized, fees_total::float AS fees FROM paper_account WHERE id = 1'),
+    c.q('SELECT symbol, lots, avg_entry::float AS avg_entry, leverage FROM paper_positions ORDER BY symbol'),
+    c.q("SELECT symbol, side, otype, lots, filled_lots, price::float AS price, stop_price::float AS stop_price, reduce_only FROM paper_orders WHERE status = 'working' ORDER BY created_at"),
+    c.q('SELECT at, symbol, side, lots, price::float AS price, fee::float AS fee, maker, realized::float AS realized FROM paper_fills ORDER BY at DESC, id DESC LIMIT 5'),
+  ]);
+  const a = acct[0];
+  if (!a) return { intent: 'paper', sources: ['paper_account'], text: 'Your paper account has not been opened yet. Open the Paper page: it starts with $10,000 of fake cash, and every order you place there is recorded here.' };
+  const lines = [
+    `Your paper account: cash ${usd(a.cash)} (started with ${usd(a.start, 0)}), realised PnL ${usd(a.realized)}, fees paid ${usd(a.fees)}. Cash already includes realised PnL and option premiums paid or received; live equity and unrealised PnL need today's prices, so the Paper page shows them.`,
+    pos.length ? `${pos.length} open position${pos.length === 1 ? '' : 's'}, ${work.length} working order${work.length === 1 ? '' : 's'}.` : `No open positions; ${work.length} working order${work.length === 1 ? '' : 's'}.`,
+  ];
+  if (fills.length) lines.push('Latest fill: ' + `${fills[0]!.side} ${fills[0]!.lots} ${fills[0]!.symbol} at ${fills[0]!.price} (${fills[0]!.maker ? 'maker' : 'taker'}, fee ${usd(fills[0]!.fee)}) on ${when(fills[0]!.at)}.`);
+  const rows: Array<Array<string | number>> = [
+    ...pos.map((r) => ['position', r.symbol, `${Number(r.lots) > 0 ? '+' : ''}${r.lots} lots`, `entry ${r.avg_entry}`, r.symbol === 'BTCUSD' ? `${r.leverage}x` : '']),
+    ...work.map((r) => ['working order', r.symbol, `${r.side} ${r.lots} (${r.filled_lots} filled)`, String(r.otype).replace('_', ' '), r.otype === 'stop_market' ? `stop ${r.stop_price}` : r.price == null ? '' : `price ${r.price}`]),
+  ];
+  return { intent: 'paper', sources: ['paper_account', 'paper_positions', 'paper_orders', 'paper_fills'], text: lines.join('\n'), table: rows.length ? { head: ['Kind', 'Contract', 'Size', 'Detail', 'More'], rows } : undefined };
+}
+
+const normText = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const NOTE_STOP = new Set(['what', 'whats', 'is', 'are', 'the', 'a', 'an', 'my', 'me', 'tell', 'show', 'about', 'of', 'to', 'do', 'does', 'how', 'i', 'you', 'please', 'explain', 'give', 'can', 'on', 'in', 'for', 'and', 'it', 'its', 'was', 'were', 'be']);
+
+async function teachNote(p: Parsed, c: AskContext): Promise<Answer> {
+  const base = { intent: 'teach' as Intent, sources: ['your notes'] };
+  if (!c.notes) return { ...base, text: 'Notes are not available in this setup.' };
+  const { q, a } = p.note!;
+  const bad = findSensitive(`${q}\n${a}`);
+  if (bad.length) return { ...base, text: `I did not save that: it looks like it contains a ${bad.join(' / ')}. I keep notes in the database and show them back in answers, so never put addresses, logins, keys or passwords in one.` };
+  if (q.length < 3 || q.length > 200) return { ...base, text: 'The question part should be 3 to 200 characters. Format: teach: your question => your answer' };
+  if (a.length < 2 || a.length > 1500) return { ...base, text: 'The answer part should be 2 to 1500 characters. Format: teach: your question => your answer' };
+  const all = await c.notes.all();
+  const same = all.find((n) => normText(n.q) === normText(q));
+  if (!same && all.length >= 200) return { ...base, text: 'You already have 200 notes, the most I keep. Forget some first ("forget note 3").' };
+  if (same) await c.notes.remove(same.id);
+  const n = await c.notes.add(q, a);
+  return { ...base, text: `${same ? `Updated (it replaces note #${same.id})` : 'Saved'} as note #${n.id}. When you ask "${q}" (or something close) I will answer from it, marked as your own note. Say "forget note ${n.id}" to remove it.` };
+}
+
+async function forgetNote(p: Parsed, c: AskContext): Promise<Answer> {
+  const base = { intent: 'forget' as Intent, sources: ['your notes'] };
+  if (!c.notes) return { ...base, text: 'Notes are not available in this setup.' };
+  const ok = await c.notes.remove(p.noteId!);
+  return { ...base, text: ok ? `Forgot note #${p.noteId}.` : `I have no note #${p.noteId}. Ask "what have I taught you" to see the numbers.` };
+}
+
+async function listNotes(_p: Parsed, c: AskContext): Promise<Answer> {
+  const base = { intent: 'notes' as Intent, sources: ['your notes'] };
+  if (!c.notes) return { ...base, text: 'Notes are not available in this setup.' };
+  const all = await c.notes.all();
+  if (!all.length) return { ...base, text: 'You have not taught me anything yet. Type: teach: your question => your answer' };
+  return {
+    ...base,
+    text: `You have taught me ${all.length} note${all.length === 1 ? '' : 's'}. "forget note N" removes one.`,
+    table: { head: ['#', 'When you ask', 'I answer', 'Taught'], rows: all.map((n) => [n.id, n.q, n.a.length > 140 ? `${n.a.slice(0, 140)}…` : n.a, when(n.at)]) },
+  };
+}
+
+/**
+ * The user's own notes. An exact repeat of a taught question always answers from the note; a close match does
+ * too, but only for questions the data handlers did not claim (so a note can never hide a live number).
+ */
+async function noteAnswer(question: string, c: AskContext, exactOnly: boolean): Promise<Answer | null> {
+  if (!c.notes) return null;
+  let notes: Note[];
+  try { notes = await c.notes.all(); } catch { return null; }
+  if (!notes.length) return null;
+  let hit = notes.find((n) => normText(n.q) === normText(question));
+  if (!hit && !exactOnly) {
+    // the content words of the question against the content words of each taught question: most of the shorter must be shared
+    const words = (s: string) => new Set(normText(s).split(' ').filter((w) => w && !NOTE_STOP.has(w)));
+    const qw = words(question);
+    let bestScore = 0;
+    for (const n of notes) {
+      const nw = words(n.q);
+      const shared = [...qw].filter((w) => nw.has(w)).length;
+      const score = Math.min(qw.size, nw.size) ? shared / Math.min(qw.size, nw.size) : 0;
+      if (shared >= Math.min(2, nw.size) && score >= 0.75 && score > bestScore) { bestScore = score; hit = n; }
+    }
+  }
+  if (!hit) return null;
+  return { intent: 'concept', sources: ['your notes'], text: `From your own note #${hit.id} (taught ${when(hit.at)}):\n${hit.a}` };
+}
+
 export async function answer(question: string, c: AskContext): Promise<Answer> {
   let p = parseQuestion(question, c.now);
   if ((p.intent === 'unknown' || p.intent === 'concept') && !p.table && !isForecast(question)) {
@@ -518,11 +677,18 @@ export async function answer(question: string, c: AskContext): Promise<Answer> {
     if (named) p = { ...p, intent: 'table_summary', table: named };
   }
   const base: Answer = { intent: p.intent, text: '', sources: [] };
+  // the user's own notes answer questions that are not about live data; they never stand in for a number
+  if (p.intent === 'unknown' || p.intent === 'concept' || (p.intent === 'rules' && !p.strategy && !p.group)) {
+    const n = await noteAnswer(question, c, isForecast(question));
+    if (n) return n;
+  }
   switch (p.intent) {
     case 'help': return help();
     case 'data_overview': return safe(base, async () => ({ intent: 'data_overview' as Intent, ...(await dataOverview(c)) }));
     case 'table_summary': return safe(base, async () => ({ intent: 'table_summary' as Intent, ...(await tableSummary(p, c)) }));
     case 'concept': {
+      // the plain price of BTC is a live number, not a glossary term
+      if (/\b(price|spot)\b/i.test(question) && /\b(btc|bitcoin)\b/i.test(question) && !/\b(mark|bid|ask|slippage|fill|strike|premium|option|perp\w*|fee|margin)\b/i.test(question)) return safe(base, () => market(p, c));
       const k = knowledgeAnswer(question, c, 'concept');
       if (k) return k;
       // a concept-shaped question about a live number ("what is the price") is a market question
@@ -551,6 +717,11 @@ export async function answer(question: string, c: AskContext): Promise<Answer> {
     case 'audit': return safe(base, () => audit(p, c));
     case 'recalibration': return safe(base, () => recalibration(p, c));
     case 'alerts': return safe(base, () => alerts(p, c));
+    case 'learning': return safe(base, () => learning(p, c));
+    case 'paper': return safe(base, () => paper(p, c));
+    case 'teach': return safe(base, () => teachNote(p, c));
+    case 'forget': return safe(base, () => forgetNote(p, c));
+    case 'notes': return safe(base, () => listNotes(p, c));
     default: {
       // not one of the data intents: the written knowledge may still know the term
       const k = knowledgeAnswer(question, c, 'concept');

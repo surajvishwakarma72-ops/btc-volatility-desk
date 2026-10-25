@@ -24,6 +24,11 @@ export type Intent =
   | 'concept'
   | 'data_overview'
   | 'table_summary'
+  | 'learning'
+  | 'paper'
+  | 'teach'
+  | 'forget'
+  | 'notes'
   | 'unknown';
 
 export interface Period {
@@ -46,6 +51,10 @@ export interface Parsed {
   /** YYYY-MM-DD (IST). */
   dateKey?: string;
   limit?: number;
+  /** For a "teach" request: the question and answer to store. */
+  note?: { q: string; a: string };
+  /** For a "forget" request: which note. */
+  noteId?: number;
   raw: string;
 }
 
@@ -204,7 +213,23 @@ export function parseQuestion(raw: string, nowMs: number = Date.now()): Parsed {
   })();
   const out = (intent: Intent): Parsed => ({ ...base, intent, limit });
 
+  // adding to / removing from the user's own notes comes first: the raw text matters, not the lowercased words
+  const teach = /^\s*(?:teach(?:\s+me)?|remember|note)\s*[:,-]?\s*(.+?)\s*(?:=>|->|=)\s*([\s\S]+)$/i.exec(raw);
+  if (teach) return { ...out('teach'), note: { q: teach[1]!.trim(), a: teach[2]!.trim() } };
+  const forget = /^\s*forget\s+(?:note\s+)?#?(\d{1,6})\s*$/i.exec(raw);
+  if (forget) return { ...out('forget'), noteId: Number(forget[1]) };
+  if (has(q, /\b(what (?:have|did) i (?:taught|told|teach)|my notes|what do you remember|show (?:my )?notes|list (?:my )?notes|taught you)\b/)) return out('notes');
+
   if (has(q, /\b(help|what can you|what do you|commands|capabilit\w*|how do i ask|examples)\b/)) return out('help');
+
+  const defining = has(q, /^ (what is|what's|what are|explain|define|how does|how do|how is|how are|how can|why is|why does|meaning of)\b/);
+  // what auto-learn has actually done (a definition of auto-learn is a glossary question)
+  if (!defining && has(q, /\b(learned|learnt|promoted|promotions?|champions?|challengers?|rule change|rules? changed|learning (?:status|log|history|review)|auto.?learn\w*|last review|did (?:it|the bot) (?:change|upgrade|learn))\b/)) return out('learning');
+  // the user's own paper account (not the bot): balance, positions, orders, fills. "my paper ..." is always about the data.
+  if (has(q, /\bmy paper\b/) || (!defining && has(q, /\bpaper (?:account|trading|trades?|terminal|balance|equity|positions?|orders?|fills?|pnl|cash)\b/))) return out('paper');
+  // questions about how the newest features work are glossary questions, even when they name a strategy
+  if (defining && has(q, /\b(liquidat\w*|reduce.only|bracket|order types?|limit order|stop order|market order|maker|taker|slippage|theta|gamma|vega|premium)\b/)) return out('concept');
+  if (has(q, /\b(wait window|how long (?:does|do|will|is)\b.*\b(?:wait|keep|try|check)\w*|keeps? (?:checking|trying)|waits? for (?:a |the )?(?:valid )?(?:entry|trade)|banner|flashing card|shadow marks?)\b/)) return out('concept');
 
   // "what data do you have": the whole database, not one table
   if (has(q, /\b(what|which|list|show)\b.*\b(data|tables?|records?|information)\b.*\b(you|have|available|stored|database|db|access|know|see)\b|\b(summar\w*|overview|contents?|inventory)\b.*\b(database|db)\b|\b(database|db)\b.*\b(summary|overview|tables|contents|inventory)\b|\ball (the )?tables\b|\bwhat (?:do|can) you (?:know|see|access|read)\b|\bhow much data\b|\bwhat.?s stored\b|\bdata (?:you|do you) have\b|\beverything (?:you|that) (?:have|know)\b/) && !(base.table && has(q, /\b(summar|describe|columns?|rows)/))) return out('data_overview');
@@ -258,6 +283,9 @@ export function parseQuestion(raw: string, nowMs: number = Date.now()): Parsed {
 
 export const SUGGESTIONS = [
   'Running positions',
+  'What has auto-learn changed?',
+  'My paper account',
+  'Teach: what is my Friday plan => full size at 23:00',
   "Today's PnL",
   'This week by strategy',
   'Why was the last trade stopped?',

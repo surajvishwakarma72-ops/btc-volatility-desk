@@ -1,4 +1,5 @@
 import type { KnowledgeEntry } from './knowledge.js';
+import { GLOSSARY_MORE } from './glossary-more.js';
 
 /**
  * Plain-language definitions of the concepts on the terminal, written from the project's own docs
@@ -7,7 +8,7 @@ import type { KnowledgeEntry } from './knowledge.js';
  */
 const g = (id: string, title: string, keywords: string[], text: string): KnowledgeEntry => ({ id: `glossary:${id}`, title, keywords, text, source: 'glossary' });
 
-export const GLOSSARY: KnowledgeEntry[] = [
+const GLOSSARY_CORE: KnowledgeEntry[] = [
   g('n2n', 'N2N (next-to-next expiry)', ['n2n', 'cur', 'next', 'current expiry', 'next expiry', 'next to next'],
     'Delta lists a new BTC option expiry every day, settling at 17:30 IST (12:00 UTC). On the desk "Cur" is the current expiry, "Next" is the one after, and "N2N" is the third listed expiry (next-to-next). The short strangles are sold on N2N because it is far enough out to avoid the last-day gamma and close enough to keep good theta. The Cur / Next / N2N buttons at the top choose the expiry shown in the big numbers and charts.'),
   g('expiry', 'Expiry and settlement time', ['expiry', 'settlement', 'settle', '17:30', 'settlement trap', 'delta exp'],
@@ -115,3 +116,6 @@ export const GLOSSARY: KnowledgeEntry[] = [
   g('horizon', 'Expected move and sigma', ['expected move', 'sigma', '1 sigma', '1.2 sigma', 'band', 'move band'],
     'The expected-move band is the range BTC is expected to stay inside to the planned expiry at plus or minus one standard deviation (1 sigma), hour-weighted. Strikes are compared with a 1.2-sigma line: selling beyond it means the market has to move more than the options imply for you to lose.'),
 ];
+
+/** The core terminal concepts plus the newer bot, paper-terminal and option-basics entries. */
+export const GLOSSARY: KnowledgeEntry[] = [...GLOSSARY_CORE, ...GLOSSARY_MORE];

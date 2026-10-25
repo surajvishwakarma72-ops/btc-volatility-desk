@@ -12,9 +12,37 @@ import { deribitWorker } from '../services/deribit-flow-worker.js';
 import { deltaWorker } from '../services/delta-market-worker.js';
 import { macroStressWorker } from '../services/macro-stress-worker.js';
 
+/** The user's taught notes live in one small table, created on first use. */
+let notesReady: Promise<void> | null = null;
+const ensureNotes = () => {
+  if (!notesReady) {
+    notesReady = pool
+      .query('CREATE TABLE IF NOT EXISTS ask_notes (id serial PRIMARY KEY, q text NOT NULL, a text NOT NULL, created_at timestamptz NOT NULL DEFAULT now())')
+      .then(() => undefined);
+    notesReady.catch(() => { notesReady = null; });
+  }
+  return notesReady;
+};
+const mapNote = (r: any) => ({ id: Number(r.id), q: String(r.q), a: String(r.a), at: new Date(r.created_at).getTime() });
+export const notesStore = {
+  async all() {
+    await ensureNotes();
+    return (await pool.query('SELECT id, q, a, created_at FROM ask_notes ORDER BY id')).rows.map(mapNote);
+  },
+  async add(q: string, a: string) {
+    await ensureNotes();
+    return mapNote((await pool.query('INSERT INTO ask_notes (q, a) VALUES ($1, $2) RETURNING id, q, a, created_at', [q, a])).rows[0]);
+  },
+  async remove(id: number) {
+    await ensureNotes();
+    return ((await pool.query('DELETE FROM ask_notes WHERE id = $1', [id])).rowCount ?? 0) > 0;
+  },
+};
+
 export function buildContext(): AskContext {
   return {
     now: Date.now(),
+    notes: notesStore,
     // compiled into the server (see scripts/build-knowledge.ts); never read from the public web folder
     knowledge: () => [...GLOSSARY, ...DOCS_INDEX],
     q: async (sql, params) => (await pool.query(sql, params as never)).rows,
@@ -22,6 +50,7 @@ export function buildContext(): AskContext {
       botEnabled: () => botEngine.enabled,
       botStatus: () => ({ engine: botEngine.status, mode: process.env.BOT_MODE ?? 'paper', lastTickAt: botEngine.lastTickAt || null, lastError: botEngine.lastError }),
       positions: () => botEngine.livePositions(),
+      waiting: () => (botEngine.enabled ? botEngine.waitingEntries() : []),
       market: () => {
         const m = macroStressWorker.getSnapshot();
         return {
