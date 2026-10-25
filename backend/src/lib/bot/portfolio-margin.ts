@@ -33,14 +33,15 @@ export interface PortfolioMarginResult {
 const YEAR_MS = 365 * 86_400_000;
 
 /**
- * The scenario model above under-states what Delta actually asks for: for 100 lots of a ~0.12 delta short strangle it gave
- * about $80 where Delta shows $100 to $300. Everything it returns is scaled by this one factor (default 2.5, so about $200)
- * (sold legs only) so the paper account, the chain's sell margin, the strategy builder and the bot's "% of margin" exits all use the same,
- * closer number. Change it with MARGIN_CALIBRATION once you have a real Delta figure to compare against.
+ * Calibration against Delta: for 100 lots of a ~0.12 delta short strangle the scenario model gives about $80 and Delta's own
+ * margin calculator shows about $86, so everything it returns for positions with sold legs is scaled by 1.07. (An earlier
+ * factor of 2.5 was wrong: it was based on a rough $100 to $300 range rather than a real Delta figure.) One setting,
+ * MARGIN_CALIBRATION, so it can be tuned against further Delta readings.
  */
+const DEFAULT_CALIBRATION = 1.07;
 export const MARGIN_CALIBRATION = (() => {
-  const v = Number(process.env.MARGIN_CALIBRATION ?? 2.5);
-  return Number.isFinite(v) && v > 0 && v <= 20 ? v : 2.5;
+  const v = Number(process.env.MARGIN_CALIBRATION ?? DEFAULT_CALIBRATION);
+  return Number.isFinite(v) && v > 0 && v <= 20 ? v : DEFAULT_CALIBRATION;
 })();
 
 function tiered(notional: number, base: number, cap: number, slope: number, knee: number, atKnee: number): number {

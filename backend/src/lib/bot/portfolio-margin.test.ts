@@ -74,11 +74,11 @@ describe('portfolioMargin', () => {
 import { MARGIN_CALIBRATION } from './portfolio-margin.js';
 
 describe('calibration to Delta', () => {
-  it('a 100-lot short strangle lands in the $100 to $300 band Delta shows, and bought options stay at their premium', () => {
-    expect(MARGIN_CALIBRATION).toBe(2.5);
+  it('a 100-lot short strangle lands near the $86 Delta shows, and bought options stay at their premium', () => {
+    expect(MARGIN_CALIBRATION).toBe(1.07);
     const strangle = portfolioMargin([{ ...shortCall, strike: 82500, iv: 38 }, { ...shortPut, strike: 78500, iv: 40 }], SPOT, NOW).margin;
-    expect(strangle).toBeGreaterThan(100);
-    expect(strangle).toBeLessThan(300);
+    expect(strangle).toBeGreaterThan(70);
+    expect(strangle).toBeLessThan(110);
     const longOnly = portfolioMargin([{ type: 'call', side: 'long', strike: 80800, expiryMs: EXP3, lots: 100, iv: 40 }], SPOT, NOW);
     expect(longOnly.margin).toBeLessThanOrEqual(longOnly.notional * 0.05); // not inflated by the factor
   });
