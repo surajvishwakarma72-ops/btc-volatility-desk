@@ -59362,8 +59362,425 @@ document.addEventListener('click', function(e) {
 #askPanel table.ak-t{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;min-width:100%}
 #askPanel .ak-t th{color:var(--muted,#8FA3B5);font-weight:600;text-align:left;padding:3px 7px;border-bottom:1px solid var(--line2,#2C4459);white-space:nowrap}
 #askPanel .ak-t td{padding:3px 7px;border-bottom:1px solid var(--line,#223648);white-space:nowrap}
+#askPanel.big{width:min(760px,calc(100vw - 24px));height:min(88vh,calc(100vh - 96px))}
+#askPanel .ak-sugW{position:relative}
+#askPanel .ak-sug{position:absolute;left:10px;right:10px;bottom:4px;z-index:3;display:flex;flex-direction:column;background:var(--panel2,#182A3B);border:1px solid var(--focus,#9CC9EE);border-radius:10px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+#askPanel .ak-sug[hidden]{display:none}
+#askPanel .ak-sg{text-align:left;background:none;border:0;border-bottom:1px solid var(--line,#223648);color:var(--text,#E4ECF2);padding:8px 11px;font:600 13px var(--font,system-ui);cursor:pointer}
+#askPanel .ak-sg:last-child{border-bottom:0}
+#askPanel .ak-sg:hover,#askPanel .ak-sg.on{background:var(--bg,#0D1721);color:var(--focus,#9CC9EE)}
+#askPanel .abHero{display:flex;gap:12px;align-items:center;border:2px solid var(--line2,#2C4459);border-radius:14px;padding:10px 12px;margin:2px 0 8px;background:var(--panel,#132230)}
+#askPanel .abDialW{flex:0 0 46%;max-width:210px;color:var(--text,#E4ECF2)}
+#askPanel .abDial{width:100%;height:auto;display:block}
+#askPanel .abIcon{font-size:34px;line-height:1}
+#askPanel .abHeroT{flex:1;min-width:0}
+#askPanel .abWord{font:800 26px/1.1 var(--font,system-ui);overflow-wrap:anywhere}
+#askPanel .abSub{font-size:12.5px;color:var(--muted,#8FA3B5);margin-top:4px;line-height:1.4}
+#askPanel .abTiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(104px,1fr));gap:6px;margin:0 0 8px}
+#askPanel .abTile{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line2,#2C4459);border-radius:10px;padding:7px 9px;background:var(--panel,#132230)}
+#askPanel .abTile b{font:800 18px/1.1 var(--font,system-ui);font-variant-numeric:tabular-nums}
+#askPanel .abK{font-size:10.5px;color:var(--muted,#8FA3B5);letter-spacing:.03em}
+#askPanel .abBlock{border:1px solid var(--line,#223648);border-radius:12px;padding:9px 10px;margin:0 0 8px;background:var(--panel,#132230)}
+#askPanel .abH{font:700 11px var(--font,system-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted,#8FA3B5);margin:0 0 7px}
+#askPanel .abCk{display:flex;gap:9px;align-items:flex-start;padding:5px 0;border-top:1px solid var(--line,#223648)}
+#askPanel .abCk:first-of-type{border-top:0}
+#askPanel .abMark{flex:none;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font:800 12px var(--font,system-ui);font-style:normal}
+#askPanel .abCk b{font-size:13px;display:block}
+#askPanel .abCk small{display:block;font-size:11.5px;color:var(--muted,#8FA3B5);line-height:1.35}
+#askPanel .abBar{display:grid;grid-template-columns:minmax(70px,34%) 1fr 62px;gap:4px 8px;align-items:center;padding:3px 0;font-size:12px}
+#askPanel .abBar.hi .abL{font-weight:800}
+#askPanel .abBar.hi .abT{outline:2px solid var(--text,#E4ECF2);outline-offset:1px}
+#askPanel .abL{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#askPanel .abT{position:relative;height:14px;border-radius:7px;background:var(--bg,#0D1721);overflow:hidden}
+#askPanel .abF{display:block;height:100%;border-radius:7px}
+#askPanel .abRef{position:absolute;top:-2px;bottom:-2px;width:0;border-left:2px dashed var(--text,#E4ECF2);opacity:.7}
+#askPanel .abV{text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+#askPanel .abS{grid-column:2 / 4;color:var(--muted,#8FA3B5);font-size:10.5px;margin-top:-2px}
+#askPanel .abStep{display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--line,#223648)}
+#askPanel .abStep:first-of-type{border-top:0}
+#askPanel .abN{flex:none;width:24px;height:24px;border-radius:50%;background:var(--focus,#9CC9EE);color:#0D1721;display:flex;align-items:center;justify-content:center;font:800 13px var(--font,system-ui);font-style:normal}
+#askPanel .abStep b{display:block;font-size:13.5px}
+#askPanel .abTx{display:block;font-size:12.5px;line-height:1.45;margin-top:2px}
+#askPanel .abTip{display:block;font-size:11.5px;color:var(--muted,#8FA3B5);margin-top:3px;padding-left:8px;border-left:2px solid var(--line2,#2C4459)}
+#askPanel .abFact{padding:5px 0;border-top:1px solid var(--line,#223648);font-size:12.5px;line-height:1.4}
+#askPanel .abFact:first-of-type{border-top:0}
+#askPanel .abFact b{display:block}
+#askPanel .abNote{border-left:4px solid var(--line2,#2C4459);background:var(--panel,#132230);border-radius:0 10px 10px 0;padding:8px 10px;margin:0 0 6px;font-size:13px;line-height:1.5}
 @media (max-width:760px){#askFab{bottom:78px;right:12px;padding:9px 14px}#askPanel{left:8px;right:8px;width:auto;max-width:none;bottom:130px;height:min(60vh,calc(100vh - 200px))}}
-</style><script id="askWidget">
+</style><script id="askBrain">
+/* Ask brain: understands plain-language questions about the desk and answers with pictures (verdict dial, check list, bars, tiles, step cards)
+   built from the numbers already loaded in this page: the live decision, the entry gauge and the 5-year backtests.
+   No outside AI, nothing leaves the browser. Questions it does not recognise go on to the server's own answers. */
+(function askBrain() {
+  'use strict';
+  // ASKBRAIN-CORE-START
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const num = (v, d) => v == null || !isFinite(v) ? '-' : Number(v).toFixed(d == null ? 1 : d);
+  const usd = v => v == null || !isFinite(v) ? '-' : (v < 0 ? '-$' : '$') + (Math.abs(v) < 20 ? Math.abs(v).toFixed(1) : Math.abs(Math.round(v)).toLocaleString('en-US'));
+  const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const DAY3 = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+  /* ---------- reading the question ---------- */
+  const norm = q => String(q || '').toLowerCase().replace(/[^a-z0-9%.\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  function edit(a, b) {
+    if (a === b) return 0; if (Math.abs(a.length - b.length) > 2) return 9;
+    const m = a.length, n = b.length; let prev = Array.from({ length: n + 1 }, (_, j) => j);
+    for (let i = 1; i <= m; i++) { const cur = [i]; for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+    return prev[n];
+  }
+  /** does the question contain this word, allowing a different ending, or one typo in a longer word */
+  function has(tokens, w) {
+    for (const t of tokens) { if (t === w || (w.length >= 3 && t.startsWith(w)) || (t.length >= 4 && w.length >= 4 && w.startsWith(t)) || (w.length >= 5 && t.length >= 5 && edit(t, w) <= 1)) return true; }
+    return false;
+  }
+  /** intents: each has weighted words (w), phrases that settle it (p), and the guide it opens, if any */
+  const INTENTS = [
+    { id: 'trade_now', p: [/should i (trade|sell|enter|go|short|open|take)/, /(can|may|could) i (trade|sell|enter|go|short|open)/, /go or wait/, /(good|safe|right|ok|okay|fine) (time|night|day|moment)/, /(trade|sell|enter|go) (tonight|today|now|this evening)/, /\bverdict\b/, /\bdecision\b/, /(is it|am i) (ok|okay|safe|good|fine) to/, /(do you|would you) (trade|sell|enter)/, /what (should|do) i do/, /\bgo\b.*\bno go\b/, /any trade/], w: { trade: 1, tonight: 1.5, today: 1, now: .6, should: 1, verdict: 2, wait: 1, go: .8, enter: 1, safe: 1, decision: 1.5, decide: 1.5, summary: .8, entry: .8 } },
+    { id: 'indicators', p: [/(important|best|key|top|useful|main|biggest|strongest|most) (indicator|indicators|signal|signals|feature|factor|factors|input|inputs)/, /which (indicator|indicators|signal|signals)/, /what (matters|drives|predicts|causes) (most|stops|the stop)/, /indicator (ranking|importance|weight|weightage)/, /\bweightage\b/], w: { indicator: 2, indicators: 2, signal: 1, weight: 1.5, weights: 1.5, important: 1.2, importance: 1.5, matters: 1, drives: 1, predictor: 1.5, factor: 1.2, feature: 1 } },
+    { id: 'top_performer', p: [/top (performer|performers|strategy|strategies)/, /best (strategy|strategies|performing|performer|setup|rule)/, /(rank|ranking|compare|leaderboard)( all| the)? (strateg|rules|setups)/, /which strategy/, /winning strateg/, /what (works|worked) best/, /leaderboard/], w: { performer: 2, strategy: 1.5, strategies: 1.5, ranking: 1.2, leaderboard: 2, best: .8, winning: 1.2, compare: 1 } },
+    { id: 'weekday', p: [/\b(mon|tue|tues|wed|thu|thur|thurs|fri|sat|sun)(day|sday|nesday|rsday|urday)?s?\b.*(back ?test|data|stats|result|perform|stop|risk|safe|how|history|work)/, /(back ?test|stats|data|history|how).*\b(mon|tues?|wed|thu(rs?)?|fri|sat|sun)(day|sday|nesday|rsday|urday)?s?\b/, /(best|worst|safest|riskiest|which) (day|night|weekday)/, /by (weekday|day of the week)/, /day of (the )?week/], w: { weekday: 2, monday: 2, tuesday: 2, wednesday: 2, thursday: 2, friday: 2, saturday: 2, sunday: 2, night: .6, nights: .6 } },
+    { id: 'iv_enough', p: [/\biv\b.*(enough|high enough|good enough|worth|ok|okay|sufficient|too (low|high)|right level)/, /(enough|too low|too high|sufficient).*\biv\b/, /(is|are) (the )?(iv|implied vol|volatility|premium|credit).*(enough|good|ok|okay|worth)/, /\biv (band|range|level|bucket)/, /(iv|volatility) (at|of|is) \d+/, /how much iv/, /minimum iv/], w: { iv: 1.2, volatility: .8, enough: 1.5, premium: .6, credit: .8, band: 1, sufficient: 1.5 } },
+    { id: 'premium_worth', p: [/(is|does|will).*(premium|option) selling.*(worth|pay|profit|work|good)/, /(premium|short vol|strangle|selling).*(worth|pay|profit|work|good|money|edge)/, /(worth|profitable|profit|edge).*(sell|selling|premium|strangle)/, /(win ?rate|expected|average|avg) (return|profit|pnl|per night)/, /does (it|selling|the strategy) (work|pay)/, /5 ?(year|yr)/, /win ?rate/, /backtest(ed)? (result|data|summary|overall)/], w: { worth: 2, profitable: 1.5, profit: .8, edge: 1, backtest: 1.2, backtested: 1.2, winrate: 1.5, selling: .8, premium: .8, strangle: .8, pay: .8 } },
+    { id: 'howto_api', guide: 'api', p: [/api (key|setup|set up|secret|connect)/, /(connect|link|add|save|enter|paste|set ?up) (my |the |a )?(delta )?(api|key|account)/, /delta (api|key|account|exchange)/, /where (do|can) i (get|find|put|add) (the |my )?(api|key)/, /read.?only key/, /how (do|can) i (see|get|connect) (my )?(positions|p ?& ?l|pnl|account)/], w: { api: 2.5, key: 1.2, secret: 1.5, connect: 1, setup: 1, delta: .6 } },
+    { id: 'howto_whitelist', guide: 'whitelist', p: [/white ?list/, /ip (address|not|list|whitelist)/, /ip_not_whitelisted/, /(which|what) ip/, /key (not accepted|refused|rejected|invalid)/, /(not accepted|refused|rejected|denied)/, /why.*(api|key).*(not|refus|reject|fail|work)/], w: { whitelist: 3, whitelisted: 3, ip: 1.5 } },
+    { id: 'howto_invite', guide: 'invite', p: [/invite/, /(add|let|give|share).*(friend|friends|someone|people|user|users)/, /(sign ?up|create account|register|new account)/, /multiple (users|accounts)/, /friends? (use|access|join)/], w: { invite: 3, friend: 1.5, friends: 1.5, signup: 2, register: 1.5, account: .8, accounts: .8 } },
+    { id: 'howto_paper', guide: 'paper', p: [/paper (trade|trading|account)/, /(how|where).*(practice|fake|demo|simulat)/, /(place|execute|make|open) (a )?(paper )?(trade|strategy|order)/, /option chain/, /strategy builder/, /(how|where).*(strategy|strangle|straddle).*(build|place|make|create)/, /(how|where).*(place|make|create|build|open|execute).*(strangle|straddle|strategy|spread|condor)/], w: { paper: 2, practice: 1.5, demo: 1.5, builder: 1.5, chain: 1, execute: 1 } },
+    { id: 'howto_gauge', guide: 'gauge', p: [/(entry )?gauge/, /(read|understand|explain|mean).*(dial|needle|gauge|go ?\/ ?wait)/, /what (does|is) (the )?(dial|needle|gauge)/], w: { gauge: 2.5, dial: 2, needle: 2 } },
+    { id: 'howto_bot', guide: 'bot', p: [/how (does|do) (the )?bot/, /what (does|is) (the )?bot/, /bot (work|trade|rules|timeline|schedule|strateg)/, /when (does|do) (the )?bot (trade|enter|exit)/, /bot timeline/], w: { bot: 1.8, engine: 1 } },
+    { id: 'howto_margin', guide: 'margin', p: [/margin/, /portfolio margin/, /leverage/], w: { margin: 2.5, leverage: 1.5 } },
+    { id: 'howto_stops', guide: 'stops', p: [/stop ?loss/, /(2x|2 x|double) stop/, /how (do|does).*stop/, /(set|edit|change) (a |the |my )?stop/], w: { stop: 1.4, stoploss: 2.5, stops: 1.4 } },
+    { id: 'howto_futures', guide: 'futures', p: [/future(s)? (trade|trading|paper)/, /(btc|bitcoin) future/, /perpetual/, /\bperp\b/], w: { futures: 2, future: 1.5, perpetual: 2, perp: 2 } },
+  ];
+
+  /** fix typos against the words the desk knows ("shuld i trad tonite" becomes "should i trade tonight") */
+  const ALIAS = { tonite: 'tonight', tonigt: 'tonight', todya: 'today', sould: 'should', shud: 'should', shld: 'should', wether: 'whether', u: 'you', pls: 'please' };
+  let vocab = null;
+  function correct(n) {
+    if (!vocab) { const set = new Set(); for (const p of PHRASES) for (const w of norm(p).split(' ')) if (w.length >= 4) set.add(w); for (const it of INTENTS) for (const k of Object.keys(it.w)) if (k.length >= 4) set.add(k); vocab = [...set]; }
+    return n.split(' ').map(t => {
+      if (ALIAS[t]) return ALIAS[t];
+      if (t.length < 4 || /\d/.test(t) || vocab.includes(t)) return t;
+      let best = null, bd = 9; for (const w of vocab) { const d = edit(t, w); if (d < bd) { bd = d; best = w; } }
+      return bd <= (t.length >= 7 ? 2 : 1) ? best : t;
+    }).join(' ');
+  }
+
+  function understand(q) {
+    const n = correct(norm(q)), tokens = n.split(' ').filter(Boolean);
+    if (!n) return { id: null, score: 0, slots: {}, n, tokens };
+    const slots = {};
+    for (let i = 0; i < 7; i++) if (tokens.some(t => t === DAYS[i] || t === DAY3[i] || t === DAYS[i] + 's' || (i === 2 && t === 'tues') || (i === 4 && (t === 'thur' || t === 'thurs')))) { slots.day = i; break; }
+    const ivm = /\biv\b\D{0,12}(\d{2}(?:\.\d)?)\b|\b(\d{2}(?:\.\d)?)\s*(?:%\s*)?iv\b/.exec(n); if (ivm) slots.iv = Number(ivm[1] || ivm[2]);
+    let best = null;
+    for (const it of INTENTS) {
+      let s = 0, pm = false;
+      for (const re of it.p) if (re.test(n)) { s += 3; pm = true; }
+      for (const k of Object.keys(it.w)) if (has(tokens, k)) s += it.w[k];
+      if (it.id === 'weekday' && slots.day == null && !pm) s -= 1.5;
+      if (it.id === 'weekday' && slots.day != null) s += 2;
+      if (it.id === 'iv_enough' && slots.iv != null) s += 2;
+      if (it.id === 'howto_stops' && /(why|was|hit|stopped)/.test(n) && /(trade|run|last)/.test(n)) s -= 4; // that is for the server: why was the last trade stopped
+      if (it.id === 'trade_now' && /\bwhy\b/.test(n) && !/\bshould\b/.test(n)) s -= 4; // "why no trade today" is a question about the bot's log, for the server
+      if (!best || s > best.score) best = { id: it.id, score: s, guide: it.guide };
+    }
+    // a day name next to "should i trade" means tonight's verdict, not a weekday study
+    if (best && best.id === 'weekday' && /\bshould i\b|\bcan i\b/.test(n)) best = { id: 'trade_now', score: best.score, guide: undefined };
+    return { id: best && best.score >= 3 ? best.id : null, guide: best && best.score >= 3 ? best.guide : undefined, score: best ? best.score : 0, slots, n, tokens };
+  }
+
+  /* ---------- the auto-predictor ---------- */
+  const PHRASES = [
+    'Should I trade tonight?', 'Is it safe to sell tonight?', 'Go or wait?', 'Give me the decision summary', 'What is the verdict for today?',
+    'What is the most important indicator?', 'Which indicators matter most?', 'What drives stops?', 'Show indicator weightage',
+    'What is the top performer?', 'Which strategy is best?', 'Compare all strategies', 'Show the leaderboard',
+    'How did Monday do in the backtest?', 'Backtested data of Monday', 'Backtest of Tuesday', 'Backtest of Wednesday', 'Backtest of Thursday', 'Backtest of Friday', 'Which night is safest?', 'Which day is the worst?',
+    'Is IV enough to trade?', 'Is IV high enough?', 'Is IV 30 enough?', 'Is the credit enough?', 'Which IV band works best?',
+    'Is premium selling worth it?', 'Does selling strangles pay?', 'What is the win rate?', 'Show the 5 year backtest summary',
+    'How do I set up my Delta API key?', 'How do I whitelist the IP?', 'Why is my API key not accepted?', 'How do I connect my Delta account?',
+    'How do I invite a friend?', 'How do friends create an account?', 'How do I paper trade?', 'How do I use the strategy builder?', 'How do I place a strangle?',
+    'How do I read the entry gauge?', 'What does the dial mean?', 'How does the bot work?', 'When does the bot trade?', 'What is the bot timeline?',
+    'How is margin calculated?', 'What is portfolio margin?', 'How does the stop loss work?', 'How do I set a stop?', 'How do I trade BTC futures on paper?',
+    'Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now',
+    'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'What is the GO/WAIT gate?', 'What is VoV?', 'What is the speed beacon?',
+  ];
+  /** ranked completions for what has been typed so far: every typed word must match a word of the phrase, typos and word order are fine */
+  function suggest(typed, limit) {
+    const toks = norm(typed).split(' ').filter(Boolean); if (!toks.length) return [];
+    const out = [];
+    for (const ph of PHRASES) {
+      const pt = norm(ph).split(' ');
+      let s = 0, ok = true;
+      toks.forEach((t, i) => {
+        const last = i === toks.length - 1;
+        let m = 0;
+        for (const w of pt) {
+          if (w === t) m = Math.max(m, 3);
+          else if (w.startsWith(t)) m = Math.max(m, last ? 2.5 : 2);
+          else if (t.length >= 4 && w.length >= 4 && edit(w.slice(0, t.length + 1), t) <= 1) m = Math.max(m, 1.2);
+        }
+        if (m === 0) ok = false; s += m;
+      });
+      if (!ok) continue;
+      if (norm(ph).startsWith(norm(typed))) s += 3;
+      out.push([s - pt.length * 0.02, ph]);
+    }
+    out.sort((a, b) => b[0] - a[0]);
+    const seen = new Set(), res = [];
+    for (const [, ph] of out) { if (norm(ph) === norm(typed)) continue; if (!seen.has(ph)) { seen.add(ph); res.push(ph); } if (res.length >= (limit || 6)) break; }
+    return res;
+  }
+
+  /* ---------- how-to guides, as step cards ---------- */
+  const SERVER_IP_NOTE = 'Use the address shown in Settings, "Your Delta API key" (the desk server\'s own IP).';
+  const GUIDES = {
+    api: { title: 'Connect your own Delta API key', icon: 'key', intro: 'You see your own positions and P&L. The desk can only read; it can never place orders or withdraw.', steps: [
+      { title: 'Have a desk account', text: 'Sign in, or create an account with the invite code the owner gave you (button "Sign in or create account").', tip: 'No code yet? Ask the person who runs this desk.' },
+      { title: 'Open Delta India → Account → API keys', text: 'Create a new API key.', tip: 'Choose a clear name such as "BTC desk".' },
+      { title: 'Give it READ permission only', text: 'Switch off trading and withdrawal. Reading positions and fills is all the desk needs.', tip: 'If the key can trade, anybody who got hold of it could too.' },
+      { title: 'Add the desk server IP to the key', text: 'Delta only accepts a key from addresses on its IP list. ' + SERVER_IP_NOTE, tip: 'This is the step most people miss; see "How do I whitelist the IP?".' },
+      { title: 'Copy the key and the secret', text: 'Delta shows the secret once. Copy both.', tip: 'Never share them in chat or screenshots.' },
+      { title: 'Paste them in Settings', text: 'Desk → Settings → "Your Delta API key" → paste key and secret → Save key.', tip: 'The desk checks the key with Delta first; the secret is stored encrypted and never shown again.' },
+      { title: 'Check the status', text: 'It should say "Saved" with the last 4 characters of your key, and the P&L page fills in within about 30 seconds.', tip: 'If it shows an error, ask "why is my API key not accepted?".' },
+    ], fix: [['"ip_not_whitelisted"', 'The server IP is not on your key\'s list yet.'], ['"no_delta_key"', 'No key saved on this account: use the Settings card.'], ['"invalid api key"', 'Key or secret copied wrongly, or the key was deleted on Delta.']], follow: ['How do I whitelist the IP?', 'Why is my API key not accepted?', 'How do I paper trade?'] },
+    whitelist: { title: 'Whitelist the desk server IP on your Delta key', icon: 'shield', intro: 'Delta refuses a key that is used from an address it does not know. The desk calls Delta from one fixed server address for everybody.', steps: [
+      { title: 'Find the address', text: 'Desk → Settings → "Your Delta API key": the server address is shown with a Copy button.', tip: 'It is the same address for all users of this desk.' },
+      { title: 'Open the key on Delta', text: 'Delta India → Account → API keys → edit your key.', tip: 'Not your phone or home address: that one is only for the desk server.' },
+      { title: 'Paste the address into the IP list', text: 'Add it and save. You can keep other addresses in the list.' },
+      { title: 'Save the key again in the desk', text: 'Settings → paste key and secret → Save key. A green "Saved" means Delta accepted it.' },
+    ], fix: [['Still refused', 'Check there is no space or typo in the address, and that the key is the one you pasted.'], ['Works then stops', 'Someone removed the address, or you made a new key: add it to the new key too.']], follow: ['How do I set up my Delta API key?', 'Why is my API key not accepted?'] },
+    invite: { title: 'Let a friend use the desk with their own Delta key', icon: 'people', intro: 'Only the owner can make invite codes. Each friend gets their own login, their own Delta key and their own Paper Trade account.', steps: [
+      { title: 'Owner: open Settings → "Invite friends"', text: 'Type who it is for and how many people may use the code, then press Create invite code.', tip: 'The code is shown once. Copy it straight away.' },
+      { title: 'Send the link and the code', text: 'The friend opens this same website link on their phone or computer.' },
+      { title: 'Friend: Create account', text: 'Button "Sign in or create account" → Create account → name, email, password (10+ characters) and the invite code.', tip: 'Each use of a code is spent when the account is created.' },
+      { title: 'Friend: add their own read-only Delta key', text: 'Settings → "Your Delta API key". See "How do I set up my Delta API key?".' },
+      { title: 'Owner: revoke any time', text: 'The invite list shows how many times each code was used and has a Revoke button.' },
+    ], fix: [['"invite code is not valid"', 'Wrong code, used up or revoked: make a new one.'], ['Friend sees no bot buttons', 'Correct: friends can watch the bot but only the owner can pause or kill it.']], follow: ['How do I set up my Delta API key?', 'How do I paper trade?'] },
+    paper: { title: 'Paper trade a strategy, step by step', icon: 'chart', intro: 'Fake money against the real Delta order books. Your own account, separate from the bot.', steps: [
+      { title: 'Open the Paper page', text: 'The top shows your current PnL for options and futures.' },
+      { title: 'Step 1: pick strikes on the option chain', text: 'Click an ask to Buy a strike or a bid to Sell it. Click as many as you like; click again to remove.', tip: 'The "Sell margin" column shows the extra margin selling that size needs.' },
+      { title: 'Step 2: check your strategy', text: 'You see net credit, max profit and loss, breakevens, the payoff chart and the estimated margin required.', tip: 'Sold legs get an automatic stop at 2x their sell price. Edit it per leg.' },
+      { title: 'Step 3: Execute', text: 'Every leg fills together from the live order book, or none do.' },
+      { title: 'Watch it under "Your open strategies"', text: 'Net PnL, each leg\'s PnL and stop. If any leg hits its stop, every leg closes automatically. Close all exits everything now.' },
+    ], fix: [['"insufficient margin"', 'Reduce lots or switch margin mode; see "How is margin calculated?".'], ['A leg could not fill', 'The order book is thin at that size: try fewer lots.']], follow: ['How is margin calculated?', 'How does the stop loss work?', 'How do I trade BTC futures on paper?'] },
+    gauge: { title: 'How to read the Entry Gauge', icon: 'dial', intro: 'One needle, from GO on the left to WAIT on the right, built from the live readings.', steps: [
+      { title: 'Left is GO, right is WAIT', text: 'Green zone 0–34, amber 34–66, red 66–100.' },
+      { title: 'Look at the dots under it', text: 'Each dot is one indicator (Speed, Model, NY fear, Rising, VoV, RV, Edge, ADX): green fine, amber so-so, red failing.' },
+      { title: 'Colour tells you how often legs were stopped', text: 'In 5 years of out-of-sample hours the real stop rates were: green {g}%, amber {a}%, red {r}% of entries.', tip: 'Lower is better. It is a statistic, not a promise.' },
+      { title: 'Use it with the checks', text: 'GO needs the gauge and the other checks (weekday, timing window, IV turn, news). Ask "should I trade tonight?" to see them all.' },
+    ], fix: [], follow: ['Should I trade tonight?', 'What is the most important indicator?'] },
+    bot: { title: 'How the paper bot trades', icon: 'bot', intro: 'It only paper trades; it cannot place a real order. Times are IST.', steps: [
+      { title: 'Asia short strangle, 10:00', text: 'Waits up to 2 hours for a valid entry. Exits at 10% of margin as profit, or a 2x stop on a sold leg, and always by 16:00.' },
+      { title: 'New York short strangle, 22:30', text: 'Waits up to 3 hours. Force closes by 07:00.' },
+      { title: 'Evening long straddle, 17:30', text: 'Stop at -10% of margin, take profit at +50%, out around 21:00.' },
+      { title: 'Pre-dawn long straddle, 05:00', text: 'Out around 09:00.' },
+      { title: 'Calendar spread, 18:00', text: 'Only when the term structure is in backwardation.' },
+      { title: 'See what it did', text: 'Bot page → Today shows every slot as waiting, open, closed (and why) or not traded (and why).' },
+    ], fix: [], follow: ['Why no trade today?', 'What is the top performer?', 'Running positions'] },
+    margin: { title: 'How margin works on the Paper page', icon: 'scale', intro: 'Two modes, like Delta.', steps: [
+      { title: 'Portfolio margin (default)', text: 'All your options and futures are stressed together in price and volatility scenarios, so hedged positions (spreads, condors) need far less. A BTC future needs about value ÷ 90 here.' },
+      { title: 'Standard margin', text: 'Every short option is margined on its own, no credit for other legs. A future needs value ÷ the leverage you choose.', tip: 'Switch with the Portfolio / Standard buttons at the top of the Paper page.' },
+      { title: 'Before you execute', text: 'Step 2 shows "Estimated margin required" and what is left available after.' },
+    ], fix: [['Different from Delta', 'It is an estimate calibrated to Delta\'s own figure; tell the owner the exact Delta number if it is off.']], follow: ['How do I paper trade?', 'How do I trade BTC futures on paper?'] },
+    stops: { title: 'How stops work on paper strategies', icon: 'stop', intro: 'Every sold leg gets a stop; one leg hitting its stop closes the whole strategy.', steps: [
+      { title: 'Automatic 2x stop', text: 'A leg sold at 100 stops at 200. Bought legs have no stop unless you set one.' },
+      { title: 'Edit per leg', text: 'In step 2 choose Auto, Custom (a price) or No stop. Later, "Edit stops" on the open strategy card.' },
+      { title: 'It runs on the server', text: 'Checked every 5 seconds even with your screen off. When a leg reaches its stop, all legs close at the live book and the reason is recorded.' },
+    ], fix: [], follow: ['How do I paper trade?', 'Is premium selling worth it?'] },
+    futures: { title: 'Paper trade BTC futures', icon: 'bolt', intro: 'The BTC perpetual on your own paper account.', steps: [
+      { title: 'Open the Paper page → Futures card', text: 'Choose Buy / Long or Sell / Short, Market or Limit.' },
+      { title: 'Set the size', text: '1 lot is 0.001 BTC. The card shows the position value and the estimated margin.' },
+      { title: 'Leverage', text: 'In Standard margin you pick the leverage; in Portfolio margin the margin is about value ÷ 90 and the slider is hidden.' },
+      { title: 'Optional take profit and stop loss', text: 'Prices attached to the entry; one cancels the other.' },
+      { title: 'Watch and close', text: '"Your futures position" shows entry, mark, margin, liquidation and PnL, with Close position.' },
+    ], fix: [], follow: ['How is margin calculated?', 'How do I paper trade?'] },
+  };
+
+  /* ---------- picture blocks from the desk's own numbers ---------- */
+  const tone = { go: '#15803D', wait: '#D69E2E', stop: '#C53030', info: '#2B6CB0', grey: '#9AA7B4' };
+  const nowDay = () => { const t = new Date(Date.now() + 19800000); const wd = t.getUTCDay(); return t.getUTCHours() < 7 ? (wd + 6) % 7 : wd; };
+
+  function vTrade(D) {
+    const d = D.decide, V = D.verdict;
+    if (!d) return { title: 'Should I trade?', blocks: [{ t: 'note', tone: 'info', text: 'The decision engine is still loading. Try again in a few seconds.' }] };
+    const tn = d.w === 'GO' || d.c === 'g' ? 'go' : d.c === 'r' || /NO/.test(d.w) ? 'stop' : 'wait';
+    const checks = (d.checks || []).map(c => ({ ok: c[1] === true ? true : c[1] === false ? false : null, label: String(c[0]), note: c[2] && c[2] !== '—' ? String(c[2]) : '' }));
+    const passed = checks.filter(c => c.ok === true).length, failed = checks.filter(c => c.ok === false);
+    const wd = D.daily && D.daily.byWd ? D.daily.byWd.find(x => x.wd === nowDay()) : null;
+    const avg = D.daily && D.daily.byWd ? D.daily.byWd.reduce((a, w) => a + w.stop * w.n, 0) / D.daily.byWd.reduce((a, w) => a + w.n, 0) : null;
+    const tiles = [{ k: 'Checks passed', v: passed + ' of ' + checks.length, tone: failed.length ? 'wait' : 'go' }];
+    if (V && V.L != null) tiles.push({ k: 'Entry gauge', v: Math.round(V.L), sub: V.color, tone: V.color === 'green' ? 'go' : V.color === 'red' ? 'stop' : 'wait' });
+    if (wd) tiles.push({ k: DAYS[wd.wd][0].toUpperCase() + DAYS[wd.wd].slice(1) + ' legs stopped', v: num(wd.stop) + '%', sub: avg != null ? 'average ' + num(avg) + '%' : '', tone: avg != null && wd.stop <= avg - 3 ? 'go' : avg != null && wd.stop >= avg + 3 ? 'stop' : 'wait' });
+    const verdict = tn === 'go'
+      ? 'Final verdict: GO. Every check is in your favour right now' + (d.why && d.why[0] ? ' (' + d.why[0] + ')' : '') + '. Size and stops as planned.'
+      : 'Final verdict: ' + (tn === 'stop' ? 'DO NOT TRADE. ' : 'WAIT. ') + (failed.length ? 'Not met: ' + failed.slice(0, 3).map(f => f.label.replace(/\s*\(.*$/, '')).join('; ') + (failed.length > 3 ? ' and ' + (failed.length - 3) + ' more' : '') + '.' : (d.why && d.why[0] ? d.why[0] + '.' : ''));
+    const blocks = [{ t: 'hero', word: d.w, tone: tn, sub: d.why && d.why[0] ? d.why[0] : '', dial: V && V.L != null ? V.L : null }, { t: 'tiles', items: tiles }];
+    if (checks.length) blocks.push({ t: 'checks', title: 'The checks, one by one', items: checks });
+    blocks.push({ t: 'note', tone: tn === 'go' ? 'go' : tn === 'stop' ? 'stop' : 'wait', text: verdict });
+    return { title: 'Should I trade?', blocks, follow: ['Is IV enough to trade?', 'How did ' + DAYS[nowDay() === 0 ? 1 : nowDay()][0].toUpperCase() + DAYS[nowDay() === 0 ? 1 : nowDay()].slice(1) + ' do in the backtest?', 'How do I read the entry gauge?'] };
+  }
+
+  function vIndicators(D) {
+    const R = D.risk; if (!R || !R.coef) return { title: 'Important indicators', blocks: [{ t: 'note', tone: 'info', text: 'The 5-year model is still loading.' }] };
+    const names = R.names || {}, w = R.coef.w || {};
+    const items = Object.keys(w).map(k => ({ k, v: Math.abs(w[k]), raw: w[k] })).sort((a, b) => b.v - a.v);
+    const bars = items.slice(0, 10).map((x, i) => ({ l: names[x.k] || x.k, v: x.v, tone: i < 3 ? 'go' : i < 6 ? 'info' : 'grey', sub: x.raw < 0 ? 'lowers stop risk' : 'raises stop risk' }));
+    const top = items.slice(0, 3).map(x => names[x.k] || x.k);
+    const blocks = [{ t: 'bars', title: 'What the 5-year stop-risk model leans on (bigger = matters more)', items: bars, unit: '', max: items[0].v * 1.1 }];
+    const V = D.verdict, gw = R.gauge && R.gauge.weights;
+    if (V && V.soft && gw) {
+      const gn = { spd: 'IV vs speed', model: 'Model', fear: 'NY fear', rise: 'Rising', vov: 'VoV', rv: 'RV', edge: 'Edge', adx: 'ADX' };
+      blocks.push({ t: 'bars', title: 'What the Entry Gauge looks at right now (colour = current state)', items: Object.keys(gw).map(k => ({ l: gn[k] || k, v: gw[k], tone: V.soft[k] < 0.2 ? 'go' : V.soft[k] < 0.5 ? 'wait' : 'stop', sub: V.soft[k] < 0.2 ? 'fine' : V.soft[k] < 0.5 ? 'so-so' : 'failing' })), max: Math.max(...Object.values(gw)) * 1.1 });
+    }
+    blocks.push({ t: 'note', tone: 'info', text: 'Most important: ' + top.join(', ') + '. These carry the most weight in predicting whether a short strangle leg gets stopped. It is a statistical lean from ' + (R.samples || 'many') + ' samples, not a guarantee.' });
+    return { title: 'Important indicators', blocks, follow: ['Should I trade tonight?', 'How do I read the entry gauge?', 'What is the top performer?'] };
+  }
+
+  function vTop(D) {
+    const R = D.risk; const S = R && R.strategies;
+    if (!S || !S.length) return { title: 'Top performer', blocks: [{ t: 'note', tone: 'info', text: 'The strategy backtests are still loading.' }] };
+    const ranked = S.slice().sort((a, b) => b.avg - a.avg);
+    const best = ranked[0], safest = S.slice().sort((a, b) => a.stop - b.stop)[0], biggest = S.slice().sort((a, b) => b.total - a.total)[0];
+    const blocks = [
+      { t: 'hero', word: best.name.replace(/^[A-Z]\.\s*/, ''), tone: 'go', sub: 'best average per night over ' + best.nights + ' nights', dial: null },
+      { t: 'tiles', items: [{ k: 'Avg per night', v: usd(best.avg), tone: 'go' }, { k: 'Win rate', v: num(best.win) + '%', tone: 'go' }, { k: 'Legs stopped', v: num(best.stop) + '%', tone: 'wait' }, { k: 'Worst night', v: usd(best.worst), tone: 'stop' }] },
+      { t: 'bars', title: 'Average result per night, by rule (5-year backtest)', items: ranked.map((s, i) => ({ l: s.name, v: s.avg, tone: i === 0 ? 'go' : 'info', sub: num(s.win) + '% win · ' + num(s.stop) + '% stopped', hi: i === 0 })), unit: '$' },
+      { t: 'bars', title: 'Share of nights a leg was stopped (lower is better)', items: S.map(s => ({ l: s.name, v: s.stop, tone: s.stop <= safest.stop + 0.5 ? 'go' : s.stop > 25 ? 'stop' : 'wait' })), unit: '%' },
+    ];
+    if (D.live && D.live.name) blocks.splice(2, 0, { t: 'note', tone: 'info', text: 'Live paper bot right now: ' + D.live.name + (D.live.avgPnl != null ? ' averages ' + usd(D.live.avgPnl) + ' per trade' : '') + '.' });
+    blocks.push({ t: 'note', tone: 'info', text: 'Highest total over 5 years: "' + biggest.name.replace(/^[A-Z]\.\s*/, '') + '" (' + usd(biggest.total) + '). Safest: "' + safest.name.replace(/^[A-Z]\.\s*/, '') + '" (' + num(safest.stop) + '% stopped). Backtests use the Deribit DVOL as the IV proxy; real fills and fees will differ.' });
+    return { title: 'Top performer', blocks, follow: ['Is premium selling worth it?', 'What is the most important indicator?', 'Should I trade tonight?'] };
+  }
+
+  function vWeekday(D, slots) {
+    const B = D.daily && D.daily.byWd; if (!B) return { title: 'Backtest by weekday', blocks: [{ t: 'note', tone: 'info', text: 'The 5-year numbers are still loading.' }] };
+    const day = slots.day != null ? slots.day : nowDay();
+    const avg = B.reduce((a, w) => a + w.stop * w.n, 0) / B.reduce((a, w) => a + w.n, 0);
+    const w = B.find(x => x.wd === day), label = DAYS[day][0].toUpperCase() + DAYS[day].slice(1);
+    if (!w) return { title: label + ' backtest', blocks: [{ t: 'note', tone: 'wait', text: label + ' is not a trading night in the study (entries are Monday to Friday at 22:30 IST, and Thursday is skipped by the rules). Pick Monday to Friday.' }], follow: ['How did Monday do in the backtest?', 'Which night is safest?'] };
+    const tn = w.stop <= avg - 3 ? 'go' : w.stop >= avg + 3 ? 'stop' : 'wait';
+    const blocks = [
+      { t: 'hero', word: label, tone: tn, sub: num(w.stop) + '% of ' + w.n + ' nights had a leg stopped (all nights: ' + num(avg) + '%)', dial: null },
+      { t: 'tiles', items: [{ k: 'Nights studied', v: w.n }, { k: 'Legs stopped', v: num(w.stop) + '%', tone: tn }, { k: 'Average BTC move', v: num(w.avgMove) + '%' }, { k: 'Big move 0.9%+', v: num(w.big09, 0) + '%' }, { k: 'Red-gauge hours', v: num(w.red, 0) + '%', tone: w.red > 50 ? 'stop' : 'wait' }, { k: 'Green hours', v: num(w.green, 0) + '%', tone: 'go' }] },
+      { t: 'bars', title: 'Stopped legs by weekday (outlined = ' + label + ')', items: B.map(x => ({ l: x.name, v: x.stop, tone: x.stop <= avg - 3 ? 'go' : x.stop >= avg + 3 ? 'stop' : 'wait', hi: x.wd === day })), unit: '%', ref: { v: avg, label: 'average' } },
+    ];
+    const S = D.shadow && D.shadow.sessions ? D.shadow.sessions.filter(s => s.baselineAction === 'TRADE' && s.dow === day) : [];
+    if (S.length >= 5) {
+      const wins = S.filter(s => s.baselinePnl > 0).length, stops = S.filter(s => s.stoppedAt2x).length, tot = S.reduce((a, s) => a + s.baselinePnl, 0);
+      blocks.push({ t: 'tiles', items: [{ k: label + ' trades (your 1-year log)', v: S.length }, { k: 'Win rate', v: num(wins / S.length * 100, 0) + '%', tone: 'go' }, { k: 'Stopped at 2x', v: num(stops / S.length * 100, 0) + '%', tone: stops / S.length > .1 ? 'wait' : 'go' }, { k: 'Average per trade', v: usd(tot / S.length), tone: tot >= 0 ? 'go' : 'stop' }] });
+    }
+    blocks.push({ t: 'note', tone: tn, text: label + (tn === 'go' ? ' has been safer than the average night' : tn === 'stop' ? ' has been riskier than the average night' : ' is close to the average night') + ' (' + num(w.stop) + '% vs ' + num(avg) + '% stopped). ' + (w.red > 55 ? 'Over half its hours read red on the gauge. ' : '') + 'Use it as one input, with the live checks.' });
+    return { title: label + ' backtest', blocks, follow: ['Should I trade tonight?', 'Which night is safest?', 'Is IV enough to trade?'] };
+  }
+
+  const BANDS = [[0, 20], [20, 25], [25, 30], [30, 35], [35, 40], [40, 50], [50, 99]];
+  function vIv(D, slots) {
+    const S = D.shadow && D.shadow.sessions ? D.shadow.sessions.filter(s => s.baselineAction === 'TRADE' && s.iv > 0) : [];
+    if (!S.length) return { title: 'Is IV enough?', blocks: [{ t: 'note', tone: 'info', text: 'Your trade history file is still loading.' }] };
+    const rows = BANDS.map(([lo, hi]) => { const a = S.filter(x => x.iv >= lo && x.iv < hi); return { lo, hi, n: a.length, st: a.length ? a.filter(x => x.stoppedAt2x).length / a.length * 100 : null, cr: a.length ? a.reduce((t, x) => t + (x.cr || 0), 0) / a.length : null, pnl: a.length ? a.reduce((t, x) => t + x.baselinePnl, 0) / a.length : null }; });
+    let iv = slots.iv != null ? slots.iv : D.iv; if (iv != null && iv < 3) iv *= 100;
+    const cur = iv != null ? rows.find(r => iv >= r.lo && iv < r.hi) : null;
+    const few = !cur || cur.n < 15;
+    const tn = few ? 'grey' : cur.cr < 250 ? 'wait' : cur.st <= 8 ? 'go' : 'wait';
+    const word = iv == null ? 'IV band' : 'IV ' + num(iv, 0) + '%';
+    const sub = iv == null ? 'Tell me an IV, e.g. "is IV 32 enough?"' : few ? 'too few past trades in this band to judge' : cur.cr < 250 ? 'thin credit: about ' + usd(cur.cr) + ' per BTC collected' : cur.st <= 8 ? 'good range: few stops and a decent credit' : 'more stops than the best bands';
+    const blocks = [{ t: 'hero', word, tone: tn === 'grey' ? 'info' : tn, sub, dial: null }];
+    if (cur && !few) blocks.push({ t: 'tiles', items: [{ k: 'Past trades at this IV', v: cur.n }, { k: 'Stopped at 2x', v: num(cur.st, 0) + '%', tone: cur.st <= 8 ? 'go' : 'wait' }, { k: 'Average credit / BTC', v: usd(cur.cr), tone: cur.cr < 250 ? 'wait' : 'go' }, { k: 'Average result', v: usd(cur.pnl), tone: cur.pnl >= 0 ? 'go' : 'stop' }] });
+    blocks.push({ t: 'bars', title: 'Legs stopped at 2x, by entry IV band (grey = fewer than 15 trades)', items: rows.map(r => ({ l: r.lo + '–' + r.hi, v: r.st == null ? 0 : r.st, tone: r.n < 15 ? 'grey' : r.st <= 8 ? 'go' : 'wait', sub: 'n' + r.n, hi: cur === r })), unit: '%' });
+    blocks.push({ t: 'bars', title: 'Average credit collected per BTC, by IV band', items: rows.map(r => ({ l: r.lo + '–' + r.hi, v: r.cr || 0, tone: r.n < 15 ? 'grey' : r.cr < 250 ? 'wait' : 'go', hi: cur === r })), unit: '$' });
+    blocks.push({ t: 'note', tone: tn === 'grey' ? 'info' : tn, text: iv == null ? 'Higher IV pays more premium but usually means bigger moves. Ask with a number to see where it sits.' : 'Final verdict: ' + (few ? 'not enough history at ' + num(iv, 0) + '% to say. Judge by the other checks.' : cur.cr < 250 ? 'the premium is thin at this IV, so a stop costs more than the credit earns.' : cur.st <= 8 ? 'IV is in a range that has paid well with few stops.' : 'IV pays, but legs were stopped more often here.') + ' Based on your own ' + S.length + ' logged trades.' });
+    return { title: 'Is IV enough to trade?', blocks, follow: ['Should I trade tonight?', 'Is premium selling worth it?', 'Which IV band works best?'] };
+  }
+
+  function vWorth(D) {
+    const R = D.risk, S = R && R.strategies; if (!S || !S.length) return { title: 'Is premium selling worth it?', blocks: [{ t: 'note', tone: 'info', text: 'The 5-year numbers are still loading.' }] };
+    const A = S[0], best = S.slice().sort((a, b) => b.avg - a.avg)[0]; const bigTot = S.slice().sort((a, b) => b.total - a.total)[0];
+    const pos = A.avg > 0 && A.total > 0;
+    const blocks = [
+      { t: 'hero', word: pos ? 'Positive, with real risk' : 'Not clearly worth it', tone: pos ? 'wait' : 'stop', sub: 'selling the 22:30 IST strangle every night for ' + A.nights + ' nights', dial: null },
+      { t: 'tiles', items: [{ k: 'Win rate', v: num(A.win) + '%', tone: 'go' }, { k: 'Average per night', v: usd(A.avg), tone: A.avg >= 0 ? 'go' : 'stop' }, { k: 'Total over 5 years', v: usd(A.total), tone: A.total >= 0 ? 'go' : 'stop' }, { k: 'Legs stopped', v: num(A.stop) + '%', tone: 'wait' }, { k: 'Worst night', v: usd(A.worst), tone: 'stop' }] },
+      { t: 'bars', title: 'Total result by rule over 5 years (per BTC sold)', items: S.map(s => ({ l: s.name, v: s.total, tone: s === bigTot ? 'go' : 'info', sub: num(s.win) + '% win', hi: s === bigTot })), unit: '$' },
+      { t: 'note', tone: pos ? 'wait' : 'stop', text: 'Final verdict: premium selling paid on average ' + usd(A.avg) + ' a night with a ' + num(A.win) + '% win rate, but ' + num(A.stop) + '% of nights a leg was stopped and the worst night lost ' + usd(Math.abs(A.worst)) + '. Choosing nights with the gauge and Risk-ADX raised the average to ' + usd(best.avg) + ' and cut stops to ' + num(best.stop) + '%. It is worth it only with the filters and the stops; blind selling gives back much of the credit.' },
+    ];
+    const a = D.shadow && D.shadow.aggregates && D.shadow.aggregates.baseline;
+    if (a) blocks.splice(2, 0, { t: 'note', tone: 'info', text: 'Your own 1-year log: ' + a.trades + ' trades, ' + a.winRate + ' won, ' + a.stops + ' stopped at 2x.' });
+    return { title: 'Is premium selling worth it?', blocks, follow: ['What is the top performer?', 'Is IV enough to trade?', 'Should I trade tonight?'] };
+  }
+
+  function vGuide(key, D) {
+    const g = GUIDES[key]; if (!g) return null;
+    let steps = g.steps;
+    if (key === 'gauge' && D.daily && D.daily.byColor) {
+      const c = col => { const x = D.daily.byColorOos && D.daily.byColorOos.find(y => y.color === col) || D.daily.byColor.find(y => y.color === col); return x ? num(x.stop) : '-'; };
+      steps = steps.map(s => Object.assign({}, s, { text: s.text.replace('{g}', c('green')).replace('{a}', c('yellow')).replace('{r}', c('red')) }));
+    }
+    const blocks = [{ t: 'hero', word: g.title, tone: 'info', sub: g.intro, dial: null, icon: g.icon }, { t: 'steps', title: 'Step by step', items: steps }];
+    if (g.fix && g.fix.length) blocks.push({ t: 'facts', title: 'If something goes wrong', items: g.fix.map(f => ({ k: f[0], v: f[1] })) });
+    return { title: g.title, blocks, follow: g.follow };
+  }
+
+  /** the answer for a question, or null when it should go to the server */
+  async function answer(q, D) {
+    D = D || {};
+    const u = understand(q);
+    if (!u.id) return null;
+    if (u.guide) return vGuide(u.guide, D);
+    if (u.id === 'trade_now') return vTrade(D);
+    if (u.id === 'indicators') return vIndicators(D);
+    if (u.id === 'top_performer') return vTop(D);
+    if (u.id === 'weekday') return vWeekday(D, u.slots);
+    if (u.id === 'iv_enough') return vIv(D, u.slots);
+    if (u.id === 'premium_worth') return vWorth(D);
+    return null;
+  }
+
+  /* ---------- drawing the blocks (HTML strings) ---------- */
+  const col = t => tone[t] || tone.grey;
+  function dial(L, c) {
+    const cx = 110, cy = 108, r = 90, w = 20, pol = (a, rr) => [cx + rr * Math.cos(a * Math.PI / 180), cy - rr * Math.sin(a * Math.PI / 180)];
+    const arc = (l0, l1, cc) => { const a0 = 180 - l0 * 1.8, a1 = 180 - l1 * 1.8, P0 = pol(a0, r), P1 = pol(a1, r), P2 = pol(a1, r - w), P3 = pol(a0, r - w); return '<path d="M' + P0[0].toFixed(1) + ' ' + P0[1].toFixed(1) + ' A' + r + ' ' + r + ' 0 0 1 ' + P1[0].toFixed(1) + ' ' + P1[1].toFixed(1) + ' L' + P2[0].toFixed(1) + ' ' + P2[1].toFixed(1) + ' A' + (r - w) + ' ' + (r - w) + ' 0 0 0 ' + P3[0].toFixed(1) + ' ' + P3[1].toFixed(1) + ' Z" fill="' + cc + '"/>'; };
+    const aN = 180 - Math.max(0, Math.min(100, L)) * 1.8, tip = pol(aN, r - 6);
+    return '<svg viewBox="0 0 220 124" class="abDial" role="img" aria-label="gauge ' + Math.round(L) + '">' + arc(0, 34, tone.go) + arc(34, 66, tone.wait) + arc(66, 100, tone.stop) +
+      '<line x1="' + cx + '" y1="' + cy + '" x2="' + tip[0].toFixed(1) + '" y2="' + tip[1].toFixed(1) + '" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><circle cx="' + cx + '" cy="' + cy + '" r="6" fill="currentColor"/>' +
+      '<text x="' + cx + '" y="' + (cy - 30) + '" text-anchor="middle" font-size="28" font-weight="800" fill="currentColor">' + Math.round(L) + '</text><text x="22" y="122" font-size="10" fill="currentColor">GO</text><text x="198" y="122" font-size="10" text-anchor="end" fill="currentColor">WAIT</text></svg>';
+  }
+  const ICON = { key: '🔑', shield: '🛡️', people: '👥', chart: '📈', dial: '🎯', bot: '🤖', scale: '⚖️', stop: '🛑', bolt: '⚡' };
+  function renderBlock(b) {
+    if (b.t === 'hero') {
+      const c = col(b.tone);
+      return '<div class="abHero" style="border-color:' + c + '">' + (b.dial != null ? '<div class="abDialW">' + dial(b.dial, c) + '</div>' : b.icon ? '<div class="abIcon">' + (ICON[b.icon] || '') + '</div>' : '') +
+        '<div class="abHeroT"><div class="abWord" style="color:' + c + '">' + esc(b.word) + '</div>' + (b.sub ? '<div class="abSub">' + esc(b.sub) + '</div>' : '') + '</div></div>';
+    }
+    if (b.t === 'tiles') return '<div class="abTiles">' + b.items.map(i => '<div class="abTile"><span class="abK">' + esc(i.k) + '</span><b style="color:' + (i.tone ? col(i.tone) : 'inherit') + '">' + esc(i.v) + '</b>' + (i.sub ? '<span class="abK">' + esc(i.sub) + '</span>' : '') + '</div>').join('') + '</div>';
+    if (b.t === 'checks') return '<div class="abBlock"><div class="abH">' + esc(b.title) + '</div>' + b.items.map(i => '<div class="abCk"><i class="abMark" style="background:' + (i.ok === true ? tone.go : i.ok === false ? tone.stop : tone.wait) + '">' + (i.ok === true ? '✓' : i.ok === false ? '✕' : '!') + '</i><span><b>' + esc(i.label) + '</b>' + (i.note ? '<small>' + esc(i.note) + '</small>' : '') + '</span></div>').join('') + '</div>';
+    if (b.t === 'bars') {
+      const mx = b.max || Math.max(1, ...b.items.map(i => Math.abs(i.v))) * 1.1;
+      return '<div class="abBlock"><div class="abH">' + esc(b.title) + '</div>' + b.items.map(i => {
+        const pct = Math.max(1.5, Math.min(100, Math.abs(i.v) / mx * 100)), neg = i.v < 0;
+        const val = b.unit === '$' ? usd(i.v) : b.unit === '%' ? num(i.v) + '%' : num(i.v, Math.abs(i.v) >= 100 ? 0 : 1);
+        return '<div class="abBar' + (i.hi ? ' hi' : '') + '"><span class="abL" title="' + esc(i.l) + '">' + esc(i.l) + '</span><span class="abT"><span class="abF" style="width:' + pct.toFixed(1) + '%;background:' + col(neg ? 'stop' : i.tone) + '"></span>' +
+          (b.ref ? '<span class="abRef" style="left:' + Math.min(99, b.ref.v / mx * 100).toFixed(1) + '%" title="' + esc(b.ref.label) + ' ' + num(b.ref.v) + '"></span>' : '') + '</span><span class="abV">' + esc(val) + '</span>' + (i.sub ? '<small class="abS">' + esc(i.sub) + '</small>' : '') + '</div>';
+      }).join('') + '</div>';
+    }
+    if (b.t === 'steps') return '<div class="abBlock"><div class="abH">' + esc(b.title) + '</div>' + b.items.map((s, i) => '<div class="abStep"><i class="abN">' + (i + 1) + '</i><span><b>' + esc(s.title) + '</b>' + (s.text ? '<span class="abTx">' + esc(s.text) + '</span>' : '') + (s.tip ? '<small class="abTip">' + esc(s.tip) + '</small>' : '') + '</span></div>').join('') + '</div>';
+    if (b.t === 'facts') return '<div class="abBlock"><div class="abH">' + esc(b.title) + '</div>' + b.items.map(i => '<div class="abFact"><b>' + esc(i.k) + '</b><span>' + esc(i.v) + '</span></div>').join('') + '</div>';
+    if (b.t === 'note') return '<div class="abNote" style="border-left-color:' + col(b.tone) + '">' + esc(b.text) + '</div>';
+    return '';
+  }
+  const render = a => (a.blocks || []).map(renderBlock).join('');
+  // ASKBRAIN-CORE-END
+
+  /* ---------- hooking it to the page: where the numbers live ---------- */
+  function collect() {
+    const W = window, D = {};
+    try { D.decide = W.v139 && W.v139.decide ? W.v139.decide() : null; } catch (e) { D.decide = null; }
+    try { D.verdict = W.v151Risk && W.v151Risk.verdict ? W.v151Risk.verdict() : null; } catch (e) { D.verdict = null; }
+    D.daily = W.__STRANGLE_DAILY || null; D.risk = W.__STRANGLE_RISKMODEL || null; D.shadow = W.__SHADOW_BACKTEST_DATA || null;
+    try { const C = typeof desk === 'object' && desk ? desk.check : null; if (C && Number.isFinite(C.iv) && C.iv > 0) D.iv = C.iv < 3 ? C.iv * 100 : C.iv; } catch (e) { }
+    return D;
+  }
+  window.askBrain = { understand, answer, suggest, render, collect, PHRASES, GUIDES };
+})();
+</script><script id="askWidget">
 /* Ask me: a floating chat that answers from the desk's own data (database, live feeds).
    It calls POST /api/v1/ask, which is rule-based and read-only: no AI model, no outside service. */
 (function askWidget() {
@@ -59372,7 +59789,7 @@ document.addEventListener('click', function(e) {
   if (D.getElementById('askFab')) return;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { try { return localStorage.getItem('desk_jwt'); } catch (x) { return null; } } };
-  const S = { open: false, msgs: [], busy: false, suggestions: ['Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
+  const S = { open: false, big: false, sug: [], sugI: -1, msgs: [], busy: false, suggestions: ['Should I trade tonight?', 'What is the top performer?', 'What is the most important indicator?', 'How did Monday do in the backtest?', 'Is IV enough to trade?', 'Is premium selling worth it?', 'How do I set up my Delta API key?', 'How does the bot work?', 'Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
 
   const fab = D.createElement('button');
   fab.id = 'askFab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Ask me about the desk data'); fab.setAttribute('aria-expanded', 'false');
@@ -59406,22 +59823,42 @@ document.addEventListener('click', function(e) {
         (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me about anything in your terminal. I can read every table in your database (try "what data do you have?" or "summarise bot runs"), your positions and PnL, why a trade stopped, what happened at a given minute, and the live market. I can also explain any concept on the terminal, such as Risk-ADX, N2N, the entry gauge or the GO/WAIT gate, from your own docs. I answer only from what is recorded and I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
         S.msgs.map(m => m.role === 'user'
           ? '<div class="ak-user">' + esc(m.text) + '</div>'
-          : '<div class="ak-bot">' + text(m.text) + table(m.table) + (m.sources && m.sources.length ? '<div class="ak-src">From: ' + esc(m.sources.join(', ')) + '</div>' : '') + (m.suggestions && m.suggestions.length ? chips(m.suggestions) : '') + '</div>').join('') +
+          : '<div class="ak-bot">' + (m.visual ? window.askBrain.render(m.visual) : text(m.text) + table(m.table)) + (m.sources && m.sources.length ? '<div class="ak-src">From: ' + esc(m.sources.join(', ')) + '</div>' : '') + (m.suggestions && m.suggestions.length ? chips(m.suggestions) : '') + '</div>').join('') +
         (S.busy ? '<div class="ak-bot ak-typing">Looking that up…</div>' : '') + '</div>' +
-        '<div class="ak-row"><input id="akIn" type="text" maxlength="300" placeholder="Ask about your desk data…" autocomplete="off"><button type="button" class="ak-send" data-ak="send">Ask</button></div>';
+        '<div class="ak-sugW"><div id="akSug" class="ak-sug" hidden></div></div><div class="ak-row"><input id="akIn" type="text" maxlength="300" placeholder="Ask anything: should I trade tonight? top performer? Monday backtest…" autocomplete="off"><button type="button" class="ak-send" data-ak="send">Ask</button></div>';
     }
     const keepVal = (D.getElementById('akIn') || {}).value || '';
     const hadFocus = D.activeElement && (D.activeElement.id === 'akIn' || D.activeElement.id === 'akPw');
-    panel.innerHTML = '<header class="ak-head"><b>Ask me</b><span class="ak-sub">answers from your own data only</span><button type="button" class="ak-x" data-ak="close" aria-label="Close">×</button></header>' + body;
+    panel.classList.toggle('big', S.big);
+    panel.innerHTML = '<header class="ak-head"><b>Ask me</b><span class="ak-sub">pictures from your own data, no outside AI</span><button type="button" class="ak-x" data-ak="big" aria-label="Make wider or narrower" title="Wider / narrower">⤢</button><button type="button" class="ak-x" data-ak="close" aria-label="Close">×</button></header>' + body;
     const inp = D.getElementById('akIn'); if (inp) { inp.value = keepVal; if (hadFocus || S.msgs.length === 0) try { inp.focus(); } catch (e) { } }
     const pw = D.getElementById('akPw'); if (pw && hadFocus) try { pw.focus(); } catch (e) { }
     const box = D.getElementById('akMsgs'); if (box) box.scrollTop = box.scrollHeight;
+    paintSug();
+  }
+  /** the auto-predictor: completions for what is typed, under the box */
+  function paintSug() {
+    const el = D.getElementById('akSug'); if (!el) return;
+    const v = (D.getElementById('akIn') || {}).value || '';
+    S.sug = v.trim().length >= 1 && window.askBrain ? window.askBrain.suggest(v, 6) : [];
+    if (S.sugI >= S.sug.length) S.sugI = -1;
+    el.hidden = !S.sug.length;
+    el.innerHTML = S.sug.map((x, i) => '<button type="button" class="ak-sg' + (i === S.sugI ? ' on' : '') + '" data-ak-q="' + esc(x) + '">' + esc(x) + '</button>').join('');
   }
 
   async function ask(q) {
     q = String(q || '').trim(); if (!q || S.busy) return;
     const t = tok(); if (!t) { render(); return; }
     S.msgs.push({ role: 'user', text: q }); S.busy = true; render();
+    try {
+      const u = window.askBrain.understand(q);
+      if (u.id) {
+        const D2 = window.askBrain.collect();
+        if (u.id === 'top_performer') { try { const rr = await fetch('/api/v1/bot/top', { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' }), jj = await rr.json(), p = jj && jj.live; if (p && p.key) D2.live = { name: String(p.key).replace('|', ' · '), avgPnl: p.avgPnl }; } catch (e) { } }
+        const v = await window.askBrain.answer(q, D2);
+        if (v) { S.msgs.push({ role: 'bot', visual: v, suggestions: v.follow }); S.busy = false; S.big = true; render(); return; }
+      }
+    } catch (e) { console.warn('askBrain', e); }
     try {
       const r = await fetch('/api/v1/ask', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ question: q }), cache: 'no-store' });
       if (r.status === 401) { try { localStorage.removeItem('desk_jwt'); } catch (e) { } S.msgs.push({ role: 'bot', text: 'Your session expired. Log in again.' }); }
@@ -59452,7 +59889,16 @@ document.addEventListener('click', function(e) {
     if (a === 'close') { S.open = false; render(); fab.focus(); }
     else if (a === 'send') { const i = D.getElementById('akIn'); const v = i ? i.value : ''; if (i) i.value = ''; ask(v); }
     else if (a === 'login') login();
+    else if (a === 'big') { S.big = !S.big; render(); }
   });
+  panel.addEventListener('input', e => { if (e.target && e.target.id === 'akIn') { S.sugI = -1; paintSug(); } });
+  panel.addEventListener('keydown', e => {
+    if (!e.target || e.target.id !== 'akIn' || !S.sug.length) return;
+    if (e.key === 'ArrowDown') { S.sugI = (S.sugI + 1) % S.sug.length; paintSug(); e.preventDefault(); e.stopPropagation(); }
+    else if (e.key === 'ArrowUp') { S.sugI = S.sugI <= 0 ? S.sug.length - 1 : S.sugI - 1; paintSug(); e.preventDefault(); e.stopPropagation(); }
+    else if (e.key === 'Tab') { e.target.value = S.sug[S.sugI >= 0 ? S.sugI : 0]; S.sugI = -1; paintSug(); e.preventDefault(); e.stopPropagation(); }
+    else if (e.key === 'Enter' && S.sugI >= 0) { const v = S.sug[S.sugI]; e.target.value = ''; S.sugI = -1; ask(v); e.preventDefault(); e.stopPropagation(); }
+  }, true);
   panel.addEventListener('keydown', e => {
     if (e.key === 'Escape') { S.open = false; render(); fab.focus(); }
     else if (e.key === 'Enter') { if (e.target.id === 'akIn') { const v = e.target.value; e.target.value = ''; ask(v); } else if (e.target.id === 'akPw') login(); }
