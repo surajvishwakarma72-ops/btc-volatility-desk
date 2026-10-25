@@ -36955,7 +36955,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         }
         catch (e) {
           const m = String(e && e.message || e); API.errCode = m; API.errDetail = e && e.detail || null; API.errStatus = e && e.status || null;   /* v105.22: Delta's own answer is kept and shown */
-          API.err = /ip_not_whitelisted|whitelist/i.test(m) ? 'Delta wants this IP whitelisted for the key' : /invalid_api_key|InvalidApiKey/i.test(m) ? 'API key not accepted' : /signature/i.test(m) ? 'signature rejected (check secret / phone clock)' : /proxy_missing/.test(m) ? 'Delta blocks the browser and the desk proxy is not on Vercel yet' : /Failed to fetch|NetworkError|TypeError|Load failed/i.test(m) ? 'cannot reach Delta from this page (browser blocked, proxy unreachable)' : m.slice(0, 80);
+          API.err = /no_delta_key/i.test(m) ? 'No Delta key saved yet: add yours in the card below' : /ip_not_whitelisted|whitelist/i.test(m) ? 'Delta wants this IP whitelisted for the key' : /invalid_api_key|InvalidApiKey/i.test(m) ? 'API key not accepted' : /signature/i.test(m) ? 'signature rejected (check secret / phone clock)' : /proxy_missing/.test(m) ? 'Delta blocks the browser and the desk proxy is not on Vercel yet' : /Failed to fetch|NetworkError|TypeError|Load failed/i.test(m) ? 'cannot reach Delta from this page (browser blocked, proxy unreachable)' : m.slice(0, 80);
         }
         finally { API.busy = false; }
       }
@@ -36969,7 +36969,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
             .catch(e => { if (m) m.innerHTML = '<b class="neg">' + (e.status === 401 ? 'Wrong password.' : (e.status === 503 ? 'Login not set up on the server yet.' : 'Login failed.')) + '</b>'; });
           return;
         }
-        else if (a === 'off') { deskLogout(); const cur = LS.get('v99_trade', null); if (cur && cur.src === 'api') LS.del('v99_trade'); try { W.v99 && W.v99.render(); } catch (x) { } }
+        else if (a === 'off') { try { if (window.deskAuth) { window.deskAuth.logout(); return; } } catch (x) { } deskLogout(); const cur = LS.get('v99_trade', null); if (cur && cur.src === 'api') LS.del('v99_trade'); try { W.v99 && W.v99.render(); } catch (x) { } }
         else if (a === 'check') { API.err = null; apiPoll(true); }
         else if (a === 'toggleRoute') { API.route = API.route === 'proxy' ? 'direct' : 'proxy'; LS.set('v100_droute', API.route); API.err = null; apiPoll(true); try { W.v18 && W.v18.render && W.v18.render(); } catch (x) { } }
         else if (a === 'useProxy') { API.route = 'proxy'; LS.set('v100_droute', 'proxy'); API.err = null; apiPoll(true); try { W.v18 && W.v18.render && W.v18.render(); } catch (x) { } }
@@ -41614,17 +41614,76 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         const recheck = () => { try { const A = W.v100 && W.v100.api; if (A && A.on && A.on() && A.err) { IPQ.at = 0; ipLook(); W.v100.poll && W.v100.poll(); } } catch (e) { } };
         addEventListener('online', () => setTimeout(recheck, 1500)); D.addEventListener('visibilitychange', () => { if (!D.hidden) setTimeout(recheck, 800); });
       }
+      /* Your own Delta key (saved encrypted on the server) and, for the owner, invite codes for friends */
+      const DK = { st: null, at: 0, ip: null, msg: null, inv: null, code: null, busy: false };
+      const dkTok = () => { try { return JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { return null; } };
+      const dkAdmin = () => { try { const u = JSON.parse(localStorage.getItem('desk_user') || 'null'); return !u || u.role === 'admin'; } catch (e) { return false; } };
+      async function dkApi(path, method, body) {
+        const r = await fetch('/api/v1' + path, { method: method || 'GET', headers: Object.assign({ Accept: 'application/json', Authorization: 'Bearer ' + dkTok() }, body ? { 'Content-Type': 'application/json' } : {}), body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
+        const j = await r.json().catch(() => null);
+        return { ok: r.ok && j && j.success !== false, status: r.status, j: j || {} };
+      }
+      async function dkLoad(force) {
+        if (!dkTok() || (!force && Date.now() - DK.at < 30000)) return; DK.at = Date.now();
+        try { const s1 = await dkApi('/delta/credentials'); if (s1.ok) DK.st = s1.j; } catch (e) { }
+        try { const s2 = await dkApi('/delta/ip'); if (s2.ok) DK.ip = s2.j.serverIp || null; } catch (e) { }
+        if (dkAdmin()) { try { const s3 = await dkApi('/auth/invites'); if (s3.ok) DK.inv = s3.j.invites; } catch (e) { } }
+        try { setHtml = ''; render(); } catch (e) { }
+      }
+      function dkForm() {
+        if (!dkTok()) return ''; dkLoad(false); const st = DK.st, conn = !!(st && st.connected);
+        return `<section class="v18c v18" id="dkCard"><div class="v18h"><h3>Your Delta API key</h3>${conn ? `<span class="r">key …${esc(st.keyLast4)}</span>` : ''}</div>
+    <p>${conn ? '✓ Saved, encrypted on this server. It is used only to read your own positions and fills.' : 'Not saved yet. Add your own Delta India API key and secret to see your own positions and P&amp;L.'}</p>
+    <p class="s">Create the key on Delta India (Account → API keys) with <b>Read</b> permission only: no trading, no withdrawal. Delta accepts a key only from addresses you whitelist, so add this server's address${DK.ip ? ` <code>${esc(DK.ip)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.ip)}">Copy</button>` : ''} to the key's IP list. The secret is sent once, stored encrypted and never shown again.</p>
+    ${st && st.encryptionReady === false ? '<p class="neg">The server has no encryption key set yet, so keys cannot be saved. Ask the owner.</p>' : ''}
+    <label class="v18f">API key<input id="dkKey" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="${conn ? 'paste a new key to replace' : 'API key'}"></label>
+    <label class="v18f">API secret<input id="dkSecret" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off" placeholder="${conn ? 'paste the new secret' : 'API secret'}"></label>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-dk="save">${DK.busy ? 'Checking with Delta…' : conn ? 'Replace key' : 'Save key'}</button>${conn ? '<button type="button" class="v18btn" data-dk="remove">Remove key</button>' : ''}</div>
+    ${DK.msg ? `<p class="${DK.msg.k === 'ok' ? 'pos' : 'neg'}">${esc(DK.msg.t)}</p>` : ''}</section>`;
+      }
+      function dkInvites() {
+        if (!dkTok() || !dkAdmin()) return '';
+        const rows = (DK.inv || []).map(i => `<div style="display:flex;gap:10px;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line,#eee)"><span><b>${esc(i.label || 'no name')}</b> <span class="s">· used ${i.uses} of ${i.maxUses} · ${i.revoked ? 'revoked' : i.uses >= i.maxUses ? 'used up' : 'open'}</span></span>${i.revoked || i.uses >= i.maxUses ? '' : `<button type="button" class="v18btn" data-dk="revoke" data-id="${esc(i.id)}">Revoke</button>`}</div>`).join('');
+        return `<section class="v18c v18" id="dkInv"><div class="v18h"><h3>Invite friends</h3></div>
+    <p>Make an invite code, send it to a friend with this page's link, and they can create their own account. Each friend gets their own Delta key and Paper account; they can watch the bot but not change it.</p>
+    <label class="v18f">Who is it for (a name, only you see it)<input id="dkInvLabel" type="text" maxlength="80" autocomplete="off"></label>
+    <label class="v18f">How many people can use this code<input id="dkInvUses" type="number" min="1" max="100" value="1"></label>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-dk="invite">Create invite code</button></div>
+    ${DK.code ? `<p class="pos">New code, shown only now: <code>${esc(DK.code)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.code)}">Copy</button></p>` : ''}
+    ${rows ? `<div style="margin-top:8px">${rows}</div>` : '<p class="s">No invite codes yet.</p>'}</section>`;
+      }
+      D.addEventListener('click', async e => {
+        const b = e.target.closest && e.target.closest('[data-dk]'); if (!b) return; const a = b.dataset.dk, val = id => ((D.getElementById(id) || {}).value || '').trim();
+        const redraw = () => { try { setHtml = ''; render(); } catch (e) { } };
+        if (a === 'save') {
+          if (DK.busy) return; const apiKey = val('dkKey'), apiSecret = val('dkSecret');
+          if (apiKey.length < 8 || apiSecret.length < 8) { DK.msg = { k: 'bad', t: 'Paste both the API key and the API secret.' }; redraw(); return; }
+          DK.busy = true; DK.msg = null; redraw();
+          const r = await dkApi('/delta/credentials', 'PUT', { apiKey, apiSecret }); DK.busy = false;
+          if (r.ok) { DK.st = Object.assign({ encryptionReady: true }, r.j); DK.msg = { k: 'ok', t: 'Saved. Delta accepted the key. Loading your positions…' }; try { const A = W.v100 && W.v100.api; if (A) { A.err = null; A.at = 0; A.last = null; } W.v100 && W.v100.poll && W.v100.poll(); } catch (x) { } }
+          else DK.msg = { k: 'bad', t: r.j.error || ('Could not save (HTTP ' + r.status + ')') };
+          redraw(); if (r.ok) { const k1 = D.getElementById('dkKey'), k2 = D.getElementById('dkSecret'); if (k1) k1.value = ''; if (k2) k2.value = ''; }
+        } else if (a === 'remove') {
+          if (!window.confirm('Remove your saved Delta key from this server?')) return;
+          const r = await dkApi('/delta/credentials', 'DELETE'); DK.msg = r.ok ? { k: 'ok', t: 'Key removed.' } : { k: 'bad', t: r.j.error || 'Could not remove it' }; DK.at = 0; await dkLoad(true);
+          try { const A = W.v100 && W.v100.api; if (A) { A.err = null; A.at = 0; A.last = null; } LS.del('v99_trade'); } catch (x) { } redraw();
+        } else if (a === 'invite') {
+          const r = await dkApi('/auth/invites', 'POST', { label: val('dkInvLabel'), maxUses: Math.max(1, Math.min(100, Math.floor(Number(val('dkInvUses'))) || 1)) });
+          DK.code = r.ok ? r.j.code : null; DK.msg = r.ok ? null : { k: 'bad', t: r.j.error || 'Could not create the code' }; DK.at = 0; await dkLoad(true); redraw();
+        } else if (a === 'revoke') {
+          await dkApi('/auth/invites/' + encodeURIComponent(b.dataset.id), 'DELETE'); DK.at = 0; await dkLoad(true); redraw();
+        }
+      });
       function keyCard() {
         const A = W.v100 && W.v100.api; if (!A) return ''; const on = A.on(), k = (() => { try { return A.key() || {}; } catch (e) { return {}; } })(), S = strangleNow();
-        if (!on) return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Connect Delta (read-only)</h3></div>
-    <p>Log in to view your live Delta positions &amp; P&amp;L. The desk only reads your positions and fills — it cannot place orders or withdraw. Your password is not stored in this browser.</p>
-    <label class="v18f">Desk password<input id="v100Key" type="password" autocomplete="current-password" spellcheck="false" autocapitalize="off" placeholder="Desk password"></label>
-    <div class="v18btns"><button type="button" class="v18btn pri" data-v100="save">Unlock</button></div></section>`;
+        if (!on) return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Sign in</h3></div>
+    <p>Sign in to see your own Delta positions &amp; P&amp;L and to use your own Paper Trade account. Friends need an invite code from the owner to create an account. The desk only reads your positions and fills: it cannot place orders or withdraw.</p>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-da-open>Sign in or create account</button></div></section>`;
         const st = A.err ? `<span class="v118st r">✕ ${esc(A.err)}</span>` : A.at ? `<span class="v118st g">✓ Connected · read only · synced ${hm(A.at)}</span>` : '<span class="v118st a">Connecting…</span>';
         const pos = A.err ? '' : S ? `<span class="pos">✓ Open position: ${esc(day(settle(S.exp)))} strangle · ${S.legs.map(l => (l.type === 'P' ? 'put ' : 'call ') + Math.round(l.K)).join(' / ')}</span>` : A.at ? 'No short strangle open on Delta right now. It is picked up within 30 s of your first fill.' : '';
         return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Connect Delta (read-only)</h3><span class="r">key ${esc(String(k.key || '').slice(0, 4))}…</span></div>
     <p>${st}</p>${pos ? `<p>${pos}</p>` : ''}${A.err && /whitelist/i.test(A.err) ? wlBox(A) : A.err ? `<p>Tried: ${esc((A.tries || []).join(' · ') || '—')}</p><p>Delta often blocks signed requests sent straight from a browser page (and from a file opened on the phone). The desk then uses its relay on Vercel, <b>api/delta-proxy.js</b>. Add that file and <b>vercel.json</b> to the GitHub repo once, let Vercel deploy, then press Check now.</p>` : A.at ? `<p class="s">Route: ${esc(A.route === 'proxy' ? 'via the Vercel relay' : 'direct to Delta')}</p>` : ''}
-    <div class="v18btns"><button type="button" class="v18btn" data-v100="check">Check now</button><button type="button" class="v18btn" data-v100="off">Log out</button></div></section>`;
+    <div class="v18btns"><button type="button" class="v18btn" data-v100="check">Check now</button><button type="button" class="v18btn" data-v100="off">Log out</button></div></section>${dkForm()}${dkInvites()}`;
       }
       function onSet(e) {
         const b = e.target.closest('[data-v18]'); if (!b) return; const a = b.dataset.v18, stamp = new Date().toISOString().slice(0, 10);
@@ -58079,6 +58138,7 @@ document.addEventListener('click', function(e) {
   const root = $('btRoot'); if (!root) return;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { return localStorage.getItem('desk_jwt'); } };
+  const isAdmin = () => { try { const u = JSON.parse(localStorage.getItem('desk_user') || 'null'); return !u || u.role === 'admin'; } catch (e) { return true; } }; // the server enforces it; this only hides the buttons
   const usd = (v, d = 2) => v == null || !isFinite(v) ? '-' : (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(d);
   const sgn = v => v == null || !isFinite(v) ? 'dim' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'dim';
   const pct = (v, d = 0) => v == null || !isFinite(v) ? '-' : (v * 100).toFixed(d) + '%';
@@ -58234,12 +58294,12 @@ document.addEventListener('click', function(e) {
       const p = L.params[s], latest = (L.latest || []).find(x => x.strategy === s);
       const ev = latest && latest.evidence, chal = ev && ev.challengers ? ev.challengers.slice().sort((a, b) => (b.gainPerDay || 0) - (a.gainPerDay || 0)).slice(0, 5) : [];
       const changed = Object.keys(p).some(k => p[k] !== L.defaults[k]);
-      h += `<div class="bt-row" style="margin-top:6px"><b>${esc(SESS_NAME[s] || s)} short strangle</b>${Object.keys(p).map(k => `<span class="bt-chip">${esc(PNAME[k])} <b>${esc(pval(k, p[k]))}</b></span>`).join('')}${changed ? `<button type="button" class="bt-btn small" data-bt-rb="${esc(s)}">Roll back last change</button>` : ''}</div>`;
+      h += `<div class="bt-row" style="margin-top:6px"><b>${esc(SESS_NAME[s] || s)} short strangle</b>${Object.keys(p).map(k => `<span class="bt-chip">${esc(PNAME[k])} <b>${esc(pval(k, p[k]))}</b></span>`).join('')}${changed && isAdmin() ? `<button type="button" class="bt-btn small" data-bt-rb="${esc(s)}">Roll back last change</button>` : ''}</div>`;
       h += `<div class="bt-note">${latest ? esc(IST(new Date(latest.at).getTime())) + ' IST · ' + esc(latest.reason) : 'No review has run yet.'}</div>`;
       if (chal.length) h += `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Challenger</th><th>Avg / day</th><th>vs champion</th><th>p</th><th>Verdict</th></tr></thead><tbody>${chal.map(c => `<tr><td>${esc(PNAME[c.changed])} → ${esc(pval(c.changed, c.value))}</td><td ${cls(c.meanPerDay)}>${usd(c.meanPerDay)}</td><td ${cls(c.gainPerDay)}>${c.gainPerDay >= 0 ? '+' : ''}${usd(c.gainPerDay)}</td><td>${c.p == null ? '-' : c.p.toFixed(3)}</td><td class="bt-why">${c.qualifies ? '<b class="pos">qualifies</b>' : esc((c.failed || [])[0] || '')}</td></tr>`).join('')}</tbody></table></div>`;
     }
     const log = (L.log || []).filter(x => x.kind !== 'evaluation').slice(0, 8);
-    h += `<div class="bt-row" style="margin-top:8px"><b>Change log</b><button type="button" class="bt-btn small" data-bt="learnrun">Review now (no changes)</button></div>`;
+    h += `<div class="bt-row" style="margin-top:8px"><b>Change log</b>${isAdmin() ? '<button type="button" class="bt-btn small" data-bt="learnrun">Review now (no changes)</button>' : ''}</div>`;
     h += log.length ? `<pre class="bt-pre">${log.map(x => `${IST(new Date(x.at).getTime())}  ${x.kind.toUpperCase()}  ${x.reason}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No rule has been changed yet.</div>';
     if (S.learnMsg) h += `<div class="bt-note">${esc(S.learnMsg)}</div>`;
     return h + '</div>';
@@ -58299,7 +58359,7 @@ document.addEventListener('click', function(e) {
 
   /* ---------- live view ---------- */
   function liveView() {
-    if (!tok()) return `<div class="bt-card bt-login"><h3>Log in</h3><div class="bt-note">The live bot data is private. Use your desk password.</div><input type="password" id="btPw" placeholder="Desk password" autocomplete="current-password"><button type="button" class="bt-btn" data-bt="login">Log in</button>${S.loginErr ? `<div class="bt-note warn">${esc(S.loginErr)}</div>` : ''}</div>`;
+    if (!tok()) return `<div class="bt-card bt-login"><h3>Sign in</h3><div class="bt-note">The bot data is private to people with an account on this desk. Friends need an invite code from the owner to create one.</div><button type="button" class="bt-btn" data-da-open>Sign in or create account</button></div>`;
     const st = S.status; let h = '';
     if (S.liveErr) h += `<div class="bt-card"><div class="bt-note warn">${esc(S.liveErr)}</div></div>`;
     if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded until it is switched on; then every trade it takes appears here.</div></div>`;
@@ -58332,7 +58392,7 @@ document.addEventListener('click', function(e) {
         (st.enabled ? `<span class="bt-chip ${st.paused ? 'warn' : 'ok'}">${st.paused ? 'Paused' : 'Active'}</span>${st.killSwitch ? '<span class="bt-chip bad"><b>KILL SWITCH ON</b></span>' : ''}<span class="bt-chip">Last tick <b>${st.lastTickAt ? IST(st.lastTickAt) + ' IST' : '-'}</b></span>` : '') +
         (st.lastError ? `<span class="bt-chip bad">Error <b>${esc(st.lastError).slice(0, 70)}</b></span>` : '');
     }
-    const act = st && st.enabled && tok() ? `<span class="bt-sp"></span>${st.paused ? '<button type="button" class="bt-btn" data-bt="resume">Resume</button>' : '<button type="button" class="bt-btn" data-bt="pause">Pause entries</button>'}${st.killSwitch ? '<button type="button" class="bt-btn" data-bt="killreset">Reset kill switch</button>' : `<button type="button" class="bt-btn danger" data-bt="kill">${S.killArm > Date.now() ? 'Click again: close everything' : 'Kill switch'}</button>`}` : '';
+    const act = st && st.enabled && tok() && isAdmin() ? `<span class="bt-sp"></span>${st.paused ? '<button type="button" class="bt-btn" data-bt="resume">Resume</button>' : '<button type="button" class="bt-btn" data-bt="pause">Pause entries</button>'}${st.killSwitch ? '<button type="button" class="bt-btn" data-bt="killreset">Reset kill switch</button>' : `<button type="button" class="bt-btn danger" data-bt="kill">${S.killArm > Date.now() ? 'Click again: close everything' : 'Kill switch'}</button>`}` : '';
     const body = liveView();
     const keep = { y: window.scrollY }; const ae = D.activeElement && D.activeElement.id; const av = ae && $(ae) ? $(ae).value : null;
     root.innerHTML = tabs + chips + act + '</div>' + (tok() ? pnlStrip() : '') + '<div class="bt-next" id="btNext"></div>' + body + '</div>';
@@ -58579,6 +58639,148 @@ document.addEventListener('click', function(e) {
 @media (max-width:760px){#pgPaper .opt{display:none}#pgPaper .pp-strat-net{align-items:flex-start}}
 @media (max-width:980px){#pgPaper .pp-cols{grid-template-columns:1fr}}
 </style>
+<script data-block="desk-auth">
+/* Accounts: one sign-in / create-account window for the whole desk, plus the small "signed in as" chip.
+   Friends join with an invite code from the owner and then use their own Delta key and their own Paper account.
+   The owner keeps signing in with just the desk password (leave the email empty). */
+(function deskAuth() {
+  'use strict';
+  const D = document, W = window, TOK = 'desk_jwt', USER = 'desk_user';
+  const jget = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+  const jset = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const user = () => jget(USER);
+  const token = () => jget(TOK);
+  const admin = () => { const u = user(); return !u || u.role === 'admin'; }; // an older owner token has no saved user yet; the server decides anyway
+  let mode = 'in', busy = false, err = '';
+
+  /** What a different person must never see on a shared phone or PC: the previous user's positions, fills and trade state. */
+  function clearPersonal() {
+    try {
+      const del = [];
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && /^(v99_|v18_|v104_|v118_okip|v100_anchor_)/.test(k)) del.push(k); }
+      del.forEach(k => localStorage.removeItem(k));
+    } catch (e) { }
+    try { indexedDB.deleteDatabase('v146fut'); } catch (e) { }
+  }
+
+  async function post(path, body) {
+    const r = await fetch('/api/v1/auth/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || !j.token) throw new Error((j && j.error) || (r.status === 429 ? 'Too many tries, wait a minute' : 'HTTP ' + r.status));
+    return j;
+  }
+
+  async function submit() {
+    if (busy) return; busy = true; err = ''; paint();
+    const v = id => ((D.getElementById(id) || {}).value || '').trim();
+    try {
+      let j;
+      if (mode === 'in') {
+        const email = v('daEmail'), password = D.getElementById('daPw').value;
+        j = await post('login', email ? { email, password } : { password });
+      } else {
+        j = await post('signup', { email: v('daEmail'), password: D.getElementById('daPw').value, displayName: v('daName'), inviteCode: v('daCode') });
+      }
+      const prev = user();
+      if (!prev || prev.id !== j.user.id) clearPersonal();
+      jset(TOK, j.token);
+      jset(USER, { id: j.user.id, email: j.user.email, name: j.user.displayName || j.user.email, role: j.user.role });
+      location.reload(); // every page starts fresh as the new user
+    } catch (e) { err = e.message; busy = false; paint(); }
+  }
+
+  function logout() {
+    clearPersonal();
+    try { localStorage.removeItem(TOK); localStorage.removeItem(USER); } catch (e) { }
+    location.reload();
+  }
+
+  const css = D.createElement('style');
+  css.textContent = [
+    '#daOv{position:fixed;inset:0;z-index:100000;background:rgba(10,14,20,.55);display:flex;align-items:center;justify-content:center;padding:16px}',
+    '#daOv[hidden]{display:none}',
+    '#daOv .da{background:var(--panel,#fff);color:var(--text,#111);border:1px solid var(--line2,#d0d5dd);border-radius:14px;padding:18px 18px 14px;width:min(400px,100%);box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:var(--font,system-ui)}',
+    '#daOv h2{margin:0 0 4px;font-size:18px}',
+    '#daOv .daSeg{display:flex;gap:6px;margin:10px 0}',
+    '#daOv .daSeg button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--line2,#ccc);background:var(--panel2,#f4f5f7);color:var(--text,#111);font:700 13px var(--font,system-ui);cursor:pointer}',
+    '#daOv .daSeg button.on{background:#2F7CC0;border-color:#2F7CC0;color:#fff}',
+    '#daOv label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#667085);margin:8px 0}',
+    '#daOv input{background:var(--panel2,#f4f5f7);color:var(--text,#111);border:1px solid var(--line2,#ccc);border-radius:8px;padding:9px 10px;font:600 15px var(--font,system-ui);width:100%;box-sizing:border-box}',
+    '#daOv .daGo{width:100%;margin-top:6px;padding:11px;border:0;border-radius:9px;background:#2F7CC0;color:#fff;font:800 14px var(--font,system-ui);cursor:pointer}',
+    '#daOv .daGo:disabled{opacity:.6}',
+    '#daOv .daErr{color:#C53030;font-size:13px;margin:8px 0 0}',
+    '#daOv .daNote{font-size:12px;color:var(--muted,#667085);line-height:1.45;margin:6px 0 0}',
+    '#daOv .daX{float:right;background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:var(--muted,#667085)}',
+    '#daChip{position:fixed;left:10px;bottom:10px;z-index:9000;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
+    '#daChip button{background:none;border:0;color:#2F7CC0;font:700 12px var(--font,system-ui);cursor:pointer;padding:0}',
+    '@media (max-width:760px){#daChip{bottom:64px}}',
+  ].join('\n');
+  D.head.appendChild(css);
+
+  function paint() {
+    let ov = D.getElementById('daOv');
+    if (!ov) { ov = D.createElement('div'); ov.id = 'daOv'; ov.hidden = true; D.body.appendChild(ov); }
+    const keep = ['daEmail', 'daPw', 'daName', 'daCode'].map(id => [id, (D.getElementById(id) || {}).value]);
+    const up = mode === 'up';
+    ov.innerHTML = '<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : 'Sign in') + '</h2>' +
+      '<div class="daSeg"><button type="button" data-da-mode="in" class="' + (up ? '' : 'on') + '">Sign in</button><button type="button" data-da-mode="up" class="' + (up ? 'on' : '') + '">Create account</button></div>' +
+      (up ? '<label>Your name<input id="daName" autocomplete="name" maxlength="60"></label>' : '') +
+      '<label>Email' + (up ? '' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      '<label>' + (up ? 'Password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" autocomplete="' + (up ? 'new-password' : 'current-password') + '"></label>' +
+      (up ? '<label>Invite code<input id="daCode" autocapitalize="off" spellcheck="false" autocomplete="off"></label><div class="daNote">You need an invite code from the person who runs this desk. You get your own Paper Trade account, and you can add your own Delta API key in Settings.</div>' : '') +
+      (err ? '<div class="daErr">' + esc(err) + '</div>' : '') +
+      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : 'Sign in') + '</button></div>';
+    for (const [id, val] of keep) { const el = D.getElementById(id); if (el && val) el.value = val; }
+  }
+
+  function open(m) {
+    if (m) mode = m;
+    err = ''; paint();
+    const ov = D.getElementById('daOv'); ov.hidden = false;
+    setTimeout(() => { const f = D.getElementById(mode === 'up' ? 'daName' : 'daEmail'); if (f) f.focus(); }, 50);
+  }
+  const close = () => { const ov = D.getElementById('daOv'); if (ov) ov.hidden = true; };
+
+  D.addEventListener('click', e => {
+    const t = e.target.closest && e.target.closest('[data-da-open],[data-da-close],[data-da-mode],[data-da-go],[data-da-logout]');
+    if (!t) { if (e.target && e.target.id === 'daOv') close(); return; }
+    if ('daOpen' in t.dataset) { open(t.dataset.daOpen === 'up' ? 'up' : 'in'); return; }
+    if ('daClose' in t.dataset) { close(); return; }
+    if (t.dataset.daMode) { mode = t.dataset.daMode; err = ''; paint(); return; }
+    if ('daGo' in t.dataset) { submit(); return; }
+    if ('daLogout' in t.dataset) logout();
+  });
+  D.addEventListener('keydown', e => {
+    const ov = D.getElementById('daOv');
+    if (!ov || ov.hidden) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'Enter' && e.target && /^da(Email|Pw|Name|Code)$/.test(e.target.id)) submit();
+  });
+
+  /** The small "signed in as" chip (bottom left) with Log out. */
+  function chip() {
+    let c = D.getElementById('daChip');
+    if (!token()) { if (c) c.remove(); return; }
+    const u = user();
+    if (!c) { c = D.createElement('div'); c.id = 'daChip'; D.body.appendChild(c); }
+    const html = '<span>' + (u ? esc(u.name || u.email) + (u.role === 'admin' ? ' · owner' : '') : 'Signed in') + '</span><button type="button" data-da-logout>Log out</button>';
+    if (c.innerHTML !== html) c.innerHTML = html;
+  }
+  // a token from before accounts existed has no saved user: fetch it once
+  async function ensureUser() {
+    if (!token() || user()) return;
+    try {
+      const r = await fetch('/api/v1/auth/me', { headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j && j.data) { jset(USER, { id: j.data.id, email: j.data.email, name: j.data.displayName || j.data.email, role: j.data.role }); chip(); }
+    } catch (e) { }
+  }
+  setInterval(chip, 2000); setTimeout(() => { chip(); ensureUser(); }, 1500);
+
+  W.deskAuth = { open, logout, user, admin, token, clearPersonal };
+})();
+</script>
 <script data-block="paper-page">
 /* Paper Trade page: one panel in three steps. 1 pick strikes on the option chain, 2 check the strategy and its margin, 3 execute.
    Executed strategies are listed underneath with net PnL, each leg's PnL and stop, and one button to close everything.
@@ -59005,7 +59207,7 @@ document.addEventListener('click', function(e) {
   function renderLogin() {
     const el = $('ppLogin');
     if (tok()) { el.innerHTML = S.err ? '<div class="pp-card"><div class="pp-note warn">' + esc(S.err) + '</div></div>' : ''; return; }
-    el.innerHTML = '<div class="pp-card"><h3>Log in</h3><div class="pp-note">Your paper account is private. Use your desk password.</div><div style="display:flex;gap:8px;margin-top:8px;max-width:360px"><input type="password" id="ppPw" class="pp-in" placeholder="Desk password" autocomplete="current-password"><button type="button" class="pp-btn" data-pp-act="login">Log in</button></div>' + (S.loginErr ? '<div class="pp-note warn">' + esc(S.loginErr) + '</div>' : '') + '</div>';
+    el.innerHTML = '<div class="pp-card"><h3>Sign in</h3><div class="pp-note">Everybody gets their own Paper Trade account. Sign in, or create an account with an invite code from the owner.</div><div style="margin-top:8px"><button type="button" class="pp-btn" data-da-open>Sign in or create account</button></div></div>';
   }
 
   async function setMode(mode) {
@@ -59198,7 +59400,7 @@ document.addEventListener('click', function(e) {
     const logged = !!tok();
     let body = '';
     if (!logged) {
-      body = '<div class="ak-login"><div class="ak-note">Your desk data is private. Log in with your desk password to ask questions.</div><input id="akPw" type="password" placeholder="Desk password" autocomplete="current-password"><button type="button" class="ak-send" data-ak="login">Log in</button>' + (S.loginErr ? '<div class="ak-err">' + esc(S.loginErr) + '</div>' : '') + '</div>';
+      body = '<div class="ak-login"><div class="ak-note">Sign in to ask questions about your desk data.</div><button type="button" class="ak-send" data-da-open>Sign in or create account</button></div>';
     } else {
       body = '<div class="ak-msgs" id="akMsgs">' +
         (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me about anything in your terminal. I can read every table in your database (try "what data do you have?" or "summarise bot runs"), your positions and PnL, why a trade stopped, what happened at a given minute, and the live market. I can also explain any concept on the terminal, such as Risk-ADX, N2N, the entry gauge or the GO/WAIT gate, from your own docs. I answer only from what is recorded and I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
