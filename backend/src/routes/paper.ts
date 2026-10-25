@@ -22,6 +22,10 @@ export const orderBody = z.object({
   stopLoss: price.optional(),
 });
 
+export const strategyBody = z.object({
+  legs: z.array(z.object({ symbol, side: z.enum(['buy', 'sell']), lots: z.number().int().min(1).max(1_000_000) })).min(1).max(8),
+});
+
 export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: (fastify as any).authenticate };
   const limited = { ...auth, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } };
@@ -90,6 +94,36 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (e) {
       return fail(reply, e);
     }
+  });
+
+  // Multi-leg strategies from the builder: estimate, then place every leg together or none.
+  fastify.post('/strategy/preview', limited, async (req, reply) => {
+    const b = strategyBody.safeParse(req.body);
+    if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid strategy');
+    try {
+      return { success: true, preview: await paperTerminal.previewBasket(b.data.legs) };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  fastify.post('/strategy', limited, async (req, reply) => {
+    const b = strategyBody.safeParse(req.body);
+    if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid strategy');
+    try {
+      const r = await paperTerminal.placeBasket(b.data.legs);
+      return r.ok ? { success: true, ...r } : reply.code(400).send({ success: false, error: r.reason });
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // Portfolio margin or standard margin, like the margin-mode switch on Delta.
+  fastify.post('/margin-mode', auth, async (req, reply) => {
+    const b = z.object({ mode: z.enum(['portfolio', 'standard']) }).safeParse(req.body);
+    if (!b.success) return bad(reply, 'mode must be portfolio or standard');
+    const r = await paperTerminal.setMarginMode(b.data.mode);
+    return r.ok ? { success: true, mode: b.data.mode } : reply.code(400).send({ success: false, error: r.reason });
   });
 
   fastify.delete('/orders/:id', auth, async (req, reply) => {

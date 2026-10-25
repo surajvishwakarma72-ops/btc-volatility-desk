@@ -58439,6 +58439,10 @@ document.addEventListener('click', function(e) {
 #pgPaper .pp-book div{display:flex;justify-content:space-between;padding:1px 0}
 #pgPaper .pp-book .a{color:var(--up)}
 #pgPaper .pp-book .b{color:var(--down)}
+#pgPaper .pp-sumgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px 12px;margin:0 0 8px}
+#pgPaper .pp-sumgrid div{display:flex;flex-direction:column;gap:1px;font-size:13px}
+#pgPaper .pp-sumgrid .dim{font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+#pgPaper .pp-t select.pp-in{width:auto;padding:3px 6px;font-size:13px}
 @media (max-width:980px){#pgPaper .pp-cols{grid-template-columns:1fr}}
 </style>
 <script data-block="paper-page">
@@ -58501,8 +58505,9 @@ document.addEventListener('click', function(e) {
       '<div class="pp-note" style="margin:-4px 0 10px">Fake money, real Delta order books. Market orders walk the live book, so slippage and fees are what Delta would charge. This is separate from the bot and cannot place a real order.</div>' +
       '<div id="ppLogin"></div>' +
       '<div class="pp-cols"><div class="pp-stack">' +
-      '<div class="pp-card"><h3>Markets</h3><div id="ppPerp" class="pp-perp"></div><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-note">Option expiry</span><select id="ppExp" class="pp-in" style="width:auto"></select><span class="pp-note" id="ppBoardAt"></span></div><div class="pp-scroll board" id="ppBoard"></div><div class="pp-note" style="margin-top:6px">Click an ask to buy it or a bid to sell it. The highlighted row is the strike nearest spot.</div></div>' +
+      '<div class="pp-card"><div style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><span class="pp-seg" id="ppMktTabs"><button type="button" data-pp-mtab="board" class="on">Option board</button><button type="button" data-pp-mtab="builder">Strategy builder</button></span></div><div id="ppPerp" class="pp-perp"></div><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-note">Option expiry</span><select id="ppExp" class="pp-in" style="width:auto"></select><span class="pp-note" id="ppBoardAt"></span></div><div id="ppBoardWrap"><div class="pp-scroll board" id="ppBoard"></div><div class="pp-note" style="margin-top:6px">Click an ask to buy it or a bid to sell it. The highlighted row is the strike nearest spot.</div></div><div id="ppBuilder" hidden></div></div>' +
       '<div class="pp-card"><h3>Positions</h3><div id="ppPos" class="pp-scroll"></div></div>' +
+      '<div class="pp-card"><h3>Portfolio</h3><div id="ppPortfolio"></div></div>' +
       '<div class="pp-card"><h3>Working orders</h3><div id="ppWork" class="pp-scroll"></div></div>' +
       '<div class="pp-card"><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-seg" id="ppHistTabs"><button type="button" data-pp-hist="orders" class="on">Order history</button><button type="button" data-pp-hist="fills">Fills</button></span></div><div id="ppHist" class="pp-scroll"></div></div>' +
       '</div><div class="pp-stack">' +
@@ -58533,14 +58538,15 @@ document.addEventListener('click', function(e) {
       ['Realised', usd(ac.realizedTotal), ''], ['Fees paid', usd(ac.feesTotal), ''],
       ['Return', v ? ((v.equity / ac.startBalance - 1) * 100).toFixed(2) + '%' : '-', ''],
     ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ');
-    $('ppBtns').innerHTML = tok() ? '<button type="button" class="pp-btn" data-pp-act="reset">Reset account</button>' : '';
+    const mm = (S.acct && S.acct.marginMode) || 'portfolio';
+    $('ppBtns').innerHTML = tok() ? '<span class="pp-seg" title="Portfolio margin nets hedged option legs together (condors and spreads need little margin). Standard margin charges every short option on its own."><button type="button" data-pp-mode="portfolio" class="' + (mm === 'portfolio' ? 'on' : '') + '">Portfolio margin</button><button type="button" data-pp-mode="standard" class="' + (mm === 'standard' ? 'on' : '') + '">Standard margin</button></span> <button type="button" class="pp-btn" data-pp-act="reset">Reset account</button>' : '';
   }
 
   function renderPerp() {
     const b = S.board; if (!b) { $('ppPerp').innerHTML = ''; return; }
     const p = b.perp, sel = S.sel === PERP;
     $('ppPerp').innerHTML = '<span><b>BTCUSD</b> perpetual</span><span>Mark <b>' + px(p.mark) + '</b></span><span class="neg">Sell <b data-pp-q="' + PERP + '|sell" style="cursor:pointer">' + px(p.bid) + '</b></span><span class="pos">Buy <b data-pp-q="' + PERP + '|buy" style="cursor:pointer">' + px(p.ask) + '</b></span>' +
-      '<span class="dim">Funding ' + (p.funding == null ? '-' : (p.funding * 100).toFixed(4) + '%') + '</span><span class="dim">Max ' + b.perpInfo.maxLeverage + 'x · taker ' + (b.perpInfo.takerRate * 100).toFixed(3) + '% + GST</span>' + (sel ? '<span class="pp-chip"><b>selected</b></span>' : '');
+      '<span class="dim">Funding ' + (p.funding == null ? '-' : Number(p.funding).toFixed(4) + '%') + '</span><span class="dim">Max ' + b.perpInfo.maxLeverage + 'x · taker ' + (b.perpInfo.takerRate * 100).toFixed(3) + '% + GST</span>' + (sel ? '<span class="pp-chip"><b>selected</b></span>' : '');
   }
 
   function renderBoard() {
@@ -58632,7 +58638,152 @@ document.addEventListener('click', function(e) {
     el.innerHTML = '<div class="pp-card"><h3>Log in</h3><div class="pp-note">Your paper account is private. Use your desk password.</div><div style="display:flex;gap:8px;margin-top:8px;max-width:360px"><input type="password" id="ppPw" class="pp-in" placeholder="Desk password" autocomplete="current-password"><button type="button" class="pp-btn" data-pp-act="login">Log in</button></div>' + (S.loginErr ? '<div class="pp-note warn">' + esc(S.loginErr) + '</div>' : '') + '</div>';
   }
 
-  function drawAll() { if (!S.built) build(); renderLogin(); renderHead(); renderPerp(); renderBoard(); renderPositions(); renderWorking(); renderHist(); renderBook(); syncTicket(); renderPreview(); renderMsg(); }
+  /* ---------- strategy builder: several option legs, one payoff, one ticket ---------- */
+  const TEMPLATES = [
+    ['Long straddle', 'Buy the call and put at the nearest strike: profits from a big move either way.', (a) => [['buy', 'call', a, 1], ['buy', 'put', a, 1]]],
+    ['Short straddle', 'Sell the call and put at the nearest strike: profits if BTC stays put.', (a) => [['sell', 'call', a, 1], ['sell', 'put', a, 1]]],
+    ['Long strangle', 'Buy an OTM call and an OTM put: a cheaper bet on a big move.', (a) => [['buy', 'call', a + 2, 1], ['buy', 'put', a - 2, 1]]],
+    ['Short strangle', 'Sell an OTM call and an OTM put: the desk\'s core trade. Loss is unlimited beyond the strikes.', (a) => [['sell', 'call', a + 2, 1], ['sell', 'put', a - 2, 1]]],
+    ['Bull call spread', 'Buy a call, sell a higher call: capped profit and loss, bullish.', (a) => [['buy', 'call', a, 1], ['sell', 'call', a + 2, 1]]],
+    ['Bear put spread', 'Buy a put, sell a lower put: capped profit and loss, bearish.', (a) => [['buy', 'put', a, 1], ['sell', 'put', a - 2, 1]]],
+    ['Bull put spread', 'Sell a put, buy a lower put: a credit if BTC holds up.', (a) => [['sell', 'put', a - 1, 1], ['buy', 'put', a - 3, 1]]],
+    ['Bear call spread', 'Sell a call, buy a higher call: a credit if BTC stays below.', (a) => [['sell', 'call', a + 1, 1], ['buy', 'call', a + 3, 1]]],
+    ['Iron condor', 'A short strangle with bought wings: a credit with both sides capped.', (a) => [['buy', 'put', a - 4, 1], ['sell', 'put', a - 2, 1], ['sell', 'call', a + 2, 1], ['buy', 'call', a + 4, 1]]],
+    ['Iron butterfly', 'Sell the straddle, buy wings: biggest credit near the strike, capped risk.', (a) => [['sell', 'call', a, 1], ['sell', 'put', a, 1], ['buy', 'call', a + 3, 1], ['buy', 'put', a - 3, 1]]],
+    ['Long call butterfly', 'Buy one call below, sell two at the middle, buy one above: profits near the middle.', (a) => [['buy', 'call', a - 2, 1], ['sell', 'call', a, 2], ['buy', 'call', a + 2, 1]]],
+  ];
+  S.sb = { legs: [], baseLots: 100, preview: null, busy: false, msg: null, tpl: 0, tab: 'board' };
+
+  const strikesList = () => (S.board ? S.board.strikes.map(s => s.strike) : []);
+  const atmIndex = () => { const k = strikesList(); let bi = 0, bd = Infinity; k.forEach((x, i) => { const d = Math.abs(x - S.board.spot); if (d < bd) { bd = d; bi = i; } }); return bi; };
+  function sbSymbol(leg) {
+    const row = S.board && S.board.strikes.find(s => s.strike === leg.strike);
+    const r = row && (leg.type === 'call' ? row.call : row.put);
+    return r ? r.symbol : null;
+  }
+  function sbApply(i) {
+    const k = strikesList(); if (!k.length) { S.sb.msg = { k: 'bad', t: 'The option board has not loaded yet.' }; renderBuilder(); return; }
+    const a = atmIndex(), tpl = TEMPLATES[i], legs = tpl[2](a);
+    if (legs.some(l => l[2] < 0 || l[2] >= k.length)) { S.sb.msg = { k: 'bad', t: 'This expiry does not list enough strikes around the money for ' + tpl[0] + '. Pick another expiry or build the legs by hand.' }; renderBuilder(); return; }
+    const base = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 1);
+    S.sb.legs = legs.map(l => ({ side: l[0], type: l[1], strike: k[l[2]], lots: base * l[3] }));
+    S.sb.msg = null; S.sb.preview = null; renderBuilder(); sbSchedule();
+  }
+  const sbBody = () => ({ legs: S.sb.legs.map(l => ({ symbol: sbSymbol(l), side: l.side, lots: Math.floor(Number(l.lots)) || 0 })) });
+  let sbTimer = 0, sbKey = '';
+  function sbSchedule() {
+    clearTimeout(sbTimer);
+    if (!S.sb.legs.length || !tok()) { S.sb.preview = null; renderSbSummary(); return; }
+    sbTimer = setTimeout(async () => {
+      const b = sbBody(); if (b.legs.some(l => !l.symbol || l.lots < 1)) { S.sb.preview = { ok: false, reason: 'Every leg needs a listed strike and at least 1 lot.' }; renderSbSummary(); return; }
+      const key = JSON.stringify(b); sbKey = key;
+      try { const j = await api('/strategy/preview', { method: 'POST', body: b }); if (sbKey === key) { S.sb.preview = j.preview; renderSbSummary(); } }
+      catch (e) { S.sb.preview = { ok: false, reason: e.message }; renderSbSummary(); }
+    }, 350);
+  }
+  async function sbPlace() {
+    if (S.sb.busy || !S.sb.legs.length) return;
+    S.sb.busy = true; renderSbSummary();
+    try {
+      const j = await api('/strategy', { method: 'POST', body: sbBody() });
+      S.sb.msg = { k: 'ok', t: 'Strategy placed: ' + j.orders.length + ' legs filled together' + (j.payoff ? '' : '') + '. Net premium ' + usd(j.netPremium) + ', fees ' + usd(j.fees) + '.' };
+      S.sb.legs = []; S.sb.preview = null;
+    } catch (e) { S.sb.msg = { k: 'bad', t: 'Not placed: ' + e.message }; }
+    S.sb.busy = false; renderBuilder(); await refresh(true);
+  }
+
+  function payoffSvg(p, spot) {
+    if (!p || !p.points || !p.points.length) return '';
+    const W = 420, H = 170, L = 8, R = 8, T = 10, B = 20, pts = p.points;
+    const x0 = pts[0][0], x1 = pts[pts.length - 1][0];
+    let y0 = Math.min(0, ...pts.map(q => q[1])), y1 = Math.max(0, ...pts.map(q => q[1])); if (y1 === y0) y1 = y0 + 1; const pad = (y1 - y0) * .08; y0 -= pad; y1 += pad;
+    const X = v => L + (v - x0) / (x1 - x0) * (W - L - R), Y = v => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+    const line = pts.map(q => X(q[0]).toFixed(1) + ',' + Y(q[1]).toFixed(1)).join(' ');
+    const zero = Y(0).toFixed(1);
+    let area = '<polygon fill="rgba(53,187,125,.16)" points="' + L + ',' + zero + ' ' + line + ' ' + (W - R) + ',' + zero + '" />';
+    const be = (p.breakevens || []).map(b => '<circle cx="' + X(b).toFixed(1) + '" cy="' + zero + '" r="3.5" fill="var(--warn,#D69E2E)"><title>Breakeven ' + Math.round(b) + '</title></circle>').join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;max-width:520px" role="img" aria-label="Payoff at expiry">' +
+      '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + zero + '" y2="' + zero + '" stroke="var(--line2)" stroke-dasharray="4 3"/>' +
+      '<line x1="' + X(spot).toFixed(1) + '" x2="' + X(spot).toFixed(1) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--focus,#9CC9EE)" stroke-dasharray="2 3"/>' +
+      '<clipPath id="ppClip"><rect x="0" y="' + T + '" width="' + W + '" height="' + (H - T - B) + '"/></clipPath><g clip-path="url(#ppClip)">' + area + '</g>' +
+      '<polyline fill="none" stroke="var(--text)" stroke-width="2" points="' + line + '"/>' + be +
+      '<text x="' + L + '" y="' + (H - 5) + '" font-size="10" fill="var(--muted)">' + Math.round(x0).toLocaleString('en-US') + '</text><text x="' + (W - R) + '" y="' + (H - 5) + '" font-size="10" text-anchor="end" fill="var(--muted)">' + Math.round(x1).toLocaleString('en-US') + '</text>' +
+      '<text x="' + X(spot).toFixed(1) + '" y="' + (T + 8) + '" font-size="10" text-anchor="middle" fill="var(--focus,#9CC9EE)">spot</text></svg>';
+  }
+
+  function renderSbSummary() {
+    const el = $('ppSbSum'); if (!el) return;
+    const p = S.sb.preview, go = $('ppSbGo');
+    if (go) { go.disabled = S.sb.busy || !p || !p.ok; go.textContent = S.sb.busy ? 'Placing…' : 'Place strategy (' + S.sb.legs.length + ' legs at market)'; }
+    if (!S.sb.legs.length) { el.innerHTML = '<div class="pp-note">Pick a template above, or add legs yourself. The payoff at expiry, margin and cost appear here before you place anything.</div>'; return; }
+    if (!p) { el.innerHTML = '<div class="pp-note">Checking the live books…</div>'; return; }
+    if (!p.ok && !p.legs) { el.innerHTML = '<div class="pp-msg bad">' + esc(p.reason || 'Not possible') + '</div>'; return; }
+    const pf = p.payoff, lim = v => v == null ? 'Unlimited' : usd(v);
+    let h = '<div class="pp-sumgrid"><div><span class="dim">Net premium</span><b class="' + (p.netPremium >= 0 ? 'pos' : 'neg') + '">' + (p.netPremium >= 0 ? 'Credit ' : 'Debit ') + usd(Math.abs(p.netPremium)) + '</b></div>' +
+      '<div><span class="dim">Max profit</span><b class="pos">' + (pf ? lim(pf.maxProfit) : 'n/a') + '</b></div><div><span class="dim">Max loss</span><b class="neg">' + (pf ? lim(pf.maxLoss) : 'n/a') + '</b></div>' +
+      '<div><span class="dim">Breakeven</span><b>' + (pf && pf.breakevens.length ? pf.breakevens.map(b => Math.round(b).toLocaleString('en-US')).join(' / ') : '-') + '</b></div>' +
+      '<div><span class="dim">Fees + slippage</span><b>' + usd(p.fees) + ' + ' + usd(p.slippageUsd) + '</b></div>' +
+      '<div><span class="dim">Margin after (' + esc(p.marginMode) + ')</span><b>' + usd(p.marginAfter) + '</b></div>' +
+      '<div><span class="dim">Available after</span><b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b></div></div>';
+    if (!pf) h += '<div class="pp-note">The payoff chart needs every leg to share one expiry.</div>'; else h += payoffSvg(pf, S.board ? S.board.spot : 0);
+    h += '<div class="pp-note">Fills at the live book: ' + (p.legs || []).map(l => (l.side === 'buy' ? 'buy ' : 'sell ') + l.lots + ' ' + esc(labelOf(l.symbol)) + ' @ ' + px(l.avgPrice, 1)).join(' · ') + '</div>';
+    if (!p.ok) h += '<div class="pp-msg bad">' + esc(p.reason) + '</div>';
+    el.innerHTML = h;
+  }
+
+  function renderBuilder() {
+    const el = $('ppBuilder'); if (!el) return;
+    const k = strikesList(), sb = S.sb;
+    const opt = (v, cur, t) => '<option value="' + v + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + t + '</option>';
+    let h = '<div class="pp-note" style="margin:0 0 8px">Build a multi-leg options strategy on one expiry, like Delta\'s strategy builder. Every leg is checked together (so a hedged position is margined as one), and the whole thing fills at once or not at all.</div>';
+    h += '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px"><select id="ppTpl" class="pp-in" style="width:auto">' + TEMPLATES.map((t, i) => opt(i, sb.tpl, t[0])).join('') + '</select>' +
+      '<label class="pp-note" style="display:flex;align-items:center;gap:6px">Lots per leg <input type="number" id="ppSbBase" class="pp-in" style="width:90px" min="1" step="1" value="' + esc(sb.baseLots) + '"></label>' +
+      '<button type="button" class="pp-btn" data-pp-act="sbapply">Use template</button><button type="button" class="pp-btn" data-pp-act="sbclear">Clear</button></div>';
+    h += '<div class="pp-note" id="ppTplNote" style="margin:-2px 0 8px">' + esc(TEMPLATES[sb.tpl][1]) + '</div>';
+    if (sb.legs.length) {
+      h += '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Side</th><th>Type</th><th>Strike</th><th>Lots</th><th>Quote</th><th></th></tr></thead><tbody>' + sb.legs.map((l, i) => {
+        const row = S.board && S.board.strikes.find(s => s.strike === l.strike), r = row && (l.type === 'call' ? row.call : row.put);
+        return '<tr><td><select data-sb="side" data-i="' + i + '" class="pp-in">' + opt('buy', l.side, 'Buy') + opt('sell', l.side, 'Sell') + '</select></td>' +
+          '<td><select data-sb="type" data-i="' + i + '" class="pp-in">' + opt('call', l.type, 'Call') + opt('put', l.type, 'Put') + '</select></td>' +
+          '<td><select data-sb="strike" data-i="' + i + '" class="pp-in">' + k.map(x => opt(x, l.strike, x.toLocaleString('en-US'))).join('') + '</select></td>' +
+          '<td><input type="number" data-sb="lots" data-i="' + i + '" class="pp-in" style="width:80px" min="1" step="1" value="' + esc(l.lots) + '"></td>' +
+          '<td class="dim">' + (r ? 'bid ' + px(r.bid, 1) + ' / ask ' + px(r.ask, 1) : 'not listed') + '</td>' +
+          '<td><button type="button" class="pp-btn small" data-pp-sbdel="' + i + '">Remove</button></td></tr>';
+      }).join('') + '</tbody></table></div>';
+    }
+    h += '<div style="margin:8px 0"><button type="button" class="pp-btn small" data-pp-act="sbadd"' + (sb.legs.length >= 8 ? ' disabled' : '') + '>+ Add leg</button></div>';
+    h += '<div id="ppSbSum"></div><div style="margin-top:8px"><button type="button" class="pp-go buy" id="ppSbGo" data-pp-act="sbplace" disabled>Place strategy</button></div>';
+    if (sb.msg) h += '<div class="pp-msg ' + sb.msg.k + '" style="margin-top:8px">' + esc(sb.msg.t) + '</div>';
+    el.innerHTML = h; renderSbSummary();
+  }
+
+  function setMktTab(tab) {
+    S.sb.tab = tab;
+    D.querySelectorAll('#ppMktTabs button').forEach(b => b.classList.toggle('on', b.dataset.ppMtab === tab));
+    $('ppBoardWrap').hidden = tab !== 'board'; $('ppBuilder').hidden = tab !== 'builder';
+    if (tab === 'builder') renderBuilder();
+  }
+  async function setMode(mode) {
+    try { await api('/margin-mode', { method: 'POST', body: { mode } }); S.msg = { k: 'ok', t: 'Margin mode: ' + mode + '.' }; }
+    catch (e) { S.msg = { k: 'bad', t: e.message }; }
+    await refresh(true);
+    if (S.msg && S.msg.k === 'bad') window.alert(S.msg.t);
+  }
+
+  function renderPortfolio() {
+    const a = S.acct, v = a && a.view, g = a && a.greeks, el = $('ppPortfolio'); if (!el) return;
+    if (!v) { el.innerHTML = '<div class="pp-note">Account numbers appear once market data loads.</div>'; return; }
+    const cell = (k, val, cls) => '<div><span class="dim">' + k + '</span><b class="' + (cls || '') + '">' + val + '</b></div>';
+    const mm = a.marginMode === 'standard' ? 'Standard margin' : 'Portfolio margin';
+    const use = v.equity > 0 ? (v.margin / v.equity * 100) : 0;
+    el.innerHTML = '<div class="pp-sumgrid">' + cell('Margin mode', mm) + cell('Equity', usd(v.equity)) + cell('Margin used', usd(v.margin) + ' (' + use.toFixed(1) + '%)') +
+      cell('Perpetual margin', usd(v.perpMargin)) + cell('Options margin', usd(v.optionMargin)) + cell('Available', usd(v.available), v.available < 0 ? 'neg' : '') +
+      cell('Options value', usd(v.optionsValue)) + cell('Perpetual unrealised', usd(v.perpUnrealized), sgn(v.perpUnrealized)) + '</div>' +
+      (g ? '<div class="pp-sumgrid">' + cell('Net delta (BTC)', g.delta.toFixed(4)) + cell('Net gamma', g.gamma.toFixed(6)) + cell('Theta / day', usd(g.theta)) + cell('Vega / vol point', usd(g.vega)) + '</div>' : '') +
+      '<div class="pp-note">' + (a.marginMode === 'standard' ? 'Standard margin charges each short option on its own; hedged legs get no credit.' : 'Portfolio margin stresses all options together (price and volatility scenarios), so spreads and condors need far less margin than their legs would alone.') + '</div>';
+  }
+
+  function drawAll() { if (!S.built) build(); renderLogin(); renderHead(); renderPerp(); renderBoard(); renderPositions(); renderPortfolio(); renderWorking(); renderHist(); renderBook(); syncTicket(); renderPreview(); renderMsg(); }
 
   /* ---------- data ---------- */
   let preTimer = 0, lastPreKey = '';
@@ -58706,7 +58857,10 @@ document.addEventListener('click', function(e) {
   /* ---------- events ---------- */
   function wire() {
     root.addEventListener('click', async e => {
-      const t = e.target.closest('[data-pp-q],[data-pp-side],[data-pp-type],[data-pp-lots],[data-pp-act],[data-pp-close],[data-pp-cancel],[data-pp-hist]'); if (!t) return; const d = t.dataset;
+      const t = e.target.closest('[data-pp-q],[data-pp-side],[data-pp-type],[data-pp-lots],[data-pp-act],[data-pp-close],[data-pp-cancel],[data-pp-hist],[data-pp-mode],[data-pp-mtab],[data-pp-sbdel]'); if (!t) return; const d = t.dataset;
+      if (d.ppMode) { setMode(d.ppMode); return; }
+      if (d.ppMtab) { setMktTab(d.ppMtab); return; }
+      if (d.ppSbdel != null) { S.sb.legs.splice(Number(d.ppSbdel), 1); S.sb.preview = null; renderBuilder(); sbSchedule(); return; }
       if (d.ppQ) { const [sy, sd] = d.ppQ.split('|'); select(sy, sd); renderBoard(); renderPerp(); if (window.innerWidth <= 980) { try { $('ppTkLabel').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (er) { } } return; }
       if (d.ppSide) { S.t.side = d.ppSide; const q = S.sel && quoteOf(S.sel); if (q && S.t.type === 'limit') { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; } syncTicket(); schedulePreview(); return; }
       if (d.ppType) { S.t.type = d.ppType; const q = S.sel && quoteOf(S.sel); if (d.ppType === 'limit' && q && !S.t.price) { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; } syncTicket(); schedulePreview(); return; }
@@ -58714,7 +58868,11 @@ document.addEventListener('click', function(e) {
       if (d.ppHist) { S.hist = d.ppHist; refresh(true); return; }
       if (d.ppClose) { closePos(d.ppClose); return; }
       if (d.ppCancel) { try { await api('/orders/' + d.ppCancel, { method: 'DELETE' }); } catch (er) { S.msg = { k: 'bad', t: er.message }; } refresh(true); return; }
-      if (d.ppAct === 'submit') submit();
+      if (d.ppAct === 'sbapply') sbApply(S.sb.tpl);
+      else if (d.ppAct === 'sbclear') { S.sb.legs = []; S.sb.preview = null; S.sb.msg = null; renderBuilder(); }
+      else if (d.ppAct === 'sbadd') { const k = strikesList(); if (k.length && S.sb.legs.length < 8) { S.sb.legs.push({ side: 'buy', type: 'call', strike: k[atmIndex()], lots: Math.max(1, Math.floor(Number(S.sb.baseLots)) || 1) }); S.sb.preview = null; renderBuilder(); sbSchedule(); } }
+      else if (d.ppAct === 'sbplace') sbPlace();
+      else if (d.ppAct === 'submit') submit();
       else if (d.ppAct === 'login') login();
       else if (d.ppAct === 'cancelall') { try { await api('/orders/cancel-all', { method: 'POST' }); } catch (er) { S.msg = { k: 'bad', t: er.message }; } refresh(true); }
       else if (d.ppAct === 'reset') {
@@ -58727,7 +58885,13 @@ document.addEventListener('click', function(e) {
     });
     const bind = (id, key) => $(id).addEventListener('input', e => { S.t[key] = e.target.type === 'checkbox' ? e.target.checked : (key === 'lev' ? Number(e.target.value) : e.target.value); syncTicket(); schedulePreview(); });
     bind('ppLots', 'lots'); bind('ppPrice', 'price'); bind('ppStop', 'stop'); bind('ppLev', 'lev'); bind('ppTp', 'tp'); bind('ppSl', 'sl'); bind('ppRO', 'reduce');
-    $('ppExp').addEventListener('change', e => { S.expiry = Number(e.target.value); S.scrolled = false; refresh(false); });
+    $('ppExp').addEventListener('change', e => { S.expiry = Number(e.target.value); S.scrolled = false; S.sb.legs = []; S.sb.preview = null; S.sb.msg = null; refresh(false).then(() => { if (S.sb.tab === 'builder') renderBuilder(); }); });
+    root.addEventListener('change', e => {
+      const t = e.target; if (!t || !t.dataset) return;
+      if (t.id === 'ppTpl') { S.sb.tpl = Number(t.value); const n = $('ppTplNote'); if (n) n.textContent = TEMPLATES[S.sb.tpl][1]; return; }
+      if (t.id === 'ppSbBase') { S.sb.baseLots = t.value; return; }
+      if (t.dataset.sb) { const l = S.sb.legs[Number(t.dataset.i)]; if (!l) return; const k = t.dataset.sb; l[k] = (k === 'strike' || k === 'lots') ? Number(t.value) : t.value; S.sb.preview = null; renderBuilder(); sbSchedule(); }
+    });
     root.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'ppPw') login(); });
   }
 

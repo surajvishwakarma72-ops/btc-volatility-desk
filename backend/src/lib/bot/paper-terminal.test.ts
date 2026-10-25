@@ -131,3 +131,48 @@ describe('validation and expiry', () => {
     expect(intrinsicAtExpiry('put', 79000, 78000)).toBe(1000);
   });
 });
+
+import { payoffSummary, pnlAtExpiry, standardOptionMargin, type PayoffLeg } from './paper-terminal.js';
+
+describe('strategy payoff at expiry', () => {
+  const L = (type: 'call' | 'put', strike: number, side: 'buy' | 'sell', price: number, lots = 1000): PayoffLeg => ({ type, strike, side, lots, price, contractValue: 0.001 });
+  it('a long straddle: loss capped at the debit, unlimited profit up, two breakevens', () => {
+    const s = payoffSummary([L('call', 80000, 'buy', 1000), L('put', 80000, 'buy', 900)], 80000);
+    expect(s.netPremium).toBeCloseTo(-1900, 6);
+    expect(s.maxLoss).toBeCloseTo(-1900, 6);
+    expect(s.maxProfit).toBeNull();
+    expect(s.breakevens).toEqual([78100, 81900]);
+  });
+  it('a short strangle: profit capped at the credit, unlimited loss up', () => {
+    const s = payoffSummary([L('call', 82000, 'sell', 300), L('put', 78000, 'sell', 250)], 80000);
+    expect(s.netPremium).toBeCloseTo(550, 6);
+    expect(s.maxProfit).toBeCloseTo(550, 6);
+    expect(s.maxLoss).toBeNull();
+    expect(s.breakevens).toEqual([77450, 82550]);
+  });
+  it('an iron condor has both sides capped', () => {
+    const legs = [L('put', 76000, 'buy', 40), L('put', 78000, 'sell', 150), L('call', 82000, 'sell', 160), L('call', 84000, 'buy', 45)];
+    const s = payoffSummary(legs, 80000);
+    expect(s.netPremium).toBeCloseTo(225, 6); // credit
+    expect(s.maxProfit).toBeCloseTo(225, 6);
+    expect(s.maxLoss).toBeCloseTo(225 - 2000, 6);
+    expect(s.breakevens).toHaveLength(2);
+    expect(pnlAtExpiry(legs, 80000)).toBeCloseTo(225, 6);
+    expect(pnlAtExpiry(legs, 90000)).toBeCloseTo(225 - 2000, 6);
+  });
+  it('a bull call spread: capped both ways with one breakeven', () => {
+    const s = payoffSummary([L('call', 80000, 'buy', 1000), L('call', 82000, 'sell', 400)], 80000);
+    expect(s.maxLoss).toBeCloseTo(-600, 6);
+    expect(s.maxProfit).toBeCloseTo(1400, 6);
+    expect(s.breakevens).toEqual([80600]);
+  });
+});
+
+describe('standard margin mode', () => {
+  it('margins each short option on its own with no credit for hedges', () => {
+    const one = standardOptionMargin([{ type: 'call', strike: 82000, lots: 100, mark: 300 }], 80000, 0.001);
+    // 100 lots x 0.001 x (300 + max(0.15*80000 - 2000, 0.1*80000)) = 0.1 x (300 + 10000)
+    expect(one).toBeCloseTo(1030, 6);
+    expect(standardOptionMargin([], 80000, 0.001)).toBe(0);
+  });
+});

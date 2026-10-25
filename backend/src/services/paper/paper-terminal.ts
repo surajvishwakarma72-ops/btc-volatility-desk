@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { pool } from '../../db/index.js';
 import {
-  accountView, applyTrade, cashDelta, feeFor, intrinsicAtExpiry, limitTradesThrough, roundToTick, shouldLiquidate, signed, stopTriggered,
-  unrealized, validateOrder, walk, type AccountView, type Instrument, type OrderReq, type Position, type Quote, type Side,
+  accountView, applyTrade, cashDelta, feeFor, intrinsicAtExpiry, limitTradesThrough, payoffSummary, roundToTick, shouldLiquidate, signed, stopTriggered,
+  unrealized, validateOrder, walk, type AccountView, type Instrument, type MarginMode, type OrderReq, type PayoffLeg, type Position, type Quote, type Side,
 } from '../../lib/bot/paper-terminal.js';
 import { parseExpiry } from '../bot/delta-public.js';
 import { DeltaMarket, type MarketProvider, type MarketSnapshot } from './market.js';
@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS paper_orders (
   reason text,
   oco_group uuid
 );
+ALTER TABLE paper_orders ADD COLUMN IF NOT EXISTS basket_id uuid;
+ALTER TABLE paper_account ADD COLUMN IF NOT EXISTS margin_mode text NOT NULL DEFAULT 'portfolio';
 CREATE INDEX IF NOT EXISTS paper_orders_status_idx ON paper_orders (status, created_at);
 CREATE TABLE IF NOT EXISTS paper_positions (
   symbol text PRIMARY KEY,
@@ -93,11 +95,14 @@ export interface OrderRow {
   fee: number;
   reason: string | null;
   ocoGroup: string | null;
+  /** Set on every leg of a strategy placed from the builder. */
+  basketId: string | null;
 }
 
 interface State {
   cash: number;
   start: number;
+  mode: MarginMode;
   realizedTotal: number;
   feesTotal: number;
   positions: Map<string, Position>;
@@ -139,6 +144,7 @@ const mapOrder = (r: any): OrderRow => ({
   fee: Number(r.fee),
   reason: r.reason ?? null,
   ocoGroup: r.oco_group ?? null,
+  basketId: r.basket_id ?? null,
 });
 
 const money = (v: number) => `$${v.toFixed(2)}`;
@@ -212,6 +218,7 @@ export class PaperTerminal {
     return {
       cash: Number(acct.cash),
       start: Number(acct.start_balance),
+      mode: acct.margin_mode === 'standard' ? 'standard' : 'portfolio',
       realizedTotal: Number(acct.realized_total),
       feesTotal: Number(acct.fees_total),
       positions: new Map(
@@ -230,8 +237,8 @@ export class PaperTerminal {
     };
   }
 
-  private view(st: Pick<State, 'cash' | 'start'>, positions: Iterable<Position>, snap: MarketSnapshot): AccountView {
-    return accountView({ cash: st.cash, startBalance: st.start }, [...positions], snap.insts, { spot: snap.spot, nowMs: Date.now(), quote: this.quoteFn(snap) });
+  private view(st: { cash: number; start: number; mode?: MarginMode }, positions: Iterable<Position>, snap: MarketSnapshot): AccountView {
+    return accountView({ cash: st.cash, startBalance: st.start }, [...positions], snap.insts, { spot: snap.spot, nowMs: Date.now(), quote: this.quoteFn(snap) }, st.mode ?? 'portfolio');
   }
 
   // ---------- fills ----------
@@ -244,7 +251,7 @@ export class PaperTerminal {
     const cashAfter = st.cash + cashDelta(inst, side, lots, price, fee, realized);
     const list = [...st.positions.values()].filter((p) => p.symbol !== inst.symbol);
     if (np && np.lots !== 0) list.push(np);
-    const view = this.view({ cash: cashAfter, start: st.start }, list, snap);
+    const view = this.view({ cash: cashAfter, start: st.start, mode: st.mode }, list, snap);
     const increases = Math.abs(np?.lots ?? 0) > Math.abs(pos?.lots ?? 0);
     let reason: string | undefined;
     if (increases && view.available < -EPS) {
@@ -360,7 +367,7 @@ export class PaperTerminal {
         const o: OrderRow = {
           id: randomUUID(), createdAt: Date.now(), symbol: req.symbol, kind: inst?.kind ?? (req.symbol === snap.perp.symbol ? 'perp' : 'option'),
           side: req.side, type: req.type, lots: req.lots, filledLots: 0, price: req.price ?? null, stopPrice: req.stopPrice ?? null,
-          reduceOnly: !!req.reduceOnly, leverage: req.leverage ?? null, status: 'working', avgPrice: null, fee: 0, reason: null, ocoGroup: null, ...extra,
+          reduceOnly: !!req.reduceOnly, leverage: req.leverage ?? null, status: 'working', avgPrice: null, fee: 0, reason: null, ocoGroup: null, basketId: null, ...extra,
         };
         await pool.query(
           `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, price, stop_price, reduce_only, leverage, status, reason, oco_group)
@@ -434,7 +441,7 @@ export class PaperTerminal {
       const c: OrderRow = {
         id: randomUUID(), createdAt: Date.now(), symbol: parent.symbol, kind: parent.kind, side: exitSide, type, lots: parent.filledLots, filledLots: 0,
         price: type === 'limit' ? roundToTick(px, inst.tick) : null, stopPrice: type === 'stop_market' ? roundToTick(px, inst.tick) : null,
-        reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: parent.side === 'buy' ? 'bracket exit' : 'bracket exit', ocoGroup: group,
+        reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'bracket exit', ocoGroup: group, basketId: null,
       };
       await pool.query(
         `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, price, stop_price, reduce_only, leverage, status, reason, oco_group)
@@ -503,7 +510,7 @@ export class PaperTerminal {
       let marketError: string | null = null;
       try { snap = await this.market.snapshot(4_000); } catch (e) { marketError = (e as Error).message; }
       if (!snap) {
-        return { account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal }, view: null, positions: [], working: st.working, marketError };
+        return { account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal }, marginMode: st.mode, view: null, positions: [], working: st.working, marketError };
       }
       const q = this.quoteFn(snap);
       const view = this.view(st, st.positions.values(), snap);
@@ -530,8 +537,137 @@ export class PaperTerminal {
       });
       return {
         account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal },
-        view, positions, working: st.working, spot: snap.spot, perp: snap.perp, marketError,
+        marginMode: st.mode, view, positions, greeks: this.netGreeks(st, snap), working: st.working, spot: snap.spot, perp: snap.perp, marketError,
       };
+    });
+  }
+
+  /** Net exposure of the whole account: delta in BTC (the perpetual counts one for one), and the option greeks scaled to the size held. */
+  private netGreeks(st: State, snap: MarketSnapshot) {
+    const rows = new Map(snap.rows.map((r) => [r.symbol, r]));
+    let delta = 0, gamma = 0, theta = 0, vega = 0;
+    for (const p of st.positions.values()) {
+      if (p.symbol === snap.perp.symbol) { delta += p.lots * 0.001; continue; }
+      const r = rows.get(p.symbol);
+      if (!r) continue;
+      const size = p.lots * 0.001;
+      delta += size * r.delta; gamma += size * r.gamma; theta += size * r.theta; vega += size * r.vega;
+    }
+    return { delta, gamma, theta, vega };
+  }
+
+  // ---------- margin mode and multi-leg strategies ----------
+
+  /** Switch between portfolio margin and standard margin. Refused if the account could not carry its positions under the new mode. */
+  setMarginMode(mode: MarginMode) {
+    return this.serial(async () => {
+      await this.ensure();
+      if (mode !== 'portfolio' && mode !== 'standard') return { ok: false, reason: 'mode must be portfolio or standard' };
+      const st = await this.load();
+      if (st.mode === mode) return { ok: true, mode };
+      if (st.positions.size) {
+        const snap = await this.market.snapshot(2_000);
+        const v = this.view({ cash: st.cash, start: st.start, mode }, st.positions.values(), snap);
+        if (v.available < -EPS) {
+          return { ok: false, reason: `${mode} margin would need ${money(v.margin)} for the positions you hold, more than the ${money(v.equity)} of equity. Close some positions first.` };
+        }
+      }
+      await pool.query('UPDATE paper_account SET margin_mode = $1, updated_at = now() WHERE id = 1', [mode]);
+      return { ok: true, mode };
+    });
+  }
+
+  /** Walk the real books for every leg and apply them together, so a hedged package is margined as one position. */
+  private async planBasket(st: State, snap: MarketSnapshot, legs: BasketLeg[]) {
+    const fail = (reason: string) => ({ ok: false as const, reason });
+    if (!legs.length || legs.length > 8) return fail('a strategy needs between 1 and 8 legs');
+    const planned: Array<{ inst: Instrument; side: Side; lots: number; price: number; best: number }> = [];
+    for (const l of legs) {
+      const inst = snap.insts.get(l.symbol);
+      if (!inst) return fail(`${l.symbol} is not listed (or has expired)`);
+      if (!Number.isInteger(l.lots) || l.lots < 1) return fail('every leg needs a whole number of lots, at least 1');
+      const book = await this.market.book(l.symbol);
+      const w = walk(l.side === 'buy' ? book.asks : book.bids, l.side, l.lots);
+      if (w.filled < l.lots) return fail(`${l.symbol}: the book has only ${w.filled} of ${l.lots} lots on the ${l.side === 'buy' ? 'ask' : 'bid'} side, so the whole strategy cannot be filled at once`);
+      planned.push({ inst, side: l.side, lots: l.lots, price: w.avgPrice, best: w.best });
+    }
+    let cash = st.cash;
+    let fees = 0;
+    let slippageUsd = 0;
+    let netPremium = 0;
+    const pos = new Map(st.positions);
+    for (const p of planned) {
+      const cur = pos.get(p.inst.symbol) ?? null;
+      const { pos: np, realized } = applyTrade(cur, signed(p.side, p.lots), p.price, p.inst.contractValue, cur?.leverage ?? DEFAULT_LEVERAGE, p.inst.symbol);
+      const fee = feeFor(p.inst, p.price, p.lots, snap.spot, false);
+      cash += cashDelta(p.inst, p.side, p.lots, p.price, fee, realized);
+      fees += fee;
+      slippageUsd += Math.abs(p.price - p.best) * p.lots * p.inst.contractValue;
+      if (p.inst.kind === 'option') netPremium += (p.side === 'sell' ? 1 : -1) * p.price * p.lots * p.inst.contractValue;
+      if (np && np.lots !== 0) pos.set(p.inst.symbol, np);
+      else pos.delete(p.inst.symbol);
+    }
+    const view = this.view({ cash, start: st.start, mode: st.mode }, pos.values(), snap);
+    const grows = [...new Set(planned.map((p) => p.inst.symbol))].some((s) => Math.abs(pos.get(s)?.lots ?? 0) > Math.abs(st.positions.get(s)?.lots ?? 0));
+    let reason: string | undefined;
+    if (grows && view.available < -EPS) {
+      reason = `insufficient margin: ${st.mode} margin for this strategy plus your positions is ${money(view.margin)}, but equity would be ${money(view.equity)} (short by ${money(-view.available)})`;
+    } else if (grows && planned.some((p) => p.inst.kind === 'option' && p.side === 'buy') && cash < -EPS) {
+      reason = `not enough cash to pay the net premium and fees (cash would be ${money(cash)})`;
+    }
+    const opts = planned.filter((p) => p.inst.kind === 'option');
+    const sameExpiry = opts.length === planned.length && new Set(opts.map((p) => p.inst.option!.expiryMs)).size === 1;
+    const payoff = sameExpiry
+      ? payoffSummary(opts.map((p): PayoffLeg => ({ type: p.inst.option!.type, strike: p.inst.option!.strike, side: p.side, lots: p.lots, price: p.price, contractValue: p.inst.contractValue })), snap.spot)
+      : null;
+    return { ok: !reason, reason, planned, view, fees, slippageUsd, netPremium, cashAfter: cash, payoff, spot: snap.spot };
+  }
+
+  /** Estimate a multi-leg strategy against the live books without placing it. */
+  previewBasket(legs: BasketLeg[]) {
+    return this.serial(async () => {
+      await this.ensure();
+      const snap = await this.market.snapshot(2_000);
+      const st = await this.load();
+      const p = await this.planBasket(st, snap, legs);
+      if (!('planned' in p)) return { ok: false, reason: p.reason };
+      return {
+        ok: p.ok, reason: p.reason,
+        legs: p.planned.map((x) => ({ symbol: x.inst.symbol, side: x.side, lots: x.lots, avgPrice: x.price, bestPrice: x.best })),
+        netPremium: p.netPremium, fees: p.fees, slippageUsd: p.slippageUsd,
+        marginAfter: p.view.margin, availableAfter: p.view.available, marginMode: st.mode, payoff: p.payoff,
+      };
+    });
+  }
+
+  /** Place every leg at once as market orders, or none. */
+  placeBasket(legs: BasketLeg[]) {
+    return this.serial(async () => {
+      this.idle = false;
+      await this.ensure();
+      const snap = await this.market.snapshot(2_000);
+      const st = await this.load();
+      const p = await this.planBasket(st, snap, legs);
+      if (!('planned' in p) || !p.ok) return { ok: false, reason: p.reason ?? 'could not plan the strategy', orders: [] as OrderRow[] };
+      const basketId = randomUUID();
+      const orders: OrderRow[] = [];
+      for (const leg of p.planned) {
+        const o: OrderRow = {
+          id: randomUUID(), createdAt: Date.now(), symbol: leg.inst.symbol, kind: leg.inst.kind, side: leg.side, type: 'market', lots: leg.lots, filledLots: 0,
+          price: null, stopPrice: null, reduceOnly: false, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'strategy leg', ocoGroup: null, basketId,
+        };
+        await pool.query(
+          `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason, basket_id) VALUES ($1,$2,$3,$4,'market',$5,false,'working','strategy leg',$6)`,
+          [o.id, o.symbol, o.kind, o.side, o.lots, basketId],
+        );
+        // the whole package was checked together above, so each leg is applied without a separate margin test
+        const lev = st.positions.get(o.symbol)?.leverage ?? DEFAULT_LEVERAGE;
+        const sim = this.simulate(st, leg.inst, snap, leg.side, leg.lots, leg.price, false, lev);
+        await this.commit(st, o, leg.inst, sim, leg.lots, leg.price, false, leg.best, 'strategy leg');
+        orders.push(o);
+      }
+      await this.afterFills(st, snap);
+      return { ok: true, basketId, orders, netPremium: p.netPremium, fees: p.fees, payoff: p.payoff };
     });
   }
 
@@ -637,7 +773,7 @@ export class PaperTerminal {
       const side: Side = pos.lots > 0 ? 'sell' : 'buy';
       const o: OrderRow = {
         id: randomUUID(), createdAt: Date.now(), symbol: pos.symbol, kind: inst.kind, side, type: 'market', lots: Math.abs(pos.lots), filledLots: 0, price: null, stopPrice: null,
-        reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'liquidation', ocoGroup: null,
+        reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'liquidation', ocoGroup: null, basketId: null,
       };
       await pool.query(
         `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason) VALUES ($1,$2,$3,$4,'market',$5,true,'working','liquidation')`,
@@ -678,3 +814,9 @@ export class PaperTerminal {
 }
 
 export const paperTerminal = new PaperTerminal();
+
+export interface BasketLeg {
+  symbol: string;
+  side: Side;
+  lots: number;
+}

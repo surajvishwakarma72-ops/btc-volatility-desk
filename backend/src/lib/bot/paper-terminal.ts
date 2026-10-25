@@ -167,11 +167,31 @@ export interface AccountView {
   marginRatio: number | null;
 }
 
-export function accountView(acct: Account, positions: readonly Position[], insts: ReadonlyMap<string, Instrument>, m: Marks): AccountView {
+/**
+ * How option margin is worked out, as on Delta's own margin-mode switch:
+ *  - portfolio: one margin for all options together from stress scenarios, so spreads, condors and hedged
+ *    positions need far less than their legs would alone;
+ *  - standard: every short option is margined on its own (premium plus a share of the underlying), with no
+ *    credit for the other legs. Delta does not publish its standard formula; this follows the common
+ *    exchange form (mark + max(15% of spot - out-of-the-money amount, 10% of spot)).
+ */
+export type MarginMode = 'portfolio' | 'standard';
+
+export function standardOptionMargin(shorts: ReadonlyArray<{ type: 'call' | 'put'; strike: number; lots: number; mark: number }>, spot: number, cv: number): number {
+  let total = 0;
+  for (const s of shorts) {
+    const otm = s.type === 'call' ? Math.max(s.strike - spot, 0) : Math.max(spot - s.strike, 0);
+    total += s.lots * cv * (s.mark + Math.max(0.15 * spot - otm, 0.1 * spot));
+  }
+  return total;
+}
+
+export function accountView(acct: Account, positions: readonly Position[], insts: ReadonlyMap<string, Instrument>, m: Marks, mode: MarginMode = 'portfolio'): AccountView {
   let optionsValue = 0;
   let perpUnrealized = 0;
   let perpMargin = 0;
   const optPos: MarginPosition[] = [];
+  const shorts: Array<{ type: 'call' | 'put'; strike: number; lots: number; mark: number }> = [];
   for (const p of positions) {
     if (p.lots === 0) continue;
     const inst = insts.get(p.symbol);
@@ -184,12 +204,13 @@ export function accountView(acct: Account, positions: readonly Position[], insts
         type: inst.option!.type, side: p.lots > 0 ? 'long' : 'short', strike: inst.option!.strike, expiryMs: inst.option!.expiryMs,
         lots: Math.abs(p.lots), iv: inst.option!.iv > 0 ? inst.option!.iv : 40,
       });
+      if (p.lots < 0) shorts.push({ type: inst.option!.type, strike: inst.option!.strike, lots: -p.lots, mark });
     } else {
       perpUnrealized += unrealized(p, mark, inst.contractValue);
       perpMargin += (Math.abs(p.lots) * inst.contractValue * mark) / Math.max(p.leverage, 1);
     }
   }
-  const optionMargin = optPos.length ? portfolioMargin(optPos, m.spot, m.nowMs, 0.001).margin : 0;
+  const optionMargin = !optPos.length ? 0 : mode === 'standard' ? standardOptionMargin(shorts, m.spot, 0.001) : portfolioMargin(optPos, m.spot, m.nowMs, 0.001).margin;
   const equity = acct.cash + optionsValue + perpUnrealized;
   const margin = perpMargin + optionMargin;
   return {
@@ -228,4 +249,72 @@ export function limitTradesThrough(side: Side, limit: number, q: Pick<Quote, 'bi
 /** Cash-settlement price of an expired option at the index price: its intrinsic value. */
 export function intrinsicAtExpiry(type: 'call' | 'put', strike: number, spot: number): number {
   return Math.max(type === 'call' ? spot - strike : strike - spot, 0);
+}
+
+// ---------- strategy payoff at expiry ----------
+
+export interface PayoffLeg {
+  type: 'call' | 'put';
+  strike: number;
+  side: Side;
+  lots: number;
+  /** Price paid (buy) or received (sell), USD per 1 BTC. */
+  price: number;
+  contractValue: number;
+}
+
+export interface PayoffSummary {
+  /** [spot at expiry, profit or loss in USD before fees], for drawing the chart. */
+  points: Array<[number, number]>;
+  /** null means unlimited. */
+  maxProfit: number | null;
+  maxLoss: number | null;
+  breakevens: number[];
+  /** Net premium: positive is a credit received, negative a debit paid. */
+  netPremium: number;
+}
+
+export function pnlAtExpiry(legs: readonly PayoffLeg[], spot: number): number {
+  let total = 0;
+  for (const l of legs) {
+    const intrinsic = Math.max(l.type === 'call' ? spot - l.strike : l.strike - spot, 0);
+    const dir = l.side === 'buy' ? 1 : -1;
+    total += dir * (intrinsic - l.price) * l.lots * l.contractValue;
+  }
+  return total;
+}
+
+export function payoffSummary(legs: readonly PayoffLeg[], spot: number): PayoffSummary {
+  const strikes = [...new Set(legs.map((l) => l.strike))].sort((a, b) => a - b);
+  const lo = Math.min(spot * 0.6, strikes[0] ?? spot);
+  const hi = Math.max(spot * 1.4, strikes[strikes.length - 1] ?? spot);
+  const xs = new Set<number>([0, lo, hi, ...strikes]);
+  for (let i = 0; i <= 160; i++) xs.add(lo + ((hi - lo) * i) / 160);
+  const grid = [...xs].sort((a, b) => a - b);
+  const points = grid.filter((x) => x >= lo).map((x) => [x, pnlAtExpiry(legs, x)] as [number, number]);
+  const upSlope = legs.reduce((s, l) => s + (l.type === 'call' ? (l.side === 'buy' ? 1 : -1) * l.lots * l.contractValue : 0), 0);
+  const kinks = [0, ...strikes].map((x) => pnlAtExpiry(legs, x));
+  const best = Math.max(...kinks);
+  const worst = Math.min(...kinks);
+  const netPremium = legs.reduce((s, l) => s + (l.side === 'sell' ? 1 : -1) * l.price * l.lots * l.contractValue, 0);
+  // breakevens: sign changes between kinks (the payoff is a straight line between them), plus one beyond the top strike
+  const bx: number[] = [];
+  const knots = [0, ...strikes];
+  for (let i = 0; i + 1 < knots.length; i++) {
+    const a = pnlAtExpiry(legs, knots[i]!);
+    const b = pnlAtExpiry(legs, knots[i + 1]!);
+    if (a === 0 && i === 0) continue;
+    if ((a < 0 && b > 0) || (a > 0 && b < 0)) bx.push(knots[i]! + ((knots[i + 1]! - knots[i]!) * -a) / (b - a));
+    else if (b === 0 && i + 1 < knots.length - 1) bx.push(knots[i + 1]!);
+  }
+  const top = knots[knots.length - 1]!;
+  const pTop = pnlAtExpiry(legs, top);
+  if (upSlope !== 0 && Math.sign(pTop) !== Math.sign(upSlope) && pTop !== 0) bx.push(top - pTop / upSlope);
+  return {
+    points,
+    maxProfit: upSlope > 1e-12 ? null : best,
+    maxLoss: upSlope < -1e-12 ? null : worst,
+    breakevens: [...new Set(bx.map((v) => Math.round(v * 100) / 100))].sort((a, b) => a - b),
+    netPremium,
+  };
 }

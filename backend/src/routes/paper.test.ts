@@ -19,7 +19,7 @@ describe('paper routes', () => {
     const routes: Array<[string, string]> = [
       ['GET', '/paper/account'], ['GET', '/paper/board'], ['GET', '/paper/book?symbol=BTCUSD'], ['POST', '/paper/preview'], ['POST', '/paper/orders'],
       ['DELETE', '/paper/orders/00000000-0000-0000-0000-000000000000'], ['POST', '/paper/orders/cancel-all'], ['GET', '/paper/orders'], ['GET', '/paper/fills'],
-      ['POST', '/paper/leverage'], ['POST', '/paper/reset'],
+      ['POST', '/paper/leverage'], ['POST', '/paper/reset'], ['POST', '/paper/strategy'], ['POST', '/paper/strategy/preview'], ['POST', '/paper/margin-mode'],
     ];
     for (const [method, url] of routes) {
       const res = await app.inject({ method: method as 'GET', url });
@@ -39,6 +39,17 @@ describe('paper routes', () => {
     expect((await app.inject({ method: 'POST', url: '/paper/reset', headers: h, payload: { balance: 50, confirm: 'RESET' } })).statusCode).toBe(400);
     expect((await app.inject({ method: 'DELETE', url: '/paper/orders/not-a-uuid', headers: h })).statusCode).toBe(400);
     expect((await app.inject({ method: 'GET', url: '/paper/book', headers: h })).statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('rejects malformed strategies and margin modes before touching anything', async () => {
+    const app = await build();
+    const h = { authorization: `Bearer ${app.jwt.sign({ sub: 't' })}` };
+    for (const payload of [{}, { legs: [] }, { legs: Array.from({ length: 9 }, () => ({ symbol: 'C-BTC-80000-271026', side: 'buy', lots: 1 })) }, { legs: [{ symbol: 'C-BTC-80000-271026', side: 'hold', lots: 1 }] }, { legs: [{ symbol: 'C-BTC-80000-271026', side: 'buy', lots: 0 }] }]) {
+      expect((await app.inject({ method: 'POST', url: '/paper/strategy', headers: h, payload })).statusCode, JSON.stringify(payload)).toBe(400);
+      expect((await app.inject({ method: 'POST', url: '/paper/strategy/preview', headers: h, payload })).statusCode).toBe(400);
+    }
+    expect((await app.inject({ method: 'POST', url: '/paper/margin-mode', headers: h, payload: { mode: 'isolated' } })).statusCode).toBe(400);
     await app.close();
   });
 
