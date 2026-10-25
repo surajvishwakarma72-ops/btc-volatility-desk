@@ -260,6 +260,20 @@ describe('strike picker', () => {
     expect(pickBodyLeg(noBid, 'call', EXP)?.symbol).not.toBe('C-82500');
   });
 
+  it('as a last resort accepts a strike just above the band, but not far above it', () => {
+    const sparse = [
+      opt({ symbol: 'C-A', type: 'call', strike: 82800, delta: 0.152 }),
+      opt({ symbol: 'C-B', type: 'call', strike: 82400, delta: 0.202 }),
+    ];
+    expect(pickBodyLeg(sparse, 'call', EXP)?.symbol).toBe('C-A');
+    expect(pickBodyLeg([sparse[1]!], 'call', EXP)).toBeNull();
+  });
+
+  it('never sells a far-OTM strike as the body just because nothing sits in the band', () => {
+    const farOnly = [opt({ symbol: 'C-FAR', type: 'call', strike: 90000, delta: 0.04 })];
+    expect(pickBodyLeg(farOnly, 'call', EXP)).toBeNull();
+  });
+
   it('picks a wing further out than the body', () => {
     const body = chain.find((o) => o.symbol === 'C-82500')!;
     expect(pickWing(chain, body, 0.04)?.symbol).toBe('C-84000');

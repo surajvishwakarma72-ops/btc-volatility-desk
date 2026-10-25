@@ -24,17 +24,23 @@ export const SHORT_BAND: DeltaBand = { low: 0.1, high: 0.15, target: 0.125 };
 
 /**
  * Pick the short body leg of the requested type: inside the band, closest to the target delta.
- * Falls back to the nearest strike just below the band (desk rule) if none sits inside it.
+ * Falls back to the nearest strike just below the band (desk rule, at most `belowTolerance` under it, so
+ * a 0.04-delta option is never sold as the body) and, as a last resort, to the closest strike up to
+ * `aboveTolerance` above the band.
  * Quotes with no bid are skipped: a sold leg must be fillable.
  */
-export function pickBodyLeg(chain: readonly ChainOption[], type: OptionType, expiryMs: number, band: DeltaBand = SHORT_BAND): ChainOption | null {
+export function pickBodyLeg(chain: readonly ChainOption[], type: OptionType, expiryMs: number, band: DeltaBand = SHORT_BAND, aboveTolerance = 0.02, belowTolerance = 0.035): ChainOption | null {
   const side = chain.filter((o) => o.type === type && o.expiryMs === expiryMs && o.bid > 0);
   const inBand = side.filter((o) => o.delta >= band.low && o.delta <= band.high);
   if (inBand.length) {
     return inBand.reduce((best, o) => (Math.abs(o.delta - band.target) < Math.abs(best.delta - band.target) ? o : best));
   }
-  const below = side.filter((o) => o.delta < band.low);
-  return below.length ? below.reduce((best, o) => (o.delta > best.delta ? o : best)) : null;
+  const below = side.filter((o) => o.delta < band.low && o.delta >= band.low - belowTolerance);
+  if (below.length) return below.reduce((best, o) => (o.delta > best.delta ? o : best));
+  // Last resort: a short-dated expiry can list no strike beyond the band. Accept the closest strike
+  // just above it, within `aboveTolerance`, rather than skipping the trade for a 0.002 delta miss.
+  const above = side.filter((o) => o.delta > band.high && o.delta <= band.high + aboveTolerance);
+  return above.length ? above.reduce((best, o) => (o.delta < best.delta ? o : best)) : null;
 }
 
 /**
