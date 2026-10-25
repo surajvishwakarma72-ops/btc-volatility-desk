@@ -51809,7 +51809,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             else { try { o.a.setMarkers([]); } catch (e) { } }
           } else { try { o.a.setMarkers([]); } catch (e) { } }
           st(o, cls);
-          setLeg(o, `<b>MACRO STRESS</b><span class="${cls}">${score}/100</span><span class="${cls}">${arrow}</span><span class="${cls}">${dir}</span><span class="m">Uplift: ${uplift}</span><span class="${cls}" style="font-weight:700">${ruleTxt}</span><span class="m">Forex · Commodities · Stocks · Bonds · Events (0–100)</span>`);
+          setLeg(o, `<b>MACRO STRESS</b><span class="${cls}">${score}/100</span><span class="${cls}">${arrow}</span><span class="${cls}">${dir}</span><span class="m">Uplift: ${uplift}</span><span class="${cls}" style="font-weight:700">${ruleTxt}</span><span class="m">Forex · Commodities · Stocks · Bonds · US events (0–100)</span>${ST && ST.note ? `<span class="a">${esc(ST.note)}</span>` : ''}`);
         }
         try { const key = B.n + '|' + B.b[0].time + '|' + B.b[B.n - 1].time; if (o.carK !== key) { o.carK = key; o.car.setData(B.b.map(b => ({ time: b.time, value: 0 }))); } } catch (e) { }
         S.vals[k] = vals; sync(o);
@@ -57920,6 +57920,7 @@ html { overscroll-behavior-y: none; background-color: var(--bg); }
         STRESS.uplift = data.uplift;
         STRESS.nextEvent = data.nextEvent;
         STRESS.tradeRule = data.tradeRule;
+        STRESS.note = data.note || null; STRESS.hasData = data.hasData !== false; STRESS.marketsOpen = data.marketsOpen;
         if (data.matrix) STRESS.matrix = data.matrix;
         if (data.curve && data.curve.length) STRESS.curve = data.curve;
         if (data.events) STRESS.events = data.events;

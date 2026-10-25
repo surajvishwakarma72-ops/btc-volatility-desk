@@ -27,7 +27,7 @@ export function evaluateGate(dvolMax: number = DVOL_MAX): GateVerdict {
   if (dvol == null) reasons.push('DVOL unavailable');
   else if (dvol >= dvolMax) reasons.push(`DVOL ${dvol.toFixed(1)} >= ${dvolMax}`);
   if (macro.zone !== 'calm') reasons.push(`macro zone ${macro.zone}`);
-  const eventInWindow = !!macro.nextEvent && !macro.nextEvent.startsWith('No Tier-1');
+  const eventInWindow = !!macro.nextEvent && !/^(No Tier-1|loading)/.test(macro.nextEvent);
   return {
     version: 'v1',
     go: reasons.length === 0,

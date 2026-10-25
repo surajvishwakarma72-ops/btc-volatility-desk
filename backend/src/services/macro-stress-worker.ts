@@ -7,18 +7,25 @@
  * - Commodities: Gold, WTI Oil
  * - Stocks: Nasdaq futures, VIX
  * - Bonds: US 10-year yield, MOVE index
- * - News calendar: CPI, FOMC, NFP, converted to IST
+ * - News calendar: US high / medium impact releases (CPI, FOMC, jobs...), converted to IST
  *
- * CALCULATION:
- * 1. Shock per market = move over last 1h and 4h divided by normal range (30d z-score).
- * 2. Link per market = rolling hourly correlation and beta vs BTC over last 7 days (clipped 0-1).
- * 3. Pressure = shock x link, per market.
- * 4. Event factor = rises within 6h of high-impact event, decays 2h post-event.
- * 5. Stress = weighted sum of pressures + event factor, scaled to 0-100.
- * 6. Direction (risk-off / risk-on) and expected BTC RV uplift for next 4 hours.
+ * CALCULATION (see lib/macro.ts, which is unit tested):
+ * 1. Shock per market = 1h and 4h move divided by its normal range. A market whose candles are old (closed) is
+ *    reported as closed and does NOT count as calm; it simply drops out of its group.
+ * 2. Link per group = |correlation| of hourly returns with BTC over the last 5 days, blended half and half with a
+ *    fixed prior so a few quiet days cannot swing it.
+ * 3. Pressure = shock x link, per group.
+ * 4. Event factor = rises over the 6h before a US release, decays over the 2h after. Counted once.
+ * 5. Stress = weighted sum of pressures, scaled to 0-100.
+ * 6. Direction (risk-off / risk-on) and the expected BTC RV uplift.
  *
- * Failures and gaps are logged explicitly and never filled silently.
+ * Failures and gaps are listed explicitly and never filled silently. The history behind the lane is the real record
+ * of past readings, saved to the database so a restart does not erase it; nothing is invented.
  */
+import { pool } from '../db/index.js';
+import {
+  blendLink, correlationWithBtc, hourlyReturns, readMoves, relevantEvents, stressScore, type Pt,
+} from '../lib/macro.js';
 
 export interface MarketQuote {
   symbol: string;
@@ -27,12 +34,16 @@ export interface MarketQuote {
   change4hPct: number;
   normalRangePct: number; // 30-day baseline standard deviation
   lastUpdated: number;
+  /** The market is trading now (fresh candles); false means closed or stale. */
+  open: boolean;
+  /** Minutes since its newest candle. */
+  ageMin: number;
 }
 
 export interface MacroCategoryData {
   cat: string;
   inst: string;
-  shock: string;      // e.g. "+0.32 σ"
+  shock: string;      // e.g. "0.32 σ", or "closed" / "no data"
   shockVal: number;
   link: string;       // e.g. "0.24"
   linkVal: number;
@@ -97,6 +108,12 @@ export interface MacroStressSnapshot {
   failures: Array<{ symbol: string; error: string; at: number }>;
   status: 'ok' | 'degraded';
   updatedAt: number;
+  /** False until the first successful poll: the numbers are then placeholders, not measurements. */
+  hasData: boolean;
+  /** How many of the 8 markets are trading right now, and how many could not be fetched this cycle. */
+  marketsOpen: number;
+  marketsFailed: number;
+  note: string | null;
 }
 
 const SYMBOLS = {
@@ -109,6 +126,7 @@ const SYMBOLS = {
   TNX: '^TNX',
   MOVE: '^MOVE',
 };
+const BTC_SYMBOL = 'BTC-USD';
 
 // Normal 30d hourly range approximations (% standard deviation)
 const NORMAL_RANGES_PCT: Record<string, number> = {
@@ -122,13 +140,31 @@ const NORMAL_RANGES_PCT: Record<string, number> = {
   '^MOVE': 2.80,
 };
 
+/** Starting link per group, used while the correlation has too little data and as half of the blend afterwards. */
+const PRIOR_LINK = { forex: 0.28, commodities: 0.32, equities: 0.52, bonds: 0.36 };
+
+const GROUPS = {
+  forex: [SYMBOLS.DXY, SYMBOLS.USDJPY],
+  commodities: [SYMBOLS.GOLD, SYMBOLS.OIL],
+  equities: [SYMBOLS.NQ, SYMBOLS.VIX],
+  bonds: [SYMBOLS.TNX, SYMBOLS.MOVE],
+} as const;
+
+const DDL = `CREATE TABLE IF NOT EXISTS macro_stress_points (
+  ts bigint PRIMARY KEY,
+  score integer NOT NULL
+)`;
+
+const zoneOf = (v: number): 'calm' | 'elevated' | 'shock' => (v < 35 ? 'calm' : v <= 65 ? 'elevated' : 'shock');
+const istClock = (ms: number) => new Date(ms).toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false });
+
 export class MacroStressWorker {
   private timer: NodeJS.Timeout | null = null;
   private isRunning = false;
   private pollIntervalMs = 5 * 60 * 1000; // 5 minutes
 
   private quotes = new Map<string, MarketQuote>();
-  private priceHistory = new Map<string, Array<{ t: number; p: number }>>();
+  private series = new Map<string, Pt[]>();
 
   private historicalCurve: StressPoint[] = [];
   private currentSnapshot: MacroStressSnapshot | null = null;
@@ -140,15 +176,11 @@ export class MacroStressWorker {
     if (this.isRunning) return;
     this.isRunning = true;
     console.log('[MacroStressWorker] Starting outside markets volatility pressure recorder (every 5 min)...');
-    
-    // Seed initial synthetic baseline curve so UI never shows empty void on cold start
-    this.seedInitialCurve();
-
-    // Trigger immediate initial poll
-    this.poll();
-
-    // Schedule 5-min intervals
-    this.timer = setInterval(() => this.poll(), this.pollIntervalMs);
+    void this.loadHistory().finally(() => {
+      if (!this.isRunning) return;
+      this.poll();
+      this.timer = setInterval(() => this.poll(), this.pollIntervalMs);
+    });
   }
 
   stop() {
@@ -168,49 +200,73 @@ export class MacroStressWorker {
   }
 
   public setWeights(newWeights: Partial<StressWeights>) {
+    for (const k of Object.keys(DEFAULT_STRESS_WEIGHTS) as Array<keyof StressWeights>) {
+      const v = newWeights[k];
+      if (v !== undefined && (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 2)) throw new Error(`weight "${k}" must be a number from 0 to 2`);
+    }
+    for (const k of Object.keys(newWeights)) if (!(k in DEFAULT_STRESS_WEIGHTS)) throw new Error(`unknown weight "${k}"`);
     this.weights = { ...this.weights, ...newWeights };
     console.log('[MacroStressWorker] Refitted stress weights:', this.weights);
     this.computeStress();
   }
 
+  // ---------- history: real readings only, saved so a restart keeps them ----------
+
+  private async loadHistory() {
+    try {
+      await pool.query(DDL);
+      const r = await pool.query('SELECT ts, score FROM macro_stress_points WHERE ts >= $1 ORDER BY ts', [Date.now() - 24 * 3_600_000]);
+      this.historicalCurve = (r.rows as Array<{ ts: string; score: number }>).map((x) => ({
+        time: istClock(Number(x.ts)), timestamp: Number(x.ts), val: Number(x.score), zone: zoneOf(Number(x.score)),
+      }));
+    } catch (e) {
+      console.warn('[MacroStressWorker] could not load saved history:', (e as Error).message);
+    }
+  }
+
+  private async saveReading(ts: number, score: number) {
+    try {
+      await pool.query(DDL);
+      await pool.query('INSERT INTO macro_stress_points (ts, score) VALUES ($1, $2) ON CONFLICT (ts) DO NOTHING', [ts, score]);
+      await pool.query('DELETE FROM macro_stress_points WHERE ts < $1', [ts - 7 * 24 * 3_600_000]);
+    } catch (e) {
+      console.warn('[MacroStressWorker] could not save the reading:', (e as Error).message);
+    }
+  }
+
+  // ---------- polling ----------
+
+  private failedNow = new Set<string>();
+
   private async poll() {
     try {
       const now = Date.now();
-      const quotePromises = Object.entries(SYMBOLS).map(async ([_name, sym]) => {
+      this.failedNow = new Set();
+      const jobs = [...Object.values(SYMBOLS), BTC_SYMBOL].map(async (sym) => {
         try {
-          const q = await this.fetchYahooQuote(sym);
-          if (q) {
-            this.quotes.set(sym, q);
-            // Append to price history
-            const hist = this.priceHistory.get(sym) || [];
-            hist.push({ t: now, p: q.price });
-            // Keep last 7 days of 5m prices (approx 2016 points)
-            if (hist.length > 2200) hist.splice(0, hist.length - 2000);
-            this.priceHistory.set(sym, hist);
-          }
+          const { quote, points } = await this.fetchYahooQuote(sym);
+          this.series.set(sym, points);
+          if (sym !== BTC_SYMBOL) this.quotes.set(sym, quote);
         } catch (err: any) {
           const msg = err?.message || String(err);
           console.warn(`[MacroStressWorker] Failure fetching ${sym}: ${msg}`);
+          if (sym !== BTC_SYMBOL) this.failedNow.add(sym);
           this.failures.push({ symbol: sym, error: msg, at: now });
           if (this.failures.length > 50) this.failures.shift();
           this.gaps.push({ symbol: sym, timestamp: now, reason: msg });
           if (this.gaps.length > 50) this.gaps.shift();
         }
       });
+      await Promise.allSettled(jobs);
 
-      await Promise.allSettled(quotePromises);
-
-      // Fetch economic calendar
       const events = await this.fetchCalendarEvents();
-
-      // Compute stress index 0-100 and update snapshot
       this.computeStress(events);
     } catch (err) {
       console.error('[MacroStressWorker] Poll cycle error:', err);
     }
   }
 
-  private async fetchYahooQuote(symbol: string): Promise<MarketQuote | null> {
+  private async fetchYahooQuote(symbol: string): Promise<{ quote: MarketQuote; points: Pt[] }> {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5d&interval=5m`;
     const res = await fetch(url, {
       headers: {
@@ -238,404 +294,231 @@ export class MacroStressWorker {
       throw new Error(`No regular market price for ${symbol}`);
     }
 
-    // Filter valid (non-null) historical closes
-    const validPoints: Array<{ t: number; p: number }> = [];
+    const points: Pt[] = [];
     for (let i = 0; i < timestamps.length; i++) {
       const c = closes[i];
-      if (typeof c === 'number' && !isNaN(c)) {
-        validPoints.push({ t: timestamps[i] * 1000, p: c });
-      }
+      if (typeof c === 'number' && !isNaN(c)) points.push({ t: timestamps[i]! * 1000, p: c });
     }
 
-    const currentP = regularPrice;
     const now = Date.now();
-
-    // Find price ~1h ago and ~4h ago
-    const p1h = this.findPriceAgo(validPoints, now - 60 * 60 * 1000) ?? currentP;
-    const p4h = this.findPriceAgo(validPoints, now - 4 * 60 * 60 * 1000) ?? p1h;
-
-    const change1hPct = p1h > 0 ? ((currentP - p1h) / p1h) * 100 : 0;
-    const change4hPct = p4h > 0 ? ((currentP - p4h) / p4h) * 100 : 0;
-    const normalRangePct = NORMAL_RANGES_PCT[symbol] || 0.50;
-
+    const m = readMoves(points, regularPrice, now);
     return {
-      symbol,
-      price: currentP,
-      change1hPct,
-      change4hPct,
-      normalRangePct,
-      lastUpdated: now,
+      points,
+      quote: {
+        symbol,
+        price: regularPrice,
+        change1hPct: m.change1hPct,
+        change4hPct: m.change4hPct,
+        normalRangePct: NORMAL_RANGES_PCT[symbol] || 0.50,
+        lastUpdated: now,
+        open: m.open,
+        ageMin: m.ageMin,
+      },
     };
-  }
-
-  private findPriceAgo(points: Array<{ t: number; p: number }>, targetTime: number): number | null {
-    if (!points.length) return null;
-    let closest = points[0];
-    let minDiff = Math.abs(points[0].t - targetTime);
-    for (let i = 1; i < points.length; i++) {
-      const diff = Math.abs(points[i].t - targetTime);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closest = points[i];
-      }
-    }
-    return closest.p;
   }
 
   private async fetchCalendarEvents(): Promise<CalendarEvent[]> {
     try {
-      const url = 'https://nfs.faireconomy.media/ff_calendar_thisweek.json';
-      const res = await fetch(url, {
+      const res = await fetch('https://nfs.faireconomy.media/ff_calendar_thisweek.json', {
         headers: { 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) return [];
       const items: any[] = await res.json();
-      const now = Date.now();
-      const out: CalendarEvent[] = [];
-
-      for (const item of items) {
-        const title = item.title || '';
-        const impact = (item.impact || 'Low') as 'High' | 'Medium' | 'Low';
-        const country = item.country || '';
-        if (!item.date) continue;
-        const eventMs = new Date(item.date).getTime();
-        if (isNaN(eventMs)) continue;
-
-        // Hours difference (positive = in future, negative = in past)
-        const diffHours = (eventMs - now) / (3600 * 1000);
-
-        // Filter high or medium impact events within window [-2h to +18h]
-        if (diffHours >= -2 && diffHours <= 18 && (impact === 'High' || impact === 'Medium')) {
-          let factor = 0;
-          if (diffHours >= 0 && diffHours <= 6) {
-            // Approaching within 6 hours: ramps 0 to 1
-            factor = (6 - diffHours) / 6;
-          } else if (diffHours < 0 && diffHours >= -2) {
-            // Past 2 hours: decays 1 to 0
-            factor = (2 - Math.abs(diffHours)) / 2;
-          }
-          if (impact === 'Medium') factor *= 0.6;
-
-          // Convert to IST
-          const d = new Date(eventMs);
-          const timeIST = d.toLocaleTimeString('en-GB', {
-            timeZone: 'Asia/Kolkata',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-          }) + ' IST';
-
-          out.push({
-            title,
-            country,
-            impact,
-            timestamp: eventMs,
-            timeIST,
-            hoursUntil: diffHours,
-            factor,
-          });
-        }
-      }
-
-      // Sort by proximity
-      out.sort((a, b) => Math.abs(a.hoursUntil) - Math.abs(b.hoursUntil));
-      return out;
+      return relevantEvents(items, Date.now()).map((e) => ({
+        title: e.title,
+        country: 'USD',
+        impact: e.impact,
+        timestamp: e.timestamp,
+        timeIST: `${istClock(e.timestamp)} IST`,
+        hoursUntil: e.hoursUntil,
+        factor: e.factor,
+      }));
     } catch {
       return [];
     }
   }
 
-  private computeStress(events: CalendarEvent[] = []) {
+  // ---------- stress ----------
+
+  /** Average shock of the markets in a group that are trading now. `open` is how many of them that is. */
+  private groupShock(symbols: readonly string[]): { shock: number; open: number; total: number } {
+    let sum = 0;
+    let open = 0;
+    for (const sym of symbols) {
+      const q = this.quotes.get(sym);
+      if (!q || !q.open) continue;
+      const move = Math.abs(q.change1hPct) * 0.6 + Math.abs(q.change4hPct) * 0.4;
+      sum += move / (q.normalRangePct || 0.5);
+      open++;
+    }
+    return { shock: open ? sum / open : 0, open, total: symbols.length };
+  }
+
+  private groupLink(symbols: readonly string[], prior: number): number {
+    const btc = this.series.get(BTC_SYMBOL);
+    if (!btc || btc.length < 100) return prior;
+    const btcRet = hourlyReturns(btc);
+    const corrs = symbols.map((s) => {
+      const pts = this.series.get(s);
+      return pts && pts.length ? correlationWithBtc(hourlyReturns(pts), btcRet).corr : null;
+    });
+    return blendLink(corrs, prior);
+  }
+
+  private computeStress(events: Array<{ title: string; hoursUntil: number; factor: number; timestamp: number }> = []) {
     const now = Date.now();
 
-    // 1. Calculate shocks per market
-    // Shock = (|move_1h| + |move_4h|) / normalRange (z-score)
-    const shockForex = this.calcGroupShock([SYMBOLS.DXY, SYMBOLS.USDJPY]);
-    const shockCommodities = this.calcGroupShock([SYMBOLS.GOLD, SYMBOLS.OIL]);
-    const shockEquities = this.calcGroupShock([SYMBOLS.NQ, SYMBOLS.VIX]);
-    const shockBonds = this.calcGroupShock([SYMBOLS.TNX, SYMBOLS.MOVE]);
+    const sh = {
+      forex: this.groupShock(GROUPS.forex),
+      commodities: this.groupShock(GROUPS.commodities),
+      equities: this.groupShock(GROUPS.equities),
+      bonds: this.groupShock(GROUPS.bonds),
+    };
+    const link = {
+      forex: this.groupLink(GROUPS.forex, PRIOR_LINK.forex),
+      commodities: this.groupLink(GROUPS.commodities, PRIOR_LINK.commodities),
+      equities: this.groupLink(GROUPS.equities, PRIOR_LINK.equities),
+      bonds: this.groupLink(GROUPS.bonds, PRIOR_LINK.bonds),
+    };
+    const press = {
+      forex: sh.forex.shock * link.forex,
+      commodities: sh.commodities.shock * link.commodities,
+      equities: sh.equities.shock * link.equities,
+      bonds: sh.bonds.shock * link.bonds,
+      event: 0,
+    };
 
-    // 2. Links (correlations/betas vs BTC clipped 0-1)
-    // Using calibrated rolling baseline with real market variations
-    const linkForex = 0.28;
-    const linkCommodities = 0.32;
-    const linkEquities = 0.52;
-    const linkBonds = 0.36;
-
-    // 3. Pressures = Shock x Link
-    const pressForex = Math.max(0, shockForex * linkForex);
-    const pressCommodities = Math.max(0, shockCommodities * linkCommodities);
-    const pressEquities = Math.max(0, shockEquities * linkEquities);
-    const pressBonds = Math.max(0, shockBonds * linkBonds);
-
-    // 4. Event factor
     let maxEventFactor = 0;
-    let nextEventDesc = 'No Tier-1 news in 6h';
+    let nextEventDesc = 'No Tier-1 US news in 6h';
     if (events.length > 0) {
-      const topEvt = events[0];
-      maxEventFactor = topEvt.factor;
-      const hStr = topEvt.hoursUntil > 0 
-        ? `in ${topEvt.hoursUntil.toFixed(1)}h IST` 
-        : `${Math.abs(topEvt.hoursUntil).toFixed(1)}h ago IST`;
-      nextEventDesc = `${topEvt.title} (${hStr})`;
+      const top = events[0]!;
+      maxEventFactor = Math.max(...events.map((e) => e.factor));
+      const hStr = top.hoursUntil > 0 ? `in ${top.hoursUntil.toFixed(1)}h` : `${Math.abs(top.hoursUntil).toFixed(1)}h ago`;
+      nextEventDesc = `${top.title} (${hStr})`;
+      if (maxEventFactor === 0) nextEventDesc = `${top.title} (in ${top.hoursUntil.toFixed(0)}h)`;
     }
-    const pressEvent = maxEventFactor * 3.5;
+    press.event = maxEventFactor * 3.5;
 
-    // 5. Stress = weighted sum of pressures + event factor, scaled to 0-100
-    const weightedSum = (
-      this.weights.forex * pressForex +
-      this.weights.commodities * pressCommodities +
-      this.weights.equities * pressEquities +
-      this.weights.bonds * pressBonds +
-      this.weights.event * pressEvent
-    );
+    const score = stressScore({ press, weights: this.weights });
 
-    // Scale to 0-100 (normal range baseline is ~0.25 -> 25 score, severe shock is >1.0 -> 75-100 score)
-    const rawScore = Math.round(Math.min(100, Math.max(0, weightedSum * 55 + (maxEventFactor * 30))));
-    const score = Math.max(12, Math.min(96, rawScore));
-
-    // Determine direction and regime
-    const isRiskOff = pressEquities > 0.35 || pressBonds > 0.30 || score > 55;
+    const isRiskOff = press.equities > 0.35 || press.bonds > 0.30 || score > 55;
     const direction: 'RISK-OFF' | 'RISK-ON' = isRiskOff ? 'RISK-OFF' : 'RISK-ON';
+    const uplift = `+${(score * 0.055).toFixed(1)}% RV`;
 
-    // Uplift calculation
-    const upliftNum = (score * 0.055).toFixed(1);
-    const uplift = `+${upliftNum}% RV`;
+    const zone = zoneOf(score);
+    const tradeRule =
+      zone === 'calm' ? 'Green: markets calm, take the entry at normal size.'
+        : zone === 'elevated' ? 'Amber: one market is moving or an event is within a few hours, use half size.'
+          : 'Red: several markets moving together or a big event is close, skip the entry or cut size.';
 
-    // Zone & Trade Rule
-    let zone: 'calm' | 'elevated' | 'shock' = 'calm';
-    let tradeRule = 'Green: markets calm, take the entry at normal size.';
-    if (score < 35) {
-      zone = 'calm';
-      tradeRule = 'Green: markets calm, take the entry at normal size.';
-    } else if (score <= 65) {
-      zone = 'elevated';
-      tradeRule = 'Amber: one market is moving or an event is within a few hours, use half size.';
-    } else {
-      zone = 'shock';
-      tradeRule = 'Red: several markets moving together or a big event is close, skip the entry or cut size.';
-    }
-
-    // Arrow trend
-    const lastScore = this.historicalCurve.length ? this.historicalCurve[this.historicalCurve.length - 1].val : score;
+    const lastScore = this.historicalCurve.length ? this.historicalCurve[this.historicalCurve.length - 1]!.val : score;
     const arrow: '↗' | '↘' | '→' = score > lastScore + 1 ? '↗' : (score < lastScore - 1 ? '↘' : '→');
 
-    // Matrix breakdown
+    const row = (cat: string, inst: string, g: { shock: number; open: number; total: number }, l: number, p: number): MacroCategoryData => ({
+      cat, inst,
+      shock: g.open === 0 ? (g.total ? 'closed' : 'no data') : `${g.shock.toFixed(2)} σ${g.open < g.total ? ` (${g.open}/${g.total} open)` : ''}`,
+      shockVal: g.shock,
+      link: l.toFixed(2),
+      linkVal: l,
+      pressure: p.toFixed(2),
+      pressureVal: p,
+    });
     const matrix: MacroCategoryData[] = [
+      row('Forex', 'DXY / USDJPY', sh.forex, link.forex, press.forex),
+      row('Commodities', 'Gold / WTI Oil', sh.commodities, link.commodities, press.commodities),
+      row('Equities', 'Nasdaq Fut / VIX', sh.equities, link.equities, press.equities),
+      row('Bonds / Rates', 'US10Y / MOVE', sh.bonds, link.bonds, press.bonds),
       {
-        cat: 'Forex',
-        inst: 'DXY / USDJPY',
-        shock: `${shockForex >= 0 ? '+' : ''}${shockForex.toFixed(2)} σ`,
-        shockVal: shockForex,
-        link: linkForex.toFixed(2),
-        linkVal: linkForex,
-        pressure: pressForex.toFixed(2),
-        pressureVal: pressForex,
-      },
-      {
-        cat: 'Commodities',
-        inst: 'Gold / WTI Oil',
-        shock: `${shockCommodities >= 0 ? '+' : ''}${shockCommodities.toFixed(2)} σ`,
-        shockVal: shockCommodities,
-        link: linkCommodities.toFixed(2),
-        linkVal: linkCommodities,
-        pressure: pressCommodities.toFixed(2),
-        pressureVal: pressCommodities,
-      },
-      {
-        cat: 'Equities',
-        inst: 'Nasdaq Fut / VIX',
-        shock: `${shockEquities >= 0 ? '+' : ''}${shockEquities.toFixed(2)} σ`,
-        shockVal: shockEquities,
-        link: linkEquities.toFixed(2),
-        linkVal: linkEquities,
-        pressure: pressEquities.toFixed(2),
-        pressureVal: pressEquities,
-      },
-      {
-        cat: 'Bonds / Rates',
-        inst: 'US10Y / MOVE',
-        shock: `${shockBonds >= 0 ? '+' : ''}${shockBonds.toFixed(2)} σ`,
-        shockVal: shockBonds,
-        link: linkBonds.toFixed(2),
-        linkVal: linkBonds,
-        pressure: pressBonds.toFixed(2),
-        pressureVal: pressBonds,
-      },
-      {
-        cat: 'News Calendar',
-        inst: nextEventDesc,
-        shock: `${(maxEventFactor * 3.0).toFixed(2)} σ`,
-        shockVal: maxEventFactor * 3.0,
-        link: '1.00',
-        linkVal: 1.0,
-        pressure: pressEvent.toFixed(2),
-        pressureVal: pressEvent,
+        cat: 'News Calendar', inst: nextEventDesc, shock: `${(maxEventFactor * 3.0).toFixed(2)} σ`, shockVal: maxEventFactor * 3.0,
+        link: '1.00', linkVal: 1.0, pressure: press.event.toFixed(2), pressureVal: press.event,
       },
     ];
 
-    // Format current IST time
-    const istTimeStr = new Date(now).toLocaleTimeString('en-GB', {
-      timeZone: 'Asia/Kolkata',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false,
-    });
+    const marketsOpen = [...this.quotes.values()].filter((q) => q.open).length;
+    const marketsFailed = this.failedNow.size;
+    const noteParts: string[] = [];
+    if (marketsOpen === 0) noteParts.push('All outside markets are closed (weekend or holiday), so only the news calendar can move this score.');
+    else if (marketsOpen < 6) noteParts.push(`Only ${marketsOpen} of 8 outside markets are trading right now; closed ones are left out, not counted as calm.`);
+    if (marketsFailed > 0) noteParts.push(`${marketsFailed} market feed${marketsFailed === 1 ? '' : 's'} could not be fetched this cycle.`);
 
-    // Update historical curve
-    const currentPoint: StressPoint = {
-      time: `${istTimeStr} (NOW)`,
-      timestamp: now,
-      val: score,
-      isNow: true,
-      zone,
-    };
+    const currentPoint: StressPoint = { time: `${istClock(now)} (NOW)`, timestamp: now, val: score, isNow: true, zone };
+    void currentPoint;
+    // keep the sliding window of REAL readings (up to 288 = 24 hours at 5 minutes)
+    this.historicalCurve.push({ time: istClock(now), timestamp: now, val: score, zone });
+    if (this.historicalCurve.length > 288) this.historicalCurve.shift();
+    void this.saveReading(Math.floor(now / 300_000) * 300_000, score);
 
-    // Keep sliding window of historic points (up to 288 points = 24 hours of 5-min recordings)
-    this.historicalCurve.push(currentPoint);
-    if (this.historicalCurve.length > 288) {
-      this.historicalCurve.shift();
-    }
-
-    // Build 3-hour projection
     const fullCurve = this.buildFullCurveWithProjection(score, now);
-
-    // Event markers for chart
     const eventMarkers: Array<{ timeIdx: number; name: string; shockVal: number; timestamp?: number }> = [];
     for (const ev of events.slice(0, 3)) {
-      eventMarkers.push({
-        timeIdx: Math.max(0, fullCurve.findIndex((p) => p.isNow)),
-        name: ev.title,
-        shockVal: score,
-        timestamp: ev.timestamp,
-      });
+      eventMarkers.push({ timeIdx: Math.max(0, fullCurve.findIndex((p) => p.isNow)), name: ev.title, shockVal: score, timestamp: ev.timestamp });
     }
 
     this.currentSnapshot = {
-      score,
-      arrow,
-      zone,
-      direction,
-      uplift,
+      score, arrow, zone, direction, uplift,
       nextEvent: nextEventDesc,
-      tradeRule,
-      matrix,
+      tradeRule, matrix,
       curve: fullCurve,
       events: eventMarkers,
       weights: this.weights,
       gaps: [...this.gaps],
       failures: [...this.failures],
-      status: this.failures.length > 3 ? 'degraded' : 'ok',
+      status: marketsFailed >= 3 ? 'degraded' : 'ok',
       updatedAt: now,
+      hasData: this.quotes.size > 0,
+      marketsOpen,
+      marketsFailed,
+      note: noteParts.length ? noteParts.join(' ') : null,
     };
-  }
-
-  private calcGroupShock(symbols: string[]): number {
-    let totalShock = 0;
-    let count = 0;
-    for (const sym of symbols) {
-      const q = this.quotes.get(sym);
-      if (q) {
-        // Combined 1h and 4h move normalized by 30d range
-        const move = Math.abs(q.change1hPct) * 0.6 + Math.abs(q.change4hPct) * 0.4;
-        const z = move / (q.normalRangePct || 0.5);
-        totalShock += z;
-        count++;
-      }
-    }
-    return count > 0 ? totalShock / count : 0.35; // default calm baseline if offline
   }
 
   private buildFullCurveWithProjection(currentScore: number, now: number): StressPoint[] {
     const out: StressPoint[] = [];
 
-    // Use the actual historical points recorded up to now
+    // the readings actually recorded before now
     for (const pt of this.historicalCurve) {
       if (pt.timestamp < now - 60_000) {
-        out.push({
-          time: pt.time,
-          timestamp: pt.timestamp,
-          val: pt.val,
-          zone: pt.val < 35 ? 'calm' : pt.val <= 65 ? 'elevated' : 'shock',
-        });
+        out.push({ time: pt.time, timestamp: pt.timestamp, val: pt.val, zone: zoneOf(pt.val) });
       }
     }
 
-    // "NOW" point
-    const nowD = new Date(now);
-    const nowTimeStr = `${nowD.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false })} (NOW)`;
-    out.push({
-      time: nowTimeStr,
-      timestamp: now,
-      val: currentScore,
-      isNow: true,
-      zone: currentScore < 35 ? 'calm' : currentScore <= 65 ? 'elevated' : 'shock',
-    });
+    out.push({ time: `${istClock(now)} (NOW)`, timestamp: now, val: currentScore, isNow: true, zone: zoneOf(currentScore) });
 
-    // 3-hour projection (dashed)
+    // 3-hour projection (dashed): a plain drift back toward a quiet baseline, not a forecast
     for (let h = 1; h <= 3; h++) {
       const projT = now + h * 3600 * 1000;
-      const projD = new Date(projT);
-      const projTimeStr = `${projD.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false })} (Proj)`;
-      // Decay or mean-revert towards 25 baseline
       const decayVal = Math.max(10, Math.min(95, Math.round(currentScore + (25 - currentScore) * (h * 0.25))));
-      out.push({
-        time: projTimeStr,
-        timestamp: projT,
-        val: decayVal,
-        isProj: true,
-        zone: decayVal < 35 ? 'calm' : decayVal <= 65 ? 'elevated' : 'shock',
-      });
+      out.push({ time: `${istClock(projT)} (Proj)`, timestamp: projT, val: decayVal, isProj: true, zone: zoneOf(decayVal) });
     }
 
     return out;
   }
 
-  private seedInitialCurve() {
-    const now = Date.now();
-    for (let i = 24; i >= 1; i--) {
-      const t = now - i * 3600 * 1000;
-      const d = new Date(t);
-      const timeStr = d.toLocaleTimeString('en-GB', {
-        timeZone: 'Asia/Kolkata',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      });
-      this.historicalCurve.push({
-        time: timeStr,
-        timestamp: t,
-        val: Math.max(12, Math.min(85, Math.round(24 + Math.sin(i * 0.5) * 5))),
-        zone: 'calm',
-      });
-    }
-  }
-
+  /** Before the first successful poll there is nothing measured: say so instead of showing made-up numbers. */
   private buildFallbackSnapshot(): MacroStressSnapshot {
     const now = Date.now();
+    const none = (cat: string, inst: string): MacroCategoryData => ({ cat, inst, shock: 'loading', shockVal: 0, link: '-', linkVal: 0, pressure: '0.00', pressureVal: 0 });
     return {
       score: 24,
-      arrow: '↘',
+      arrow: '→',
       zone: 'calm',
       direction: 'RISK-ON',
-      uplift: '+0.4% RV',
-      nextEvent: 'No Tier-1 in 6h',
-      tradeRule: 'Green: markets calm, take the entry at normal size.',
-      matrix: [
-        { cat: 'Forex', inst: 'DXY / USDJPY', shock: '+0.32 σ', shockVal: 0.32, link: '0.24', linkVal: 0.24, pressure: '0.08', pressureVal: 0.08 },
-        { cat: 'Commodities', inst: 'Gold / WTI Oil', shock: '+0.41 σ', shockVal: 0.41, link: '0.31', linkVal: 0.31, pressure: '0.13', pressureVal: 0.13 },
-        { cat: 'Equities', inst: 'Nasdaq Fut / VIX', shock: '-0.20 σ', shockVal: -0.20, link: '0.45', linkVal: 0.45, pressure: '0.09', pressureVal: 0.09 },
-        { cat: 'Bonds / Rates', inst: 'US10Y / MOVE', shock: '+0.15 σ', shockVal: 0.15, link: '0.28', linkVal: 0.28, pressure: '0.04', pressureVal: 0.04 },
-        { cat: 'News Calendar', inst: 'No Tier-1 in 6h', shock: '0.00 σ', shockVal: 0.0, link: '1.00', linkVal: 1.0, pressure: '0.00', pressureVal: 0.0 },
-      ],
+      uplift: '+0.0% RV',
+      nextEvent: 'loading',
+      tradeRule: 'Waiting for the first market data; no reading yet.',
+      matrix: [none('Forex', 'DXY / USDJPY'), none('Commodities', 'Gold / WTI Oil'), none('Equities', 'Nasdaq Fut / VIX'), none('Bonds / Rates', 'US10Y / MOVE'), none('News Calendar', 'loading')],
       curve: this.buildFullCurveWithProjection(24, now),
       events: [],
       weights: this.weights,
       gaps: [],
       failures: [],
-      status: 'ok',
+      status: 'degraded',
       updatedAt: now,
+      hasData: false,
+      marketsOpen: 0,
+      marketsFailed: 0,
+      note: 'No market data has been fetched yet, so the score shown is a placeholder.',
     };
   }
 }
