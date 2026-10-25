@@ -343,15 +343,21 @@ export class PaperTerminal {
       const limit = req.type === 'limit' ? roundToTick(req.price!, inst.tick) : undefined;
       const w = walk(req.side === 'buy' ? book.asks : book.bids, req.side, req.lots, req.type === 'stop_market' ? undefined : limit);
       const leverage = req.leverage ?? st.positions.get(req.symbol)?.leverage ?? DEFAULT_LEVERAGE;
-      if (w.filled === 0) {
-        return { ok: true, fills: 0, note: req.type === 'limit' ? 'Not marketable now: this limit order would rest in the book.' : 'The book has no liquidity on this side.' };
-      }
-      const sim = this.simulate(st, inst, snap, req.side, w.filled, w.avgPrice, false, leverage);
+      const base = this.view(st, st.positions.values(), snap);
+      const refPrice = w.filled > 0 ? w.avgPrice : limit ?? (req.type === 'stop_market' ? roundToTick(req.stopPrice!, inst.tick) : NaN);
+      const refLots = w.filled > 0 ? w.filled : req.lots;
+      if (!(refPrice > 0)) return { ok: true, fills: 0, note: 'The book has no liquidity on this side, so there is no price to estimate from.' };
+      const sim = this.simulate(st, inst, snap, req.side, refLots, refPrice, w.filled === 0, leverage);
+      const premium = inst.kind === 'option' ? (req.side === 'sell' ? 1 : -1) * refPrice * refLots * inst.contractValue : null;
+      const resting = w.filled === 0;
       return {
-        ok: sim.ok, reason: sim.reason, fills: w.filled, avgPrice: w.avgPrice, bestPrice: w.best,
-        slippageUsd: Math.abs(w.avgPrice - w.best) * w.filled * inst.contractValue, fee: sim.fee,
-        marginAfter: sim.view.margin, availableAfter: sim.view.available, partial: w.filled < req.lots,
-        note: w.filled < req.lots ? `Only ${w.filled} of ${req.lots} lots are available${limit != null ? ' at your limit' : ''}.` : undefined,
+        ok: sim.ok, reason: sim.reason, fills: w.filled, avgPrice: refPrice, bestPrice: w.filled > 0 ? w.best : refPrice,
+        slippageUsd: w.filled > 0 ? Math.abs(w.avgPrice - w.best) * w.filled * inst.contractValue : 0, fee: sim.fee,
+        marginBefore: base.margin, marginAfter: sim.view.margin, marginRequired: sim.view.margin - base.margin, availableAfter: sim.view.available, marginMode: st.mode,
+        premium, resting, partial: w.filled > 0 && w.filled < req.lots,
+        note: resting
+          ? (req.type === 'limit' ? 'Not marketable now: this limit order would rest in the book. The estimate assumes it fills at your price.' : 'A stop order waits for its trigger. The estimate assumes it fills at the trigger price.')
+          : w.filled < req.lots ? `Only ${w.filled} of ${req.lots} lots are available${limit != null ? ' at your limit' : ''}.` : undefined,
       };
     });
   }
@@ -635,7 +641,8 @@ export class PaperTerminal {
         ok: p.ok, reason: p.reason,
         legs: p.planned.map((x) => ({ symbol: x.inst.symbol, side: x.side, lots: x.lots, avgPrice: x.price, bestPrice: x.best })),
         netPremium: p.netPremium, fees: p.fees, slippageUsd: p.slippageUsd,
-        marginAfter: p.view.margin, availableAfter: p.view.available, marginMode: st.mode, payoff: p.payoff,
+        marginBefore: this.view(st, st.positions.values(), snap).margin, marginAfter: p.view.margin, marginRequired: p.view.margin - this.view(st, st.positions.values(), snap).margin,
+        availableAfter: p.view.available, marginMode: st.mode, payoff: p.payoff,
       };
     });
   }
@@ -807,6 +814,34 @@ export class PaperTerminal {
   board(maxAgeMs = 3_000) {
     return this.market.snapshot(maxAgeMs);
   }
+
+  /**
+   * The chain for one expiry with, on every strike, the extra margin that SELLING `lots` of it would need on top of
+   * what the account already carries (so a hedged sale shows its true, smaller requirement), and the premium for
+   * buying or selling that size. Same margin mode as the account.
+   */
+  async boardWithMargin(lots: number, maxAgeMs = 3_000) {
+    const snap = await this.market.snapshot(maxAgeMs);
+    let st: State | null = null;
+    try { await this.ensure(); st = await this.load(); } catch { st = null; }
+    const base = st ? this.view(st, st.positions.values(), snap) : null;
+    const rowsOut = snap.rows.map((r) => {
+      const inst = snap.insts.get(r.symbol);
+      if (!st || !base || !inst) return { ...r, sellMargin: null as number | null, sellOk: null as boolean | null, buyCost: r.ask * lots * 0.001 };
+      const cur = st.positions.get(r.symbol) ?? null;
+      const price = r.bid > 0 ? r.bid : r.mark;
+      const { pos: np } = applyTrade(cur, -lots, price, inst.contractValue, cur?.leverage ?? DEFAULT_LEVERAGE, r.symbol);
+      const list = [...st.positions.values()].filter((p) => p.symbol !== r.symbol);
+      if (np && np.lots !== 0) list.push(np);
+      // cash moves by the premium received, which also counts toward what is available
+      const cash = st.cash + cashDelta(inst, 'sell', lots, price, feeFor(inst, price, lots, snap.spot, false), 0);
+      const v = this.view({ cash, start: st.start, mode: st.mode }, list, snap);
+      const grows = Math.abs(np?.lots ?? 0) > Math.abs(cur?.lots ?? 0);
+      return { ...r, sellMargin: Math.max(v.margin - base.margin, 0), sellOk: !grows || v.available >= 0, buyCost: r.ask * lots * inst.contractValue };
+    });
+    return { snap, rows: rowsOut, mode: st?.mode ?? 'portfolio', available: base?.available ?? null };
+  }
+
 
   book(symbol: string) {
     return this.market.book(symbol);

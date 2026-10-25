@@ -28,7 +28,7 @@ const ds = new Date(EXP).toISOString();
 const DATE = `${ds.slice(8, 10)}${ds.slice(5, 7)}${ds.slice(2, 4)}`;
 const sym = (c: 'C' | 'P', k: number) => `${c}-BTC-${k}-${DATE}`;
 const STRIKES = [74000, 76000, 78000, 80000, 82000, 84000, 86000];
-const mk = { px: 80_000, depth: 1000 };
+const mk = { px: 80_000, depth: 5000 };
 
 const timeValue = (k: number) => 500 * Math.exp(-(((k - 80_000) / 3000) ** 2)) + 5;
 const markOf = (c: 'C' | 'P', k: number) => (c === 'C' ? Math.max(mk.px - k, 0) : Math.max(k - mk.px, 0)) + timeValue(k);
@@ -69,7 +69,7 @@ beforeAll(async () => {
 });
 afterAll(() => undefined);
 beforeEach(async () => {
-  mk.px = 80_000; mk.depth = 1000;
+  mk.px = 80_000; mk.depth = 5000;
   t = new PaperTerminal(market);
   await t.reset(10_000);
 });
@@ -171,5 +171,47 @@ describe('margin mode: portfolio versus standard', () => {
     await t.setMarginMode('standard');
     await t.reset(10_000);
     expect(((await t.account()) as any).marginMode).toBe('portfolio');
+  });
+});
+
+describe('estimated margin on the chain and in the ticket preview', () => {
+  it('every strike carries the extra margin for selling the chosen size, in the account\'s margin mode', async () => {
+    const b = await t.boardWithMargin(100);
+    const row = b.rows.find((r) => r.symbol === sym('C', 84000))!;
+    expect(row.sellMargin).toBeGreaterThan(0);
+    expect(row.sellOk).toBe(true);
+    expect(row.buyCost).toBeCloseTo(row.ask * 100 * 0.001, 6);
+    await t.setMarginMode('standard');
+    const s = (await t.boardWithMargin(100)).rows.find((r) => r.symbol === sym('C', 84000))!;
+    expect(s.sellMargin!).toBeGreaterThan(row.sellMargin! * 0.9);
+    expect(s.sellMargin).toBeGreaterThan(800);
+    expect((await t.boardWithMargin(1000)).rows.find((r) => r.symbol === sym('C', 84000))!.sellMargin!).toBeGreaterThan(s.sellMargin! * 5);
+  });
+
+  it('flags a sale the account cannot carry', async () => {
+    await t.reset(300);
+    await t.setMarginMode('standard');
+    const row = (await t.boardWithMargin(100)).rows.find((r) => r.symbol === sym('C', 84000))!;
+    expect(row.sellOk).toBe(false);
+  });
+
+  it('a hedged sale shows a smaller extra margin than a naked one (portfolio mode nets the legs)', async () => {
+    await t.reset(200_000);
+    const naked = (await t.boardWithMargin(3000)).rows.find((r) => r.symbol === sym('C', 82000))!.sellMargin!;
+    await t.place({ symbol: sym('C', 84000), side: 'buy', type: 'market', lots: 3000 });
+    const hedged = (await t.boardWithMargin(3000)).rows.find((r) => r.symbol === sym('C', 82000))!.sellMargin!;
+    expect(hedged).toBeLessThan(naked);
+  });
+
+  it('the ticket preview reports the margin THIS order needs and the premium it receives, even for a resting limit order', async () => {
+    const p: any = await t.preview({ symbol: sym('C', 84000), side: 'sell', type: 'market', lots: 100 });
+    expect(p.ok).toBe(true);
+    expect(p.marginRequired).toBeGreaterThan(0);
+    expect(p.marginRequired).toBeCloseTo(p.marginAfter - p.marginBefore, 6);
+    expect(p.premium).toBeGreaterThan(0);
+    const rest: any = await t.preview({ symbol: sym('C', 84000), side: 'sell', type: 'limit', lots: 100, price: 9999 });
+    expect(rest.fills).toBe(0);
+    expect(rest.resting).toBe(true);
+    expect(rest.marginRequired).toBeGreaterThan(0);
   });
 });

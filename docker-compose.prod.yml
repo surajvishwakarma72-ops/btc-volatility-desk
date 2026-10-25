@@ -16,7 +16,9 @@ services:
       HOST: 0.0.0.0
       PORT: "4000"
       CORS_ORIGINS: https://${DOMAIN:?set DOMAIN in ./.env}
-    mem_limit: 512m               # a leak restarts only app, not the whole 1 GB box
+      BOT_ENABLED: "true"         # the paper trading bot (never places real orders: only paper mode exists)
+      BOT_MODE: paper
+    mem_limit: 512m              # a leak restarts only app, not the whole 1 GB box
     restart: unless-stopped
     # No "ports:" on purpose — only Caddy is public; it reaches app:4000 on the Docker network.
 

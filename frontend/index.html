@@ -58505,7 +58505,7 @@ document.addEventListener('click', function(e) {
       '<div class="pp-note" style="margin:-4px 0 10px">Fake money, real Delta order books. Market orders walk the live book, so slippage and fees are what Delta would charge. This is separate from the bot and cannot place a real order.</div>' +
       '<div id="ppLogin"></div>' +
       '<div class="pp-cols"><div class="pp-stack">' +
-      '<div class="pp-card"><div style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><span class="pp-seg" id="ppMktTabs"><button type="button" data-pp-mtab="board" class="on">Option board</button><button type="button" data-pp-mtab="builder">Strategy builder</button></span></div><div id="ppPerp" class="pp-perp"></div><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-note">Option expiry</span><select id="ppExp" class="pp-in" style="width:auto"></select><span class="pp-note" id="ppBoardAt"></span></div><div id="ppBoardWrap"><div class="pp-scroll board" id="ppBoard"></div><div class="pp-note" style="margin-top:6px">Click an ask to buy it or a bid to sell it. The highlighted row is the strike nearest spot.</div></div><div id="ppBuilder" hidden></div></div>' +
+      '<div class="pp-card"><div style="display:flex;gap:8px;align-items:center;margin:0 0 8px"><span class="pp-seg" id="ppMktTabs"><button type="button" data-pp-mtab="board" class="on">Option board</button><button type="button" data-pp-mtab="builder">Strategy builder</button></span></div><div id="ppPerp" class="pp-perp"></div><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-note">Option expiry</span><select id="ppExp" class="pp-in" style="width:auto"></select><span class="pp-note" id="ppBoardAt"></span></div><div id="ppBoardWrap"><div class="pp-scroll board" id="ppBoard"></div><div class="pp-note" style="margin-top:6px">Click an ask to buy it or a bid to sell it. The highlighted row is the strike nearest spot. <b>Sell margin</b> is the extra margin selling the lot size in the ticket would need (in your margin mode, counting what you already hold); red means you could not carry it.</div></div><div id="ppBuilder" hidden></div></div>' +
       '<div class="pp-card"><h3>Positions</h3><div id="ppPos" class="pp-scroll"></div></div>' +
       '<div class="pp-card"><h3>Portfolio</h3><div id="ppPortfolio"></div></div>' +
       '<div class="pp-card"><h3>Working orders</h3><div id="ppWork" class="pp-scroll"></div></div>' +
@@ -58557,15 +58557,17 @@ document.addEventListener('click', function(e) {
     sel.value = String(b.expiry);
     $('ppBoardAt').textContent = 'Spot ' + px(b.spot, 0) + ' · updated ' + new Date(b.at).toLocaleTimeString();
     let atm = null, best = Infinity; for (const s of b.strikes) { const d = Math.abs(s.strike - b.spot); if (d < best) { best = d; atm = s.strike; } }
+    const mcell = r => r.sellMargin == null ? '<td class="dim">-</td>' : '<td class="mg' + (r.sellOk === false ? ' neg' : '') + '" data-pp-q="' + r.symbol + '|sell" style="cursor:pointer" title="' + (r.sellOk === false ? 'Not enough available margin to sell this size. ' : '') + 'Extra margin to sell ' + (b.lots || '') + ' lots (' + esc(b.marginMode || 'portfolio') + ' margin), premium received about ' + usd(r.bid * (b.lots || 0) * 0.001) + '">' + usd(r.sellMargin, 0) + '</td>';
     const side = (r, which) => {
-      if (!r) return '<td class="dim">-</td>'.repeat(6);
+      if (!r) return '<td class="dim">-</td>'.repeat(7);
       const sy = r.symbol, on = S.sel === sy ? ' sel' : '';
       const cells = [
         '<td class="dim">' + (r.oi ? r.oi.toFixed(1) : '-') + '</td>', '<td class="dim">' + (r.iv ? r.iv.toFixed(1) : '-') + '</td>', '<td>' + (r.delta ? Math.abs(r.delta).toFixed(2) : '-') + '</td>',
+        mcell(r),
         '<td class="q sell' + on + '" data-pp-q="' + sy + '|sell" title="Sell at the bid (' + r.bidSize + ' lots)">' + px(r.bid, 1) + '</td>', '<td class="q buy' + on + '" data-pp-q="' + sy + '|buy" title="Buy at the ask (' + r.askSize + ' lots)">' + px(r.ask, 1) + '</td>', '<td class="dim">' + px(r.mark, 1) + '</td>'];
       return (which === 'call' ? cells : cells.slice().reverse()).join('');
     };
-    const head = '<tr><th colspan="6" class="grp pos">Calls</th><th></th><th colspan="6" class="grp neg">Puts</th></tr><tr><th>OI</th><th>IV</th><th>Δ</th><th>Bid</th><th>Ask</th><th>Mark</th><th>Strike</th><th>Mark</th><th>Ask</th><th>Bid</th><th>Δ</th><th>IV</th><th>OI</th></tr>';
+    const head = '<tr><th colspan="7" class="grp pos">Calls</th><th></th><th colspan="7" class="grp neg">Puts</th></tr><tr><th>OI</th><th>IV</th><th>Δ</th><th title="Extra margin needed to SELL the lot size in the ticket, on top of what you already hold">Sell margin</th><th>Bid</th><th>Ask</th><th>Mark</th><th>Strike</th><th>Mark</th><th>Ask</th><th>Bid</th><th title="Extra margin needed to SELL the lot size in the ticket, on top of what you already hold">Sell margin</th><th>Δ</th><th>IV</th><th>OI</th></tr>';
     const keepTop = el.scrollTop;
     el.innerHTML = '<table class="pp-t"><thead>' + head + '</thead><tbody>' + b.strikes.map(s => '<tr' + (s.strike === atm ? ' class="atm" id="ppAtm"' : '') + '>' + side(s.call, 'call') + '<td class="k">' + s.strike.toLocaleString('en-US') + '</td>' + side(s.put, 'put') + '</tr>').join('') + '</tbody></table>';
     el.scrollTop = keepTop;
@@ -58623,11 +58625,17 @@ document.addEventListener('click', function(e) {
 
   function renderPreview() {
     const p = S.preview, el = $('ppPrev');
-    if (!S.sel) { el.textContent = 'Estimate appears here: average fill from the live book, fee, slippage and margin.'; return; }
-    if (!p) { el.textContent = 'Checking the live book…'; return; }
-    if (!p.ok) { el.innerHTML = '<span class="neg">' + esc(p.reason || 'Not possible') + '</span>'; return; }
-    if (!p.fills) { el.textContent = p.note || ''; return; }
-    el.innerHTML = 'Fills <b>' + p.fills + '</b> lots at avg <b>' + px(p.avgPrice, 2) + '</b> (best ' + px(p.bestPrice, 2) + ')<br>Fee <b>' + usd(p.fee) + '</b> · slippage <b>' + usd(p.slippageUsd) + '</b><br>Margin after <b>' + usd(p.marginAfter) + '</b> · available after <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b>' + (p.note ? '<br><span class="neg">' + esc(p.note) + '</span>' : '') + (p.reason ? '<br><span class="neg">' + esc(p.reason) + '</span>' : '');
+    if (!S.sel) { el.textContent = 'Click a bid to sell or an ask to buy. The estimate here shows the margin the order needs, the fill from the live book, fees and slippage.'; return; }
+    if (!p) {
+      const row = rowOf(S.sel);
+      el.innerHTML = row && row.sellMargin != null && S.t.side === 'sell' ? 'Estimated margin to sell <b>' + esc(S.t.lots) + '</b> lots: <b>' + usd(row.sellMargin) + '</b> <span class="dim">(from the chain, checking the live book\u2026)</span>' : 'Checking the live book\u2026';
+      return;
+    }
+    if (!p.ok && p.marginRequired == null) { el.innerHTML = '<span class="neg">' + esc(p.reason || 'Not possible') + '</span>'; return; }
+    if (!p.fills && p.marginRequired == null) { el.textContent = p.note || ''; return; }
+    const prem = p.premium == null ? '' : (p.premium >= 0 ? 'Premium received ' : 'Premium paid ') + '<b>' + usd(Math.abs(p.premium)) + '</b><br>';
+    const mreq = p.marginRequired == null ? '' : '<div style="font-size:14px;margin:0 0 4px">Estimated margin required: <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(Math.max(p.marginRequired, 0)) + '</b> <span class="dim">(' + esc(p.marginMode || 'portfolio') + ' margin)</span></div>';
+    el.innerHTML = mreq + prem + (p.fills ? 'Fills <b>' + p.fills + '</b> lots at avg <b>' + px(p.avgPrice, 2) + '</b> (best ' + px(p.bestPrice, 2) + ')<br>' : 'Assumed fill price <b>' + px(p.avgPrice, 2) + '</b><br>') + 'Fee <b>' + usd(p.fee) + '</b> \u00b7 slippage <b>' + usd(p.slippageUsd) + '</b><br>Margin after <b>' + usd(p.marginAfter) + '</b> \u00b7 available after <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b>' + (p.note ? '<br><span class="dim">' + esc(p.note) + '</span>' : '') + (p.reason ? '<br><span class="neg">' + esc(p.reason) + '</span>' : '');
   }
 
   function renderMsg() { $('ppMsg').innerHTML = S.msg ? '<div class="pp-msg ' + S.msg.k + '">' + esc(S.msg.t) + '</div>' : ''; }
@@ -58723,7 +58731,7 @@ document.addEventListener('click', function(e) {
       '<div><span class="dim">Max profit</span><b class="pos">' + (pf ? lim(pf.maxProfit) : 'n/a') + '</b></div><div><span class="dim">Max loss</span><b class="neg">' + (pf ? lim(pf.maxLoss) : 'n/a') + '</b></div>' +
       '<div><span class="dim">Breakeven</span><b>' + (pf && pf.breakevens.length ? pf.breakevens.map(b => Math.round(b).toLocaleString('en-US')).join(' / ') : '-') + '</b></div>' +
       '<div><span class="dim">Fees + slippage</span><b>' + usd(p.fees) + ' + ' + usd(p.slippageUsd) + '</b></div>' +
-      '<div><span class="dim">Margin after (' + esc(p.marginMode) + ')</span><b>' + usd(p.marginAfter) + '</b></div>' +
+      '<div><span class="dim">Margin required (' + esc(p.marginMode) + ')</span><b>' + usd(Math.max(p.marginRequired == null ? p.marginAfter : p.marginRequired, 0)) + '</b></div><div><span class="dim">Margin after</span><b>' + usd(p.marginAfter) + '</b></div>' +
       '<div><span class="dim">Available after</span><b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b></div></div>';
     if (!pf) h += '<div class="pp-note">The payoff chart needs every leg to share one expiry.</div>'; else h += payoffSvg(pf, S.board ? S.board.spot : 0);
     h += '<div class="pp-note">Fills at the live book: ' + (p.legs || []).map(l => (l.side === 'buy' ? 'buy ' : 'sell ') + l.lots + ' ' + esc(labelOf(l.symbol)) + ' @ ' + px(l.avgPrice, 1)).join(' · ') + '</div>';
@@ -58814,7 +58822,7 @@ document.addEventListener('click', function(e) {
     if (S.busy) return;
     try {
       S.err = null;
-      const [a, b] = await Promise.all([api('/account'), api('/board' + (S.expiry ? '?expiry=' + S.expiry : ''))]);
+      const [a, b] = await Promise.all([api('/account'), api('/board?lots=' + (Math.max(1, Math.floor(Number(S.t.lots)) || 100)) + (S.expiry ? '&expiry=' + S.expiry : ''))]);
       S.acct = a; S.board = b; S.expiry = b.expiry;
       if (all || S.hist === 'orders') S.orders = (await api('/orders?limit=40')).orders;
       if (all || S.hist === 'fills') S.fills = (await api('/fills?limit=40')).fills;
@@ -58884,6 +58892,7 @@ document.addEventListener('click', function(e) {
       }
     });
     const bind = (id, key) => $(id).addEventListener('input', e => { S.t[key] = e.target.type === 'checkbox' ? e.target.checked : (key === 'lev' ? Number(e.target.value) : e.target.value); syncTicket(); schedulePreview(); });
+    $('ppLots').addEventListener('input', () => { clearTimeout(S.lotsT); S.lotsT = setTimeout(() => refresh(false), 600); });
     bind('ppLots', 'lots'); bind('ppPrice', 'price'); bind('ppStop', 'stop'); bind('ppLev', 'lev'); bind('ppTp', 'tp'); bind('ppSl', 'sl'); bind('ppRO', 'reduce');
     $('ppExp').addEventListener('change', e => { S.expiry = Number(e.target.value); S.scrolled = false; S.sb.legs = []; S.sb.preview = null; S.sb.msg = null; refresh(false).then(() => { if (S.sb.tab === 'builder') renderBuilder(); }); });
     root.addEventListener('change', e => {

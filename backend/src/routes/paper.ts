@@ -44,11 +44,13 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   // The option board for one expiry, strike by strike with calls and puts side by side.
   fastify.get('/board', auth, async (req, reply) => {
     try {
-      const snap = await paperTerminal.board();
-      const wanted = Number((req.query as { expiry?: string }).expiry);
+      const query = req.query as { expiry?: string; lots?: string };
+      const lots = Math.min(Math.max(Math.floor(Number(query.lots)) || 100, 1), 100_000);
+      const { snap, rows, mode, available } = await paperTerminal.boardWithMargin(lots);
+      const wanted = Number(query.expiry);
       const expiry = snap.expiries.includes(wanted) ? wanted : snap.expiries[0] ?? null;
       const byStrike = new Map<number, { strike: number; call: unknown; put: unknown }>();
-      for (const r of snap.rows) {
+      for (const r of rows) {
         if (r.expiryMs !== expiry) continue;
         const e = byStrike.get(r.strike) ?? byStrike.set(r.strike, { strike: r.strike, call: null, put: null }).get(r.strike)!;
         if (r.type === 'call') e.call = r;
@@ -57,7 +59,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
       const perp = snap.insts.get(snap.perp.symbol)!;
       return {
         success: true, spot: snap.spot, perp: snap.perp, perpInfo: { contractValue: perp.contractValue, maxLeverage: perp.maxLeverage, tick: perp.tick, takerRate: perp.takerRate, makerRate: perp.makerRate },
-        expiries: snap.expiries, expiry, strikes: [...byStrike.values()].sort((a, b) => a.strike - b.strike), at: snap.at,
+        expiries: snap.expiries, expiry, strikes: [...byStrike.values()].sort((a, b) => a.strike - b.strike), at: snap.at, lots, marginMode: mode, available,
       };
     } catch (e) {
       return fail(reply, e);
