@@ -79,11 +79,13 @@ export function evaluateExit(p: PositionSnapshot, cfg: ExitConfig, nowMs: number
 export function exitConfigFor(
   id: 'ASIA_SHORT' | 'NY_SHORT' | 'EVE_LONG' | 'PRE_LONG',
   exitAtMs: number,
+  /** Learned overrides for the short strangles (the auto-learn champion); long straddles ignore them. */
+  learned?: { stopMultiple?: number; tpPct?: number },
 ): ExitConfig {
   switch (id) {
     case 'ASIA_SHORT':
     case 'NY_SHORT':
-      return { stopMultiple: 2, tpPctOfMargin: 0.1, exitAtMs };
+      return { stopMultiple: learned?.stopMultiple ?? 2, tpPctOfMargin: learned?.tpPct ?? 0.1, exitAtMs };
     case 'EVE_LONG':
     case 'PRE_LONG':
       return { slPctOfMargin: 0.1, tpPctOfMargin: 0.5, exitAtMs };

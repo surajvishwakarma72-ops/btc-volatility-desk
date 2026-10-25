@@ -26,6 +26,11 @@ describe('bot routes', () => {
       ['GET', '/bot/events'],
       ['GET', '/bot/analytics/summary'],
       ['GET', '/bot/analytics'],
+      ['GET', '/bot/drops'],
+      ['GET', '/bot/top'],
+      ['GET', '/bot/learn'],
+      ['POST', '/bot/learn/run'],
+      ['POST', '/bot/learn/rollback'],
       ['POST', '/bot/pause'],
       ['POST', '/bot/resume'],
       ['POST', '/bot/kill'],
@@ -43,7 +48,7 @@ describe('bot routes', () => {
     const token = app.jwt.sign({ sub: 'test' });
     const res = await app.inject({ method: 'GET', url: '/bot/status', headers: { authorization: `Bearer ${token}` } });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ success: true, enabled: false, engine: 'stopped', mode: 'paper' });
+    expect(res.json()).toMatchObject({ success: true, enabled: false, engine: 'stopped', mode: 'paper', waiting: [] });
     await app.close();
   });
 
@@ -61,6 +66,14 @@ describe('bot routes', () => {
       const res = await app.inject({ method: 'GET', url, headers: h });
       expect(res.statusCode, url).toBe(400);
     }
+    await app.close();
+  });
+
+  it('rollback only accepts a learned strategy', async () => {
+    const app = await build();
+    const token = app.jwt.sign({ sub: 'test' });
+    const res = await app.inject({ method: 'POST', url: '/bot/learn/rollback', headers: { authorization: `Bearer ${token}` }, payload: { strategy: 'EVE_LONG' } });
+    expect(res.statusCode).toBe(400);
     await app.close();
   });
 

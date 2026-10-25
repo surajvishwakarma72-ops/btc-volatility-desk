@@ -5,10 +5,12 @@ import { dueCalendar, dueEntries, floorToMinute, istDateKey, istMidnightMs, runK
 import { portfolioMargin, type MarginPosition } from '../../lib/bot/portfolio-margin.js';
 import { pickAtmStraddle, pickBodyLeg, type ChainOption } from '../../lib/bot/strike-picker.js';
 import type { ExitConfig, Leg, StrategyId } from '../../lib/bot/types.js';
+import type { LearnParams } from '../../lib/bot/learn.js';
 import {
-  closeRun, getConfig, getOpenRuns, insertFill, insertLeg, insertRun, logEvent, pnlSince, runKeyExists, setLegExit,
-  updatePeaks, upsertContext, upsertMark, ensureBotSchema,
+  closeRun, getConfig, getOpenRuns, getParams, getShadowCandidates, insertFill, insertLeg, insertRun, insertShadow, lastLearningMs,
+  logEvent, pnlSince, runKeyExists, setLegExit, updatePeaks, upsertContext, upsertMark, ensureBotSchema,
 } from './bot-store.js';
+import { LEARNED_STRATEGIES, autoLearnOn, runLearning } from './learner.js';
 import { fetchBook, fetchChain, fetchOptionFeeRates, type Book, type ChainSnapshot } from './delta-public.js';
 import { FuturesLive } from './futures-live.js';
 import { evaluateGate } from './gate.js';
@@ -63,6 +65,10 @@ export class BotEngine {
   private busy = false;
   private open = new Map<string, OpenRun>();
   private waits = new Map<string, WaitState>();
+  /** Early-closed always-book runs whose marks are still recorded to their planned exit, so other rules can be replayed over the whole day. */
+  private shadows = new Map<string, { id: string; legs: Leg[]; plannedExitAtMs: number }>();
+  private paramCache = new Map<string, { at: number; params: LearnParams }>();
+  private learnedDay = '';
   private chain: ChainSnapshot | null = null;
   private lastMinute = 0;
   readonly futures = new FuturesLive({
@@ -138,6 +144,41 @@ export class BotEngine {
       });
     }
     this.futures.restore(futRows);
+    this.shadows.clear();
+    for (const r of await getShadowCandidates(Date.now())) {
+      this.shadows.set(r.id, {
+        id: r.id,
+        legs: r.legs.map((l) => ({
+          symbol: l.symbol, type: l.type as Leg['type'], side: l.side as Leg['side'], strike: Number(l.strike), expiryMs: Number(l.expiry_ms),
+          lots: l.lots, entryPrice: Number(l.entry_price), role: l.role as Leg['role'],
+        })),
+        plannedExitAtMs: new Date(r.planned_exit_at!).getTime(),
+      });
+    }
+  }
+
+  /** The learned rules for a strategy (the auto-learn champion), cached for a short while. */
+  private async paramsFor(id: StrategyId): Promise<LearnParams> {
+    const hit = this.paramCache.get(id);
+    if (hit && Date.now() - hit.at < 30_000) return hit.params;
+    const params = await getParams(id);
+    this.paramCache.set(id, { at: Date.now(), params });
+    return params;
+  }
+
+  /** Once a day after the New York trade has closed: replay the challengers over the recorded days and promote a winner if one clears every bar. */
+  private async maybeLearn(now: number): Promise<void> {
+    const today = istDateKey(now);
+    if (this.learnedDay === today || (now - istMidnightMs(today)) / MIN < 9 * 60 + 30) return;
+    this.learnedDay = today;
+    try {
+      const ran = await lastLearningMs(LEARNED_STRATEGIES[0], 'evaluation');
+      if (ran != null && ran >= istMidnightMs(today)) return;
+      const reports = await runLearning(now, autoLearnOn());
+      for (const r of reports) this.paramCache.delete(r.strategy);
+    } catch (e) {
+      await logEvent({ type: 'learn_error', severity: 'warn', message: `auto-learn failed: ${(e as Error).message}` });
+    }
   }
 
   private async getChain(maxAgeMs = 4_000): Promise<ChainSnapshot> {
@@ -188,6 +229,8 @@ export class BotEngine {
       } catch (e) {
         errors.push(`futures: ${(e as Error).message}`);
       }
+
+      if (!cfg.kill_switch) await this.maybeLearn(now);
 
       this.lastError = errors.length ? errors.join(' | ') : null;
       if (errors.length) {
@@ -327,7 +370,8 @@ export class BotEngine {
     key: string, st: WaitState, final: boolean,
   ): Promise<boolean> {
     const mode = 'paper';
-    const gate = evaluateGate();
+    const learned = await this.paramsFor(id);
+    const gate = evaluateGate(learned.dvolMax);
     const tags = { gate, expiries: chain.expiries.slice(0, 4) };
 
     if (book === 'gated' && !gate.go) {
@@ -383,7 +427,7 @@ export class BotEngine {
       }
       exitCfg = calendarExitConfig({ low: be.low, high: be.high }, f0.expiryMs);
     } else {
-      exitCfg = exitConfigFor(id, w.exitAtMs);
+      exitCfg = exitConfigFor(id, w.exitAtMs, learned);
     }
     const runId = await insertRun({
       runKey: key, strategy: id, book, mode, dateKey, status: 'open', entryAtMs: now, plannedExitAtMs: w.exitAtMs,
@@ -465,6 +509,10 @@ export class BotEngine {
       const net = gross - run.feesEntry - exec.fees;
       await closeRun(run.id, { exitAtMs: now, grossPnl: gross, netPnl: net, feesExit: exec.fees, reason, detail });
       this.open.delete(run.id);
+      const plannedExit = run.exitCfg.exitAtMs;
+      if (run.book === 'always' && (LEARNED_STRATEGIES as readonly string[]).includes(run.strategy) && plannedExit != null && plannedExit > now + MIN) {
+        this.shadows.set(run.id, { id: run.id, legs: run.legs, plannedExitAtMs: plannedExit });
+      }
       await logEvent({ runId: run.id, strategy: run.strategy, type: 'exit', message: `${run.key} closed (${reason}): ${detail}; net ${net.toFixed(2)} USD`, data: { gross, net, fees: run.feesEntry + exec.fees } });
     } catch (e) {
       run.closing = false;
@@ -501,6 +549,11 @@ export class BotEngine {
         snapshot: { strategy: run.strategy, book: run.book, feesPaid: run.feesEntry, marginUsd: run.marginUsd, tpTargetUsd: tpTarget, tpRemainingUsd: tpTarget != null ? tpTarget - pnl.netPnl : null, stopLevels, legs: legsOut, minutesToExit: run.exitCfg.exitAtMs ? Math.round((run.exitCfg.exitAtMs - now) / MIN) : null },
       });
       await updatePeaks(run.id, pnl.netPnl);
+    }
+    for (const s of [...this.shadows.values()]) {
+      if (minute > s.plannedExitAtMs) { this.shadows.delete(s.id); continue; }
+      const marks = s.legs.map((l) => by.get(l.symbol)?.mark ?? NaN);
+      if (marks.every(Number.isFinite)) await insertShadow(s.id, minute, chain.spot, marks);
     }
     const gate = evaluateGate();
     const account = allLegs.length ? this.marginOf(allLegs, chain, now) : null;

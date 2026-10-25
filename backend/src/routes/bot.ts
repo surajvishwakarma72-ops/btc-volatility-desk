@@ -2,8 +2,13 @@ import type { FastifyPluginAsync } from 'fastify';
 import { pool } from '../db/index.js';
 import { istDateKey, istMidnightMs } from '../lib/bot/schedule.js';
 import { buildAnalytics, type RunRecord } from '../lib/bot/analytics.js';
+import { DEFAULT_PARAMS, DEFAULT_THRESHOLDS } from '../lib/bot/learn.js';
+import { pickTop } from '../lib/bot/top.js';
+import { STRATEGY_NAMES } from '../lib/ask/parse.js';
 import { botEngine } from '../services/bot/bot-engine.js';
-import { ensureBotSchema, getConfig, setConfig } from '../services/bot/bot-store.js';
+import { ensureBotSchema, getConfig, getParams, setConfig } from '../services/bot/bot-store.js';
+import { LEARNED_STRATEGIES, autoLearnOn, rollbackLast, runLearning } from '../services/bot/learner.js';
+import { loadReplay } from '../services/bot/replay-file.js';
 
 /**
  * Read-only query surface for the paper trading bot, plus pause/resume/kill. Every route needs
@@ -26,6 +31,7 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
       mode: process.env.BOT_MODE ?? 'paper',
       paused: cfg?.paused ?? null,
       killSwitch: cfg?.kill_switch ?? null,
+      waiting: botEngine.enabled ? botEngine.waitingEntries() : [],
     };
   });
 
@@ -141,9 +147,8 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     return { success: true, summary: r.rows };
   });
 
-  // Full analytics (by day/week/month/IV/gate/exit, exit what-if grid, average PnL curves) over closed
-  // live paper runs, built with the same code that summarises the historical replay.
-  fastify.get('/analytics', auth, async () => {
+  /** Closed runs with their 15-minute PnL paths, in the shape the shared analytics code takes. */
+  const loadRecords = async (): Promise<RunRecord[]> => {
     await ensureBotSchema();
     const runs = await pool.query(
       `SELECT id, strategy, book, date_key, entry_at, exit_at, margin_usd, fees_entry, fees_exit, net_pnl, exit_reason, peak_pnl, trough_pnl, tags
@@ -159,7 +164,7 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
       const off = Math.round((Number(m.minute_ms) - entry.get(m.run_id)!) / 60_000);
       (paths.get(m.run_id) ?? paths.set(m.run_id, []).get(m.run_id)!).push([off, Number(m.net_pnl)]);
     }
-    const records: RunRecord[] = (runs.rows as any[]).map((r) => {
+    return (runs.rows as any[]).map((r) => {
       const entryMs = new Date(r.entry_at).getTime();
       const exitMs = new Date(r.exit_at).getTime();
       const net = Number(r.net_pnl);
@@ -186,7 +191,79 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
         path,
       };
     });
+  };
+
+  // Full analytics (by day/week/month/IV/gate/exit, exit what-if grid, average PnL curves) over closed
+  // live paper runs, built with the same code that summarises the historical replay.
+  fastify.get('/analytics', auth, async () => {
+    const records = await loadRecords();
     return { success: true, runs: records.length, analytics: buildAnalytics(records) };
+  });
+
+  // Every day a strategy did not trade, with the reasons seen, plus entries still waiting inside their window.
+  fastify.get('/drops', auth, async (req) => {
+    await ensureBotSchema();
+    const { limit } = q<{ limit?: string }>(req);
+    const r = await pool.query(
+      `SELECT id, run_key, strategy, book, date_key, status, tags, created_at FROM bot_runs
+        WHERE status IN ('skipped','failed') ORDER BY created_at DESC LIMIT $1`,
+      [Math.min(Math.max(Number(limit) || 40, 1), 200)],
+    );
+    return {
+      success: true,
+      waiting: botEngine.enabled ? botEngine.waitingEntries() : [],
+      drops: r.rows.map((x: any) => ({
+        id: x.id, runKey: x.run_key, strategy: x.strategy, book: x.book, dateKey: x.date_key, status: x.status, at: x.created_at,
+        reason: x.tags?.reason ?? (x.tags?.blocked ? `risk guard blocked: ${x.tags.blocked.join('; ')}` : null),
+        attempts: x.tags?.attempts ?? 1,
+        reasonsSeen: x.tags?.reasonsSeen ?? [],
+      })),
+    };
+  });
+
+  // The best-performing strategy book, from live paper results and from the 13-month replay, with the reason.
+  fastify.get('/top', auth, async () => {
+    const label = (key: string) => {
+      const [s, b] = key.split('|');
+      return (STRATEGY_NAMES[s!] ?? s) + (b ? ` (${b} book)` : '');
+    };
+    const live = buildAnalytics(await loadRecords()).byStrategy;
+    const replay = loadReplay()?.analytics?.byStrategy ?? [];
+    return {
+      success: true,
+      live: pickTop(live, { label }),
+      replay: pickTop(replay, { label, minTrades: 60 }),
+    };
+  });
+
+  // Auto-learn: the rules in use, what was last tried, every promotion, and the bars a challenger must clear.
+  fastify.get('/learn', auth, async () => {
+    await ensureBotSchema();
+    const params: Record<string, unknown> = {};
+    for (const s of LEARNED_STRATEGIES) params[s] = await getParams(s);
+    const [latest, log] = await Promise.all([
+      pool.query(
+        `SELECT DISTINCT ON (strategy) strategy, at, reason, evidence FROM bot_learning WHERE kind = 'evaluation' ORDER BY strategy, at DESC, id DESC`,
+      ),
+      pool.query(`SELECT at, strategy, kind, from_params, to_params, reason FROM bot_learning WHERE kind <> 'evaluation' ORDER BY at DESC, id DESC LIMIT 30`),
+    ]);
+    return { success: true, auto: autoLearnOn(), defaults: DEFAULT_PARAMS, thresholds: DEFAULT_THRESHOLDS, params, latest: latest.rows, log: log.rows };
+  });
+
+  // Run the review now. `?dry=1` evaluates without promoting.
+  fastify.post('/learn/run', auth, async (req) => {
+    await ensureBotSchema();
+    const dry = q<{ dry?: string }>(req).dry === '1';
+    const reports = await runLearning(Date.now(), autoLearnOn() && !dry);
+    return { success: true, reports: reports.map((r) => ({ strategy: r.strategy, days: r.days, promoted: r.promoted, note: r.note, champion: r.champion })) };
+  });
+
+  fastify.post('/learn/rollback', auth, async (req, reply) => {
+    const s = (req.body as { strategy?: string } | undefined)?.strategy;
+    if (!s || !(LEARNED_STRATEGIES as readonly string[]).includes(s)) return bad(reply, `strategy must be one of ${LEARNED_STRATEGIES.join(', ')}`);
+    const r = await rollbackLast(s);
+    if (!r) return reply.code(404).send({ success: false, error: 'nothing to roll back: that strategy has not been changed by auto-learn' });
+    return { success: true, restored: r.restored };
   });
 
   fastify.post('/pause', auth, async () => {

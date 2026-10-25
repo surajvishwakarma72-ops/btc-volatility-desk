@@ -1,4 +1,6 @@
 import { pool } from '../../db/index.js';
+import { sanitizeParams, type LearnParams, type RunTrace } from '../../lib/bot/learn.js';
+import type { Leg } from '../../lib/bot/types.js';
 
 /**
  * Persistence for the trading bot. Raw SQL on purpose: the bot tables are created idempotently
@@ -103,6 +105,32 @@ CREATE TABLE IF NOT EXISTS bot_config (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 INSERT INTO bot_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS bot_params (
+  strategy text PRIMARY KEY,
+  params jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS bot_learning (
+  id bigserial PRIMARY KEY,
+  at timestamptz NOT NULL DEFAULT now(),
+  strategy text NOT NULL,
+  kind text NOT NULL,
+  from_params jsonb,
+  to_params jsonb,
+  reason text NOT NULL,
+  evidence jsonb
+);
+CREATE INDEX IF NOT EXISTS bot_learning_idx ON bot_learning (strategy, kind, at);
+
+CREATE TABLE IF NOT EXISTS bot_shadow_marks (
+  run_id uuid NOT NULL REFERENCES bot_runs(id) ON DELETE CASCADE,
+  minute_ms bigint NOT NULL,
+  spot numeric NOT NULL,
+  marks jsonb NOT NULL,
+  PRIMARY KEY (run_id, minute_ms)
+);
 `;
 
 let schemaReady: Promise<void> | null = null;
@@ -312,4 +340,103 @@ export async function countRunsSince(strategy: string, sinceMs: number): Promise
 export async function lastEntryMs(strategy: string): Promise<number> {
   const r = await pool.query<{ t: Date | null }>(`SELECT MAX(entry_at) AS t FROM bot_runs WHERE strategy=$1 AND status IN ('open','closed')`, [strategy]);
   return r.rows[0]?.t ? new Date(r.rows[0].t).getTime() : 0;
+}
+
+// ---------- auto-learn ----------
+
+export async function getParams(strategy: string): Promise<LearnParams> {
+  const r = await pool.query<{ params: Partial<LearnParams> }>('SELECT params FROM bot_params WHERE strategy = $1', [strategy]);
+  return sanitizeParams(r.rows[0]?.params);
+}
+
+export async function setParams(strategy: string, params: LearnParams): Promise<void> {
+  await pool.query(
+    `INSERT INTO bot_params (strategy, params) VALUES ($1, $2)
+     ON CONFLICT (strategy) DO UPDATE SET params = EXCLUDED.params, updated_at = now()`,
+    [strategy, JSON.stringify(params)],
+  );
+}
+
+export async function logLearning(row: {
+  strategy: string; kind: 'evaluation' | 'promotion' | 'rollback'; from?: LearnParams | null; to?: LearnParams | null; reason: string; evidence?: unknown;
+}): Promise<void> {
+  await pool.query(
+    `INSERT INTO bot_learning (strategy, kind, from_params, to_params, reason, evidence) VALUES ($1,$2,$3,$4,$5,$6)`,
+    [row.strategy, row.kind, row.from ? JSON.stringify(row.from) : null, row.to ? JSON.stringify(row.to) : null, row.reason, row.evidence ? JSON.stringify(row.evidence) : null],
+  );
+}
+
+export async function lastLearningMs(strategy: string, kind: string): Promise<number | null> {
+  const r = await pool.query<{ t: Date | null }>('SELECT MAX(at) AS t FROM bot_learning WHERE strategy = $1 AND kind = $2', [strategy, kind]);
+  return r.rows[0]?.t ? new Date(r.rows[0].t).getTime() : null;
+}
+
+/** Marks of a position after it was closed early, kept until its planned exit so other rules can be replayed over the whole day. */
+export async function insertShadow(runId: string, minuteMs: number, spot: number, marks: number[]): Promise<void> {
+  await pool.query(
+    `INSERT INTO bot_shadow_marks (run_id, minute_ms, spot, marks) VALUES ($1,$2,$3,$4) ON CONFLICT (run_id, minute_ms) DO NOTHING`,
+    [runId, minuteMs, spot, JSON.stringify(marks)],
+  );
+}
+
+/** Runs closed before their planned exit whose shadow recording should still be running. */
+export async function getShadowCandidates(nowMs: number): Promise<Array<RunRow & { legs: LegRow[] }>> {
+  const runs = await pool.query<RunRow>(
+    `SELECT * FROM bot_runs WHERE status='closed' AND book='always' AND strategy IN ('ASIA_SHORT','NY_SHORT')
+       AND exit_at < planned_exit_at AND planned_exit_at > to_timestamp($1/1000.0)`,
+    [nowMs],
+  );
+  const out: Array<RunRow & { legs: LegRow[] }> = [];
+  for (const r of runs.rows) {
+    const legs = await pool.query<LegRow>('SELECT * FROM bot_legs WHERE run_id=$1 ORDER BY id', [r.id]);
+    out.push({ ...r, legs: legs.rows });
+  }
+  return out;
+}
+
+/** One trace per closed always-book run of a strategy: the recorded minutes plus any shadow minutes after an early close. */
+export async function loadTraces(strategy: string, sinceMs: number): Promise<RunTrace[]> {
+  const runs = await pool.query<RunRow>(
+    `SELECT * FROM bot_runs WHERE strategy=$1 AND book='always' AND status='closed' AND planned_exit_at IS NOT NULL AND entry_at >= to_timestamp($2/1000.0) ORDER BY entry_at`,
+    [strategy, sinceMs],
+  );
+  const out: RunTrace[] = [];
+  for (const r of runs.rows) {
+    const [legs, marks, shadow] = await Promise.all([
+      pool.query<LegRow>('SELECT * FROM bot_legs WHERE run_id=$1 ORDER BY id', [r.id]),
+      pool.query<{ minute_ms: string; spot: string; snapshot: { legs?: Array<{ mark: number | null }> } }>(
+        'SELECT minute_ms, spot, snapshot FROM bot_minute_marks WHERE run_id=$1 ORDER BY minute_ms', [r.id]),
+      pool.query<{ minute_ms: string; spot: string; marks: number[] }>(
+        'SELECT minute_ms, spot, marks FROM bot_shadow_marks WHERE run_id=$1 ORDER BY minute_ms', [r.id]),
+    ]);
+    const minutes = new Map<number, { t: number; spot: number; marks: number[] }>();
+    for (const m of marks.rows) {
+      const ms = (m.snapshot.legs ?? []).map((l) => (l.mark == null ? NaN : Number(l.mark)));
+      minutes.set(Number(m.minute_ms), { t: Number(m.minute_ms), spot: Number(m.spot), marks: ms });
+    }
+    for (const m of shadow.rows) {
+      const t = Number(m.minute_ms);
+      if (!minutes.has(t)) minutes.set(t, { t, spot: Number(m.spot), marks: m.marks.map(Number) });
+    }
+    const sorted = [...minutes.values()].sort((a, b) => a.t - b.t);
+    const exitAtMs = new Date(r.planned_exit_at!).getTime();
+    const gate = (r.tags as { gate?: { dvol?: number | null; macroZone?: string } } | null)?.gate;
+    out.push({
+      strategy,
+      dateKey: r.date_key,
+      marginUsd: Number(r.margin_usd ?? 0),
+      feesEntry: Number(r.fees_entry ?? 0),
+      feesExit: Number(r.fees_exit ?? 0),
+      dvol: gate?.dvol ?? null,
+      macroZone: gate?.macroZone ?? null,
+      legs: legs.rows.map((l) => ({
+        symbol: l.symbol, type: l.type as Leg['type'], side: l.side as Leg['side'], strike: Number(l.strike), expiryMs: Number(l.expiry_ms),
+        lots: l.lots, entryPrice: Number(l.entry_price), role: l.role as Leg['role'],
+      })),
+      exitAtMs,
+      minutes: sorted,
+      complete: sorted.length > 0 && sorted[sorted.length - 1]!.t >= exitAtMs - 2 * 60_000,
+    });
+  }
+  return out;
 }

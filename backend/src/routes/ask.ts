@@ -1,6 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { SUGGESTIONS } from '../lib/ask/parse.js';
@@ -10,33 +7,10 @@ import { DOCS_INDEX } from '../lib/ask/docs-index.generated.js';
 import { answer, type AskContext } from '../services/ask/answer.js';
 import { botEngine } from '../services/bot/bot-engine.js';
 import { ensureBotSchema } from '../services/bot/bot-store.js';
+import { loadReplay } from '../services/bot/replay-file.js';
 import { deribitWorker } from '../services/deribit-flow-worker.js';
 import { deltaWorker } from '../services/delta-market-worker.js';
 import { macroStressWorker } from '../services/macro-stress-worker.js';
-
-const here = path.dirname(fileURLToPath(import.meta.url));
-
-let replayCache: { at: number; data: any | null } | null = null;
-function loadReplay(): any | null {
-  if (replayCache && Date.now() - replayCache.at < 10 * 60_000) return replayCache.data;
-  const candidates = [
-    path.resolve(here, '../../../frontend/dist/data/bot_replay.json'),
-    path.resolve(here, '../../../frontend/public/data/bot_replay.json'),
-    path.resolve(process.cwd(), 'frontend/dist/data/bot_replay.json'),
-    path.resolve(process.cwd(), '../frontend/dist/data/bot_replay.json'),
-  ];
-  let data: any | null = null;
-  for (const p of candidates) {
-    try {
-      if (fs.existsSync(p)) {
-        data = JSON.parse(fs.readFileSync(p, 'utf8'));
-        break;
-      }
-    } catch { /* try the next location */ }
-  }
-  replayCache = { at: Date.now(), data };
-  return data;
-}
 
 export function buildContext(): AskContext {
   return {

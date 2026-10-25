@@ -20,12 +20,12 @@ export interface GateVerdict {
 
 export const DVOL_MAX = 65;
 
-export function evaluateGate(): GateVerdict {
+export function evaluateGate(dvolMax: number = DVOL_MAX): GateVerdict {
   const dvol = deribitWorker.currentDvol;
   const macro = macroStressWorker.getSnapshot();
   const reasons: string[] = [];
   if (dvol == null) reasons.push('DVOL unavailable');
-  else if (dvol >= DVOL_MAX) reasons.push(`DVOL ${dvol.toFixed(1)} >= ${DVOL_MAX}`);
+  else if (dvol >= dvolMax) reasons.push(`DVOL ${dvol.toFixed(1)} >= ${dvolMax}`);
   if (macro.zone !== 'calm') reasons.push(`macro zone ${macro.zone}`);
   const eventInWindow = !!macro.nextEvent && !macro.nextEvent.startsWith('No Tier-1');
   return {

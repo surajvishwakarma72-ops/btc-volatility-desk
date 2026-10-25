@@ -100,11 +100,62 @@ beforeEach(async () => {
   h.ivs.clear();
   h.gateGo = true;
   await store.ensureBotSchema();
-  await pool.query('DELETE FROM bot_minute_marks; DELETE FROM bot_minute_context; DELETE FROM bot_events; DELETE FROM bot_fills; DELETE FROM bot_legs; DELETE FROM bot_runs;');
+  await pool.query('DELETE FROM bot_minute_marks; DELETE FROM bot_minute_context; DELETE FROM bot_events; DELETE FROM bot_fills; DELETE FROM bot_legs; DELETE FROM bot_runs; DELETE FROM bot_params; DELETE FROM bot_learning; DELETE FROM bot_shadow_marks;');
   await store.setConfig({ paused: false, killSwitch: false });
 });
 
 describe('bot engine on a real Postgres', () => {
+  it('trades with the learned (champion) rules, and open runs keep the rules they started with', async () => {
+    await store.setParams('ASIA_SHORT', { dvolMax: 65, stopMultiple: 3, tpPct: 0.15 });
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    const cfg = (await q(`SELECT strategy, exit_config FROM bot_runs ORDER BY strategy`)).map((r) => r.exit_config);
+    expect(cfg[0]).toMatchObject({ stopMultiple: 3, tpPctOfMargin: 0.15 });
+    // changing the champion afterwards does not touch the run that is already open
+    await store.setParams('ASIA_SHORT', { dvolMax: 65, stopMultiple: 1.5, tpPct: 0.05 });
+    (e as any).paramCache.clear();
+    const open = (await q(`SELECT exit_config FROM bot_runs WHERE status = 'open'`))[0].exit_config;
+    expect(open.stopMultiple).toBe(3);
+  });
+
+  it('keeps recording marks after an early stop (shadow) so other rules can be replayed over the whole day', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    h.marks.set('C-BODY', 210);
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 5, 0));
+    await e.tick(); // stopped here
+    h.marks.set('C-BODY', 120);
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 6, 5));
+    await e.tick();
+    const always = (await q(`SELECT id FROM bot_runs WHERE run_key = 'ASIA_SHORT:2026-10-26:always'`))[0].id;
+    const shadow = await q('SELECT minute_ms, marks FROM bot_shadow_marks WHERE run_id = $1', [always]);
+    expect(shadow.length).toBeGreaterThan(0);
+    expect(shadow.some((s) => s.marks[0] === 120 && s.marks[1] === 90)).toBe(true);
+    // the gated book is not shadowed
+    expect(await q(`SELECT 1 FROM bot_shadow_marks s JOIN bot_runs r ON r.id = s.run_id WHERE r.book = 'gated'`)).toHaveLength(0);
+    // and the traces the learner reads include those minutes
+    const traces = await store.loadTraces('ASIA_SHORT', 0);
+    expect(traces).toHaveLength(1);
+    expect(traces[0]!.minutes.length).toBeGreaterThan(2);
+    expect(traces[0]!.complete).toBe(false); // the day has not reached its planned 16:00 exit yet
+  });
+
+  it('runs the learning review once a day after 09:30 IST, and with too little data keeps the champion', async () => {
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 9, 20, 0));
+    await e.tick();
+    expect(await q('SELECT 1 FROM bot_learning')).toHaveLength(0);
+    vi.setSystemTime(istToUtc('2026-10-26', 9, 31, 0));
+    await e.tick();
+    await e.tick();
+    const rows = await q(`SELECT strategy, kind, reason FROM bot_learning ORDER BY strategy`);
+    expect(rows.map((r) => `${r.strategy}:${r.kind}`)).toEqual(['ASIA_SHORT:evaluation', 'NY_SHORT:evaluation']);
+    expect(rows[0].reason).toMatch(/Collecting data: 0 of 30/);
+    expect(await q('SELECT 1 FROM bot_params')).toHaveLength(0);
+  });
+
   it('enters both books of ASIA_SHORT at 10:00 IST, once, and records the minute', async () => {
     const e = await newEngine();
     vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
