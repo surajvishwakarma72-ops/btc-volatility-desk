@@ -1,5 +1,10 @@
 import type { FastifyPluginAsync } from 'fastify';
 import crypto from 'node:crypto';
+import { z } from 'zod';
+import { MasterKeyMissing, masterKeyConfigured } from '../lib/crypto.js';
+import { userId } from '../lib/guards.js';
+import { DESK_USER_ID } from '../services/auth-store.js';
+import { deleteDeltaKey, deltaKeyStatus, loadDeltaKey, noteDeltaResult, saveDeltaKey } from '../services/delta-keys.js';
 
 /**
  * Delta Exchange India Authenticated Gateway
@@ -19,6 +24,32 @@ const DELTA_BASE = 'https://api.india.delta.exchange';
  */
 export function signDelta(secret: string, method: string, ts: string, path: string, query: string): string {
   return crypto.createHmac('sha256', secret).update(method + ts + path + query).digest('hex');
+}
+
+/** The only account endpoints the signed relay will call. Everything is a GET; nothing here can place or change an order. */
+export const SIGNED_PATHS = new Set(['/v2/positions/margined', '/v2/positions', '/v2/fills', '/v2/wallet/balances']);
+
+export const isOwner = (request: any): boolean => {
+  const u = request.user as { sub?: string; role?: string } | undefined;
+  return !!u && (u.role === 'admin' || u.sub === DESK_USER_ID);
+};
+
+/** One signed GET to Delta with the given key. Never logs or returns the key. */
+export async function deltaSignedGet(key: string, secret: string, path: string, query: string): Promise<{ ok: boolean; status: number; body: unknown; errorText: string }> {
+  const ts = String(Math.floor(Date.now() / 1000));
+  const q = query ? '?' + query.replace(/^\?/, '') : ''; // normalise to exactly one leading '?' (mirrors the desk's original signing scheme)
+  const sig = signDelta(secret, 'GET', ts, path, q);
+  try {
+    const upstream = await fetch(`${DELTA_BASE}${path}${q}`, {
+      headers: { 'api-key': key, timestamp: ts, signature: sig, Accept: 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
+      signal: AbortSignal.timeout(12_000),
+    });
+    const data = await upstream.json().catch(() => null);
+    const body = data ?? { success: false, error: 'Empty upstream response' };
+    return { ok: upstream.ok && (data as any)?.success !== false, status: upstream.status, body, errorText: upstream.ok ? '' : String((data as any)?.error?.code ?? (data as any)?.error ?? upstream.status) };
+  } catch (err: any) {
+    return { ok: false, status: 502, body: { success: false, error: `Failed to reach Delta: ${err?.message || 'timeout'}` }, errorText: err?.message || 'timeout' };
+  }
 }
 
 let cachedServerIp: string | null = null;
@@ -108,32 +139,44 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
-  // Server-side signed relay for authenticated Delta calls (key+secret from env, never the browser).
-  // Guarded: requires a valid desk JWT (login) — without it, 401 (no account data to the public URL).
-  fastify.get('/signed', { preHandler: (fastify as any).authenticate }, async (request, reply) => {
+  // Server-side signed relay for the caller's OWN Delta account (their key, saved encrypted; never the browser, never another user's).
+  // Read-only: GET, and only the account endpoints the desk shows. The owner may still fall back to the server's env key until a key is saved.
+  fastify.get('/signed', { preHandler: (fastify as any).authenticate, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     const qp = (request.query || {}) as { path?: string; query?: string };
     const path = qp.path;
     const query = qp.query || '';
-    if (!path || !path.startsWith('/v2/')) {
-      return reply.status(400).send({ success: false, error: 'path must start with /v2/' });
+    if (!path || !SIGNED_PATHS.has(path)) {
+      return reply.status(400).send({ success: false, error: `path must be one of: ${[...SIGNED_PATHS].join(', ')}` });
     }
-    const key = process.env.DELTA_API_KEY;
-    const secret = process.env.DELTA_API_SECRET;
-    if (!key || !secret) {
-      return reply.status(503).send({ success: false, error: 'Delta credentials not configured on server' });
-    }
-    const ts = String(Math.floor(Date.now() / 1000));
-    const q = query ? '?' + query.replace(/^\?/, '') : ''; // normalise to exactly one leading '?' (mirrors the desk's original signing scheme)
-    const sig = signDelta(secret, 'GET', ts, path, q);
-    try {
-      const upstream = await fetch(`${DELTA_BASE}${path}${q}`, {
-        headers: { 'api-key': key, timestamp: ts, signature: sig, Accept: 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
-        signal: AbortSignal.timeout(12_000),
-      });
-      const data = await upstream.json().catch(() => null);
-      return reply.status(upstream.status).send(data ?? { success: false, error: 'Empty upstream response' });
-    } catch (err: any) {
-      return reply.status(502).send({ success: false, error: `Failed to reach Delta: ${err?.message || 'timeout'}` });
-    }
+    const uid = userId(request);
+    let creds: { key: string; secret: string } | null = null;
+    try { creds = await loadDeltaKey(uid); } catch { return reply.status(500).send({ success: false, error: 'Could not read your saved Delta key' }); }
+    if (!creds && isOwner(request) && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET) creds = { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET };
+    if (!creds) return reply.status(409).send({ success: false, error: 'no_delta_key', message: 'Save your Delta API key in Settings first' });
+    const r = await deltaSignedGet(creds.key, creds.secret, path, query);
+    if (!r.ok) void noteDeltaResult(uid, false, r.errorText);
+    else void noteDeltaResult(uid, true, null);
+    return reply.status(r.status).send(r.body);
   });
+
+  // Save, check and remove the caller's own Delta key. The secret is only ever sent in (never returned) and is stored encrypted.
+  const authOnly = { preHandler: (fastify as any).authenticate };
+  fastify.get('/credentials', authOnly, async (request) => ({ success: true, encryptionReady: masterKeyConfigured(), ...(await deltaKeyStatus(userId(request))) }));
+
+  fastify.put('/credentials', { ...authOnly, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const b = z.object({ apiKey: z.string().trim().min(8).max(200), apiSecret: z.string().trim().min(8).max(400) }).safeParse(request.body);
+    if (!b.success) return reply.status(400).send({ success: false, error: 'send apiKey and apiSecret' });
+    if (!masterKeyConfigured()) return reply.status(503).send({ success: false, error: new MasterKeyMissing().message });
+    // prove the key works with one read-only call before keeping it
+    const check = await deltaSignedGet(b.data.apiKey, b.data.apiSecret, '/v2/wallet/balances', '');
+    if (!check.ok) {
+      const code = (check.body as any)?.error?.code ?? (check.body as any)?.error ?? check.errorText;
+      const ipHint = /ip_not_whitelisted|whitelist/i.test(String(code)) ? ` Add this server's IP to the key's whitelist on Delta (it is shown in Settings).` : '';
+      return reply.status(400).send({ success: false, error: `Delta did not accept this key (${String(code).slice(0, 120)}).${ipHint}` });
+    }
+    await saveDeltaKey(userId(request), b.data.apiKey, b.data.apiSecret);
+    return { success: true, ...(await deltaKeyStatus(userId(request))) };
+  });
+
+  fastify.delete('/credentials', authOnly, async (request) => ({ success: true, removed: await deleteDeltaKey(userId(request)) }));
 };
