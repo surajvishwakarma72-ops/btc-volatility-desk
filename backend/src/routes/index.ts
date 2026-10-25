@@ -12,6 +12,7 @@ import { telemetryRoutes } from './telemetry.js';
 import { marketGatewayRoutes } from './mkt.js';
 import { macroStressRoutes } from './macro-stress.js';
 import { botRoutes } from './bot.js';
+import { askRoutes } from './ask.js';
 
 /**
  * Primary API v1 Router Registration
@@ -32,4 +33,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(marketGatewayRoutes, { prefix: '/mkt' });
   await fastify.register(macroStressRoutes, { prefix: '/macro' });
   await fastify.register(botRoutes, { prefix: '/bot' });
+  await fastify.register(askRoutes, { prefix: '/ask' });
 };

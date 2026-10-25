@@ -1,0 +1,299 @@
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
+
+const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function } }));
+vi.mock('../../db/index.js', () => ({
+  pool: {
+    query: async (text: string, params?: unknown[]) => {
+      if (!params || params.length === 0) {
+        const res = await h.db.exec(text);
+        const last = res[res.length - 1];
+        return { rows: last?.rows ?? [], rowCount: last?.rows?.length ?? 0 };
+      }
+      const r = await h.db.query(text, params);
+      return { rows: r.rows, rowCount: r.affectedRows ?? r.rows.length };
+    },
+  },
+}));
+
+const { answer } = await import('./answer.js');
+const { ensureBotSchema } = await import('../bot/bot-store.js');
+const { pool } = await import('../../db/index.js');
+
+const NOW = Date.parse('2026-10-28T06:30:00Z'); // Wed 12:00 IST
+const IST = 19_800_000;
+const istMs = (date: string, hh: number, mm = 0) => Date.parse(`${date}T00:00:00Z`) - IST + (hh * 60 + mm) * 60_000;
+const iso = (ms: number) => new Date(ms).toISOString();
+
+const live = (over: Record<string, unknown> = {}) => ({
+  botEnabled: () => true,
+  botStatus: () => ({ engine: 'running', mode: 'paper', lastTickAt: NOW, lastError: null }),
+  positions: async () => [] as any[],
+  market: () => ({ spot: 80_800.4, mark: 80_810, funding: 0.0001, oi: 123_456, dvol: 38.1, macro: { score: 22, zone: 'calm', direction: 'RISK-ON', nextEvent: 'No Tier-1 in 6h', tradeRule: 'Normal size.' } }),
+  replay: () => null as any,
+  ...over,
+});
+const ctx = (l = live()) => ({ q: async (sql: string, params?: unknown[]) => (await pool.query(sql, params as never)).rows, now: NOW, live: l });
+
+let seq = 0;
+async function run(o: { strategy: string; book?: string; date: string; entry: number; exit?: number; net?: number; reason?: string; status?: string; peak?: number; trough?: number; margin?: number; feesE?: number; feesX?: number; tags?: object; detail?: string }) {
+  const key = `${o.strategy}:${o.date}:${o.book ?? 'always'}:${seq++}`;
+  const r = await pool.query(
+    `INSERT INTO bot_runs (run_key, strategy, book, mode, date_key, status, entry_at, exit_at, margin_usd, fees_entry, fees_exit, net_pnl, peak_pnl, trough_pnl, exit_reason, exit_detail, tags)
+     VALUES ($1,$2,$3,'paper',$4,$5, to_timestamp($6::float8/1000.0), CASE WHEN $7::float8 IS NULL THEN NULL ELSE to_timestamp($7::float8/1000.0) END, $8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
+    [key, o.strategy, o.book ?? 'always', o.date, o.status ?? (o.exit ? 'closed' : 'open'), o.entry, o.exit ?? null, o.margin ?? 80, o.feesE ?? 0.8, o.feesX ?? 0.8, o.net ?? null, o.peak ?? o.net ?? null, o.trough ?? o.net ?? null, o.reason ?? null, o.detail ?? null, JSON.stringify(o.tags ?? {})],
+  );
+  return (r.rows[0] as { id: string }).id;
+}
+
+beforeAll(async () => {
+  h.db = new PGlite() as never;
+  await ensureBotSchema();
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS trades (id serial, strategy text, status text, expiry_date timestamptz, call_strike numeric, put_strike numeric, entry_time timestamptz, exit_time timestamptz, realized_pnl numeric, exit_reason text);
+    CREATE TABLE IF NOT EXISTS nightly_reviews (id serial, session_date date, verdict text, outcome text, iv_1730 numeric, iv_ny_open numeric, iv_exit numeric, speed_vs_iv numeric, adx_trend text, exit_hour int, notes text);
+    CREATE TABLE IF NOT EXISTS session_audit_logs (id serial, session_date date, day_name text, session_status text, outcome text, telemetry_match boolean, mismatch_reason text);
+    CREATE TABLE IF NOT EXISTS recalibration_audits (id serial, run_at timestamptz, total_sessions int, in_sample_sessions int, out_of_sample_sessions int, cleared_bonferroni boolean, oos_stability_verdict text, combo_stop_rate numeric, oos_stop_rate numeric, combo_p_value numeric);
+    CREATE TABLE IF NOT EXISTS alert_logs (id serial, delivered_at timestamptz, channel text, status text, title text, message text);
+    CREATE TABLE IF NOT EXISTS indicator_snapshots (id serial, recorded_at timestamptz, atm_iv numeric, n2n_iv numeric, term_current_n2n numeric, term_next_n2n numeric, skew_25d numeric);
+  `);
+});
+
+beforeEach(async () => {
+  await pool.query('DELETE FROM bot_minute_marks; DELETE FROM bot_minute_context; DELETE FROM bot_events; DELETE FROM bot_fills; DELETE FROM bot_legs; DELETE FROM bot_runs; DELETE FROM trades; DELETE FROM nightly_reviews; DELETE FROM session_audit_logs; DELETE FROM recalibration_audits; DELETE FROM alert_logs; DELETE FROM indicator_snapshots;');
+});
+
+describe('help, rules and unknown', () => {
+  it('help lists what it can do and offers suggestions, without touching the database', async () => {
+    const a = await answer('what can you do?', ctx());
+    expect(a.intent).toBe('help');
+    expect(a.text).toMatch(/only/i);
+    expect(a.suggestions!.length).toBeGreaterThan(5);
+  });
+
+  it('rules explain a strategy in plain words', async () => {
+    const a = await answer('what is the NY short rule?', ctx());
+    expect(a.intent).toBe('rules');
+    expect(a.text).toMatch(/22:30 IST/);
+    expect(a.text).toMatch(/2x/);
+    const f = await answer('how do the futures strategies work', ctx());
+    expect(f.text).toMatch(/BTC perpetual/);
+  });
+
+  it('an unmatched question says so honestly and suggests real questions', async () => {
+    const a = await answer('what will the price be next week', ctx());
+    expect(a.intent).toBe('unknown');
+    expect(a.text).toMatch(/could not match/);
+    expect(a.text).toMatch(/do not predict/);
+    expect(a.suggestions!.length).toBeGreaterThan(0);
+  });
+});
+
+describe('pnl', () => {
+  it('sums closed trades for the period and strategy, with win, stop and take-profit rates', async () => {
+    await run({ strategy: 'NY_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 22, 30), exit: istMs('2026-10-28', 7), net: 8.3, reason: 'tp' });
+    await run({ strategy: 'NY_SHORT', book: 'gated', date: '2026-10-27', entry: istMs('2026-10-27', 22, 30), exit: istMs('2026-10-28', 7), net: -12.7, reason: 'stop' });
+    await run({ strategy: 'ASIA_SHORT', date: '2026-10-26', entry: istMs('2026-10-26', 10), exit: istMs('2026-10-26', 16), net: 3, reason: 'time' }); // outside "today"
+    const a = await answer("Today's PnL", ctx());
+    expect(a.intent).toBe('pnl');
+    expect(a.text).toMatch(/-\$4\.40 over 2 closed trades/);
+    expect(a.text).toMatch(/win rate 50%/);
+    expect(a.text).toMatch(/stopped 50%/);
+    expect(a.table!.rows).toHaveLength(2);
+    expect(a.sources).toContain('bot_runs');
+    const all = await answer('total pnl of the asia strangle all time', ctx());
+    expect(all.text).toMatch(/\$3\.00 over 1 closed trade/);
+  });
+
+  it('says plainly when there is nothing, and adds unrealised PnL from running positions', async () => {
+    const empty = await answer('pnl this week', ctx());
+    expect(empty.text).toMatch(/No closed paper trades/);
+    const withOpen = await answer('pnl today', ctx(live({ positions: async () => [{ strategy: 'ASIA_SHORT', book: 'always', pnl: { netPnl: 4.2 } }] })));
+    expect(withOpen.text).toMatch(/running with \$4\.20 unrealised/);
+  });
+
+  it('includes manually logged trades when they exist', async () => {
+    await pool.query(`INSERT INTO trades (strategy, status, entry_time, exit_time, realized_pnl) VALUES ('SHORT_STRANGLE','CLOSED', $1, $2, 25.5)`, [iso(istMs('2026-10-27', 22)), iso(istMs('2026-10-28', 7))]);
+    const a = await answer('pnl today', ctx());
+    expect(a.text).toMatch(/manually logged trades in the same period: 1 closed, \$25\.50/);
+    expect(a.sources).toContain('trades');
+  });
+});
+
+describe('explain', () => {
+  it('explains the last stopped trade: entry, why it exited, PnL, give-back and fees', async () => {
+    const id = await run({
+      strategy: 'ASIA_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 10), exit: istMs('2026-10-27', 12, 5), net: -13.7, peak: 2.1, trough: -13.7, reason: 'stop',
+      detail: 'C-82500 mark 196 reached 2x entry 98', tags: { gate: { go: true, reasons: [], dvol: 38.1, macroZone: 'calm' } },
+    });
+    await pool.query(`INSERT INTO bot_legs (run_id, symbol, type, side, role, strike, expiry_ms, lots, entry_price) VALUES ($1,'C-82500','call','short','body',82500,1,100,98), ($1,'P-78500','put','short','body',78500,1,100,90)`, [id]);
+    await pool.query(`INSERT INTO bot_fills (run_id, leg_symbol, action, side, lots, intended_price, avg_price, filled) VALUES ($1,'C-82500','entry','sell',100,99,98,100)`, [id]);
+    const a = await answer('why was the asia trade stopped?', ctx());
+    expect(a.intent).toBe('explain');
+    expect(a.text).toMatch(/Asia short strangle/);
+    expect(a.text).toMatch(/short 100 call 82500 @ 98\.0/);
+    expect(a.text).toMatch(/because a stop was hit \(C-82500 mark 196 reached 2x entry 98\)/);
+    expect(a.text).toMatch(/net -\$13\.70 after \$1\.60 of fees/);
+    expect(a.text).toMatch(/gave back \$15\.80 from the peak/);
+    expect(a.text).toMatch(/Gate at entry: GO/);
+    expect(a.text).toMatch(/slippage/);
+  });
+
+  it('picks the right strategy and date, and reports when there is nothing to explain', async () => {
+    await run({ strategy: 'NY_SHORT', date: '2026-10-26', entry: istMs('2026-10-26', 22, 30), exit: istMs('2026-10-27', 7), net: 6, reason: 'tp' });
+    await run({ strategy: 'ASIA_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 10), exit: istMs('2026-10-27', 16), net: -2, reason: 'time' });
+    const ny = await answer('why did the ny short exit on 2026-10-26', ctx());
+    expect(ny.text).toMatch(/New York short strangle/);
+    expect(ny.text).toMatch(/profit target was reached/);
+    const none = await answer('why was the calendar stopped', ctx());
+    expect(none.text).toMatch(/found no/);
+  });
+});
+
+describe('at a given minute', () => {
+  it('shows positions, market context and events recorded at that IST minute', async () => {
+    const id = await run({ strategy: 'ASIA_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 10), exit: istMs('2026-10-27', 16), net: 1, reason: 'time' });
+    const minute = istMs('2026-10-27', 10, 5);
+    await pool.query(`INSERT INTO bot_minute_marks (run_id, minute_ms, net_pnl, gross_pnl, pct_margin, spot, snapshot) VALUES ($1,$2,3.5,4.3,0.043,80810,'{}')`, [id, minute]);
+    await pool.query(`INSERT INTO bot_minute_context (minute_ms, spot, ctx) VALUES ($1, 80810, $2)`, [minute, JSON.stringify({ gate: { go: false, reasons: ['DVOL 70 >= 65'], dvol: 70, macroZone: 'elevated' } })]);
+    await pool.query(`INSERT INTO bot_events (at, type, message) VALUES (to_timestamp($1/1000.0), 'entry', 'ASIA_SHORT entered')`, [minute + 20_000]);
+    const a = await answer('what was happening at 10:05 yesterday', ctx());
+    expect(a.intent).toBe('at_time');
+    expect(a.text).toMatch(/Asia short strangle \(10:00 IST\): net \$3\.50 \(4\.3% of margin\), spot 80810/);
+    expect(a.text).toMatch(/gate WAIT \(DVOL 70 >= 65\)/);
+    expect(a.text).toMatch(/Event: entry/);
+    const none = await answer('what was happening at 03:03 yesterday', ctx());
+    expect(none.text).toMatch(/no position was recorded/);
+    expect(none.text).toMatch(/No market context/);
+  });
+});
+
+describe('why no trade', () => {
+  it('lists skipped and failed runs with their reasons, and what did trade', async () => {
+    await run({ strategy: 'ASIA_SHORT', date: '2026-10-28', entry: istMs('2026-10-28', 10), net: undefined, status: 'open' });
+    await run({ strategy: 'NY_SHORT', book: 'gated', date: '2026-10-28', entry: istMs('2026-10-28', 22, 30), status: 'skipped', tags: { gate: { go: false, reasons: ['DVOL 70.0 >= 65'] } } });
+    await run({ strategy: 'CAL_BACK', date: '2026-10-28', entry: istMs('2026-10-28', 18), status: 'skipped', tags: { reason: 'no backwardation: front IV 38.0 vs back IV 45.0 (need +2 pts)' } });
+    await pool.query(`INSERT INTO bot_events (at, strategy, type, message) VALUES (to_timestamp($1/1000.0), 'CAL_BACK', 'entry_skipped', 'CAL_BACK:2026-10-28:always: no backwardation')`, [istMs('2026-10-28', 8)]);
+    const a = await answer('why no trade today?', ctx());
+    expect(a.intent).toBe('why_no_trade');
+    expect(a.text).toMatch(/Traded on 2026-10-28: Asia short strangle/);
+    expect(a.text).toMatch(/New York short strangle \(22:30 IST\) \(gated\): skipped, gate WAIT \(DVOL 70\.0 >= 65\)/);
+    expect(a.text).toMatch(/Calendar spread.*skipped, no backwardation: front IV 38\.0 vs back IV 45\.0/);
+    expect(a.table!.rows).toHaveLength(1);
+  });
+
+  it('explains an empty day: bot off versus nothing due yet', async () => {
+    const off = await answer('why no trade today', ctx(live({ botEnabled: () => false })));
+    expect(off.text).toMatch(/switched off/);
+    const on = await answer('why no trade today', ctx());
+    expect(on.text).toMatch(/recorded no runs/);
+    expect(on.text).toMatch(/ASIA_SHORT 10:00/);
+  });
+});
+
+describe('ranking and exit quality', () => {
+  it('needs enough trades, then ranks sessions, strategies and weekdays by average PnL', async () => {
+    const few = await answer('which session is best?', ctx());
+    expect(few.text).toMatch(/Only 0 closed live paper trades/);
+    for (let i = 0; i < 6; i++) {
+      await run({ strategy: 'NY_SHORT', date: `2026-10-0${i + 1}`, entry: istMs(`2026-10-0${i + 1}`, 22, 30), exit: istMs(`2026-10-0${i + 2}`, 7), net: 5, reason: 'tp' });
+      await run({ strategy: 'ASIA_SHORT', date: `2026-10-0${i + 1}`, entry: istMs(`2026-10-0${i + 1}`, 10), exit: istMs(`2026-10-0${i + 1}`, 16), net: -3, reason: 'stop' });
+    }
+    const a = await answer('which session is best?', ctx());
+    expect(a.intent).toBe('ranking');
+    expect(a.text).toMatch(/Best session by average PnL per trade: New York \(\$5\.00\); worst: Asia \(-\$3\.00\)/);
+    expect(a.table!.rows.length).toBeGreaterThan(4);
+  });
+
+  it('uses the replay for sessions and exit what-ifs when it is available', async () => {
+    const replay = {
+      range: { from: '2025-10-02', to: '2026-10-18', days: 382 },
+      runs: [{ strategy: 'NY_SHORT', netPnl: -1.5 }, { strategy: 'NY_SHORT', netPnl: -1.5 }, { strategy: 'ASIA_SHORT', netPnl: -3 }, { strategy: 'ASIA_SHORT', netPnl: -3 }],
+      analytics: { exitGrid: [{ strategy: 'ASIA_IC', book: 'always', actual: -3.63, points: [{ offsetMin: 240, avgPnl: -1.66, winRate: 0.44 }, { offsetMin: 1440, avgPnl: -3.63, winRate: 0.27 }] }] },
+    };
+    const r = await answer('which session is best?', ctx(live({ replay: () => replay })));
+    expect(r.text).toMatch(/Replay.*best session by average PnL per trade is New York/);
+    expect(r.text).toMatch(/loses least/);
+    const e = await answer('best exit time for the asia condor', ctx(live({ replay: () => replay })));
+    expect(e.intent).toBe('exit_quality');
+    expect(e.table!.rows[0]).toEqual(['Asia iron condor, 24h (10:00 IST)', '-$3.63', '4 h after entry', '-$1.66']);
+  });
+
+  it('live exit quality reports peak versus final and the give-back', async () => {
+    await run({ strategy: 'ASIA_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 10), exit: istMs('2026-10-27', 16), net: 1, peak: 7, reason: 'time' });
+    const a = await answer('how much did it give back from the peak', ctx());
+    expect(a.table!.rows[0]).toEqual(['Asia short strangle (10:00 IST)', 1, '$1.00', '$7.00', '$6.00']);
+  });
+});
+
+describe('positions, market, replay, events and desk records', () => {
+  it('positions: says the bot is off, none running, or lists them with distances', async () => {
+    expect((await answer('running positions', ctx(live({ botEnabled: () => false })))).text).toMatch(/switched off/);
+    expect((await answer('running positions', ctx())).text).toMatch(/No running positions/);
+    const a = await answer('how is the NY short doing', ctx(live({
+      positions: async () => [
+        { strategy: 'NY_SHORT', book: 'always', marginUsd: 80, pnl: { netPnl: 4.2, pctOfMargin: 0.0525 }, exit: { tpPctOfMargin: 0.1 }, minutesToTimeExit: 300, spot: 80_800 },
+        { strategy: 'ASIA_SHORT', book: 'always', marginUsd: 80, pnl: { netPnl: 1, pctOfMargin: 0.0125 }, exit: {}, spot: 80_800 },
+      ],
+    })));
+    expect(a.intent).toBe('positions');
+    expect(a.table!.rows).toHaveLength(1);
+    expect(a.table!.rows[0]![3]).toBe('TP needs $3.80 more');
+    const fut = await answer('futures positions', ctx(live({ positions: async () => [{ strategy: 'FUT_SWEEP_LDN', book: 'always', marginUsd: 40, spot: 80_000, pnl: { netPnl: -1, pctOfMargin: -0.025 }, exit: { kind: 'futures', target: 79_600, stop: 80_200 }, minutesToTimeExit: 600 }] })));
+    expect(fut.table!.rows[0]![3]).toBe('target $400 away, stop $200 away');
+  });
+
+  it('market: live spot, DVOL versus the gate limit, macro stress and the last stored snapshot', async () => {
+    await pool.query(`INSERT INTO indicator_snapshots (recorded_at, atm_iv, n2n_iv, term_current_n2n, term_next_n2n) VALUES (now(), 36.5, 38.2, -1.7, -0.4)`);
+    const a = await answer('market now', ctx());
+    expect(a.intent).toBe('market');
+    expect(a.text).toMatch(/spot 80800/);
+    expect(a.text).toMatch(/DVOL 38\.1 \(below the 65 gate limit\)/);
+    expect(a.text).toMatch(/stress 22\/100, zone calm/);
+    expect(a.text).toMatch(/ATM IV 36\.5, N2N IV 38\.2/);
+    expect(a.sources).toContain('indicator_snapshots');
+  });
+
+  it('replay: summarises per-strategy results and states the caveats; reports a missing file', async () => {
+    expect((await answer('replay summary', ctx())).text).toMatch(/not available/);
+    const rep = {
+      range: { from: '2025-10-02', to: '2026-10-18', days: 382 }, trials: 14, method: 'BS repricing',
+      runs: [], analytics: { byStrategy: [{ key: 'NY_SHORT|always', trades: 382, netPnl: -587, avgPnl: -1.54, winRate: 0.51, stopRate: 0.39, maxDrawdown: 634 }, { key: 'ASIA_SHORT|always', trades: 382, netPnl: -859, avgPnl: -2.25, winRate: 0.49, stopRate: 0.35, maxDrawdown: 884 }] },
+    };
+    const a = await answer('replay summary', ctx(live({ replay: () => rep })));
+    expect(a.text).toMatch(/All of them lost money/);
+    expect(a.text).toMatch(/flat|no skew/);
+    expect(a.table!.rows).toHaveLength(2);
+    const one = await answer('replay of the ny short', ctx(live({ replay: () => rep })));
+    expect(one.table!.rows).toHaveLength(1);
+  });
+
+  it('events show recent warnings and errors, and the engine state', async () => {
+    await pool.query(`INSERT INTO bot_events (type, severity, message) VALUES ('tick_error','error','options: chain fetch failed'), ('entry','info','x')`);
+    const a = await answer('recent errors', ctx());
+    expect(a.intent).toBe('events');
+    expect(a.table!.rows).toHaveLength(1);
+    expect(a.table!.rows[0]![3]).toMatch(/chain fetch failed/);
+  });
+
+  it('manual trades, nightly reviews, audits, recalibration and alerts read their own tables', async () => {
+    await pool.query(`INSERT INTO trades (strategy, status, entry_time, exit_time, call_strike, put_strike, realized_pnl, exit_reason) VALUES ('SHORT_STRANGLE','CLOSED', now() - interval '2 days', now() - interval '1 day', 82500, 78500, 12, 'TAKE_PROFIT'), ('SHORT_STRANGLE','CLOSED', now() - interval '3 days', now() - interval '2 days', 82000, 78000, -20, 'STOP_LOSS')`);
+    const t = await answer('my manual trades', ctx());
+    expect(t.text).toMatch(/2 logged trades.*Realised -\$8\.00, win rate 50%/);
+    await pool.query(`INSERT INTO nightly_reviews (session_date, verdict, outcome, iv_1730, notes) VALUES ('2026-10-27','SELL_FULL','PROFIT', 41.2, 'clean fall')`);
+    expect((await answer('latest nightly review', ctx())).table!.rows[0]![1]).toBe('SELL_FULL');
+    await pool.query(`INSERT INTO session_audit_logs (session_date, day_name, session_status, outcome, telemetry_match) VALUES ('2026-10-27','Tue','TRADED','WIN', true), ('2026-10-26','Mon','SKIPPED','SKIPPED', false)`);
+    expect((await answer('telemetry audit', ctx())).text).toMatch(/2 audited sessions.*disagreed.*1 of them/);
+    await pool.query(`INSERT INTO recalibration_audits (run_at, total_sessions, in_sample_sessions, out_of_sample_sessions, cleared_bonferroni, oos_stability_verdict, combo_stop_rate, oos_stop_rate, combo_p_value) VALUES (now(), 269, 134, 135, true, 'STABLE', 21.5, 22.1, 0.0123)`);
+    expect((await answer('recalibration status', ctx())).text).toMatch(/269 sessions.*cleared.*Verdict: STABLE/);
+    await pool.query(`INSERT INTO alert_logs (delivered_at, channel, status, title, message) VALUES (now(), 'telegram', 'SENT', 'Stop hit', 'NY short stopped')`);
+    expect((await answer('last alerts', ctx())).table!.rows[0]).toEqual([expect.any(String), 'telegram', 'SENT', 'Stop hit', 'NY short stopped']);
+  });
+
+  it('a missing table gives a plain message instead of an error', async () => {
+    await pool.query('DROP TABLE alert_logs');
+    const a = await answer('last alerts', ctx());
+    expect(a.text).toMatch(/alert_logs.*does not exist/);
+    await pool.query('CREATE TABLE alert_logs (id serial, delivered_at timestamptz, channel text, status text, title text, message text)');
+  });
+});

@@ -25,7 +25,13 @@ ssh -i "$KEY" "${USER}@${VM_IP}" '
   if [ ! -f .env.prod ] || [ ! -f .env ]; then
     echo "!! Missing .env and/or .env.prod on the VM — create them first (see DEPLOY_ORACLE.md)"; exit 1
   fi
-  docker compose -f docker-compose.prod.yml up -d --build > ~/deploy.log 2>&1
+  # The swap of the old container can fail ("cannot remove container ... is running") and leave the app
+  # stopped. The image is already built by then, so clear the stale containers and start again.
+  if ! docker compose -f docker-compose.prod.yml up -d --build > ~/deploy.log 2>&1; then
+    echo "!! compose up failed, clearing stale app containers and retrying" | tee -a ~/deploy.log
+    docker rm -f $(docker ps -aq --filter name=app-app) >> ~/deploy.log 2>&1 || true
+    docker compose -f docker-compose.prod.yml up -d >> ~/deploy.log 2>&1
+  fi
   tail -n 20 ~/deploy.log
   docker compose -f docker-compose.prod.yml ps
 '

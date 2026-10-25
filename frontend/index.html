@@ -58243,6 +58243,134 @@ document.addEventListener('click', function(e) {
   D.addEventListener('click', e => { if (e.target.closest('[data-page="pgBot"]')) { draw(); if (S.view === 'live') loadLive(); else loadReplay(); poll(); } });
   draw();
 })();
+</script><style id="askCss">
+#askFab{position:fixed;right:16px;bottom:16px;z-index:9990;display:inline-flex;align-items:center;gap:8px;background:var(--panel2,#182A3B);color:var(--text,#E4ECF2);border:1px solid var(--focus,#9CC9EE);border-radius:999px;padding:10px 16px;font:700 14px var(--font,system-ui);cursor:pointer;box-shadow:0 6px 22px rgba(0,0,0,.35)}
+#askFab:hover{filter:brightness(1.12)}
+#askFab .ak-dot{width:9px;height:9px;border-radius:50%;background:var(--down,#35BB7D);box-shadow:0 0 0 3px rgba(53,187,125,.2)}
+#askPanel{position:fixed;right:16px;bottom:68px;z-index:9991;width:390px;max-width:calc(100vw - 24px);height:min(560px,calc(100vh - 96px));display:flex;flex-direction:column;background:var(--panel,#132230);color:var(--text,#E4ECF2);border:1px solid var(--line2,#2C4459);border-radius:14px;box-shadow:0 14px 44px rgba(0,0,0,.5);overflow:hidden;font-family:var(--font,system-ui)}
+#askPanel[hidden]{display:none}
+#askPanel .ak-head{display:flex;align-items:baseline;gap:8px;padding:10px 12px;border-bottom:1px solid var(--line,#223648);background:var(--panel2,#182A3B)}
+#askPanel .ak-head b{font-size:15px}
+#askPanel .ak-sub{font-size:11.5px;color:var(--muted,#8FA3B5);flex:1}
+#askPanel .ak-x{background:none;border:0;color:var(--muted,#8FA3B5);font-size:22px;line-height:1;cursor:pointer;padding:0 4px}
+#askPanel .ak-msgs{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px}
+#askPanel .ak-user{align-self:flex-end;max-width:85%;background:var(--panel2,#182A3B);border:1px solid var(--line2,#2C4459);border-radius:12px 12px 2px 12px;padding:7px 11px;font-size:13.5px}
+#askPanel .ak-bot{align-self:stretch;background:var(--bg,#0D1721);border:1px solid var(--line,#223648);border-radius:12px 12px 12px 2px;padding:9px 11px;font-size:13.5px;line-height:1.5}
+#askPanel .ak-bot .ak-li{padding-left:12px;position:relative}
+#askPanel .ak-bot .ak-li::before{content:"•";position:absolute;left:2px;color:var(--muted,#8FA3B5)}
+#askPanel .ak-gap{height:6px}
+#askPanel .ak-typing{color:var(--muted,#8FA3B5);font-style:italic}
+#askPanel .ak-src{margin-top:7px;font-size:11px;color:var(--faint,#5F7487)}
+#askPanel .ak-note{font-size:13px;color:var(--muted,#8FA3B5);line-height:1.5}
+#askPanel .ak-err{color:var(--up,#EF5A5E);font-size:12.5px;margin-top:6px}
+#askPanel .ak-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+#askPanel .ak-chip{background:var(--panel2,#182A3B);color:var(--text,#E4ECF2);border:1px solid var(--line2,#2C4459);border-radius:999px;padding:5px 10px;font:600 12px var(--font,system-ui);cursor:pointer}
+#askPanel .ak-chip:hover{border-color:var(--focus,#9CC9EE)}
+#askPanel .ak-row{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line,#223648);background:var(--panel2,#182A3B)}
+#askPanel input{flex:1;min-width:0;background:var(--bg,#0D1721);color:var(--text,#E4ECF2);border:1px solid var(--line2,#2C4459);border-radius:8px;padding:9px 11px;font:500 14px var(--font,system-ui)}
+#askPanel .ak-send{background:var(--focus,#9CC9EE);color:#0D1721;border:0;border-radius:8px;padding:0 16px;font:800 13px var(--font,system-ui);cursor:pointer}
+#askPanel .ak-login{padding:16px;display:flex;flex-direction:column;gap:10px}
+#askPanel .ak-login .ak-send{padding:9px 16px}
+#askPanel .ak-scroll{overflow-x:auto;margin-top:8px}
+#askPanel table.ak-t{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;min-width:100%}
+#askPanel .ak-t th{color:var(--muted,#8FA3B5);font-weight:600;text-align:left;padding:3px 7px;border-bottom:1px solid var(--line2,#2C4459);white-space:nowrap}
+#askPanel .ak-t td{padding:3px 7px;border-bottom:1px solid var(--line,#223648);white-space:nowrap}
+@media (max-width:760px){#askFab{bottom:78px;right:12px;padding:9px 14px}#askPanel{left:8px;right:8px;width:auto;max-width:none;bottom:130px;height:min(60vh,calc(100vh - 200px))}}
+</style><script id="askWidget">
+/* Ask me: a floating chat that answers from the desk's own data (database, live feeds, replay).
+   It calls POST /api/v1/ask, which is rule-based and read-only: no AI model, no outside service. */
+(function askWidget() {
+  'use strict';
+  const D = document;
+  if (D.getElementById('askFab')) return;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { try { return localStorage.getItem('desk_jwt'); } catch (x) { return null; } } };
+  const S = { open: false, msgs: [], busy: false, suggestions: ['Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'Recent errors', 'Replay summary', 'What is the NY short rule?'], loginErr: null };
+
+  const fab = D.createElement('button');
+  fab.id = 'askFab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Ask me about the desk data'); fab.setAttribute('aria-expanded', 'false');
+  fab.innerHTML = '<span class="ak-dot"></span>Ask me';
+  const panel = D.createElement('section');
+  panel.id = 'askPanel'; panel.hidden = true; panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'Ask me');
+  D.body.appendChild(fab); D.body.appendChild(panel);
+
+  function table(t) {
+    if (!t || !t.rows || !t.rows.length) return '';
+    return '<div class="ak-scroll"><table class="ak-t"><thead><tr>' + t.head.map(h => '<th>' + esc(h) + '</th>').join('') + '</tr></thead><tbody>' +
+      t.rows.map(r => '<tr>' + r.map(c => '<td>' + esc(c) + '</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
+  }
+  function text(s) {
+    return String(s || '').split('\n').map(l => l.trim() === '' ? '<div class="ak-gap"></div>' : (/^- /.test(l) ? '<div class="ak-li">' + esc(l.slice(2)) + '</div>' : '<div>' + esc(l) + '</div>')).join('');
+  }
+  function chips(list) {
+    return '<div class="ak-chips">' + list.map(s => '<button type="button" class="ak-chip" data-ak-q="' + esc(s) + '">' + esc(s) + '</button>').join('') + '</div>';
+  }
+
+  function render() {
+    fab.setAttribute('aria-expanded', String(S.open));
+    panel.hidden = !S.open;
+    if (!S.open) return;
+    const logged = !!tok();
+    let body = '';
+    if (!logged) {
+      body = '<div class="ak-login"><div class="ak-note">Your desk data is private. Log in with your desk password to ask questions.</div><input id="akPw" type="password" placeholder="Desk password" autocomplete="current-password"><button type="button" class="ak-send" data-ak="login">Log in</button>' + (S.loginErr ? '<div class="ak-err">' + esc(S.loginErr) + '</div>' : '') + '</div>';
+    } else {
+      body = '<div class="ak-msgs" id="akMsgs">' +
+        (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me anything about your desk data: running positions, PnL by day or strategy, why a trade stopped, what happened at a given minute, the market now, the replay results, or any strategy rule. I answer only from what is recorded. I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
+        S.msgs.map(m => m.role === 'user'
+          ? '<div class="ak-user">' + esc(m.text) + '</div>'
+          : '<div class="ak-bot">' + text(m.text) + table(m.table) + (m.sources && m.sources.length ? '<div class="ak-src">From: ' + esc(m.sources.join(', ')) + '</div>' : '') + (m.suggestions && m.suggestions.length ? chips(m.suggestions) : '') + '</div>').join('') +
+        (S.busy ? '<div class="ak-bot ak-typing">Looking that up…</div>' : '') + '</div>' +
+        '<div class="ak-row"><input id="akIn" type="text" maxlength="300" placeholder="Ask about your desk data…" autocomplete="off"><button type="button" class="ak-send" data-ak="send">Ask</button></div>';
+    }
+    const keepVal = (D.getElementById('akIn') || {}).value || '';
+    const hadFocus = D.activeElement && (D.activeElement.id === 'akIn' || D.activeElement.id === 'akPw');
+    panel.innerHTML = '<header class="ak-head"><b>Ask me</b><span class="ak-sub">answers from your own data only</span><button type="button" class="ak-x" data-ak="close" aria-label="Close">×</button></header>' + body;
+    const inp = D.getElementById('akIn'); if (inp) { inp.value = keepVal; if (hadFocus || S.msgs.length === 0) try { inp.focus(); } catch (e) { } }
+    const pw = D.getElementById('akPw'); if (pw && hadFocus) try { pw.focus(); } catch (e) { }
+    const box = D.getElementById('akMsgs'); if (box) box.scrollTop = box.scrollHeight;
+  }
+
+  async function ask(q) {
+    q = String(q || '').trim(); if (!q || S.busy) return;
+    const t = tok(); if (!t) { render(); return; }
+    S.msgs.push({ role: 'user', text: q }); S.busy = true; render();
+    try {
+      const r = await fetch('/api/v1/ask', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + t }, body: JSON.stringify({ question: q }), cache: 'no-store' });
+      if (r.status === 401) { try { localStorage.removeItem('desk_jwt'); } catch (e) { } S.msgs.push({ role: 'bot', text: 'Your session expired. Log in again.' }); }
+      else {
+        const j = await r.json().catch(() => null);
+        if (!r.ok || !j || j.success === false) S.msgs.push({ role: 'bot', text: (j && j.error) || ('Something went wrong (HTTP ' + r.status + ').') });
+        else S.msgs.push({ role: 'bot', text: j.text, table: j.table, sources: j.sources, suggestions: j.suggestions });
+      }
+    } catch (e) { S.msgs.push({ role: 'bot', text: 'I could not reach the server: ' + e.message }); }
+    S.busy = false; render();
+  }
+  async function login() {
+    const pw = (D.getElementById('akPw') || {}).value || ''; S.loginErr = null;
+    try {
+      const r = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || !j.token) throw new Error((j && j.error) || ('HTTP ' + r.status));
+      localStorage.setItem('desk_jwt', JSON.stringify(j.token));
+    } catch (e) { S.loginErr = e.message; }
+    render();
+  }
+
+  fab.addEventListener('click', () => { S.open = !S.open; render(); });
+  panel.addEventListener('click', e => {
+    const t = e.target.closest('[data-ak],[data-ak-q]'); if (!t) return;
+    if (t.dataset.akQ) { ask(t.dataset.akQ); return; }
+    const a = t.dataset.ak;
+    if (a === 'close') { S.open = false; render(); fab.focus(); }
+    else if (a === 'send') { const i = D.getElementById('akIn'); const v = i ? i.value : ''; if (i) i.value = ''; ask(v); }
+    else if (a === 'login') login();
+  });
+  panel.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { S.open = false; render(); fab.focus(); }
+    else if (e.key === 'Enter') { if (e.target.id === 'akIn') { const v = e.target.value; e.target.value = ''; ask(v); } else if (e.target.id === 'akPw') login(); }
+  });
+})();
 </script></body>
 
 </html>
