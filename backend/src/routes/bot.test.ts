@@ -27,6 +27,7 @@ describe('bot routes', () => {
       ['GET', '/bot/analytics/summary'],
       ['GET', '/bot/analytics'],
       ['GET', '/bot/drops'],
+      ['GET', '/bot/today'],
       ['GET', '/bot/top'],
       ['GET', '/bot/learn'],
       ['POST', '/bot/learn/run'],

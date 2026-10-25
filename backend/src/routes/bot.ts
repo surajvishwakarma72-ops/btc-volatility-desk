@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { pool } from '../db/index.js';
-import { istDateKey, istMidnightMs } from '../lib/bot/schedule.js';
+import { DAY, istDateKey, istMidnightMs } from '../lib/bot/schedule.js';
+import { buildTimeline, type SlotRun } from '../lib/bot/timeline.js';
 import { buildAnalytics, type RunRecord } from '../lib/bot/analytics.js';
 import { DEFAULT_PARAMS, DEFAULT_THRESHOLDS } from '../lib/bot/learn.js';
 import { pickTop } from '../lib/bot/top.js';
@@ -44,10 +45,40 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     const { strategy, status, limit } = q<{ strategy?: string; status?: string; limit?: string }>(req);
     const n = Math.min(Math.max(Number(limit) || 50, 1), 500);
     const r = await pool.query(
-      `SELECT * FROM bot_runs WHERE ($1::text IS NULL OR strategy=$1) AND ($2::text IS NULL OR status=$2) ORDER BY created_at DESC LIMIT $3`,
+      `SELECT r.*, (SELECT COALESCE(SUM(ABS(f.avg_price - f.intended_price) * f.filled * 0.001), 0)::float FROM bot_fills f WHERE f.run_id = r.id) AS slippage_usd
+         FROM bot_runs r WHERE ($1::text IS NULL OR r.strategy=$1) AND ($2::text IS NULL OR r.status=$2) ORDER BY r.created_at DESC LIMIT $3`,
       [strategy ?? null, status ?? null, n],
     );
     return { success: true, runs: r.rows };
+  });
+
+  // Every scheduled slot of the IST day (and last night's overnight one) with where it stands, for the Bot page's "Today" panel.
+  fastify.get('/today', auth, async () => {
+    await ensureBotSchema();
+    const now = Date.now();
+    const dates = [istDateKey(now - DAY), istDateKey(now)];
+    const rows = await pool.query(
+      `SELECT id, run_key, book, status, tags, entry_at, exit_at, planned_exit_at, margin_usd, gross_pnl, net_pnl, fees_entry, fees_exit, exit_reason, exit_detail
+         FROM bot_runs WHERE date_key = ANY($1::text[]) AND strategy NOT LIKE 'FUT\\_%'`,
+      [dates],
+    );
+    const ms = (v: unknown) => (v ? new Date(v as string).getTime() : null);
+    const num = (v: unknown) => (v == null ? null : Number(v));
+    const map = new Map<string, SlotRun>();
+    for (const r of rows.rows as any[]) {
+      map.set(r.run_key, {
+        id: r.id, book: r.book, status: r.status, tags: r.tags, netPnl: num(r.net_pnl), grossPnl: num(r.gross_pnl),
+        fees: r.fees_entry == null ? null : Number(r.fees_entry) + Number(r.fees_exit ?? 0),
+        entryAtMs: ms(r.entry_at), exitAtMs: ms(r.exit_at), plannedExitAtMs: ms(r.planned_exit_at), exitReason: r.exit_reason, exitDetail: r.exit_detail, marginUsd: num(r.margin_usd),
+      });
+    }
+    const live = botEngine.enabled ? await botEngine.livePositions().catch(() => []) : [];
+    const livePnl = new Map<string, { netPnl: number; grossPnl: number; pctOfMargin: number }>();
+    for (const p of live as any[]) if (p.id && p.pnl) livePnl.set(p.id, { netPnl: p.pnl.netPnl, grossPnl: p.pnl.grossPnl, pctOfMargin: p.pnl.pctOfMargin });
+    const slots = buildTimeline(now, map, botEngine.enabled ? botEngine.waitingEntries() : []).map((s) => ({
+      ...s, live: s.run?.id ? livePnl.get(s.run.id) ?? null : null,
+    }));
+    return { success: true, now, enabled: botEngine.enabled, engine: botEngine.status, lastTickAt: botEngine.lastTickAt || null, lastError: botEngine.lastError, slots };
   });
 
   fastify.get('/runs/:id/timeline', auth, async (req, reply) => {
@@ -105,7 +136,10 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     return {
       success: true,
       run: r,
-      legs: legs.rows,
+      legs: legs.rows.map((l: any) => ({
+        ...l,
+        pnl: l.exit_price == null ? null : (l.side === 'short' ? Number(l.entry_price) - Number(l.exit_price) : Number(l.exit_price) - Number(l.entry_price)) * l.lots * 0.001,
+      })),
       fills: fills.rows,
       events: events.rows,
       recording: peak.rows[0],
