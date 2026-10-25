@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { paperTerminal } from '../services/paper/paper-terminal.js';
+import { getOptionFlow } from '../services/paper/flow.js';
 
 /**
  * The Paper Trade terminal's API. The account is fake money against real Delta order books; there is no
@@ -65,6 +66,9 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
       return fail(reply, e);
     }
   });
+
+  // Option flow for the Strategy builder: what traders bought and sold, by window and by strike.
+  fastify.get('/flow', auth, async () => ({ success: true, ...(await getOptionFlow()) }));
 
   fastify.get('/book', auth, async (req, reply) => {
     const s = symbol.safeParse((req.query as { symbol?: string }).symbol);

@@ -58748,28 +58748,64 @@ document.addEventListener('click', function(e) {
       '<label class="pp-note" style="display:flex;align-items:center;gap:6px">Lots per leg <input type="number" id="ppSbBase" class="pp-in" style="width:90px" min="1" step="1" value="' + esc(sb.baseLots) + '"></label>' +
       '<button type="button" class="pp-btn" data-pp-act="sbapply">Use template</button><button type="button" class="pp-btn" data-pp-act="sbclear">Clear</button></div>';
     h += '<div class="pp-note" id="ppTplNote" style="margin:-2px 0 8px">' + esc(TEMPLATES[sb.tpl][1]) + '</div>';
+    h += '<div id="ppFlow" style="margin:0 0 10px"></div>';
     if (sb.legs.length) {
-      h += '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Side</th><th>Type</th><th>Strike</th><th>Lots</th><th>Quote</th><th></th></tr></thead><tbody>' + sb.legs.map((l, i) => {
+      h += '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Side</th><th>Type</th><th>Strike</th><th>Lots</th><th>Quote</th><th>Flow (4h)</th><th></th></tr></thead><tbody>' + sb.legs.map((l, i) => {
         const row = S.board && S.board.strikes.find(s => s.strike === l.strike), r = row && (l.type === 'call' ? row.call : row.put);
         return '<tr><td><select data-sb="side" data-i="' + i + '" class="pp-in">' + opt('buy', l.side, 'Buy') + opt('sell', l.side, 'Sell') + '</select></td>' +
           '<td><select data-sb="type" data-i="' + i + '" class="pp-in">' + opt('call', l.type, 'Call') + opt('put', l.type, 'Put') + '</select></td>' +
           '<td><select data-sb="strike" data-i="' + i + '" class="pp-in">' + k.map(x => opt(x, l.strike, x.toLocaleString('en-US'))).join('') + '</select></td>' +
           '<td><input type="number" data-sb="lots" data-i="' + i + '" class="pp-in" style="width:80px" min="1" step="1" value="' + esc(l.lots) + '"></td>' +
           '<td class="dim">' + (r ? 'bid ' + px(r.bid, 1) + ' / ask ' + px(r.ask, 1) : 'not listed') + '</td>' +
+          '<td class="dim" data-sbflow="' + i + '" style="white-space:normal;min-width:130px"></td>' +
           '<td><button type="button" class="pp-btn small" data-pp-sbdel="' + i + '">Remove</button></td></tr>';
       }).join('') + '</tbody></table></div>';
     }
     h += '<div style="margin:8px 0"><button type="button" class="pp-btn small" data-pp-act="sbadd"' + (sb.legs.length >= 8 ? ' disabled' : '') + '>+ Add leg</button></div>';
     h += '<div id="ppSbSum"></div><div style="margin-top:8px"><button type="button" class="pp-go buy" id="ppSbGo" data-pp-act="sbplace" disabled>Place strategy</button></div>';
     if (sb.msg) h += '<div class="pp-msg ' + sb.msg.k + '" style="margin-top:8px">' + esc(sb.msg.t) + '</div>';
-    el.innerHTML = h; renderSbSummary();
+    el.innerHTML = h; renderSbSummary(); updateFlowUi();
+  }
+
+  /* option flow: what traders bought and sold (Deribit BTC options), by window, by strike and the biggest prints */
+  async function loadFlow() {
+    try { S.flow = await api('/flow'); S.flowAt = Date.now(); S.flowErr = null; } catch (e) { S.flowErr = e.message; }
+    updateFlowUi();
+  }
+  const btc = v => (v >= 100 ? v.toFixed(0) : v.toFixed(1));
+  function legFlow(leg) {
+    const f = S.flow; if (!f || !f.strikes || !f.strikes.length) return '<span class="dim">no data</span>';
+    let best = null, bd = Infinity; for (const s of f.strikes) { const d = Math.abs(s.strike - leg.strike); if (d < bd) { bd = d; best = s; } }
+    if (!best || bd > 500) return '<span class="dim">no recent trades near this strike</span>';
+    const x = best[leg.type]; if (!x || !(x.buy + x.sell)) return '<span class="dim">none at ' + best.strike.toLocaleString('en-US') + '</span>';
+    const net = x.buy - x.sell;
+    return 'bought <b>' + btc(x.buy) + '</b> / sold <b>' + btc(x.sell) + '</b> BTC <span class="' + (net >= 0 ? 'pos' : 'neg') + '">(' + (net >= 0 ? 'net bought ' : 'net sold ') + btc(Math.abs(net)) + ')</span>' + (bd ? ' <span class="dim">at ' + best.strike.toLocaleString('en-US') + '</span>' : '');
+  }
+  function updateFlowUi() {
+    D.querySelectorAll('[data-sbflow]').forEach(td => { const l = S.sb.legs[Number(td.dataset.sbflow)]; if (l) td.innerHTML = legFlow(l); });
+    const el = $('ppFlow'); if (!el) return;
+    const f = S.flow;
+    if (!f) { el.innerHTML = '<div class="pp-note">' + (S.flowErr ? 'Option flow is unavailable: ' + esc(S.flowErr) : 'Loading option flow\u2026') + '</div>'; return; }
+    let t = '<div class="pp-note" style="margin:0 0 4px"><b>Option flow</b> \u00b7 what traders bought and sold in BTC options on Deribit (the biggest options venue), as of ' + new Date(f.asOf).toLocaleTimeString() + '. It records what happened and does not predict anything.</div>';
+    if (f.windows && f.windows.length) {
+      t += '<div class="pp-scroll"><table class="pp-t"><thead><tr><th>Window</th><th>Calls bought</th><th>Calls sold</th><th>Puts bought</th><th>Puts sold</th><th>Blocks</th><th>Read</th></tr></thead><tbody>' + f.windows.map(w =>
+        '<tr><td>' + w.hours + ' h</td><td class="pos">' + btc(w.callBuy) + '</td><td class="neg">' + btc(w.callSell) + '</td><td class="pos">' + btc(w.putBuy) + '</td><td class="neg">' + btc(w.putSell) + '</td><td>' + btc(w.blockVol) + '</td><td style="text-align:left;white-space:normal;min-width:240px">' + esc(w.read) + '</td></tr>').join('') + '</tbody></table></div><div class="pp-note">Volumes in BTC from the desk\'s own 15-minute flow records.</div>';
+    } else t += '<div class="pp-note">The desk\'s own flow records are not available right now.</div>';
+    if (f.big && f.big.length) {
+      t += '<div class="pp-note" style="margin:6px 0 2px">Biggest prints in the last 24 hours:</div><div class="pp-note">' + f.big.slice(0, 5).map(b => {
+        const m = /^BTC-([0-9A-Z]+)-([0-9]+)-([CP])$/.exec(b.instrument) || [];
+        return new Date(b.at + 19800000).toISOString().slice(11, 16) + ' IST \u00b7 ' + (b.direction === 'buy' ? 'bought ' : 'sold ') + btc(b.amount) + ' BTC of the ' + (m[2] ? Number(m[2]).toLocaleString('en-US') : '?') + ' ' + (m[3] === 'C' ? 'call' : 'put') + ' (' + esc(m[1] || '') + ')' + (b.iv ? ' at IV ' + b.iv.toFixed(1) : '') + ' \u00b7 ' + usd(b.premiumUsd, 0) + ' premium' + (b.block ? ' \u00b7 block trade' : '');
+      }).join('<br>') + '</div>';
+    }
+    if (f.note) t += '<div class="pp-note warn">' + esc(f.note) + '</div>';
+    el.innerHTML = t;
   }
 
   function setMktTab(tab) {
     S.sb.tab = tab;
     D.querySelectorAll('#ppMktTabs button').forEach(b => b.classList.toggle('on', b.dataset.ppMtab === tab));
     $('ppBoardWrap').hidden = tab !== 'board'; $('ppBuilder').hidden = tab !== 'builder';
-    if (tab === 'builder') renderBuilder();
+    if (tab === 'builder') { renderBuilder(); if (!S.flow || Date.now() - (S.flowAt || 0) > 30000) loadFlow(); }
   }
   async function setMode(mode) {
     try { await api('/margin-mode', { method: 'POST', body: { mode } }); S.msg = { k: 'ok', t: 'Margin mode: ' + mode + '.' }; }
@@ -58827,6 +58863,7 @@ document.addEventListener('click', function(e) {
       if (all || S.hist === 'orders') S.orders = (await api('/orders?limit=40')).orders;
       if (all || S.hist === 'fills') S.fills = (await api('/fills?limit=40')).fills;
       if (S.sel) loadBook();
+      if (S.sb && S.sb.tab === 'builder' && Date.now() - (S.flowAt || 0) > 30000) loadFlow();
     } catch (e) { S.err = e.message; if (e.status === 401) { S.acct = null; } }
     drawAll();
   }
