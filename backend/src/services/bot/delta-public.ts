@@ -1,4 +1,5 @@
 import type { BookLevel } from '../../lib/bot/costs.js';
+import type { Bar } from '../../lib/bot/futures.js';
 import type { ChainOption } from '../../lib/bot/strike-picker.js';
 
 /**
@@ -159,4 +160,47 @@ export async function fetchOptionFeeRates(symbols: string[]): Promise<Map<string
   }
   for (const s of symbols) if (!out.has(s)) out.set(s, DEFAULT_OPTION_FEES);
   return out;
+}
+
+/** 1m (or other) candles for a symbol, oldest first. Delta returns newest first, open time in seconds. */
+export async function fetchCandles(symbol: string, resolution: '1m' | '5m' | '15m', startSec: number, endSec: number): Promise<Bar[]> {
+  const j = await getJson<{ result?: Array<{ time: number; open: number; high: number; low: number; close: number; volume: number }> }>(
+    `/v2/history/candles?resolution=${resolution}&symbol=${encodeURIComponent(symbol)}&start=${startSec}&end=${endSec}`,
+    20_000,
+  );
+  return (j.result ?? [])
+    .map((c) => ({ t: c.time * 1000, o: c.open, h: c.high, l: c.low, c: c.close, v: c.volume }))
+    .sort((a, b) => a.t - b.t);
+}
+
+export interface PerpInfo {
+  symbol: string;
+  contractValue: number;
+  takerRate: number;
+  makerRate: number;
+  maxLeverage: number;
+  tick: number;
+}
+
+export const DEFAULT_PERP: PerpInfo = { symbol: 'BTCUSD', contractValue: 0.001, takerRate: 0.0005, makerRate: 0.0002, maxLeverage: 200, tick: 0.5 };
+
+/** Contract size and fee rates for the BTC perpetual, from the products API. */
+export async function fetchPerpInfo(symbol = 'BTCUSD'): Promise<PerpInfo> {
+  try {
+    const j = await getJson<{
+      result?: { symbol: string; contract_value?: string; taker_commission_rate?: string; maker_commission_rate?: string; default_leverage?: string; tick_size?: string };
+    }>(`/v2/products/${encodeURIComponent(symbol)}`);
+    const r = j.result;
+    if (!r) return DEFAULT_PERP;
+    return {
+      symbol: r.symbol,
+      contractValue: num(r.contract_value) || DEFAULT_PERP.contractValue,
+      takerRate: num(r.taker_commission_rate) || DEFAULT_PERP.takerRate,
+      makerRate: num(r.maker_commission_rate) || DEFAULT_PERP.makerRate,
+      maxLeverage: num(r.default_leverage) || DEFAULT_PERP.maxLeverage,
+      tick: num(r.tick_size) || DEFAULT_PERP.tick,
+    };
+  } catch {
+    return DEFAULT_PERP;
+  }
 }

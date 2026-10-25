@@ -296,3 +296,20 @@ export async function pnlSince(sinceMs: number): Promise<number> {
   );
   return Number(r.rows[0]?.s ?? 0);
 }
+
+export async function updateExitConfig(runId: string, cfg: unknown): Promise<void> {
+  await pool.query('UPDATE bot_runs SET exit_config = $2 WHERE id = $1', [runId, JSON.stringify(cfg)]);
+}
+
+export async function countRunsSince(strategy: string, sinceMs: number): Promise<number> {
+  const r = await pool.query<{ n: number }>(
+    `SELECT COUNT(*)::int AS n FROM bot_runs WHERE strategy=$1 AND status IN ('open','closed') AND entry_at >= to_timestamp($2/1000.0)`,
+    [strategy, sinceMs],
+  );
+  return r.rows[0]?.n ?? 0;
+}
+
+export async function lastEntryMs(strategy: string): Promise<number> {
+  const r = await pool.query<{ t: Date | null }>(`SELECT MAX(entry_at) AS t FROM bot_runs WHERE strategy=$1 AND status IN ('open','closed')`, [strategy]);
+  return r.rows[0]?.t ? new Date(r.rows[0].t).getTime() : 0;
+}

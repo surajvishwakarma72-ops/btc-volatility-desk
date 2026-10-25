@@ -7,7 +7,7 @@ import type { Book, ChainSnapshot } from './delta-public.js';
  * Engine integration test on a real Postgres (PGlite, WASM) with Delta market data and the gate
  * mocked. Time is controlled via Date only, so the 5-second timer never runs: ticks are manual.
  */
-const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, marks: new Map<string, number>(), gateGo: true }));
+const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, marks: new Map<string, number>(), ivs: new Map<string, number>(), gateGo: true }));
 
 vi.mock('../../db/index.js', () => ({
   pool: {
@@ -45,18 +45,26 @@ const spec: Array<[string, 'call' | 'put', number, number, number]> = [
   ['P-WING', 'put', 76500, 0.04, E3],
   ['C-ATM', 'call', 80800, 0.5, E2],
   ['P-ATM', 'put', 80800, 0.5, E2],
+  // calendar fixtures: the same ATM strike on the current (E1) and N2N (E3) expiries
+  ['C-CF', 'call', 80800, 0.5, E1],
+  ['P-CF', 'put', 80800, 0.5, E1],
+  ['C-CB', 'call', 80800, 0.5, E3],
+  ['P-CB', 'put', 80800, 0.5, E3],
 ];
-const BASE: Record<string, number> = { 'C-BODY': 100, 'P-BODY': 90, 'C-WING': 20, 'P-WING': 18, 'C-ATM': 500, 'P-ATM': 490 };
+const BASE: Record<string, number> = { 'C-BODY': 100, 'P-BODY': 90, 'C-WING': 20, 'P-WING': 18, 'C-ATM': 500, 'P-ATM': 490, 'C-CF': 300, 'P-CF': 290, 'C-CB': 620, 'P-CB': 610 };
 
 function chain(): ChainSnapshot {
   const options: ChainOption[] = spec.map(([symbol, type, strike, delta, expiryMs]) => {
     const mark = h.marks.get(symbol) ?? BASE[symbol]!;
-    return { symbol, type, strike, expiryMs, delta, bid: mark - 2, ask: mark + 2, mark, iv: 40 };
+    return { symbol, type, strike, expiryMs, delta, bid: mark - 2, ask: mark + 2, mark, iv: h.ivs.get(symbol) ?? 40 };
   });
   return { fetchedAt: Date.now(), spot: SPOT, options, greeks: new Map(options.map((o) => [o.symbol, { delta: o.delta, gamma: 1e-5, theta: -10, vega: 20 }])), expiries: EXPIRIES };
 }
 
 vi.mock('./delta-public.js', () => ({
+  DEFAULT_PERP: { symbol: 'BTCUSD', contractValue: 0.001, takerRate: 0.0005, makerRate: 0.0002, maxLeverage: 200, tick: 0.5 },
+  fetchCandles: async () => [],
+  fetchPerpInfo: async () => ({ symbol: 'BTCUSD', contractValue: 0.001, takerRate: 0.0005, makerRate: 0.0002, maxLeverage: 200, tick: 0.5 }),
   fetchChain: async () => chain(),
   fetchBook: async (symbol: string): Promise<Book> => {
     const mark = h.marks.get(symbol) ?? BASE[symbol]!;
@@ -84,12 +92,14 @@ async function newEngine() {
 const q = async (sql: string, params: unknown[] = []) => (await pool.query(sql, params as never)).rows as any[];
 
 beforeAll(async () => {
+  process.env.BOT_FUTURES = 'false'; // the futures engine has its own test file
   h.db = new PGlite() as never;
   vi.useFakeTimers({ toFake: ['Date'] });
 });
 afterAll(() => vi.useRealTimers());
 beforeEach(async () => {
   h.marks.clear();
+  h.ivs.clear();
   h.gateGo = true;
   await store.ensureBotSchema();
   await pool.query('DELETE FROM bot_minute_marks; DELETE FROM bot_minute_context; DELETE FROM bot_events; DELETE FROM bot_fills; DELETE FROM bot_legs; DELETE FROM bot_runs;');
@@ -210,6 +220,51 @@ describe('bot engine on a real Postgres', () => {
     vi.setSystemTime(istToUtc('2026-10-26', 22, 30, 20));
     await e.tick();
     expect(await q(`SELECT 1 FROM bot_runs WHERE strategy = 'NY_SHORT'`)).toHaveLength(0);
+  });
+
+  it('calendar: enters at 18:00 IST only in backwardation, as short front / long N2N at the ATM strike', async () => {
+    h.ivs.set('C-CF', 58); h.ivs.set('P-CF', 58); h.ivs.set('C-CB', 40); h.ivs.set('P-CB', 40);
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-25', 18, 0, 20));
+    await e.tick();
+    const run = (await q(`SELECT id, status, margin_usd, planned_exit_at, exit_config FROM bot_runs WHERE strategy = 'CAL_BACK'`))[0];
+    expect(run.status).toBe('open');
+    const legs = await q('SELECT symbol, side, role FROM bot_legs WHERE run_id = $1 ORDER BY id', [run.id]);
+    expect(legs.map((l) => `${l.side}:${l.role}:${l.symbol}`)).toEqual(['short:front:C-CF', 'short:front:P-CF', 'long:back:C-CB', 'long:back:P-CB']);
+    // exit config carries a breakeven band around spot and a hard close an hour before the front expiry
+    expect(run.exit_config.breakeven.low).toBeLessThan(80_800);
+    expect(run.exit_config.breakeven.high).toBeGreaterThan(80_800);
+    expect(run.exit_config.hardCloseAtMs).toBe(E1 - 3_600_000);
+    expect(new Date(run.planned_exit_at).getTime()).toBe(E1 - 3_600_000);
+    expect(Number(run.margin_usd)).toBeGreaterThan(0);
+  });
+
+  it('calendar: records a skipped run (with the reason) when the curve is not in backwardation', async () => {
+    h.ivs.set('C-CF', 38); h.ivs.set('P-CF', 38); h.ivs.set('C-CB', 45); h.ivs.set('P-CB', 45);
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-25', 18, 1, 0));
+    await e.tick();
+    const run = (await q(`SELECT status, tags FROM bot_runs WHERE strategy = 'CAL_BACK'`))[0];
+    expect(run.status).toBe('skipped');
+    expect(run.tags.reason).toMatch(/no backwardation/);
+    expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_skipped' AND message LIKE '%no backwardation%'`)).not.toHaveLength(0);
+  });
+
+  it('calendar: exits when spot leaves the breakeven band, closing all four legs', async () => {
+    h.ivs.set('C-CF', 58); h.ivs.set('P-CF', 58); h.ivs.set('C-CB', 40); h.ivs.set('P-CB', 40);
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-25', 18, 0, 20));
+    await e.tick();
+    // a move far outside the profit zone: the short front straddle blows out, long back barely moves
+    h.marks.set('C-CF', 2200); h.marks.set('C-CB', 2600); h.marks.set('P-CF', 5); h.marks.set('P-CB', 120);
+    vi.setSystemTime(istToUtc('2026-10-25', 18, 30, 0));
+    // spot is a constant in this fixture, so force the breakeven check by tightening the stored band
+    await pool.query(`UPDATE bot_runs SET exit_config = jsonb_set(exit_config, '{breakeven}', '{"low": 70000, "high": 80000}') WHERE strategy = 'CAL_BACK'`);
+    await (e as any).restore();
+    await e.tick();
+    const run = (await q(`SELECT status, exit_reason FROM bot_runs WHERE strategy = 'CAL_BACK'`))[0];
+    expect(run).toMatchObject({ status: 'closed', exit_reason: 'breakeven' });
+    expect((await q(`SELECT COUNT(*)::int AS n FROM bot_legs l JOIN bot_runs r ON r.id = l.run_id WHERE r.strategy = 'CAL_BACK' AND l.exit_price IS NOT NULL`))[0].n).toBe(4);
   });
 
   it('restores open runs after a restart without re-entering', async () => {

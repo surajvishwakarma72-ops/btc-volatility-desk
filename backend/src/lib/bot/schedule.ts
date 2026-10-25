@@ -1,3 +1,4 @@
+import { CAL_ENTRY_MIN_IST } from './calendar.js';
 import type { StrategyId } from './types.js';
 
 const MIN = 60_000;
@@ -84,3 +85,12 @@ export function floorToMinute(ms: number): number {
 }
 
 export { MIN, HR, DAY };
+
+/** The calendar spread's daily check, due from 18:00 IST for `graceMs` (a late restart still enters, a stale one never). */
+export function dueCalendar(nowMs: number, graceMs = 10 * MIN): { dateKey: string; entryAtMs: number } | null {
+  for (const dateKey of [istDateKey(nowMs), istDateKey(nowMs - DAY)]) {
+    const entryAtMs = istMidnightMs(dateKey) + CAL_ENTRY_MIN_IST * MIN;
+    if (nowMs >= entryAtMs && nowMs < entryAtMs + graceMs) return { dateKey, entryAtMs };
+  }
+  return null;
+}

@@ -1,6 +1,7 @@
-import { computePnl, evaluateExit, exitConfigFor } from '../../lib/bot/rules.js';
-import { checkRisk, type RiskLimits } from '../../lib/bot/risk-guard.js';
-import { dueEntries, floorToMinute, istDateKey, istMidnightMs, runKey, runWindow, DAY, MIN, type RunWindow } from '../../lib/bot/schedule.js';
+import { DEFAULT_CALENDAR, calendarBreakeven, isBackwardation } from '../../lib/bot/calendar.js';
+import { calendarExitConfig, computePnl, evaluateExit, exitConfigFor } from '../../lib/bot/rules.js';
+import { checkRisk, type PortfolioState, type RiskLimits } from '../../lib/bot/risk-guard.js';
+import { dueCalendar, dueEntries, floorToMinute, istDateKey, istMidnightMs, runKey, runWindow, DAY, MIN, type RunWindow } from '../../lib/bot/schedule.js';
 import { portfolioMargin, type MarginPosition } from '../../lib/bot/portfolio-margin.js';
 import { pickAtmStraddle, pickBodyLeg, pickWing, type ChainOption } from '../../lib/bot/strike-picker.js';
 import type { ExitConfig, Leg, StrategyId } from '../../lib/bot/types.js';
@@ -9,6 +10,7 @@ import {
   updatePeaks, upsertContext, upsertMark, ensureBotSchema,
 } from './bot-store.js';
 import { fetchBook, fetchChain, fetchOptionFeeRates, type Book, type ChainSnapshot } from './delta-public.js';
+import { FuturesLive } from './futures-live.js';
 import { evaluateGate } from './gate.js';
 import { paperExecute, type PlannedLeg } from './paper-broker.js';
 
@@ -18,7 +20,7 @@ const TICK_MS = 5_000;
 
 type OptionStrategy = Exclude<StrategyId, 'CAL_BACK'>;
 
-const SHORT_VOL: ReadonlySet<StrategyId> = new Set(['ASIA_SHORT', 'NY_SHORT', 'ASIA_IC', 'NY_IC']);
+const SHORT_VOL: ReadonlySet<StrategyId> = new Set(['ASIA_SHORT', 'NY_SHORT', 'ASIA_IC', 'NY_IC', 'CAL_BACK']);
 const isIronCondor = (id: StrategyId) => id === 'ASIA_IC' || id === 'NY_IC';
 const isLong = (id: StrategyId) => id === 'EVE_LONG' || id === 'PRE_LONG';
 
@@ -55,6 +57,11 @@ export class BotEngine {
   private open = new Map<string, OpenRun>();
   private chain: ChainSnapshot | null = null;
   private lastMinute = 0;
+  readonly futures = new FuturesLive({
+    mode: 'paper',
+    riskCheck: async (marginUsd, now) =>
+      checkRisk({ strategy: 'FUTURES', marginUsd, shortVol: false }, await this.portfolioState(now), LIMITS, { eventInWindow: false }),
+  });
 
   get enabled(): boolean {
     return process.env.BOT_ENABLED === 'true';
@@ -93,7 +100,14 @@ export class BotEngine {
 
   private async restore(): Promise<void> {
     this.open.clear();
-    for (const r of await getOpenRuns()) {
+    this.futures.open.clear();
+    const futRows: Array<(typeof rows)[number]> = [];
+    const rows = await getOpenRuns();
+    for (const r of rows) {
+      if (r.strategy.startsWith('FUT_')) {
+        futRows.push(r);
+        continue;
+      }
       this.open.set(r.id, {
         id: r.id,
         key: r.run_key,
@@ -115,6 +129,7 @@ export class BotEngine {
         closing: false,
       });
     }
+    this.futures.restore(futRows);
   }
 
   private async getChain(maxAgeMs = 4_000): Promise<ChainSnapshot> {
@@ -129,28 +144,54 @@ export class BotEngine {
     const now = Date.now();
     try {
       const cfg = await getConfig();
-      const chain = await this.getChain();
       this.lastTickAt = now;
-      this.lastError = null;
+      const errors: string[] = [];
 
-      if (cfg.kill_switch) {
-        for (const run of this.open.values()) await this.exit(run, chain, now, 'stop', 'kill switch');
-      } else {
-        if (!cfg.paused) {
-          for (const due of dueEntries(now)) {
-            for (const book of ['always', 'gated'] as const) {
-              if (book === 'gated' && !SHORT_VOL.has(due.id)) continue;
-              await this.enter(due.id, due.dateKey, book, due.window, chain, now);
+      // Options (strategies on the Delta option chain). A chain outage must not stop the futures engine.
+      let chain: ChainSnapshot | null = null;
+      try {
+        chain = await this.getChain();
+        if (cfg.kill_switch) {
+          for (const run of this.open.values()) await this.exit(run, chain, now, 'stop', 'kill switch');
+        } else {
+          if (!cfg.paused) {
+            for (const due of dueEntries(now)) {
+              for (const book of ['always', 'gated'] as const) {
+                if (book === 'gated' && !SHORT_VOL.has(due.id)) continue;
+                await this.enter(due.id, due.dateKey, book, due.window, chain, now);
+              }
+            }
+            const cal = dueCalendar(now);
+            if (cal) {
+              const front = chain.expiries[0];
+              if (front) await this.enter('CAL_BACK', cal.dateKey, 'always', { entryAtMs: cal.entryAtMs, exitAtMs: front - DEFAULT_CALENDAR.hardCloseBeforeMs }, chain, now);
             }
           }
+          for (const run of [...this.open.values()]) await this.monitor(run, chain, now);
         }
-        for (const run of [...this.open.values()]) await this.monitor(run, chain, now);
+      } catch (e) {
+        errors.push(`options: ${(e as Error).message}`);
+      }
+
+      // Futures (1m candles + the perpetual order book).
+      try {
+        if (cfg.kill_switch) await this.futures.flatten(now, 'kill switch');
+        else await this.futures.tick(now, { allowEntries: !cfg.paused });
+      } catch (e) {
+        errors.push(`futures: ${(e as Error).message}`);
+      }
+
+      this.lastError = errors.length ? errors.join(' | ') : null;
+      if (errors.length) {
+        console.error('[bot] tick failed:', this.lastError);
+        await logEvent({ type: 'tick_error', severity: 'error', message: this.lastError! });
       }
 
       const minute = floorToMinute(now);
       if (minute > this.lastMinute) {
         this.lastMinute = minute;
-        await this.record(minute, chain, now);
+        if (chain) await this.record(minute, chain, now);
+        try { await this.futures.record(minute); } catch (e) { console.error('[bot] futures record failed', (e as Error).message); }
       }
     } catch (e) {
       this.lastError = (e as Error).message;
@@ -163,7 +204,33 @@ export class BotEngine {
 
   // ---------- entries ----------
 
-  private plan(id: OptionStrategy, chain: ChainSnapshot): { legs: PlannedLeg[]; expiryMs: number } | null {
+  /** ATM straddle calendar: sell the current expiry, buy N2N, same strike, both call and put. */
+  private planCalendar(chain: ChainSnapshot): { legs: PlannedLeg[]; expiryMs: number } | { skip: string } | null {
+    const [front, , back] = chain.expiries;
+    if (!front || !back) return null;
+    const at = (exp: number, K: number, type: 'call' | 'put') => chain.options.find((o) => o.expiryMs === exp && o.strike === K && o.type === type);
+    const strikes = [...new Set(chain.options.filter((o) => o.expiryMs === front).map((o) => o.strike))].sort((x, y) => Math.abs(x - chain.spot) - Math.abs(y - chain.spot));
+    for (const K of strikes) {
+      const fc = at(front, K, 'call');
+      const fp = at(front, K, 'put');
+      const bc = at(back, K, 'call');
+      const bp = at(back, K, 'put');
+      if (!fc || !fp || !bc || !bp || fc.bid <= 0 || fp.bid <= 0 || bc.ask <= 0 || bp.ask <= 0) continue;
+      const frontIv = (fc.iv + fp.iv) / 2;
+      const backIv = (bc.iv + bp.iv) / 2;
+      if (!isBackwardation(frontIv, backIv, DEFAULT_CALENDAR.minBackwardation)) {
+        return { skip: `no backwardation: front IV ${frontIv.toFixed(1)} vs back IV ${backIv.toFixed(1)} (need +${DEFAULT_CALENDAR.minBackwardation} pts)` };
+      }
+      const leg = (o: ChainOption, side: 'long' | 'short', role: 'front' | 'back'): PlannedLeg => ({
+        symbol: o.symbol, type: o.type, side, strike: o.strike, expiryMs: o.expiryMs, lots: LOTS, role, intendedPrice: side === 'short' ? o.bid : o.ask,
+      });
+      return { legs: [leg(fc, 'short', 'front'), leg(fp, 'short', 'front'), leg(bc, 'long', 'back'), leg(bp, 'long', 'back')], expiryMs: front };
+    }
+    return null;
+  }
+
+  private plan(id: StrategyId, chain: ChainSnapshot): { legs: PlannedLeg[]; expiryMs: number } | { skip: string } | null {
+    if (id === 'CAL_BACK') return this.planCalendar(chain);
     const ex = chain.expiries;
     if (isLong(id)) {
       const expiryMs = ex[1];
@@ -195,12 +262,12 @@ export class BotEngine {
     return { legs, expiryMs };
   }
 
-  private async portfolioState(now: number) {
+  private async portfolioState(now: number): Promise<PortfolioState> {
     const dayStart = istMidnightMs(istDateKey(now));
     const cfg = await getConfig();
     return {
-      openMarginUsd: [...this.open.values()].reduce((s, r) => s + r.marginUsd, 0),
-      openPositions: this.open.size,
+      openMarginUsd: [...this.open.values()].reduce((s, r) => s + r.marginUsd, 0) + this.futures.summary().margin,
+      openPositions: this.open.size + this.futures.summary().positions,
       dailyPnlUsd: await pnlSince(dayStart),
       monthlyPnlUsd: await pnlSince(now - 30 * 86_400_000),
       paused: cfg.paused,
@@ -208,7 +275,7 @@ export class BotEngine {
     };
   }
 
-  private async enter(id: OptionStrategy, dateKey: string, book: 'always' | 'gated', w: RunWindow, chain: ChainSnapshot, now: number): Promise<void> {
+  private async enter(id: StrategyId, dateKey: string, book: 'always' | 'gated', w: RunWindow, chain: ChainSnapshot, now: number): Promise<void> {
     const key = runKey(id, dateKey, book);
     if (await runKeyExists(key)) return;
     const mode = 'paper';
@@ -222,6 +289,11 @@ export class BotEngine {
     }
 
     const plan = this.plan(id, chain);
+    if (plan && 'skip' in plan) {
+      await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'skipped', tags: { ...tags, reason: plan.skip } });
+      await logEvent({ strategy: id, type: 'entry_skipped', message: `${key}: ${plan.skip}` });
+      return;
+    }
     if (!plan) {
       await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'failed', tags });
       await logEvent({ strategy: id, type: 'entry_failed', severity: 'warn', message: `${key}: no tradable strikes/expiry in the chain` });
@@ -258,7 +330,25 @@ export class BotEngine {
       return;
     }
 
-    const exitCfg = exitConfigFor(id, w.exitAtMs);
+    let exitCfg: ExitConfig;
+    if (id === 'CAL_BACK') {
+      const by = new Map(chain.options.map((o) => [o.symbol, o]));
+      const f0 = legs[0]!;
+      const b0 = legs[2]!;
+      const netDebit = legs.filter((l) => l.side === 'long').reduce((s, l) => s + l.entryPrice, 0) - legs.filter((l) => l.side === 'short').reduce((s, l) => s + l.entryPrice, 0);
+      const be = calendarBreakeven(
+        { strike: f0.strike, frontExpiryMs: f0.expiryMs, backExpiryMs: b0.expiryMs, frontIv: by.get(f0.symbol)?.iv || 40, backIv: by.get(b0.symbol)?.iv || 40 },
+        netDebit,
+      );
+      if (!be) {
+        await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'skipped', tags: { ...tags, reason: 'no profit zone at front expiry for this net debit' } });
+        await logEvent({ strategy: id, type: 'entry_skipped', message: `${key}: the net debit ${netDebit.toFixed(1)} cannot be repaid at front expiry` });
+        return;
+      }
+      exitCfg = calendarExitConfig({ low: be.low, high: be.high }, f0.expiryMs);
+    } else {
+      exitCfg = exitConfigFor(id, w.exitAtMs);
+    }
     const runId = await insertRun({
       runKey: key, strategy: id, book, mode, dateKey, status: 'open', entryAtMs: now, plannedExitAtMs: w.exitAtMs,
       spotEntry: chain.spot, marginUsd, feesEntry: exec.fees, exitConfig: exitCfg, tags,
@@ -389,9 +479,11 @@ export class BotEngine {
 
   /** Live view for the API: open runs with current marks, computed from the latest chain. */
   async livePositions() {
-    const chain = await this.getChain(10_000);
     const now = Date.now();
-    return [...this.open.values()].map((run) => {
+    const futures = this.futures.positions();
+    if (!this.open.size) return futures;
+    const chain = await this.getChain(10_000);
+    const options = [...this.open.values()].map((run) => {
       const marks = this.marksFor(run, chain);
       const ok = marks.every((m) => Number.isFinite(m.mark));
       const snap = { legs: run.legs, marks, spot: chain.spot, marginUsd: run.marginUsd, contractValue: CONTRACT_VALUE, feesPaidUsd: run.feesEntry };
@@ -403,6 +495,7 @@ export class BotEngine {
         minutesToTimeExit: run.exitCfg.exitAtMs ? Math.round((run.exitCfg.exitAtMs - now) / MIN) : null,
       };
     });
+    return [...options, ...futures];
   }
 }
 
