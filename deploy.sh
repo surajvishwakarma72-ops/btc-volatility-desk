@@ -23,7 +23,7 @@ ssh -i "$KEY" "${USER}@${VM_IP}" '
   set -e
   mkdir -p ~/app && cd ~/app && tar xzf /tmp/desk.tgz
   # files that used to ship in the web folder must not linger from earlier deploys (tar only adds, never removes)
-  rm -f frontend/public/data/knowledge.json frontend/dist/data/knowledge.json
+  rm -f frontend/public/data/knowledge.json frontend/dist/data/knowledge.json frontend/public/data/bot_replay.json frontend/dist/data/bot_replay.json
   if [ ! -f .env.prod ] || [ ! -f .env ]; then
     echo "!! Missing .env and/or .env.prod on the VM — create them first (see DEPLOY_ORACLE.md)"; exit 1
   fi
