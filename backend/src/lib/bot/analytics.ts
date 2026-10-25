@@ -73,7 +73,7 @@ export function groupStats(key: string, runs: RunRecord[]): GroupStats {
     medianPnl: median(pnl),
     winRate: n ? wins.length / n : 0,
     stopRate: n ? runs.filter((r) => r.exitReason === 'stop').length / n : 0,
-    tpRate: n ? runs.filter((r) => r.exitReason === 'tp').length / n : 0,
+    tpRate: n ? runs.filter((r) => r.exitReason === 'tp' || r.exitReason === 'target').length / n : 0,
     avgWin: wins.length ? sum(wins) / wins.length : 0,
     avgLoss: losses.length ? sum(losses) / losses.length : 0,
     expectancyPerMarginPct: n ? sum(runs.map((r) => (r.marginUsd > 0 ? r.netPnl / r.marginUsd : 0))) / n : 0,

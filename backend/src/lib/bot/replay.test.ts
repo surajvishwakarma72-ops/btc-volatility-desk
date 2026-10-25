@@ -131,6 +131,12 @@ describe('analytics', () => {
     expect(g.avgLoss).toBe(-20);
   });
 
+  it('counts both option take-profits (tp) and futures targets (target) as take-profit exits', () => {
+    const g = groupStats('x', [rec({ exitReason: 'tp' }), rec({ exitReason: 'target' }), rec({ exitReason: 'stop' }), rec({ exitReason: 'trail' })]);
+    expect(g.tpRate).toBeCloseTo(0.5, 9);
+    expect(g.stopRate).toBeCloseTo(0.25, 9);
+  });
+
   it('buckets IV and finds the Monday of a week', () => {
     expect(ivBand(29)).toBe('<30');
     expect(ivBand(45)).toBe('40-50');

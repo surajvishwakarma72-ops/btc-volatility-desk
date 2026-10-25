@@ -1,7 +1,8 @@
 import { bs, roundStrike, strike, yrs } from '../../backtest/lib/pricing.js';
+import { CAL_ENTRY_MIN_IST, DEFAULT_CALENDAR, calendarBreakeven, isBackwardation, type CalendarConfig } from './calendar.js';
 import { optionFee } from './costs.js';
 import { portfolioMargin, type MarginPosition } from './portfolio-margin.js';
-import { computePnl, evaluateExit, exitConfigFor } from './rules.js';
+import { calendarExitConfig, computePnl, evaluateExit, exitConfigFor } from './rules.js';
 import { DAY, MIN, SLOTS, istDateKey, istMidnightMs, runWindow } from './schedule.js';
 import type { ExitConfig, Leg, PositionSnapshot, StrategyId } from './types.js';
 
@@ -30,7 +31,7 @@ export interface ReplayData {
   last: number;
 }
 
-export type ReplayStrategy = Exclude<StrategyId, 'CAL_BACK'>;
+export type ReplayStrategy = StrategyId;
 
 export interface ReplayConfig {
   lots: number;
@@ -46,6 +47,7 @@ export interface ReplayConfig {
   gateDvolMax: number;
   /** Mark-to-market path resolution in minutes (stored for the exit grid). */
   pathStepMin: number;
+  calendar: CalendarConfig;
 }
 
 export const DEFAULT_REPLAY: ReplayConfig = {
@@ -59,6 +61,7 @@ export const DEFAULT_REPLAY: ReplayConfig = {
   wingDelta: 0.04,
   gateDvolMax: 65,
   pathStepMin: 15,
+  calendar: DEFAULT_CALENDAR,
 };
 
 export interface ReplayRun {
@@ -86,9 +89,6 @@ export interface ReplayRun {
   legs: Array<{ type: 'call' | 'put'; side: 'long' | 'short'; role: Leg['role']; strike: number; entry: number; exit: number }>;
 }
 
-const IST_HOUR = (ms: number) => new Date(ms + 19_800_000).getUTCHours();
-void IST_HOUR;
-
 /** Daily option expiries settle at 12:00 UTC. */
 export function expiriesAfter(t: number, count = 4): number[] {
   const out: number[] = [];
@@ -105,45 +105,53 @@ function nearestStrike(spot: number): number {
   return Math.round(spot / g) * g;
 }
 
-interface Plan {
-  legs: Leg[];
-  expiryMs: number;
-}
+type IvFn = (expiryMs: number, t: number) => number | null;
+
+const mkLeg = (expiryMs: number, type: 'call' | 'put', side: 'long' | 'short', role: Leg['role'], K: number, lots: number): Leg => ({
+  symbol: `${type === 'call' ? 'C' : 'P'}-${K}-${expiryMs}`,
+  type,
+  side,
+  strike: K,
+  expiryMs,
+  lots,
+  entryPrice: 0,
+  role,
+});
 
 /** Strike selection mirrors the live engine: bodies on the N2N (3rd) expiry, straddles on the next. */
-function planLegs(id: ReplayStrategy, spot: number, t: number, iv: (expiryMs: number) => number | null, cfg: ReplayConfig): Plan | null {
+function planLegs(id: ReplayStrategy, spot: number, t: number, iv: IvFn, cfg: ReplayConfig): Leg[] | null {
   const ex = expiriesAfter(t);
+  if (id === 'CAL_BACK') {
+    const front = ex[0]!;
+    const back = ex[2]!;
+    const K = nearestStrike(spot);
+    return [
+      mkLeg(front, 'call', 'short', 'front', K, cfg.lots),
+      mkLeg(front, 'put', 'short', 'front', K, cfg.lots),
+      mkLeg(back, 'call', 'long', 'back', K, cfg.lots),
+      mkLeg(back, 'put', 'long', 'back', K, cfg.lots),
+    ];
+  }
   const isLong = id === 'EVE_LONG' || id === 'PRE_LONG';
   const isIC = id === 'ASIA_IC' || id === 'NY_IC';
   const expiryMs = isLong ? ex[1]! : ex[2]!;
-  const sigma = iv(expiryMs);
-  if (sigma == null || !(sigma > 0)) return null;
-  const T = yrs(expiryMs - t);
-  const mk = (type: 'call' | 'put', side: 'long' | 'short', role: Leg['role'], K: number): Leg => ({
-    symbol: `${type === 'call' ? 'C' : 'P'}-${K}-${expiryMs}`,
-    type,
-    side,
-    strike: K,
-    expiryMs,
-    lots: cfg.lots,
-    entryPrice: 0,
-    role,
-  });
-  void T;
   if (isLong) {
     const K = nearestStrike(spot);
-    return { legs: [mk('call', 'long', 'body', K), mk('put', 'long', 'body', K)], expiryMs };
+    return [mkLeg(expiryMs, 'call', 'long', 'body', K, cfg.lots), mkLeg(expiryMs, 'put', 'long', 'body', K, cfg.lots)];
   }
+  const sigma = iv(expiryMs, t);
+  if (sigma == null || !(sigma > 0)) return null;
+  const T = yrs(expiryMs - t);
   const Kc = roundStrike(strike(spot, T, sigma, cfg.bodyDelta, 'c'), spot, 'c');
   const Kp = roundStrike(strike(spot, T, sigma, cfg.bodyDelta, 'p'), spot, 'p');
-  const legs = [mk('call', 'short', 'body', Kc), mk('put', 'short', 'body', Kp)];
+  const legs = [mkLeg(expiryMs, 'call', 'short', 'body', Kc, cfg.lots), mkLeg(expiryMs, 'put', 'short', 'body', Kp, cfg.lots)];
   if (isIC) {
     const Wc = roundStrike(strike(spot, T, sigma, cfg.wingDelta, 'c'), spot, 'c');
     const Wp = roundStrike(strike(spot, T, sigma, cfg.wingDelta, 'p'), spot, 'p');
     if (Wc <= Kc || Wp >= Kp) return null;
-    legs.push(mk('call', 'long', 'wing', Wc), mk('put', 'long', 'wing', Wp));
+    legs.push(mkLeg(expiryMs, 'call', 'long', 'wing', Wc, cfg.lots), mkLeg(expiryMs, 'put', 'long', 'wing', Wp, cfg.lots));
   }
-  return { legs, expiryMs };
+  return legs;
 }
 
 const markOf = (leg: Leg, spot: number, t: number, iv: number): number =>
@@ -157,12 +165,27 @@ function fee(price: number, spot: number, cfg: ReplayConfig): number {
   return optionFee({ price, lots: cfg.lots, contractValue: cfg.contractValue, spot, rate: cfg.feeRate, premiumCapRate: cfg.feePremiumCap });
 }
 
-function marginOf(legs: Leg[], spot: number, t: number, iv: number, cfg: ReplayConfig): number {
-  const pos: MarginPosition[] = legs.map((l) => ({ type: l.type, side: l.side, strike: l.strike, expiryMs: l.expiryMs, lots: l.lots, iv }));
+function marginOf(legs: Leg[], spot: number, t: number, ivOf: (l: Leg) => number, cfg: ReplayConfig): number {
+  const pos: MarginPosition[] = legs.map((l) => ({ type: l.type, side: l.side, strike: l.strike, expiryMs: l.expiryMs, lots: l.lots, iv: ivOf(l) }));
   return portfolioMargin(pos, spot, t, cfg.contractValue).margin;
 }
 
-/** Simulate one strategy on one IST date. Returns null when data or strikes are unavailable. */
+export interface Window {
+  entryAtMs: number;
+  exitAtMs: number;
+}
+
+/** Entry/exit clock for any strategy. The calendar enters at 18:00 IST and must be out an hour before its front expiry. */
+export function windowFor(id: ReplayStrategy, dateKey: string, cfg: ReplayConfig = DEFAULT_REPLAY): Window {
+  if (id === 'CAL_BACK') {
+    const entryAtMs = istMidnightMs(dateKey) + CAL_ENTRY_MIN_IST * MIN;
+    const front = expiriesAfter(entryAtMs)[0]!;
+    return { entryAtMs, exitAtMs: front - cfg.calendar.hardCloseBeforeMs };
+  }
+  return runWindow(id, dateKey);
+}
+
+/** Simulate one strategy on one IST date. Returns null when data, strikes or the entry condition are unavailable. */
 export function replayRun(
   data: ReplayData,
   id: ReplayStrategy,
@@ -170,7 +193,7 @@ export function replayRun(
   book: 'always' | 'gated',
   cfg: ReplayConfig = DEFAULT_REPLAY,
 ): ReplayRun | null {
-  const w = runWindow(id, dateKey);
+  const w = windowFor(id, dateKey, cfg);
   const bars = data.barsBetween(w.entryAtMs - 15 * MIN, w.exitAtMs + 5 * MIN);
   if (!bars.length) return null;
   const entryBar = bars.find((b) => b.t >= w.entryAtMs - MIN) ?? null;
@@ -182,21 +205,53 @@ export function replayRun(
   const gateGo = dvol != null && dvol < cfg.gateDvolMax;
   if (book === 'gated' && !gateGo) return null;
 
-  const ivFor = (exp: number) => (t: number) => data.ivAt(exp, t) ?? data.dvolAt(t);
-  const plan = planLegs(id, spot0, t0, (e) => ivFor(e)(t0), cfg);
-  if (!plan) return null;
-  const iv0 = ivFor(plan.expiryMs)(t0)!;
+  const ivNow: IvFn = (exp, t) => data.ivAt(exp, t) ?? data.dvolAt(t);
+  const planned = planLegs(id, spot0, t0, ivNow, cfg);
+  if (!planned) return null;
+
+  // Each leg is repriced with the IV of its own expiry (matters for the calendar).
+  const iv0 = new Map<number, number>();
+  for (const l of planned) {
+    const v = ivNow(l.expiryMs, t0);
+    if (v == null || !(v > 0)) return null;
+    iv0.set(l.expiryMs, v);
+  }
+  const ivOfAt = (l: Leg, t: number) => ivNow(l.expiryMs, t) ?? iv0.get(l.expiryMs)!;
+  const entryIv = iv0.get(planned[0]!.expiryMs)!;
+
+  let exitCfg: ExitConfig;
+  if (id === 'CAL_BACK') {
+    const front = planned[0]!;
+    const back = planned[2]!;
+    const fIv = iv0.get(front.expiryMs)!;
+    const bIv = iv0.get(back.expiryMs)!;
+    if (!isBackwardation(fIv, bIv, cfg.calendar.minBackwardation)) return null;
+  }
 
   // Entry fills: sell at mark minus half-spread, buy at mark plus half-spread.
   let feesEntry = 0;
-  const legs: Leg[] = plan.legs.map((l) => {
-    const m = markOf(l, spot0, t0, iv0);
+  const legs: Leg[] = planned.map((l) => {
+    const m = markOf(l, spot0, t0, iv0.get(l.expiryMs)!);
     const px = l.side === 'short' ? Math.max(m - halfSpread(m, cfg), 0.05) : m + halfSpread(m, cfg);
     feesEntry += fee(px, spot0, cfg);
     return { ...l, entryPrice: px };
   });
-  const marginUsd = marginOf(legs, spot0, t0, iv0, cfg);
-  const exitCfg: ExitConfig = exitConfigFor(id, w.exitAtMs);
+  const marginUsd = marginOf(legs, spot0, t0, (l) => iv0.get(l.expiryMs)!, cfg);
+
+  if (id === 'CAL_BACK') {
+    const front = legs[0]!;
+    const back = legs[2]!;
+    const netDebit = legs.filter((l) => l.side === 'long').reduce((s, l) => s + l.entryPrice, 0) - legs.filter((l) => l.side === 'short').reduce((s, l) => s + l.entryPrice, 0);
+    const be = calendarBreakeven(
+      { strike: front.strike, frontExpiryMs: front.expiryMs, backExpiryMs: back.expiryMs, frontIv: iv0.get(front.expiryMs)!, backIv: iv0.get(back.expiryMs)! },
+      netDebit,
+    );
+    // The breakeven is per BTC and for both legs; a profit zone must exist or there is nothing to trade.
+    if (!be) return null;
+    exitCfg = calendarExitConfig({ low: be.low, high: be.high }, front.expiryMs);
+  } else {
+    exitCfg = exitConfigFor(id, w.exitAtMs);
+  }
   const stopOnly: ExitConfig = exitCfg.stopMultiple != null ? { stopMultiple: exitCfg.stopMultiple } : {};
 
   const path: Array<[number, number]> = [[0, -feesEntry]];
@@ -212,13 +267,12 @@ export function replayRun(
     if (b.t < t0 + MIN) continue;
     if (b.t > w.exitAtMs) break;
     const t = b.t;
-    const iv = ivFor(plan.expiryMs)(t) ?? iv0;
-    const closeMarks = legs.map((l) => ({ symbol: l.symbol, mark: markOf(l, b.c, t, iv) }));
+    const closeMarks = legs.map((l) => ({ symbol: l.symbol, mark: markOf(l, b.c, t, ivOfAt(l, t)) }));
     const snapClose: PositionSnapshot = { legs, marks: closeMarks, spot: b.c, marginUsd, contractValue: cfg.contractValue, feesPaidUsd: feesEntry };
 
     // Intrabar worst case for the stop: shorts at their adverse extreme (calls at the high, puts at the low).
     if (stopOnly.stopMultiple != null) {
-      const worst = legs.map((l) => ({ symbol: l.symbol, mark: markOf(l, l.type === 'call' ? b.h : b.l, t, iv) }));
+      const worst = legs.map((l) => ({ symbol: l.symbol, mark: markOf(l, l.type === 'call' ? b.h : b.l, t, ivOfAt(l, t)) }));
       const d = evaluateExit({ ...snapClose, marks: worst }, stopOnly, t);
       if (d.action === 'exit') {
         reason = 'stop';
@@ -280,7 +334,7 @@ export function replayRun(
     exitMs,
     spotEntry: spot0,
     spotExit,
-    entryIv: iv0,
+    entryIv,
     dvol,
     gateGo,
     marginUsd,
@@ -305,7 +359,7 @@ export interface ReplayOptions {
 
 export function replayAll(data: ReplayData, opts: ReplayOptions = {}): { runs: ReplayRun[]; skipped: number; days: number } {
   const cfg = { ...DEFAULT_REPLAY, ...opts.cfg };
-  const ids = opts.strategies ?? (Object.keys(SLOTS) as ReplayStrategy[]);
+  const ids = opts.strategies ?? [...(Object.keys(SLOTS) as ReplayStrategy[]), 'CAL_BACK'];
   const from = opts.fromDate ?? istDateKey(data.first + DAY);
   const to = opts.toDate ?? istDateKey(data.last - 2 * DAY);
   const runs: ReplayRun[] = [];
@@ -315,7 +369,7 @@ export function replayAll(data: ReplayData, opts: ReplayOptions = {}): { runs: R
     const dateKey = istDateKey(ms + 12 * 3_600_000);
     days++;
     for (const id of ids) {
-      const books: Array<'always' | 'gated'> = id === 'EVE_LONG' || id === 'PRE_LONG' ? ['always'] : ['always', 'gated'];
+      const books: Array<'always' | 'gated'> = id === 'EVE_LONG' || id === 'PRE_LONG' || id === 'CAL_BACK' ? ['always'] : ['always', 'gated'];
       for (const book of books) {
         const r = replayRun(data, id, dateKey, book, cfg);
         if (r) runs.push(r);

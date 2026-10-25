@@ -11,6 +11,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadData } from '../backtest/data/load.js';
 import { buildAnalytics, type RunRecord } from '../lib/bot/analytics.js';
+import { DEFAULT_FUTURES } from '../lib/bot/futures.js';
+import { replayFutures } from '../lib/bot/futures-replay.js';
 import { DEFAULT_REPLAY, replayAll, type ReplayData } from '../lib/bot/replay.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -45,7 +47,7 @@ const t0 = Date.now();
 const { runs, skipped, days } = replayAll(data, { fromDate, toDate });
 console.log(`replayed ${days} days: ${runs.length} runs, ${skipped} skipped (no data/strikes) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
-const records: RunRecord[] = runs.map((r) => ({
+const optionRecords: RunRecord[] = runs.map((r) => ({
   strategy: r.strategy,
   book: r.book,
   dateKey: r.dateKey,
@@ -64,6 +66,13 @@ const records: RunRecord[] = runs.map((r) => ({
   path: r.path,
 }));
 
+// Futures: same detectors, plan and exit stepping as the live paper engine, over the 1m candles.
+const f0 = Date.now();
+const fut = replayFutures(bars.map((b) => ({ t: b.t, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v })));
+console.log(`futures: ${fut.runs.length} trades from ${fut.signals} signals in ${((Date.now() - f0) / 1000).toFixed(1)}s; plan rejections: ${JSON.stringify(fut.skippedByPlan)}`);
+const futuresRecords: RunRecord[] = fut.runs.map(({ dir: _d, lots: _l, leverage: _lv, entry: _e, exit: _x, stop: _s, target: _t, note: _n, confirmations: _c, grossPnl: _g, ...rec }) => rec);
+
+const records: RunRecord[] = [...optionRecords, ...futuresRecords];
 const analytics = buildAnalytics(records);
 const out = {
   generatedAt: new Date().toISOString(),
@@ -72,7 +81,12 @@ const out = {
   method:
     'Black-Scholes repricing from spot and archived ATM IV (no historical option quotes), 1.2% half-spread, Delta fee model, portfolio-margin approximation, same exit rules as the live paper engine.',
   // Variants evaluated here (for the multiple-testing log): 6 strategies x always/gated where applicable.
-  trials: new Set(runs.map((r) => `${r.strategy}|${r.book}`)).size,
+  trials: new Set(records.map((r) => `${r.strategy}|${r.book}`)).size,
+  futuresConfig: DEFAULT_FUTURES,
+  futuresNote:
+    'Futures replay tests price-based confirmations only (wick, volume, RSI, VWAP and prior-day levels). Funding, open interest, liquidation and CVD crowding are layered on by the live engine but cannot be replayed because that history is not archived.',
+  futuresPlanRejections: fut.skippedByPlan,
+  futuresTrades: fut.runs.map((r) => ({ strategy: r.strategy, dateKey: r.dateKey, entryMs: r.entryMs, dir: r.dir, lots: r.lots, leverage: r.leverage, entry: r.entry, exit: r.exit, stop: r.stop, target: r.target, netPnl: r.netPnl, exitReason: r.exitReason, confirmations: r.confirmations, note: r.note })).slice(-400),
   analytics,
   runs: records.map(({ path: _p, ...rest }) => rest),
 };
