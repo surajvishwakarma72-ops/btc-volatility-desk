@@ -57983,6 +57983,18 @@ document.addEventListener('click', function(e) {
 }, true);
 </script><style id="botCss">
 #pgBot .bt{max-width:1280px;margin:0 auto;padding:4px 2px 24px;color:var(--text)}
+#pgBot .bt-next{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:0 0 10px;box-shadow:var(--shadow)}
+#pgBot .bt-next .nx-hero{display:flex;flex-direction:column;min-width:210px}
+#pgBot .bt-next .nx-lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+#pgBot .bt-next .nx-name{font-size:15px;font-weight:700;margin:2px 0}
+#pgBot .bt-next .nx-clock{font:700 30px/1.1 "JetBrains Mono",monospace;font-variant-numeric:tabular-nums;color:var(--text)}
+#pgBot .bt-next .nx-clock.soon{color:var(--warn)}
+#pgBot .bt-next .nx-clock.now{color:var(--down)}
+#pgBot .bt-next .nx-at{font-size:12px;color:var(--muted)}
+#pgBot .bt-next .nx-list{flex:1;min-width:260px;display:grid;grid-template-columns:auto 1fr auto;gap:3px 12px;font-size:12.5px;align-items:baseline}
+#pgBot .bt-next .nx-list .t{color:var(--muted);font-variant-numeric:tabular-nums}
+#pgBot .bt-next .nx-list .c{font-family:"JetBrains Mono",monospace;font-variant-numeric:tabular-nums;text-align:right}
+#pgBot .bt-next .nx-note{flex-basis:100%;font-size:12px;color:var(--faint)}
 #pgBot .bt-top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 10px}
 #pgBot .bt-top h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
 #pgBot .bt-seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
@@ -58042,6 +58054,45 @@ document.addEventListener('click', function(e) {
   const name = k => { const [s, b] = k.split('|'); return (STRAT[s] || s) + (b ? ' · ' + b : ''); };
   const COLORS = ['#58A6D6', '#E3AE45', '#A98BE6', '#45BFA9', '#EF5A5E', '#35BB7D', '#8FA3B5', '#D69E2E', '#E58BC1', '#9CC9EE', '#C9A36B', '#7BD1E0'];
   const WDORD = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+
+  /* ---------- next-up countdown (kept in step with backend/src/lib/bot/schedule.ts; a test compares them) ---------- */
+  // NEXTUP-START
+  const MIN_MS = 60000, DAY_MS = 86400000, IST_MS = 19800000, GRACE_MS = 10 * MIN_MS;
+  const ENTRY_MIN = { PRE_LONG: 300, ASIA_SHORT: 600, ASIA_IC: 600, EVE_LONG: 1050, CAL_BACK: 1080, NY_SHORT: 1350, NY_IC: 1350 };
+  function nextUp(now, sess) {
+    const day0 = Math.floor((now + IST_MS) / DAY_MS), found = [];
+    for (let d = day0 - 1; d <= day0 + 2; d++) {
+      for (const id of Object.keys(ENTRY_MIN)) found.push({ at: d * DAY_MS - IST_MS + ENTRY_MIN[id] * MIN_MS, id, kind: 'entry' });
+      if (sess && sess.bounds) {
+        try {
+          found.push({ at: sess.bounds('LONDON', d).start, id: 'FUT_SWEEP_LDN', kind: 'window' });
+          found.push({ at: sess.bounds('NEW YORK', d).start, id: 'FUT_SWEEP_NY', kind: 'window' });
+        } catch (e) { }
+      }
+    }
+    const byTime = new Map();
+    for (const f of found) {
+      if (f.at < now - GRACE_MS || f.at > now + 40 * 3600000) continue;
+      (byTime.get(f.at) || byTime.set(f.at, { at: f.at, ids: [], kind: f.kind }).get(f.at)).ids.push(f.id);
+    }
+    return [...byTime.values()].sort((a, b) => a.at - b.at);
+  }
+  // NEXTUP-END
+  const SHORT_NAME = { ASIA_SHORT: 'Asia short strangle', ASIA_IC: 'Asia iron condor', NY_SHORT: 'New York short strangle', NY_IC: 'New York iron condor', EVE_LONG: 'Evening long straddle', PRE_LONG: 'Pre-dawn long straddle', CAL_BACK: 'Calendar spread (if backwardation)', FUT_SWEEP_LDN: 'Futures: London sweep window opens', FUT_SWEEP_NY: 'Futures: New York sweep window opens' };
+  const evName = e => e.ids.map(i => SHORT_NAME[i] || i).join(' + ');
+  const hms = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return String(Math.floor(s / 3600)).padStart(2, '0') + ':' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+  function renderNext() {
+    const box = $('btNext'); if (!box) return;
+    const now = Date.now(), list = nextUp(now, window.SessCal);
+    if (!list.length) { box.innerHTML = ''; return; }
+    const first = list[0], diff = first.at - now, entering = diff <= 0;
+    const st = S.status, note = st && st.enabled === false ? 'The paper bot is switched off, so nothing will actually start until it is enabled. Times are when each strategy would enter.' : st && st.paused ? 'Entries are paused, so these will not start until you resume.' : '';
+    const clock = entering ? 'ENTERING NOW' : hms(diff);
+    box.innerHTML = '<div class="nx-hero"><span class="nx-lbl">' + (first.kind === 'window' ? 'Next window' : 'Next to start') + '</span><span class="nx-name">' + esc(evName(first)) + '</span><span class="nx-clock ' + (entering ? 'now' : diff < 15 * MIN_MS ? 'soon' : '') + '">' + clock + '</span><span class="nx-at">' + esc(IST(first.at)) + ' IST</span></div>' +
+      '<div class="nx-list">' + list.slice(1, 6).map(e => '<span class="t">' + esc(IST(e.at).slice(6)) + '</span><span>' + esc(evName(e)) + '</span><span class="c">' + hms(e.at - now) + '</span>').join('') + '</div>' +
+      (note ? '<div class="nx-note">' + esc(note) + '</div>' : '') +
+      '<div class="nx-note">Futures strategies have no fixed start: they trade when a sweep or signal appears inside their window. All times are IST.</div>';
+  }
 
   const S = { view: 'live', replay: null, replayErr: null, live: null, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
     sel: { strat: null, split: 'byWeekday', timeline: null, askOut: null }, busy: false, killArm: 0 };
@@ -58167,7 +58218,8 @@ document.addEventListener('click', function(e) {
     const act = S.view === 'live' && st && st.enabled && tok() ? `<span class="bt-sp"></span>${st.paused ? '<button type="button" class="bt-btn" data-bt="resume">Resume</button>' : '<button type="button" class="bt-btn" data-bt="pause">Pause entries</button>'}${st.killSwitch ? '<button type="button" class="bt-btn" data-bt="killreset">Reset kill switch</button>' : `<button type="button" class="bt-btn danger" data-bt="kill">${S.killArm > Date.now() ? 'Click again: close everything' : 'Kill switch'}</button>`}` : '';
     const body = S.view === 'live' ? liveView() : replayView();
     const keep = { y: window.scrollY }; const ae = D.activeElement && D.activeElement.id; const av = ae && $(ae) ? $(ae).value : null;
-    root.innerHTML = tabs + chips + act + '</div>' + body + '</div>';
+    root.innerHTML = tabs + chips + act + '</div><div class="bt-next" id="btNext"></div>' + body + '</div>';
+    renderNext();
     if (ae && av != null && $(ae)) { $(ae).value = av; try { $(ae).focus(); } catch (e) { } }
     void keep;
   }
@@ -58237,6 +58289,8 @@ document.addEventListener('click', function(e) {
   });
   root.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.bt === 'strat') { S.sel.strat = t.value; draw(); } });
   root.addEventListener('keydown', e => { if (e.key === 'Enter') { if (e.target.id === 'btPw') login(); else if (e.target.id === 'btAskT' || e.target.id === 'btAskD') ask(); } });
+
+  setInterval(() => { if (!D.hidden && D.body.dataset.page === 'pgBot') renderNext(); }, 1000);
 
   let timer = 0;
   function poll() { clearInterval(timer); timer = setInterval(() => { if (!D.hidden && D.body.dataset.page === 'pgBot' && S.view === 'live') loadLive(); }, 20000); }
