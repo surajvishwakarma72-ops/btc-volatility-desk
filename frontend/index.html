@@ -19822,6 +19822,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         <button type="button" class="on" data-page="pgDesk">Trade</button>
         <button type="button" data-page="pgFlow">Flow</button>
         <button type="button" data-page="pgEvents">Events</button>
+        <button type="button" data-page="pgBot">Bot</button>
         <button type="button" data-page="pgSettings">Settings</button>
       </nav>
       <div class="top-actions">
@@ -20462,6 +20463,10 @@ The floating P&L pill still shows the live P&L on top of everything. */
         </div>
       </section>
 
+          <section class="page" id="pgBot" aria-label="Bot: paper trading monitor and replay">
+        <div id="btRoot"></div>
+      </section>
+
     </main>
 
     <!-- ───────── phone tab bar ───────── -->
@@ -20473,6 +20478,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
     </nav>
     <div class="more-sheet" id="moreSheet" hidden>
       <button type="button" data-page="pgEvents" class="ms-ev">Events &amp; calendar</button>
+      <button type="button" data-page="pgBot">Bot · paper trading</button>
       <button type="button" data-page="pgSettings">Settings &amp; backups</button>
       <button type="button" id="moreTheme">Switch theme</button>
     </div>
@@ -31616,7 +31622,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
       document.body.classList.add('v80');
 
       /* ---------- pages ---------- */
-      const PAGES = ['pgDesk', 'pgFlow', 'pgEvents', 'pgSettings'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
+      const PAGES = ['pgDesk', 'pgFlow', 'pgEvents', 'pgSettings', 'pgBot'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
       let page = 'pgDesk';   /* v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
       function slotMoves(p) {
         // the engine's IV panes (#charts) + hero live on the Desk in row mode and on the Vol page in stack mode
@@ -31632,7 +31638,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
       function show(p) {
         if (!PAGES.includes(p)) return; page = p; LS('v80_page', p);
         for (const id of PAGES) { const el = $(id); if (el) el.classList.toggle('on', id === p); }
-        document.querySelectorAll('#nav button,#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === p || (b.id === 'moreTab' && (p === 'pgStudy' || p === 'pgSettings' || p === 'pgEvidence' || (p === 'pgEvents' && !document.body.classList.contains('reg-off'))))));
+        document.querySelectorAll('#nav button,#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === p || (b.id === 'moreTab' && (p === 'pgBot' || p === 'pgStudy' || p === 'pgSettings' || p === 'pgEvidence' || (p === 'pgEvents' && !document.body.classList.contains('reg-off'))))));
         $('moreSheet') && ($('moreSheet').hidden = true);
         slotMoves(p);
         document.body.dataset.page = p;
@@ -57975,6 +57981,259 @@ document.addEventListener('click', function(e) {
     }
   }
 }, true);
+</script><style id="botCss">
+#pgBot .bt{max-width:1280px;margin:0 auto;padding:4px 2px 24px;color:var(--text)}
+#pgBot .bt-top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 10px}
+#pgBot .bt-top h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
+#pgBot .bt-seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+#pgBot .bt-seg button{background:var(--panel);color:var(--muted);border:0;padding:6px 14px;font:600 13px var(--font);cursor:pointer}
+#pgBot .bt-seg button.on{background:var(--panel2);color:var(--text);box-shadow:inset 0 -2px 0 var(--focus)}
+#pgBot .bt-chip{display:inline-flex;gap:6px;align-items:center;padding:3px 9px;border:1px solid var(--line2);border-radius:999px;font-size:12px;color:var(--muted);background:var(--panel)}
+#pgBot .bt-chip b{color:var(--text);font-weight:600}
+#pgBot .bt-chip.ok b{color:var(--down)}
+#pgBot .bt-chip.bad b{color:var(--up)}
+#pgBot .bt-chip.warn b{color:var(--warn)}
+#pgBot .bt-sp{flex:1}
+#pgBot button.bt-btn{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:5px 11px;font:600 12px var(--font);cursor:pointer}
+#pgBot button.bt-btn:hover{border-color:var(--focus)}
+#pgBot button.bt-btn.danger{border-color:var(--up);color:var(--up)}
+#pgBot .bt-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 10px;box-shadow:var(--shadow)}
+#pgBot .bt-card h3{margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#pgBot .bt-card .sub{font-size:12px;color:var(--faint);margin:-2px 0 8px;line-height:1.45}
+#pgBot .bt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px}
+#pgBot .bt-scroll{overflow-x:auto}
+#pgBot table.bt-t{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+#pgBot .bt-t th{position:sticky;top:0;text-align:right;color:var(--muted);font-weight:600;padding:4px 8px;border-bottom:1px solid var(--line2);white-space:nowrap}
+#pgBot .bt-t td{text-align:right;padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+#pgBot .bt-t th:first-child,#pgBot .bt-t td:first-child{text-align:left}
+#pgBot .bt-t tr.click{cursor:pointer}
+#pgBot .bt-t tr.click:hover td{background:var(--panel2)}
+#pgBot .bt-t tr.sel td{background:var(--panel2)}
+#pgBot .pos{color:var(--down)}
+#pgBot .neg{color:var(--up)}
+#pgBot .dim{color:var(--faint)}
+#pgBot .bt-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 8px}
+#pgBot select,#pgBot input{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:6px;padding:4px 8px;font:500 13px var(--font)}
+#pgBot .bt-note{font-size:12px;color:var(--muted);line-height:1.5}
+#pgBot .bt-note.warn{color:var(--warn)}
+#pgBot svg.bt-svg{width:100%;height:auto;display:block;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+#pgBot svg text{fill:var(--muted);font:11px var(--font)}
+#pgBot .bt-legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);margin:6px 0 0}
+#pgBot .bt-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+#pgBot pre.bt-pre{margin:0;max-height:260px;overflow:auto;font:12px/1.45 "JetBrains Mono",monospace;color:var(--muted);white-space:pre-wrap}
+#pgBot .bt-login{max-width:340px;margin:30px auto;text-align:center}
+#pgBot .bt-login input{width:100%;box-sizing:border-box;margin:8px 0}
+@media (max-width:760px){#pgBot .bt-grid{grid-template-columns:1fr}#pgBot .bt-top h2{font-size:16px}}
+</style><script id="botPage">
+/* Bot page: live paper-trading monitor and 13-month replay. Read-only except pause/resume/kill.
+   Live data comes from the authenticated /api/v1/bot/* routes; replay data from data/bot_replay.json. */
+(function botPage() {
+  'use strict';
+  const D = document, $ = id => D.getElementById(id);
+  const root = $('btRoot'); if (!root) return;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { return localStorage.getItem('desk_jwt'); } };
+  const usd = (v, d = 2) => v == null || !isFinite(v) ? '-' : (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(d);
+  const sgn = v => v == null || !isFinite(v) ? 'dim' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'dim';
+  const pct = (v, d = 0) => v == null || !isFinite(v) ? '-' : (v * 100).toFixed(d) + '%';
+  const cls = v => `class="${sgn(v)}"`;
+  const IST = ms => new Date(ms + 19800000).toISOString().slice(5, 16).replace('T', ' ');
+  const STRAT = { ASIA_SHORT: 'Asia short strangle 10:00', NY_SHORT: 'NY short strangle 22:30', ASIA_IC: 'Asia iron condor 24h', NY_IC: 'NY iron condor 24h', EVE_LONG: 'Evening long straddle 17:30', PRE_LONG: 'Pre-dawn long straddle 05:00', CAL_BACK: 'Calendar (backwardation)' };
+  const name = k => { const [s, b] = k.split('|'); return (STRAT[s] || s) + (b ? ' · ' + b : ''); };
+  const COLORS = ['#58A6D6', '#E3AE45', '#A98BE6', '#45BFA9', '#EF5A5E', '#35BB7D', '#8FA3B5', '#D69E2E', '#E58BC1', '#9CC9EE', '#C9A36B', '#7BD1E0'];
+  const WDORD = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+
+  const S = { view: 'live', replay: null, replayErr: null, live: null, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
+    sel: { strat: null, split: 'byWeekday', timeline: null, askOut: null }, busy: false, killArm: 0 };
+
+  async function api(path, opt) {
+    const t = tok(); if (!t) { const e = new Error('Not logged in'); e.status = 401; throw e; }
+    const r = await fetch('/api/v1/bot' + path, Object.assign({ headers: { Accept: 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' }, opt || {}));
+    if (r.status === 401) { try { localStorage.removeItem('desk_jwt'); } catch (e) { } const e = new Error('Session expired, log in again'); e.status = 401; throw e; }
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.success === false) throw new Error((j && j.error) || 'HTTP ' + r.status);
+    return j;
+  }
+
+  /* ---------- charts (inline SVG) ---------- */
+  function lineChart(series, o) {
+    o = o || {}; const W = 760, H = o.h || 260, L = 54, R = 12, T = 12, B = 28;
+    const pts = series.flatMap(s => s.points); if (!pts.length) return '<div class="bt-note">No data yet.</div>';
+    let x0 = Math.min(...pts.map(p => p[0])), x1 = Math.max(...pts.map(p => p[0])), y0 = Math.min(0, ...pts.map(p => p[1])), y1 = Math.max(0, ...pts.map(p => p[1]));
+    if (x1 === x0) x1 = x0 + 1; if (y1 === y0) y1 = y0 + 1; const pad = (y1 - y0) * .08; y0 -= pad; y1 += pad;
+    const X = v => L + (v - x0) / (x1 - x0) * (W - L - R), Y = v => T + (1 - (v - y0) / (y1 - y0)) * (H - T - B);
+    let g = '';
+    for (let i = 0; i <= 4; i++) { const v = y0 + (y1 - y0) * i / 4, y = Y(v); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)"/><text x="${L - 6}" y="${y + 4}" text-anchor="end">${usd(v, Math.abs(v) < 10 ? 1 : 0)}</text>`; }
+    g += `<line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--line2)" stroke-dasharray="4 3"/>`;
+    const fmtX = o.fmtX || (v => (v / 60).toFixed(v % 60 ? 1 : 0) + 'h');
+    for (let i = 0; i <= 6; i++) { const v = x0 + (x1 - x0) * i / 6; g += `<text x="${X(v)}" y="${H - 8}" text-anchor="middle">${esc(fmtX(v))}</text>`; }
+    series.forEach((s, i) => {
+      const c = s.color || COLORS[i % COLORS.length];
+      g += `<polyline fill="none" stroke="${c}" stroke-width="${s.w || 2}" ${s.dash ? 'stroke-dasharray="5 4"' : ''} opacity="${s.op || 1}" points="${s.points.map(p => X(p[0]).toFixed(1) + ',' + Y(p[1]).toFixed(1)).join(' ')}"/>`;
+      (s.marks || []).forEach(m => { g += `<circle cx="${X(m[0])}" cy="${Y(m[1])}" r="4" fill="${m.color || c}"><title>${esc(m.label || '')}</title></circle>`; });
+    });
+    const lg = series.filter(s => s.label).map((s, i) => `<span><i style="background:${s.color || COLORS[i % COLORS.length]}"></i>${esc(s.label)}</span>`).join('');
+    return `<svg class="bt-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.title || 'PnL chart')}">${g}</svg>${lg ? `<div class="bt-legend">${lg}</div>` : ''}`;
+  }
+
+  /* ---------- shared analytics renderer ---------- */
+  const SPLITS = [['byWeekday', 'Weekday'], ['byMonth', 'Month'], ['byWeek', 'Week'], ['byIvBand', 'Entry IV'], ['byGate', 'Gate GO / WAIT'], ['byExit', 'Exit reason']];
+
+  function statTable(rows, firstLabel) {
+    if (!rows.length) return '<div class="bt-note">No closed trades yet.</div>';
+    return `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>${esc(firstLabel)}</th><th>Trades</th><th>Net PnL</th><th>Avg</th><th>Median</th><th>Win</th><th>Stop</th><th>TP</th><th>Avg win</th><th>Avg loss</th><th>Max DD</th><th>Fees</th><th>Gave back</th></tr></thead><tbody>${rows.map(g =>
+      `<tr><td>${esc(g.label)}</td><td>${g.trades}</td><td ${cls(g.netPnl)}>${usd(g.netPnl, 0)}</td><td ${cls(g.avgPnl)}>${usd(g.avgPnl)}</td><td ${cls(g.medianPnl)}>${usd(g.medianPnl)}</td><td>${pct(g.winRate)}</td><td>${pct(g.stopRate)}</td><td>${pct(g.tpRate)}</td><td class="pos">${usd(g.avgWin)}</td><td class="neg">${usd(g.avgLoss)}</td><td class="neg">${usd(-g.maxDrawdown, 0)}</td><td class="dim">${usd(g.fees, 0)}</td><td class="dim">${usd(g.avgGiveBack)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  function renderAnalytics(an, runs, tag) {
+    if (!an || !an.byStrategy || !an.byStrategy.length) return '<div class="bt-card"><div class="bt-note">No closed trades yet. Results appear here after the first strategy completes a run.</div></div>';
+    const keys = an.byStrategy.map(g => g.key); if (!S.sel.strat || !keys.includes(S.sel.strat)) S.sel.strat = keys[0];
+    const sel = S.sel.strat, split = S.sel.split;
+    const t = an.totals;
+    let h = `<div class="bt-card"><h3>Scoreboard · all strategies</h3><div class="bt-row"><span class="bt-chip">Trades <b>${t.trades}</b></span><span class="bt-chip">Net <b ${cls(t.netPnl)}>${usd(t.netPnl, 0)}</b></span><span class="bt-chip">Win <b>${pct(t.winRate)}</b></span><span class="bt-chip">Fees <b>${usd(t.fees, 0)}</b></span><span class="bt-chip">Worst trade <b class="neg">${usd(t.worstTrade)}</b></span><span class="bt-chip">Best <b class="pos">${usd(t.bestTrade)}</b></span></div>`;
+    h += statTable(an.byStrategy.map(g => Object.assign({}, g, { label: name(g.key) })), 'Strategy · book') + '</div>';
+
+    h += `<div class="bt-card"><h3>Break down by</h3><div class="bt-row"><select data-bt="strat">${keys.map(k => `<option value="${esc(k)}" ${k === sel ? 'selected' : ''}>${esc(name(k))}</option>`).join('')}</select><span class="bt-seg">${SPLITS.map(([k, l]) => `<button type="button" data-bt-split="${k}" class="${k === split ? 'on' : ''}">${l}</button>`).join('')}</span></div>`;
+    const rows = (an[split] || []).filter(g => g.key.startsWith(sel + '|')).map(g => Object.assign({}, g, { label: g.key.slice(sel.length + 1) }));
+    if (split === 'byWeekday') rows.sort((a, b) => (WDORD[a.label] ?? 9) - (WDORD[b.label] ?? 9));
+    h += statTable(rows, 'Bucket') + '</div>';
+
+    const cv = (an.curves || []).find(c => c.strategy + '|' + c.book === sel);
+    const gridRow = (an.exitGrid || []).find(c => c.strategy + '|' + c.book === sel);
+    h += '<div class="bt-grid">';
+    h += `<div class="bt-card"><h3>PnL since entry · average and median</h3><div class="sub">Each point is the average (and median) net PnL of all trades at that many hours after entry, with closed trades held at their final PnL. Where the line peaks and then falls is where holding stopped paying.</div>${cv ? lineChart([
+      { label: 'Average', points: cv.points.map(p => [p[0], p[1]]), color: '#58A6D6' },
+      { label: 'Median', points: cv.points.map(p => [p[0], p[2]]), color: '#E3AE45', dash: true }], { title: 'Average PnL curve' }) : '<div class="bt-note">No curve yet.</div>'}</div>`;
+    h += `<div class="bt-card"><h3>What if you had exited at a fixed time?</h3><div class="sub">Average net PnL per trade if every trade had been closed N hours after entry instead of using its real exit rule. Compare with the actual average.</div>${gridRow ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Exit after</th><th>Avg PnL</th><th>Win rate</th></tr></thead><tbody>${gridRow.points.map(p => `<tr><td>${p.offsetMin >= 60 ? (p.offsetMin / 60) + ' h' : p.offsetMin + ' min'}</td><td ${cls(p.avgPnl)}>${usd(p.avgPnl)}</td><td>${pct(p.winRate)}</td></tr>`).join('')}<tr><td><b>Actual rule</b></td><td ${cls(gridRow.actual)}><b>${usd(gridRow.actual)}</b></td><td></td></tr></tbody></table></div>` : '<div class="bt-note">No data.</div>'}</div>`;
+    h += '</div>';
+
+    if (runs && runs.length) {
+      const per = new Map(); for (const r of runs) { const k = r.strategy + '|' + r.book; (per.get(k) || per.set(k, []).get(k)).push(r); }
+      const series = [...per.entries()].map(([k, rs], i) => { rs.sort((a, b) => a.exitMs - b.exitMs); let eq = 0; return { label: name(k), color: COLORS[i % COLORS.length], w: k === sel ? 3 : 1.5, op: k === sel ? 1 : .55, points: rs.map(r => [(r.exitMs - rs[0].exitMs) / 86400000, (eq += r.netPnl)]) }; });
+      h += `<div class="bt-card"><h3>Cumulative net PnL · ${esc(tag || '')}</h3><div class="sub">Running total after fees, spread and slippage, per strategy. The selected strategy is drawn thicker.</div>${lineChart(series, { h: 300, fmtX: v => Math.round(v) + 'd', title: 'Equity curves' })}</div>`;
+    }
+    return h;
+  }
+
+  /* ---------- live view ---------- */
+  function liveView() {
+    if (!tok()) return `<div class="bt-card bt-login"><h3>Log in</h3><div class="bt-note">The live bot data is private. Use your desk password.</div><input type="password" id="btPw" placeholder="Desk password" autocomplete="current-password"><button type="button" class="bt-btn" data-bt="login">Log in</button>${S.loginErr ? `<div class="bt-note warn">${esc(S.loginErr)}</div>` : ''}</div>`;
+    const st = S.status; let h = '';
+    if (S.liveErr) h += `<div class="bt-card"><div class="bt-note warn">${esc(S.liveErr)}</div></div>`;
+    if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded. The Replay tab shows how the same rules would have done on 13 months of history.</div></div>`;
+    h += `<div class="bt-card"><h3>Running positions</h3>${S.positions.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Margin</th><th>Net PnL</th><th>% margin</th><th>To TP</th><th>Stop distance</th><th>Time exit</th><th>Spot</th></tr></thead><tbody>${S.positions.map(p => {
+      const tp = p.exit && p.exit.tpPctOfMargin != null && p.pnl ? p.exit.tpPctOfMargin * p.marginUsd - p.pnl.netPnl : null;
+      const stops = (p.legs || []).filter(l => l.side === 'short' && l.role === 'body' && p.exit && p.exit.stopMultiple).map(l => l.entryPrice * p.exit.stopMultiple - l.mark);
+      return `<tr class="click" data-bt-run="${esc(p.id)}"><td>${esc(name(p.strategy + '|' + p.book))}</td><td>${usd(p.marginUsd)}</td><td ${cls(p.pnl && p.pnl.netPnl)}>${p.pnl ? usd(p.pnl.netPnl) : '-'}</td><td ${cls(p.pnl && p.pnl.pctOfMargin)}>${p.pnl ? pct(p.pnl.pctOfMargin, 1) : '-'}</td><td>${tp == null ? '-' : usd(tp)}</td><td>${stops.length ? usd(Math.min(...stops)) : '-'}</td><td>${p.minutesToTimeExit == null ? '-' : (p.minutesToTimeExit / 60).toFixed(1) + ' h'}</td><td>${Math.round(p.spot)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="bt-note">No open positions.</div>'}</div>`;
+
+    h += `<div class="bt-grid"><div class="bt-card"><h3>Recent runs</h3>${S.runs.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Date</th><th>Status</th><th>Exit</th><th>Net PnL</th></tr></thead><tbody>${S.runs.slice(0, 40).map(r => `<tr class="click ${S.sel.timeline && S.sel.timeline.id === r.id ? 'sel' : ''}" data-bt-run="${esc(r.id)}"><td>${esc(name(r.strategy + '|' + r.book))}</td><td>${esc(r.date_key)}</td><td>${esc(r.status)}</td><td>${esc(r.exit_reason || '')}</td><td ${cls(r.net_pnl == null ? null : Number(r.net_pnl))}>${r.net_pnl == null ? '-' : usd(Number(r.net_pnl))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="bt-note">No runs recorded yet.</div>'}</div>`;
+    const tl = S.sel.timeline;
+    h += `<div class="bt-card"><h3>Trade timeline${tl ? ' · ' + esc(name(tl.strategy + '|' + tl.book)) : ''}</h3>${tl ? `<div class="sub">${esc(tl.summary || '')}</div>${lineChart([{ label: 'Net PnL', points: tl.points, color: '#58A6D6', marks: tl.marks }], { title: 'Trade PnL timeline', fmtX: v => (v / 60).toFixed(1) + 'h' })}` : '<div class="bt-note">Click a run to see its PnL minute by minute, with the exit marked and how much was given back from the peak.</div>'}</div></div>`;
+
+    h += `<div class="bt-card"><h3>Ask: what was happening at a given minute?</h3><div class="bt-row"><input id="btAskT" placeholder="HH:MM (IST)" size="8"><input id="btAskD" placeholder="YYYY-MM-DD (today)" size="14"><button type="button" class="bt-btn" data-bt="ask">Look up</button></div>${S.sel.askOut ? `<pre class="bt-pre">${esc(S.sel.askOut)}</pre>` : '<div class="bt-note">Shows every position, the market context and every decision the bot recorded at that minute.</div>'}</div>`;
+    h += `<div class="bt-card"><h3>Recent events</h3>${S.events.length ? `<pre class="bt-pre">${S.events.slice(0, 40).map(e => `${IST(new Date(e.at).getTime())}  ${String(e.severity).toUpperCase().padEnd(5)} ${e.type}: ${e.message}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No events yet.</div>'}</div>`;
+    h += S.live ? renderAnalytics(S.live.analytics, null, 'live paper') : '';
+    return h;
+  }
+
+  function replayView() {
+    if (S.replayErr) return `<div class="bt-card"><div class="bt-note warn">Replay results are not available: ${esc(S.replayErr)}. Generate them with <b>npx tsx src/scripts/bot-replay.ts</b> in the backend folder.</div></div>`;
+    const r = S.replay; if (!r) return '<div class="bt-card"><div class="bt-note">Loading replay…</div></div>';
+    const c = r.config || {};
+    let h = `<div class="bt-card"><h3>Replay · ${esc(r.range.from)} to ${esc(r.range.to)} (${r.range.days} days)</h3><div class="sub">${esc(r.method)}</div><div class="bt-row"><span class="bt-chip">Lots <b>${c.lots}</b></span><span class="bt-chip">Half-spread <b>${pct(c.halfSpreadPct, 1)}</b></span><span class="bt-chip">Option fee <b>${(c.feeRate * 100).toFixed(2)}%</b> (cap ${(c.feePremiumCap * 100).toFixed(1)}%)</span><span class="bt-chip">Body delta <b>${c.bodyDelta}</b></span><span class="bt-chip">Wing delta <b>${c.wingDelta}</b></span><span class="bt-chip warn">Variants tested <b>${r.trials}</b></span></div>`;
+    h += `<div class="bt-note warn" style="margin-top:8px">Read with care: option prices are modelled from spot and ATM IV with one flat IV per expiry (no skew), the window is one regime, and ${r.trials} variants were tested together, so the best-looking line is likelier to be luck than a real edge. A positive replay is a reason to paper trade, not to go live.</div></div>`;
+    h += renderAnalytics(r.analytics, r.runs, 'replay');
+    return h;
+  }
+
+  /* ---------- drawing, loading, events ---------- */
+  function draw() {
+    const tabs = `<div class="bt"><div class="bt-top"><h2>Bot</h2><span class="bt-seg"><button type="button" data-bt-view="live" class="${S.view === 'live' ? 'on' : ''}">Live paper</button><button type="button" data-bt-view="replay" class="${S.view === 'replay' ? 'on' : ''}">Replay</button></span>`;
+    const st = S.status; let chips = '';
+    if (S.view === 'live' && st) {
+      chips = `<span class="bt-chip ${st.engine === 'running' ? 'ok' : 'bad'}">Engine <b>${esc(st.enabled ? st.engine : 'off')}</b></span><span class="bt-chip">Mode <b>${esc(st.mode)}</b></span>` +
+        (st.enabled ? `<span class="bt-chip ${st.paused ? 'warn' : 'ok'}">${st.paused ? 'Paused' : 'Active'}</span>${st.killSwitch ? '<span class="bt-chip bad"><b>KILL SWITCH ON</b></span>' : ''}<span class="bt-chip">Last tick <b>${st.lastTickAt ? IST(st.lastTickAt) + ' IST' : '-'}</b></span>` : '') +
+        (st.lastError ? `<span class="bt-chip bad">Error <b>${esc(st.lastError).slice(0, 70)}</b></span>` : '');
+    }
+    const act = S.view === 'live' && st && st.enabled && tok() ? `<span class="bt-sp"></span>${st.paused ? '<button type="button" class="bt-btn" data-bt="resume">Resume</button>' : '<button type="button" class="bt-btn" data-bt="pause">Pause entries</button>'}${st.killSwitch ? '<button type="button" class="bt-btn" data-bt="killreset">Reset kill switch</button>' : `<button type="button" class="bt-btn danger" data-bt="kill">${S.killArm > Date.now() ? 'Click again: close everything' : 'Kill switch'}</button>`}` : '';
+    const body = S.view === 'live' ? liveView() : replayView();
+    const keep = { y: window.scrollY }; const ae = D.activeElement && D.activeElement.id; const av = ae && $(ae) ? $(ae).value : null;
+    root.innerHTML = tabs + chips + act + '</div>' + body + '</div>';
+    if (ae && av != null && $(ae)) { $(ae).value = av; try { $(ae).focus(); } catch (e) { } }
+    void keep;
+  }
+
+  async function loadLive() {
+    if (!tok() || S.busy) { draw(); return; } S.busy = true;
+    try {
+      S.liveErr = null;
+      S.status = await api('/status');
+      const [runs, events] = await Promise.all([api('/runs?limit=60'), api('/events?limit=60')]);
+      S.runs = runs.runs; S.events = events.events;
+      if (S.status.enabled) { try { S.positions = (await api('/positions')).positions; } catch (e) { S.positions = []; } } else S.positions = [];
+      S.live = await api('/analytics');
+    } catch (e) { S.liveErr = e.message; if (e.status === 401) S.status = null; }
+    S.busy = false; draw();
+  }
+  async function loadReplay() {
+    if (S.replay || S.replayErr) return;
+    try { const r = await fetch('data/bot_replay.json', { cache: 'no-cache' }); if (!r.ok) throw new Error('HTTP ' + r.status); S.replay = await r.json(); } catch (e) { S.replayErr = e.message; }
+    draw();
+  }
+  async function openRun(id) {
+    try {
+      const [tl, ex] = await Promise.all([api('/runs/' + id + '/timeline?step=15m'), api('/runs/' + id + '/explain')]);
+      const run = ex.run, t0 = new Date(run.entry_at).getTime();
+      const points = tl.points.map(p => [Math.round((Number(p.minute_ms) - t0) / 60000), Number(p.net_pnl)]);
+      const marks = []; if (run.exit_at && run.net_pnl != null) marks.push([Math.round((new Date(run.exit_at).getTime() - t0) / 60000), Number(run.net_pnl), { label: 'exit: ' + run.exit_reason }]);
+      const mk = marks.map(m => Object.assign([m[0], m[1]], { label: m[2].label, color: '#EF5A5E' }));
+      const s = ex.summary;
+      S.sel.timeline = { id, strategy: run.strategy, book: run.book, points, marks: mk, summary: `${s.exitReason ? 'Exit: ' + s.exitReason + ' (' + (s.exitDetail || '') + '). ' : 'Still open. '}Net ${s.netPnl == null ? '-' : usd(Number(s.netPnl))}; peak ${s.peakPnl == null ? '-' : usd(Number(s.peakPnl))}; gave back ${s.gaveBackFromPeak == null ? '-' : usd(s.gaveBackFromPeak)}; fees ${usd(s.feesUsd)}; slippage ${usd(s.slippageUsd)}.` };
+    } catch (e) { S.sel.timeline = null; S.liveErr = e.message; }
+    draw();
+  }
+  async function ask() {
+    const t = ($('btAskT') || {}).value || '', d = ($('btAskD') || {}).value || '';
+    try {
+      const j = await api('/at?time=' + encodeURIComponent(t) + (d ? '&date=' + encodeURIComponent(d) : ''));
+      const lines = [`IST ${j.istDate} ${t}`, ''];
+      lines.push(j.positions.length ? 'Positions:' : 'No position was recorded open at that minute.');
+      for (const p of j.positions) { const sn = p.snapshot || {}; lines.push(`  ${sn.strategy}/${sn.book}: net ${usd(Number(p.net_pnl))} (${pct(Number(p.pct_margin), 1)} of margin) spot ${Math.round(Number(p.spot))}; to TP ${sn.tpRemainingUsd == null ? '-' : usd(sn.tpRemainingUsd)}`); }
+      if (j.context) { const c = j.context.ctx || {}; lines.push('', `Context: spot ${Math.round(Number(j.context.spot))}, gate ${c.gate ? (c.gate.go ? 'GO' : 'WAIT ' + (c.gate.reasons || []).join('; ')) : '-'}, DVOL ${c.gate && c.gate.dvol != null ? c.gate.dvol.toFixed(1) : '-'}, macro ${c.gate ? c.gate.macroZone : '-'}`); }
+      if (j.events.length) { lines.push('', 'Events:'); for (const e of j.events) lines.push(`  ${e.type}: ${e.message}`); }
+      S.sel.askOut = lines.join('\n');
+    } catch (e) { S.sel.askOut = 'Error: ' + e.message; }
+    draw();
+  }
+  async function login() {
+    const pw = ($('btPw') || {}).value || ''; S.loginErr = null;
+    try {
+      const r = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || !j.token) throw new Error((j && j.error) || 'HTTP ' + r.status);
+      localStorage.setItem('desk_jwt', JSON.stringify(j.token));
+    } catch (e) { S.loginErr = e.message; }
+    S.busy = false; await loadLive();
+  }
+  async function act(path) { try { await api(path, { method: 'POST' }); } catch (e) { S.liveErr = e.message; } await loadLive(); }
+
+  root.addEventListener('click', e => {
+    const t = e.target.closest('[data-bt],[data-bt-view],[data-bt-split],[data-bt-run]'); if (!t) return;
+    if (t.dataset.btView) { S.view = t.dataset.btView; draw(); if (S.view === 'replay') loadReplay(); else loadLive(); return; }
+    if (t.dataset.btSplit) { S.sel.split = t.dataset.btSplit; draw(); return; }
+    if (t.dataset.btRun) { openRun(t.dataset.btRun); return; }
+    const a = t.dataset.bt;
+    if (a === 'login') login(); else if (a === 'ask') ask(); else if (a === 'pause') act('/pause'); else if (a === 'resume') act('/resume'); else if (a === 'killreset') act('/kill/reset');
+    else if (a === 'kill') { if (S.killArm > Date.now()) { S.killArm = 0; act('/kill'); } else { S.killArm = Date.now() + 5000; draw(); setTimeout(draw, 5100); } }
+  });
+  root.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.bt === 'strat') { S.sel.strat = t.value; draw(); } });
+  root.addEventListener('keydown', e => { if (e.key === 'Enter') { if (e.target.id === 'btPw') login(); else if (e.target.id === 'btAskT' || e.target.id === 'btAskD') ask(); } });
+
+  let timer = 0;
+  function poll() { clearInterval(timer); timer = setInterval(() => { if (!D.hidden && D.body.dataset.page === 'pgBot' && S.view === 'live') loadLive(); }, 20000); }
+  D.addEventListener('click', e => { if (e.target.closest('[data-page="pgBot"]')) { draw(); if (S.view === 'live') loadLive(); else loadReplay(); poll(); } });
+  draw();
+})();
 </script></body>
 
 </html>

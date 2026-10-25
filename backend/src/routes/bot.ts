@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { pool } from '../db/index.js';
 import { istDateKey, istMidnightMs } from '../lib/bot/schedule.js';
+import { buildAnalytics, type RunRecord } from '../lib/bot/analytics.js';
 import { botEngine } from '../services/bot/bot-engine.js';
 import { ensureBotSchema, getConfig, setConfig } from '../services/bot/bot-store.js';
 
@@ -138,6 +139,54 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
              AVG(COALESCE(peak_pnl,0) - net_pnl)::float AS avg_give_back
         FROM bot_runs WHERE status = 'closed' GROUP BY strategy, book ORDER BY strategy, book`);
     return { success: true, summary: r.rows };
+  });
+
+  // Full analytics (by day/week/month/IV/gate/exit, exit what-if grid, average PnL curves) over closed
+  // live paper runs, built with the same code that summarises the historical replay.
+  fastify.get('/analytics', auth, async () => {
+    await ensureBotSchema();
+    const runs = await pool.query(
+      `SELECT id, strategy, book, date_key, entry_at, exit_at, margin_usd, fees_entry, fees_exit, net_pnl, exit_reason, peak_pnl, trough_pnl, tags
+         FROM bot_runs WHERE status = 'closed' AND net_pnl IS NOT NULL ORDER BY exit_at`,
+    );
+    const marks = await pool.query(
+      `SELECT m.run_id, m.minute_ms, m.net_pnl FROM bot_minute_marks m JOIN bot_runs r ON r.id = m.run_id
+        WHERE r.status = 'closed' AND (m.minute_ms / 60000) % 15 = 0 ORDER BY m.run_id, m.minute_ms`,
+    );
+    const paths = new Map<string, Array<[number, number]>>();
+    const entry = new Map<string, number>(runs.rows.map((r: any) => [r.id, new Date(r.entry_at).getTime()]));
+    for (const m of marks.rows as any[]) {
+      const off = Math.round((Number(m.minute_ms) - entry.get(m.run_id)!) / 60_000);
+      (paths.get(m.run_id) ?? paths.set(m.run_id, []).get(m.run_id)!).push([off, Number(m.net_pnl)]);
+    }
+    const records: RunRecord[] = (runs.rows as any[]).map((r) => {
+      const entryMs = new Date(r.entry_at).getTime();
+      const exitMs = new Date(r.exit_at).getTime();
+      const net = Number(r.net_pnl);
+      const p = paths.get(r.id) ?? [];
+      const path: Array<[number, number]> = [[0, -Number(r.fees_entry ?? 0)], ...p.filter(([o]) => o > 0 && o < (exitMs - entryMs) / 60_000)];
+      path.push([Math.round((exitMs - entryMs) / 60_000), net]);
+      const gate = (r.tags as any)?.gate;
+      return {
+        strategy: r.strategy,
+        book: r.book,
+        dateKey: r.date_key,
+        weekday: new Date(`${r.date_key}T00:00:00Z`).getUTCDay(),
+        entryMs,
+        exitMs,
+        entryIv: null,
+        dvol: gate?.dvol ?? null,
+        gateGo: gate ? !!gate.go : null,
+        marginUsd: Number(r.margin_usd ?? 0),
+        feesUsd: Number(r.fees_entry ?? 0) + Number(r.fees_exit ?? 0),
+        netPnl: net,
+        exitReason: r.exit_reason ?? 'unknown',
+        peakPnl: Number(r.peak_pnl ?? net),
+        troughPnl: Number(r.trough_pnl ?? net),
+        path,
+      };
+    });
+    return { success: true, runs: records.length, analytics: buildAnalytics(records) };
   });
 
   fastify.post('/pause', auth, async () => {

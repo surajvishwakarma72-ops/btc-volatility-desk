@@ -25,6 +25,7 @@ describe('bot routes', () => {
       ['GET', '/bot/at?time=10:00'],
       ['GET', '/bot/events'],
       ['GET', '/bot/analytics/summary'],
+      ['GET', '/bot/analytics'],
       ['POST', '/bot/pause'],
       ['POST', '/bot/resume'],
       ['POST', '/bot/kill'],
