@@ -7,11 +7,12 @@ import type { Book, ChainSnapshot } from './delta-public.js';
  * Engine integration test on a real Postgres (PGlite, WASM) with Delta market data and the gate
  * mocked. Time is controlled via Date only, so the 5-second timer never runs: ticks are manual.
  */
-const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, marks: new Map<string, number>(), ivs: new Map<string, number>(), gateGo: true, failConfig: false }));
+const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, marks: new Map<string, number>(), ivs: new Map<string, number>(), gateGo: true, failConfig: false, failRuns: false }));
 
 vi.mock('../../db/index.js', () => ({
   pool: {
     query: async (text: string, params?: unknown[]) => {
+      if (h.failRuns && text.includes("status='open' ORDER BY entry_at")) throw new AggregateError([new Error('connect ETIMEDOUT 10.0.0.1:5432')], '');
       if (h.failConfig && text.includes('FROM bot_config')) throw new AggregateError([new Error('connect ETIMEDOUT 10.0.0.1:5432')], '');
       if (!params || params.length === 0) {
         const res = await h.db.exec(text);
@@ -101,6 +102,7 @@ beforeEach(async () => {
   h.ivs.clear();
   h.gateGo = true;
   h.failConfig = false;
+  h.failRuns = false;
   await store.ensureBotSchema();
   await pool.query('DELETE FROM bot_minute_marks; DELETE FROM bot_minute_context; DELETE FROM bot_events; DELETE FROM bot_fills; DELETE FROM bot_legs; DELETE FROM bot_runs; DELETE FROM bot_params; DELETE FROM bot_learning; DELETE FROM bot_shadow_marks;');
   await store.setConfig({ paused: false, killSwitch: false });
@@ -585,6 +587,23 @@ describe('every strategy on its timeline: entry, take profit, stop, time exit', 
 });
 
 import { describeError } from './bot-engine.js';
+
+describe('engine startup', () => {
+  it('a database that times out at boot does not leave the engine off: it says why, schedules a retry, and starts once the database answers', async () => {
+    process.env.BOT_ENABLED = 'true';
+    const e = new BotEngine();
+    h.failRuns = true;
+    await e.start();
+    expect(e.status).toBe('error');
+    expect(e.lastError).toMatch(/startup failed: connect ETIMEDOUT.*trying again in 5 s/);
+    expect((e as any).startTimer).not.toBeNull(); // the retry is already scheduled
+    h.failRuns = false;
+    await e.start(); // what the retry timer does
+    expect(e.status).toBe('running');
+    expect(e.lastError).toBeNull();
+    e.stop();
+  });
+});
 
 describe('describeError', () => {
   it('says what failed for the empty-message errors databases and fetch throw', () => {

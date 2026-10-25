@@ -96,8 +96,12 @@ export class BotEngine {
     return process.env.BOT_ENABLED === 'true';
   }
 
+  private startTries = 0;
+  private startTimer: NodeJS.Timeout | null = null;
+
   async start(): Promise<void> {
     if (!this.enabled || this.timer) return;
+    if (this.startTimer) { clearTimeout(this.startTimer); this.startTimer = null; }
     const mode = process.env.BOT_MODE ?? 'paper';
     if (mode !== 'paper') {
       this.status = 'error';
@@ -109,11 +113,17 @@ export class BotEngine {
       await ensureBotSchema();
       await this.restore();
     } catch (e) {
+      // a database that is slow to answer must not leave the engine off for good: try again, a little later each time
+      const wait = Math.min(60_000, 5_000 * 2 ** Math.min(this.startTries++, 4));
       this.status = 'error';
-      this.lastError = `startup failed: ${(e as Error).message}`;
+      this.lastError = `startup failed: ${describeError(e)} (trying again in ${Math.round(wait / 1000)} s)`;
       console.error('[bot]', this.lastError);
+      this.startTimer = setTimeout(() => void this.start(), wait);
+      this.startTimer.unref?.();
       return;
     }
+    this.startTries = 0;
+    this.lastError = null;
     this.status = 'running';
     console.log(`[bot] paper engine started (${this.open.size} open run(s) restored, ${LOTS} lots/leg)`);
     await logEvent({ type: 'engine_start', message: `paper engine started, ${this.open.size} open runs restored` });
@@ -122,6 +132,8 @@ export class BotEngine {
   }
 
   stop(): void {
+    if (this.startTimer) clearTimeout(this.startTimer);
+    this.startTimer = null;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
     this.status = 'stopped';
