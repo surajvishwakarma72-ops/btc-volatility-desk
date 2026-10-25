@@ -208,6 +208,7 @@ export class PaperTerminal {
   start(): void {
     if (!this.enabled || this.timer) return;
     this.timer = setInterval(() => void this.tick(), 5_000);
+    void this.quick().catch(() => undefined); // the first visit finds the chain already loaded
   }
 
   stop(): void {
@@ -224,12 +225,20 @@ export class PaperTerminal {
 
   // ---------- state ----------
 
+  private accountReady = false;
   private async ensure(): Promise<void> {
     await ensurePaperSchema();
+    if (this.accountReady) return;
     await pool.query(
       `INSERT INTO paper_account (id, cash, start_balance) VALUES (1, $1, $1) ON CONFLICT (id) DO NOTHING`,
       [START_BALANCE],
     );
+    this.accountReady = true;
+  }
+
+  /** Snapshot for a screen that only reads: instant when one is cached. */
+  private quick(): Promise<MarketSnapshot> {
+    return this.market.fast ? this.market.fast() : this.market.snapshot(4_000);
   }
 
   private async load(): Promise<State> {
@@ -538,7 +547,7 @@ export class PaperTerminal {
       const st = await this.load();
       let snap: MarketSnapshot | null = null;
       let marketError: string | null = null;
-      try { snap = await this.market.snapshot(4_000); } catch (e) { marketError = (e as Error).message; }
+      try { snap = await this.quick(); } catch (e) { marketError = (e as Error).message; }
       if (!snap) {
         return { account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal }, marginMode: st.mode, view: null, positions: [], working: st.working, marketError };
       }
@@ -865,7 +874,7 @@ export class PaperTerminal {
       let snap: MarketSnapshot | null = null;
       let marketError: string | null = null;
       if (ss.some((s) => s.status === 'open')) {
-        try { snap = await this.market.snapshot(3_000); } catch (e) { marketError = (e as Error).message; }
+        try { snap = await this.quick(); } catch (e) { marketError = (e as Error).message; }
       }
       const q = snap ? this.quoteFn(snap) : null;
       const out = ss.map((s) => {
@@ -1042,7 +1051,7 @@ export class PaperTerminal {
    * buying or selling that size. Same margin mode as the account.
    */
   async boardWithMargin(lots: number, maxAgeMs = 3_000) {
-    const snap = await this.market.snapshot(maxAgeMs);
+    const snap = maxAgeMs >= 3_000 ? await this.quick() : await this.market.snapshot(maxAgeMs);
     let st: State | null = null;
     try { await this.ensure(); st = await this.load(); } catch { st = null; }
     const base = st ? this.view(st, st.positions.values(), snap) : null;

@@ -58317,30 +58317,36 @@ document.addEventListener('click', function(e) {
   }
 
   const REFRESH_MS = 5000, ANALYTICS_MS = 60000;
+  /** Everything the page needs at first sight is fetched at the same time and drawn as soon as it is here. */
   async function loadLive(force) {
     if (!tok()) { draw(); return; }
     if (S.busy) return; S.busy = true;
     const before = S.sig;
     try {
       S.liveErr = null;
-      S.status = await api('/status');
-      const [runs, events] = await Promise.all([api('/runs?limit=60'), api('/events?limit=60')]);
-      S.runs = runs.runs; S.events = events.events;
-      try { S.today = await api('/today'); } catch (e) { S.today = null; }
-      if (S.status.enabled) { try { S.positions = (await api('/positions')).positions; } catch (e) { S.positions = []; } } else S.positions = [];
-      // the analytics query is the heavy one: once a minute is plenty
-      // dropped trades and waiting entries change minute by minute, so they ride the 5 s refresh
-      try { S.drops = await api('/drops?limit=30'); } catch (e) { S.drops = null; }
-      if (force || !S.live || Date.now() - (S.analyticsAt || 0) > ANALYTICS_MS) {
-        S.live = await api('/analytics'); S.analyticsAt = Date.now();
-        try { S.top = await api('/top'); } catch (e) { S.top = null; }
-        try { S.learn = await api('/learn'); } catch (e) { S.learn = null; }
-      }
+      const [status, runs, events, positions, today, drops] = await Promise.all([api('/status'), api('/runs?limit=60'), api('/events?limit=60'),
+        api('/positions').catch(() => ({ positions: [] })), api('/today').catch(() => null), api('/drops?limit=30').catch(() => null)]);
+      S.status = status; S.runs = runs.runs; S.events = events.events; S.positions = positions.positions || []; S.today = today; S.drops = drops;
     } catch (e) { S.liveErr = e.message; if (e.status === 401) S.status = null; }
     S.busy = false;
     // redraw only when the data changed, so a refresh every 5 s never flickers or resets what you are reading
     S.sig = JSON.stringify([S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (force || S.sig !== before) draw();
+    if (!S.liveErr) loadHeavy(force);
+  }
+  /** The scoreboard, top performer and auto-learn are the slow part: they load behind the page, at most once a minute. */
+  async function loadHeavy(force) {
+    if (S.heavyBusy || !tok()) return;
+    if (!force && S.live && Date.now() - (S.analyticsAt || 0) < ANALYTICS_MS) return;
+    S.heavyBusy = true;
+    try {
+      const [live, top, learn] = await Promise.all([api('/analytics'), api('/top').catch(() => null), api('/learn').catch(() => null)]);
+      S.live = live; S.top = top; S.learn = learn; S.analyticsAt = Date.now();
+    } catch (e) { S.liveErr = e.message; }
+    S.heavyBusy = false;
+    const before = S.sig;
+    S.sig = JSON.stringify([S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
+    if (S.sig !== before) draw();
   }
   async function openRun(id) {
     try {

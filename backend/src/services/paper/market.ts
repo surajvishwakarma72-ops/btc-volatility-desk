@@ -46,6 +46,8 @@ export interface MarketSnapshot {
 
 export interface MarketProvider {
   snapshot(maxAgeMs?: number): Promise<MarketSnapshot>;
+  /** For screens that only read: the last snapshot at once (up to 30 s old) while a fresh one loads behind it. Orders use snapshot(). */
+  fast?(): Promise<MarketSnapshot>;
   book(symbol: string): Promise<Book>;
 }
 
@@ -83,6 +85,26 @@ export class DeltaMarket implements MarketProvider {
       this.pending = this.load().then((s) => (this.snap = s)).finally(() => { this.pending = null; });
     }
     return this.pending;
+  }
+
+  /** Reads for the page: no waiting on Delta unless nothing has been loaded yet. A keep-warm timer refreshes it every 3 s for 5 minutes after the last use. */
+  private lastUse = 0;
+  private warmTimer: NodeJS.Timeout | null = null;
+  async fast(): Promise<MarketSnapshot> {
+    this.lastUse = Date.now();
+    if (!this.warmTimer) {
+      this.warmTimer = setInterval(() => {
+        if (Date.now() - this.lastUse > 300_000) return;
+        void this.snapshot(1_800).catch(() => undefined);
+      }, 3_000);
+      this.warmTimer.unref?.();
+    }
+    const s = this.snap;
+    if (s && Date.now() - s.at < 30_000) {
+      if (Date.now() - s.at > 1_800) void this.snapshot(1_800).catch(() => undefined);
+      return s;
+    }
+    return this.snapshot(1_800);
   }
 
   book(symbol: string): Promise<Book> {

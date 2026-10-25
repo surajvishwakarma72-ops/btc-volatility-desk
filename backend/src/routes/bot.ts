@@ -181,7 +181,7 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /** Closed runs with their 15-minute PnL paths, in the shape the shared analytics code takes. */
-  const loadRecords = async (): Promise<RunRecord[]> => {
+  const loadRecordsRaw = async (): Promise<RunRecord[]> => {
     await ensureBotSchema();
     const runs = await pool.query(
       `SELECT id, strategy, book, date_key, entry_at, exit_at, margin_usd, fees_entry, fees_exit, net_pnl, exit_reason, peak_pnl, trough_pnl, tags
@@ -224,6 +224,16 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
         path,
       };
     });
+  };
+
+  // /analytics and /top both need every closed run with its PnL path, which is the slow query on this page: share one result for a minute.
+  let recCache: { at: number; p: Promise<RunRecord[]> } | null = null;
+  const loadRecords = (): Promise<RunRecord[]> => {
+    if (recCache && Date.now() - recCache.at < 60_000) return recCache.p;
+    const p = loadRecordsRaw();
+    recCache = { at: Date.now(), p };
+    p.catch(() => { if (recCache && recCache.p === p) recCache = null; });
+    return p;
   };
 
   // Full analytics (by day/week/month/IV/gate/exit, exit what-if grid, average PnL curves) over closed
