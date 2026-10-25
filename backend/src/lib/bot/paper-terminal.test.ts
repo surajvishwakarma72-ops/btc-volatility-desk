@@ -74,8 +74,8 @@ describe('account view', () => {
     const v = accountView({ cash: 10_000, startBalance: 10_000 }, [], insts, marks(q));
     expect(v).toMatchObject({ equity: 10_000, margin: 0, available: 10_000, marginRatio: null });
   });
-  it('perpetual margin is notional over leverage, and unrealised PnL counts toward equity', () => {
-    const v = accountView({ cash: 10_000, startBalance: 10_000 }, [pos('BTCUSD', 100, 79000, 20)], insts, marks(q));
+  it('standard margin: a perpetual needs notional over leverage, and unrealised PnL counts toward equity', () => {
+    const v = accountView({ cash: 10_000, startBalance: 10_000 }, [pos('BTCUSD', 100, 79000, 20)], insts, marks(q), 'standard');
     expect(v.perpMargin).toBeCloseTo((100 * 0.001 * 80000) / 20, 9);
     expect(v.perpUnrealized).toBeCloseTo(100 * 0.001 * 1000, 9);
     expect(v.equity).toBeCloseTo(10_100, 9);

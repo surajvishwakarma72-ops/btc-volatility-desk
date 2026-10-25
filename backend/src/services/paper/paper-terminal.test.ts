@@ -68,6 +68,7 @@ beforeEach(async () => {
 
 describe('market orders', () => {
   it('a perpetual market buy walks the real book, charges the taker fee and opens a margined position', async () => {
+    await t.setMarginMode('standard'); // per-position leverage is a standard-margin idea
     const r = await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100, leverage: 10 });
     expect(r.order.status).toBe('filled');
     // 50 lots at the best ask, 50 at the next level
@@ -80,6 +81,18 @@ describe('market orders', () => {
     const fills = await t.fills(10);
     expect(fills[0]!.slippageUsd).toBeCloseTo(Math.abs(r.order.avgPrice! - 80_000.5) * 100 * 0.001, 6);
     expect(fills[0]!.maker).toBe(false);
+  });
+
+  it('portfolio margin ignores the leverage picked: a BTC future needs value / 90.3 and reports that effective leverage', async () => {
+    const r = await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100, leverage: 10 });
+    expect(r.order.status).toBe('filled');
+    const a: any = await t.account();
+    const value = 100 * 0.001 * 80_000;
+    expect(a.view.margin).toBeCloseTo(value / 90.3, 1);
+    expect(a.positions[0].leverage).toBeCloseTo(90.3, 0);
+    expect(a.positions[0].margin).toBeCloseTo(value / 90.3, 1);
+    const p: any = await t.preview({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100, leverage: 3 });
+    expect(p.marginRequired).toBeCloseTo((100 * 0.001 * 80_000.5) / 90.3, 0);
   });
 
   it('closing at a higher price realises the profit into cash', async () => {
@@ -96,6 +109,7 @@ describe('market orders', () => {
   });
 
   it('rejects an order the margin cannot carry, with the reason', async () => {
+    await t.setMarginMode('standard'); // per-position leverage is a standard-margin idea
     const r = await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 5000, leverage: 2 });
     expect(r.order.status).toBe('rejected');
     expect(r.order.reason).toMatch(/insufficient margin/);
@@ -256,6 +270,7 @@ describe('risk', () => {
   });
 
   it('leverage can be changed on the perpetual, within limits, and only if the margin holds', async () => {
+    await t.setMarginMode('standard'); // per-position leverage is a standard-margin idea
     expect((await t.setLeverage('BTCUSD', 500)).ok).toBe(false);
     expect((await t.setLeverage(CALL, 5)).ok).toBe(false);
     await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100, leverage: 20 });
@@ -264,6 +279,7 @@ describe('risk', () => {
   });
 
   it('preview estimates the fill without placing anything', async () => {
+    await t.setMarginMode('standard'); // per-position leverage is a standard-margin idea
     const p = await t.preview({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100, leverage: 10 });
     expect(p).toMatchObject({ ok: true, fills: 100 });
     expect((p as any).fee).toBeGreaterThan(0);

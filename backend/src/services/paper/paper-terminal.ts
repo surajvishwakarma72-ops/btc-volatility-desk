@@ -4,6 +4,7 @@ import {
   accountView, applyTrade, cashDelta, feeFor, intrinsicAtExpiry, limitTradesThrough, payoffSummary, roundToTick, shouldLiquidate, signed, stopTriggered,
   unrealized, validateOrder, walk, type AccountView, type Instrument, type MarginMode, type OrderReq, type PayoffLeg, type Position, type Quote, type Side,
 } from '../../lib/bot/paper-terminal.js';
+import { portfolioMargin } from '../../lib/bot/portfolio-margin.js';
 import { parseExpiry } from '../bot/delta-public.js';
 import { DeltaMarket, type MarketProvider, type MarketSnapshot } from './market.js';
 
@@ -550,16 +551,19 @@ export class PaperTerminal {
         const mark = quote ? (quote.mark > 0 ? quote.mark : (quote.bid + quote.ask) / 2) : null;
         const cv = inst?.contractValue ?? 0.001;
         const upnl = mark != null ? unrealized(p, mark, cv) : null;
+        // portfolio mode has no per-position leverage: the margin comes from the stress scenarios, and the leverage that implies is value / margin
+        const pm = inst?.kind === 'perp' && mark != null && st.mode === 'portfolio' ? portfolioMargin([], snap!.spot, Date.now(), 0.001, p.lots).margin : null;
+        const lev = pm ? (Math.abs(p.lots) * cv * mark!) / pm : p.leverage;
         let liq: number | null = null;
         if (onlyPerp && inst?.kind === 'perp') {
           const L = Math.abs(p.lots) * cv;
-          liq = p.lots > 0 ? (L * p.avgEntry - st.cash) / (L * (1 - 0.5 / p.leverage)) : (st.cash + L * p.avgEntry) / (L * (1 + 0.5 / p.leverage));
+          liq = p.lots > 0 ? (L * p.avgEntry - st.cash) / (L * (1 - 0.5 / lev)) : (st.cash + L * p.avgEntry) / (L * (1 + 0.5 / lev));
           if (!(liq > 0)) liq = null;
         }
         return {
-          symbol: p.symbol, kind: inst?.kind ?? (p.symbol.includes('-') ? 'option' : 'perp'), lots: p.lots, avgEntry: p.avgEntry, leverage: p.leverage, mark,
+          symbol: p.symbol, kind: inst?.kind ?? (p.symbol.includes('-') ? 'option' : 'perp'), lots: p.lots, avgEntry: p.avgEntry, leverage: lev, mark,
           unrealized: upnl, realized: p.realized,
-          margin: inst?.kind === 'perp' && mark != null ? (Math.abs(p.lots) * cv * mark) / p.leverage : null,
+          margin: inst?.kind === 'perp' && mark != null ? (pm ?? (Math.abs(p.lots) * cv * mark) / p.leverage) : null,
           liquidationPrice: liq,
           delta: snap!.rows.find((r) => r.symbol === p.symbol)?.delta ?? null,
         };

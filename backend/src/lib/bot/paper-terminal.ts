@@ -190,6 +190,7 @@ export function accountView(acct: Account, positions: readonly Position[], insts
   let optionsValue = 0;
   let perpUnrealized = 0;
   let perpMargin = 0;
+  let futLots = 0;
   const optPos: MarginPosition[] = [];
   const shorts: Array<{ type: 'call' | 'put'; strike: number; lots: number; mark: number }> = [];
   for (const p of positions) {
@@ -207,10 +208,13 @@ export function accountView(acct: Account, positions: readonly Position[], insts
       if (p.lots < 0) shorts.push({ type: inst.option!.type, strike: inst.option!.strike, lots: -p.lots, mark });
     } else {
       perpUnrealized += unrealized(p, mark, inst.contractValue);
-      perpMargin += (Math.abs(p.lots) * inst.contractValue * mark) / Math.max(p.leverage, 1);
+      if (mode === 'standard') perpMargin += (Math.abs(p.lots) * inst.contractValue * mark) / Math.max(p.leverage, 1);
+      else futLots += p.lots;
     }
   }
+  // portfolio mode: the futures are stressed together with the options (no per-position leverage), as on Delta
   const optionMargin = !optPos.length ? 0 : mode === 'standard' ? standardOptionMargin(shorts, m.spot, 0.001) : portfolioMargin(optPos, m.spot, m.nowMs, 0.001).margin;
+  if (mode === 'portfolio' && futLots !== 0) perpMargin = portfolioMargin(optPos, m.spot, m.nowMs, 0.001, futLots).margin - optionMargin;
   const equity = acct.cash + optionsValue + perpUnrealized;
   const margin = perpMargin + optionMargin;
   return {

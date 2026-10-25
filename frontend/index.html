@@ -58575,7 +58575,7 @@ document.addEventListener('click', function(e) {
       '<span class="pp-seg" id="ppFType"><button type="button" data-pp-ftype="market" class="on">Market</button><button type="button" data-pp-ftype="limit">Limit</button></span>' +
       '<label>Size in lots (1 lot = 0.001 BTC) <span class="dim" id="ppFSize"></span><input type="number" id="ppFLots" min="1" step="1" value="100"></label>' +
       '<div class="chips">' + [10, 100, 500, 1000].map(n => '<button type="button" class="pp-btn small" data-pp-flots="' + n + '">' + n + '</button>').join('') + '</div>' +
-      '<label>Leverage: <b id="ppFLevV">10x</b><input type="range" id="ppFLev" min="1" max="100" value="10"></label>' +
+      '<label id="ppFLevW">Leverage: <b id="ppFLevV">10x</b><input type="range" id="ppFLev" min="1" max="100" value="10"></label><div class="pp-note" id="ppFPm" hidden>Portfolio margin has no leverage to pick. Futures are stressed together with your options and the margin comes out at about value / 90 (the effective leverage Delta shows). Switch to Standard margin at the top to choose a leverage yourself.</div>' +
       '<label id="ppFPriceW" hidden>Limit price<input type="number" id="ppFPrice" step="any"></label>' +
       '<div class="row2"><label>Take profit price<input type="number" id="ppFTp" step="any" placeholder="optional"></label><label>Stop loss price<input type="number" id="ppFSl" step="any" placeholder="optional"></label></div>' +
       '<div id="ppFPrev" class="pp-prev"></div><button type="button" class="pp-go buy" id="ppFGo" data-pp-act="fgo">Buy</button><div id="ppFMsg"></div></div>' +
@@ -58865,8 +58865,8 @@ document.addEventListener('click', function(e) {
     const el = $('ppFPrev'); if (!el) return;
     const t = S.fut, p = t.preview, perp = S.board && S.board.perp;
     const ref = perp ? (t.type === 'limit' && Number(t.price) > 0 ? Number(t.price) : t.side === 'buy' ? perp.ask : perp.bid) : null;
-    const lots = Math.floor(Number(t.lots)) || 0, notional = ref ? ref * lots * 0.001 : null, lev = Number(t.lev) || 1;
-    const local = notional ? 'Position value <b>' + usd(notional) + '</b> · margin at ' + lev + 'x = value / leverage = <b>' + usd(notional / lev) + '</b>' : 'Waiting for the live price…';
+    const lots = Math.floor(Number(t.lots)) || 0, notional = ref ? ref * lots * 0.001 : null, pm = !S.acct || S.acct.marginMode !== 'standard', lev = pm ? 90.3 : Number(t.lev) || 1;
+    const local = notional ? 'Position value <b>' + usd(notional) + '</b> · ' + (pm ? 'portfolio margin, about value / 90.3 = <b>' : 'margin at ' + lev + 'x = value / leverage = <b>') + usd(notional / lev) + '</b>' : 'Waiting for the live price…';
     if (!p) { el.innerHTML = local; return; }
     if (p.ok === false && p.marginRequired == null) { el.innerHTML = local + '<br><span class="neg">' + esc(p.reason || 'Not possible') + '</span>'; return; }
     el.innerHTML = local + (p.marginRequired == null ? '' : '<br>Estimated margin required <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(Math.max(p.marginRequired, 0)) + '</b> · available after <b>' + usd(p.availableAfter) + '</b>') + (p.avgPrice ? '<br>Fills at about <b>' + px(p.avgPrice, 1) + '</b> · fee <b>' + usd(p.fee) + '</b> · slippage <b>' + usd(p.slippageUsd) + '</b>' : '') + (p.reason ? '<br><span class="neg">' + esc(p.reason) + '</span>' : '') + (p.note ? '<br><span class="dim">' + esc(p.note) + '</span>' : '');
@@ -58881,17 +58881,18 @@ document.addEventListener('click', function(e) {
     } else $('ppFutQ').innerHTML = '<span class="dim">' + (tok() ? 'Loading the futures quote…' : 'Log in to trade futures.') + '</span>';
     D.querySelectorAll('#ppFSide button').forEach(x => { x.classList.toggle('on', x.dataset.ppFside === t.side); x.classList.toggle('buy', x.dataset.ppFside === 'buy'); x.classList.toggle('sell', x.dataset.ppFside === 'sell'); });
     D.querySelectorAll('#ppFType button').forEach(x => x.classList.toggle('on', x.dataset.ppFtype === t.type));
-    $('ppFPriceW').hidden = t.type !== 'limit'; $('ppFLevV').textContent = t.lev + 'x';
+    const pmode = !S.acct || S.acct.marginMode !== 'standard';
+    $('ppFPriceW').hidden = t.type !== 'limit'; $('ppFLevV').textContent = t.lev + 'x'; $('ppFLevW').hidden = pmode; $('ppFPm').hidden = !pmode;
     const lots = Math.floor(Number(t.lots)) || 0; $('ppFSize').textContent = '= ' + (lots * 0.001).toFixed(3) + ' BTC';
     const go = $('ppFGo'); go.disabled = t.busy || lots < 1 || !tok(); go.className = 'pp-go ' + t.side;
-    go.textContent = (t.side === 'buy' ? 'Buy / Long ' : 'Sell / Short ') + lots + ' lots' + (t.type === 'market' ? ' at market' : ' (limit)') + ' · ' + t.lev + 'x';
+    go.textContent = (t.side === 'buy' ? 'Buy / Long ' : 'Sell / Short ') + lots + ' lots' + (t.type === 'market' ? ' at market' : ' (limit)') + (pmode ? '' : ' · ' + t.lev + 'x');
     $('ppFMsg').innerHTML = t.msg ? '<div class="pp-msg ' + t.msg.k + '">' + esc(t.msg.t) + '</div>' : '';
     renderFutPrev();
     const el = $('ppFutPos'); if (!el) return;
     if (D.activeElement && D.activeElement.tagName === 'INPUT' && el.contains(D.activeElement)) return;
     const pos = ((S.acct && S.acct.positions) || []).filter(x => x.symbol === PERP), work = ((S.acct && S.acct.working) || []).filter(x => x.symbol === PERP);
     let h = '<div class="pp-note" style="margin:0 0 4px"><b>Your futures position</b></div>';
-    h += pos.length ? pos.map(x => '<div class="pp-strat"><div class="pp-strat-top"><div><div class="pp-strat-name">' + (x.lots > 0 ? 'Long ' : 'Short ') + Math.abs(x.lots) + ' lots (' + (Math.abs(x.lots) * 0.001).toFixed(3) + ' BTC) · ' + x.leverage + 'x</div><div class="pp-note">Entry ' + px(x.avgEntry, 1) + ' · mark ' + px(x.mark, 1) + ' · margin ' + (x.margin == null ? '-' : usd(x.margin)) + ' · liquidation ' + (x.liquidationPrice ? px(x.liquidationPrice, 0) : '-') + '</div></div><div class="pp-strat-net"><span class="dim">Unrealised PnL</span><b class="' + sgn(x.unrealized) + '">' + usd(x.unrealized) + '</b></div></div><div class="pp-strat-btns"><button type="button" class="pp-btn" data-pp-close="' + esc(x.symbol) + '">Close position</button></div></div>').join('') : '<div class="pp-note">No open futures position.</div>';
+    h += pos.length ? pos.map(x => '<div class="pp-strat"><div class="pp-strat-top"><div><div class="pp-strat-name">' + (x.lots > 0 ? 'Long ' : 'Short ') + Math.abs(x.lots) + ' lots (' + (Math.abs(x.lots) * 0.001).toFixed(3) + ' BTC) · ' + (S.acct && S.acct.marginMode === 'standard' ? '' : 'effective ') + Number(x.leverage).toFixed(1) + 'x</div><div class="pp-note">Entry ' + px(x.avgEntry, 1) + ' · mark ' + px(x.mark, 1) + ' · margin ' + (x.margin == null ? '-' : usd(x.margin)) + ' · liquidation ' + (x.liquidationPrice ? px(x.liquidationPrice, 0) : '-') + '</div></div><div class="pp-strat-net"><span class="dim">Unrealised PnL</span><b class="' + sgn(x.unrealized) + '">' + usd(x.unrealized) + '</b></div></div><div class="pp-strat-btns"><button type="button" class="pp-btn" data-pp-close="' + esc(x.symbol) + '">Close position</button></div></div>').join('') : '<div class="pp-note">No open futures position.</div>';
     if (work.length) h += '<div class="pp-note" style="margin:8px 0 4px">Waiting orders (limit entries, take profit, stop loss):</div><div class="pp-scroll"><table class="pp-t"><thead><tr><th>Side</th><th>Type</th><th>Lots</th><th>Price</th><th></th></tr></thead><tbody>' + work.map(o => '<tr><td class="' + (o.side === 'buy' ? 'pos' : 'neg') + '">' + o.side + (o.reduceOnly ? ' <span class="dim">exit</span>' : '') + '</td><td>' + esc(o.type.replace('_', ' ')) + '</td><td>' + o.lots + '</td><td>' + (o.type === 'stop_market' ? 'stop ' + px(o.stopPrice, 1) : px(o.price, 1)) + '</td><td><button type="button" class="pp-btn small" data-pp-cancel="' + esc(o.id) + '">Cancel</button></td></tr>').join('') + '</tbody></table></div>';
     el.innerHTML = h;
   }

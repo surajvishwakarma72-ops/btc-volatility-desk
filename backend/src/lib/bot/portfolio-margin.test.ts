@@ -83,3 +83,18 @@ describe('calibration to Delta', () => {
     expect(longOnly.margin).toBeLessThanOrEqual(longOnly.notional * 0.05); // not inflated by the factor
   });
 });
+
+describe('futures in portfolio margin', () => {
+  it('a lone BTC future needs value / 90.3, the effective leverage Delta shows, whatever leverage was picked', () => {
+    const r = portfolioMargin([], SPOT, NOW, 0.001, 100);
+    expect(r.notional).toBeCloseTo(SPOT * 0.1, 6);
+    expect(r.notional / r.margin).toBeCloseTo(90.3, 1);
+    expect(portfolioMargin([], SPOT, NOW, 0.001, -100).margin).toBeCloseTo(r.margin, 6); // long and short alike
+  });
+
+  it('is stressed with the options: a long future against a short call needs less than the two alone', () => {
+    const call = [{ ...shortCall, strike: 82500, iv: 38 }];
+    const alone = portfolioMargin(call, SPOT, NOW).margin, fut = portfolioMargin([], SPOT, NOW, 0.001, 100).margin;
+    expect(portfolioMargin(call, SPOT, NOW, 0.001, 100).margin).toBeLessThan(alone + fut);
+  });
+});

@@ -44,6 +44,12 @@ export const MARGIN_CALIBRATION = (() => {
   return Number.isFinite(v) && v > 0 && v <= 20 ? v : DEFAULT_CALIBRATION;
 })();
 
+/**
+ * Extra margin on futures notional in portfolio mode, on top of the 1% base price-shock loss. Together they give the
+ * 90.3x effective leverage Delta shows for a BTC future in portfolio margin (1 / 90.3 = 1.107% of position value).
+ */
+export const FUTURES_BUFFER = 1 / 90.3 - 0.01;
+
 function tiered(notional: number, base: number, cap: number, slope: number, knee: number, atKnee: number): number {
   // base up to $100K, linear slope to the knee, then cap
   if (notional <= 100_000) return base;
@@ -77,11 +83,14 @@ export function portfolioMargin(
   spot: number,
   nowMs: number,
   contractValue = 0.001,
+  /** Net futures position in lots (long positive). It is stressed together with the options, so a future can hedge a short option. */
+  futuresLots = 0,
 ): PortfolioMarginResult {
-  if (!positions.length) {
+  if (!positions.length && !futuresLots) {
     return { margin: 0, riskMargin: 0, floor: 0, notional: 0, spans: shockSpans(0), worstScenario: null };
   }
-  const notional = positions.reduce((s, p) => s + spot * p.lots * contractValue, 0);
+  const futNotional = Math.abs(futuresLots) * contractValue * spot;
+  const notional = positions.reduce((s, p) => s + spot * p.lots * contractValue, 0) + futNotional;
   const spans = shockSpans(notional);
 
   const base = positions.map((p) => value(p, spot, p.iv, nowMs));
@@ -97,6 +106,7 @@ export function portfolioMargin(
       const sign = p.side === 'long' ? 1 : -1;
       pnl += sign * (v - base[i]!) * p.lots * contractValue;
     });
+    pnl += futuresLots * contractValue * (s - spot);
     return pnl;
   };
 
@@ -133,6 +143,7 @@ export function portfolioMargin(
 
   // only positions with a sold leg are scaled: a bought option's margin is simply the premium paid, which the model already gets right
   const k = shorts.length ? MARGIN_CALIBRATION : 1;
+  const futBuffer = futNotional * FUTURES_BUFFER;
   const w = worst as PortfolioMarginResult['worstScenario'];
-  return { margin: Math.max(riskMargin, floor) * k, riskMargin: riskMargin * k, floor: floor * k, notional, spans, worstScenario: w ? { ...w, loss: w.loss * k } : null };
+  return { margin: Math.max(riskMargin, floor) * k + futBuffer, riskMargin: riskMargin * k, floor: floor * k, notional, spans, worstScenario: w ? { ...w, loss: w.loss * k } : null };
 }
