@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { findSensitive } from './sensitive.js';
+import { DOCS_INDEX } from './docs-index.generated.js';
 import { GLOSSARY } from './glossary.js';
 import { KNOWLEDGE_MIN_SCORE, chunkMarkdown, searchKnowledge, tokens, type KnowledgeEntry } from './knowledge.js';
 
@@ -88,16 +90,37 @@ describe('chunkMarkdown', () => {
   });
 });
 
-describe('the built docs index (frontend/public/data/knowledge.json)', () => {
-  const file = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../frontend/public/data/knowledge.json');
-  it('exists, is large enough, and answers questions from the real docs', () => {
-    const j = JSON.parse(fs.readFileSync(file, 'utf8')) as { entries: KnowledgeEntry[] };
-    expect(j.entries.length).toBeGreaterThan(100);
-    const all = [...GLOSSARY, ...j.entries];
-    expect(top('where do the data caches live on the oracle vm deployment', j.entries)).toBeDefined();
-    expect(top('what is the stop rate on thursdays', all)).toBeDefined();
-    expect(new Set(j.entries.map((e) => e.source)).has('PRODUCTION_STRATEGY_REFERENCE_STAGE1_7.md')).toBe(true);
-    expect(j.entries.some((e) => e.id.startsWith('rulebook:'))).toBe(true);
+describe('the built docs index (compiled into the server)', () => {
+  it('is large enough and answers questions from the real design docs', () => {
+    expect(DOCS_INDEX.length).toBeGreaterThan(100);
+    expect(top('what is the stop rate on thursdays', [...GLOSSARY, ...DOCS_INDEX])).toBeDefined();
+    expect(new Set(DOCS_INDEX.map((e) => e.source)).has('PRODUCTION_STRATEGY_REFERENCE_STAGE1_7.md')).toBe(true);
+    expect(DOCS_INDEX.some((e) => e.id.startsWith('rulebook:'))).toBe(true);
+  });
+
+  it('leaves out the deployment and operations documents', () => {
+    const sources = new Set(DOCS_INDEX.map((e) => e.source));
+    for (const s of ['DEPLOY_ORACLE.md', 'OPERATIONS_HANDOFF.md', 'MIGRATION.md']) expect(sources.has(s), s).toBe(false);
+  });
+
+  it('contains nothing that looks like an address, an SSH login, a key path, a connection string or a token', () => {
+    const bad = DOCS_INDEX.flatMap((e) => findSensitive(`${e.title}\n${e.text}`).map((p) => `${e.id}: ${p}`));
+    expect(bad).toEqual([]);
+    const glossaryBad = GLOSSARY.flatMap((e) => findSensitive(`${e.title}\n${e.text}`).map((p) => `${e.id}: ${p}`));
+    expect(glossaryBad).toEqual([]);
+  });
+
+  it('the sensitive-text detector catches the things it is meant to', () => {
+    expect(findSensitive('ssh -i ~/.ssh/oracle_key ubuntu@host')).toEqual(expect.arrayContaining(['SSH target', 'SSH key path']));
+    expect(findSensitive('connect to 192.168.1.20')).toContain('IPv4 address');
+    expect(findSensitive('postgres://user:pw@db.example.com/x')).toContain('connection string');
+    expect(findSensitive('https://my.duckdns.org/x')).toContain('duckdns host');
+    expect(findSensitive('the Binance stream btcusdt@aggTrade is fine')).toEqual([]);
+  });
+
+  it('is never published as a file in the public web folder', () => {
+    const pub = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../frontend/public/data');
+    expect(fs.readdirSync(pub).filter((f) => /knowledge/i.test(f))).toEqual([]);
   });
 });
 
