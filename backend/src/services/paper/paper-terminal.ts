@@ -5,6 +5,7 @@ import {
   unrealized, validateOrder, walk, type AccountView, type Instrument, type MarginMode, type OrderReq, type PayoffLeg, type Position, type Quote, type Side,
 } from '../../lib/bot/paper-terminal.js';
 import { portfolioMargin } from '../../lib/bot/portfolio-margin.js';
+import { DAY, istDateKey, istMidnightMs } from '../../lib/bot/schedule.js';
 import { parseExpiry } from '../bot/delta-public.js';
 import { DeltaMarket, type MarketProvider, type MarketSnapshot } from './market.js';
 
@@ -1030,6 +1031,43 @@ export class PaperTerminal {
       [status, limit],
     );
     return (r.rows as any[]).map(mapOrder);
+  }
+
+  /**
+   * PnL for the top of the Paper page, options and futures apart. Closed PnL is realised minus fees on every fill (so an entry fee counts the moment it is paid);
+   * open PnL is the unrealised PnL of what is still held. Together they equal equity minus the starting balance, which is the Account PnL line.
+   */
+  async pnl() {
+    const a: any = await this.account();
+    await ensurePaperSchema();
+    const now = Date.now();
+    const dayStart = istMidnightMs(istDateKey(now));
+    const r = await pool.query(
+      `SELECT kind, COUNT(*) FILTER (WHERE realized <> 0)::int AS closes, COUNT(*) FILTER (WHERE realized <> 0 AND realized - fee > 0)::int AS wins,
+              COALESCE(SUM(realized - fee), 0)::float AS total,
+              COALESCE(SUM(realized - fee) FILTER (WHERE at >= to_timestamp($1 / 1000.0)), 0)::float AS today,
+              COALESCE(SUM(realized - fee) FILTER (WHERE at >= to_timestamp($2 / 1000.0)), 0)::float AS week,
+              COUNT(*) FILTER (WHERE realized <> 0 AND at >= to_timestamp($1 / 1000.0))::int AS today_closes
+         FROM paper_fills GROUP BY kind`,
+      [dayStart, now - 7 * DAY],
+    );
+    const openStrategies = Number(((await pool.query(`SELECT COUNT(*)::int AS n FROM paper_strategies WHERE status = 'open'`)).rows[0] as any)?.n ?? 0);
+    const positions = (a.positions ?? []) as Array<{ kind: string; unrealized: number | null }>;
+    const side = (fut: boolean) => {
+      const row = (r.rows as any[]).find((x) => (x.kind === 'perp') === fut);
+      const held = positions.filter((p) => (p.kind === 'perp') === fut);
+      return {
+        openCount: fut ? held.length : Math.max(openStrategies, held.length ? 1 : 0),
+        openPnl: held.reduce((s, p) => s + (p.unrealized ?? 0), 0), openKnown: held.every((p) => p.unrealized != null),
+        today: row ? Number(row.today) : 0, todayCloses: row ? Number(row.today_closes) : 0, week: row ? Number(row.week) : 0,
+        total: row ? Number(row.total) : 0, closes: row ? Number(row.closes) : 0, wins: row ? Number(row.wins) : 0,
+      };
+    };
+    const v = a.view;
+    return {
+      account: v ? { pnl: v.equity - a.account.startBalance, equity: v.equity, startBalance: a.account.startBalance, cash: a.account.cash, margin: v.margin, available: v.available } : null,
+      options: side(false), futures: side(true), marketError: a.marketError ?? null,
+    };
   }
 
   async fills(limit: number) {

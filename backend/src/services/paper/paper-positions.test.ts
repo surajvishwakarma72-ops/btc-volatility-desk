@@ -181,4 +181,28 @@ describe('strategy positions', () => {
     expect(s.open).toHaveLength(0);
     expect(s.closed).toHaveLength(0);
   });
+
+  it('pnl splits options from futures, and account pnl = realised - fees + open pnl, before and after closing', async () => {
+    const r: any = await t.placeBasket(strangle());
+    await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100, leverage: 10 });
+    mk.bump.set(sym('C', 84000), 3);
+    mk.px = 80_400;
+    let p: any = await t.pnl();
+    expect(p.options.openCount).toBe(1);
+    expect(p.futures.openCount).toBe(1);
+    expect(p.futures.openPnl).toBeGreaterThan(30); // 100 lots x 0.001 x ~400 up, less spread
+    expect(p.options.openPnl).toBeLessThan(0); // the short call got dearer
+    const closed = (x: any) => x.options.total + x.futures.total + x.options.openPnl + x.futures.openPnl;
+    expect(p.account.pnl).toBeCloseTo(closed(p), 6);
+    expect(p.options.today + p.futures.today).toBeCloseTo(p.options.total + p.futures.total, 9); // everything happened today
+
+    await t.closeStrategy(r.basketId);
+    p = await t.pnl();
+    expect(p.options.openCount).toBe(0);
+    expect(p.options.openPnl).toBe(0);
+    expect(p.options.closes).toBeGreaterThan(0);
+    expect(p.account.pnl).toBeCloseTo(closed(p), 6);
+    expect(p.options.total).toBeLessThan(0);
+    expect(p.futures.openCount).toBe(1); // the future is still open
+  });
 });

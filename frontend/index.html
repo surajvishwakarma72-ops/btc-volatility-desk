@@ -58547,8 +58547,34 @@ document.addEventListener('click', function(e) {
 #pgPaper .pp-strat-net b{font-size:26px;font-variant-numeric:tabular-nums}
 #pgPaper .pp-strat-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
 #pgPaper button.pp-btn.danger{border-color:var(--up);color:var(--up)}
+#pgPaper .pnl-acct{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:baseline;margin:0 0 8px;font-size:13px}
+#pgPaper .pnl-acct>span:first-child{font-size:15px}
+#pgPaper .pnl-acct b{font-variant-numeric:tabular-nums}
+#pgPaper .pnl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 10px}
+#pgPaper .pnl-grid .pp-card{margin:0}
+#pgPaper .pnl-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+#pgPaper .pnl-t{font:700 12px var(--font);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+#pgPaper .pnl-big{font:800 30px/1.1 var(--font);margin:4px 0 8px;font-variant-numeric:tabular-nums}
+#pgPaper .pnl-big .dim{font:600 12px var(--font)}
+#pgPaper .pnl-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 10px}
+#pgPaper .pnl-row div{display:flex;flex-direction:column;gap:1px;font-size:13px}
+#pgPaper .pnl-row .dim{font-size:11px}
+@media (max-width:760px){#pgPaper .pnl-grid{grid-template-columns:1fr}#pgPaper .pnl-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
 #pgPaper .pp-futgrid{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:14px;align-items:start}
-@media (max-width:760px){#pgPaper .pp-futgrid{grid-template-columns:1fr}}
+@media (max-width:760px){#pgPaper .pnl-acct{display:flex;flex-wrap:wrap;gap:4px 18px;align-items:baseline;margin:0 0 8px;font-size:13px}
+#pgPaper .pnl-acct>span:first-child{font-size:15px}
+#pgPaper .pnl-acct b{font-variant-numeric:tabular-nums}
+#pgPaper .pnl-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 0 10px}
+#pgPaper .pnl-grid .pp-card{margin:0}
+#pgPaper .pnl-h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+#pgPaper .pnl-t{font:700 12px var(--font);letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+#pgPaper .pnl-big{font:800 30px/1.1 var(--font);margin:4px 0 8px;font-variant-numeric:tabular-nums}
+#pgPaper .pnl-big .dim{font:600 12px var(--font)}
+#pgPaper .pnl-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px 10px}
+#pgPaper .pnl-row div{display:flex;flex-direction:column;gap:1px;font-size:13px}
+#pgPaper .pnl-row .dim{font-size:11px}
+@media (max-width:760px){#pgPaper .pnl-grid{grid-template-columns:1fr}#pgPaper .pnl-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#pgPaper .pp-futgrid{grid-template-columns:1fr}}
 #pgPaper details>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
 @media (max-width:760px){#pgPaper .opt{display:none}#pgPaper .pp-strat-net{align-items:flex-start}}
 @media (max-width:980px){#pgPaper .pp-cols{grid-template-columns:1fr}}
@@ -58572,7 +58598,7 @@ document.addEventListener('click', function(e) {
   const STOP_MULT = 2;
 
   const S = {
-    acct: null, board: null, expiry: null, strat: { open: [], closed: [] }, flow: null, flowAt: 0, flowErr: null,
+    acct: null, board: null, expiry: null, pnl: null, strat: { open: [], closed: [] }, flow: null, flowAt: 0, flowErr: null,
     sb: { legs: [], baseLots: 100, preview: null, busy: false, msg: null, tpl: 3 },
     fut: { side: 'buy', type: 'market', lots: '100', price: '', lev: 10, tp: '', sl: '', preview: null, busy: false, msg: null },
     edit: null, arm: null, smsg: null, msg: null, loginErr: null, err: null, scrolled: false, built: false, closedSig: '',
@@ -58607,7 +58633,7 @@ document.addEventListener('click', function(e) {
   function build() {
     root.innerHTML = '<div class="pp"><div class="pp-top"><h2>Paper Trade</h2><span id="ppHead" class="pp-sp"></span><span id="ppBtns"></span></div>' +
       '<div class="pp-note" style="margin:-4px 0 10px">Fake money, real Delta order books. Three steps: pick strikes on the chain, check the margin, execute. Every strategy gets a stop on each sold leg, and if any leg hits its stop the whole strategy is closed. Separate from the bot; it cannot place a real order.</div>' +
-      '<div id="ppLogin"></div>' +
+      '<div id="ppLogin"></div><div id="ppPnl"></div>' +
       '<div class="pp-card"><h3><span class="pp-step">1</span> Pick strikes on the option chain</h3>' +
       '<div class="pp-bar"><label>Expiry <select id="ppExp" class="pp-in" style="width:auto"></select></label><label>Lots per new leg <input type="number" id="ppBase" class="pp-in" style="width:90px" min="1" step="1" value="100"></label><span class="pp-note" id="ppBoardAt"></span></div>' +
       '<div class="pp-scroll board" id="ppBoard"></div>' +
@@ -58632,13 +58658,29 @@ document.addEventListener('click', function(e) {
 
   function renderHead() {
     const a = S.acct, v = a && a.view, ac = a && a.account;
-    const openPnl = S.strat.open.reduce((s, x) => s + (x.netPnl || 0), 0);
     $('ppHead').innerHTML = !ac ? '' : [
       ['Equity', v ? usd(v.equity) : '-', ''], ['Available', v ? usd(v.available) : '-', v && v.available < 0 ? 'warn' : ''], ['Margin used', v ? usd(v.margin) : '-', ''],
-      ['Open strategies PnL', usd(openPnl), ''], ['Realised', usd(ac.realizedTotal), ''], ['Fees paid', usd(ac.feesTotal), ''],
     ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ');
     const mm = (a && a.marginMode) || 'portfolio';
     $('ppBtns').innerHTML = tok() ? '<span class="pp-seg" title="Portfolio margin nets hedged option legs together (condors and spreads need little margin). Standard margin charges every short option on its own."><button type="button" data-pp-mode="portfolio" class="' + (mm === 'portfolio' ? 'on' : '') + '">Portfolio margin</button><button type="button" data-pp-mode="standard" class="' + (mm === 'standard' ? 'on' : '') + '">Standard margin</button></span> <button type="button" class="pp-btn" data-pp-act="reset">Reset account</button>' : '';
+  }
+
+  /** PnL at the very top: the account line, then options and futures each with today, open now, 7 days and all closed. */
+  function renderPnl() {
+    const el = $('ppPnl'); if (!el) return;
+    const P = S.pnl; if (!P || !tok()) { el.innerHTML = ''; return; }
+    const box = (title, x, note) => {
+      const now = x.today + (x.openPnl || 0), win = x.closes ? Math.round(x.wins / x.closes * 100) + '%' : '-';
+      return '<div class="pp-card pnl-box"><div class="pnl-h"><span class="pnl-t">' + title + '</span><span class="dim">' + note + '</span></div>' +
+        '<div class="pnl-big ' + sgn(now) + '">' + usd(now) + '<span class="dim"> today</span></div>' +
+        '<div class="pnl-row"><div><span class="dim">Open now (' + x.openCount + ')</span><b class="' + sgn(x.openPnl) + '">' + usd(x.openPnl) + '</b></div>' +
+        '<div><span class="dim">Closed today (' + x.todayCloses + ')</span><b class="' + sgn(x.today) + '">' + usd(x.today) + '</b></div>' +
+        '<div><span class="dim">Last 7 days</span><b class="' + sgn(x.week) + '">' + usd(x.week) + '</b></div>' +
+        '<div><span class="dim">All closed (' + x.closes + ', win ' + win + ')</span><b class="' + sgn(x.total) + '">' + usd(x.total) + '</b></div></div></div>';
+    };
+    const a = P.account;
+    const line = a ? '<div class="pnl-acct"><span>Account PnL <b class="' + sgn(a.pnl) + '">' + usd(a.pnl) + '</b> <span class="dim">(' + (a.startBalance ? (a.pnl / a.startBalance * 100).toFixed(2) : '0.00') + '% of ' + usd(a.startBalance, 0) + ')</span></span><span class="dim">Equity <b>' + usd(a.equity) + '</b></span><span class="dim">Cash <b>' + usd(a.cash) + '</b></span><span class="dim">Margin used <b>' + usd(a.margin) + '</b></span><span class="dim">Available <b>' + usd(a.available) + '</b></span></div>' : '';
+    el.innerHTML = line + '<div class="pnl-grid">' + box('Options PnL', P.options, 'strategies and option positions') + box('Futures PnL', P.futures, 'BTC perpetual') + '</div>';
   }
 
   function renderBoard() {
@@ -58999,7 +59041,7 @@ document.addEventListener('click', function(e) {
   /* ---------- data ---------- */
   function drawAll() {
     if (!S.built) build();
-    renderLogin(); renderHead(); renderBoard(); renderStrats(); renderFut(); renderClosed(); renderAcct(); updateLegQuotes();
+    renderLogin(); renderHead(); renderPnl(); renderBoard(); renderStrats(); renderFut(); renderClosed(); renderAcct(); updateLegQuotes();
     if (!$('ppSbSum')) renderBuilder();
   }
   let busy = false;
@@ -59009,8 +59051,8 @@ document.addEventListener('click', function(e) {
     try {
       S.err = null;
       const lots = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 100);
-      const [a, b, st] = await Promise.all([api('/account'), api('/board?lots=' + lots + (S.expiry ? '&expiry=' + S.expiry : '')), api('/strategies')]);
-      S.acct = a; S.board = b; S.expiry = b.expiry; S.strat = { open: st.open || [], closed: st.closed || [] };
+      const [a, b, st, pn] = await Promise.all([api('/account'), api('/board?lots=' + lots + (S.expiry ? '&expiry=' + S.expiry : '')), api('/strategies'), api('/pnl').catch(() => null)]);
+      S.acct = a; S.board = b; S.pnl = pn; S.expiry = b.expiry; S.strat = { open: st.open || [], closed: st.closed || [] };
       if (Date.now() - S.flowAt > 60000) loadFlow();
     } catch (e) { S.err = e.message; if (e.status === 401) { S.acct = null; } }
     busy = false; drawAll();

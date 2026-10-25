@@ -43,6 +43,15 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // PnL panels at the top of the page: options and futures, open now / today / 7 days / all closed, plus the account line.
+  fastify.get('/pnl', auth, async (_req, reply) => {
+    try {
+      return { success: true, ...(await paperTerminal.pnl()) };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
   // The option board for one expiry, strike by strike with calls and puts side by side.
   fastify.get('/board', auth, async (req, reply) => {
     try {
