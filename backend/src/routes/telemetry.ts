@@ -1,3 +1,4 @@
+import { requireAdmin } from '../lib/guards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { db, sessionAuditLogs, recalibrationAudits } from '../db/index.js';
 import { desc, eq } from 'drizzle-orm';
@@ -87,7 +88,7 @@ export const telemetryRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/telemetry/recalibrate - Run scheduled/manual Bonferroni + OOS recalibration
-  fastify.post('/recalibrate', async (request, reply) => {
+  fastify.post('/recalibrate', { preHandler: requireAdmin }, async (request, reply) => {
     try {
       const result = await runAutomatedRecalibration();
       return {

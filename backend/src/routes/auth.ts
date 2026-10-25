@@ -67,8 +67,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const b = signupBody.safeParse(request.body);
     if (!b.success) return reply.status(400).send({ success: false, error: b.error.issues[0]?.message ?? 'invalid sign-up details' });
     const { email, password, displayName, inviteCode } = b.data;
-    if (await findUserByEmail(email)) return reply.status(409).send({ success: false, error: 'That email already has an account' });
+    // the invite is checked first, so a stranger without one learns nothing about which emails have accounts
     if (!(await consumeInvite(inviteCode))) return reply.status(403).send({ success: false, error: 'That invite code is not valid (unknown, used up or revoked)' });
+    if (await findUserByEmail(email)) {
+      await returnInvite(inviteCode);
+      return reply.status(409).send({ success: false, error: 'That email already has an account' });
+    }
     const u = await createUser(email, await hashPassword(password), displayName);
     if (!u) {
       await returnInvite(inviteCode); // lost a race on the same email: give the use back

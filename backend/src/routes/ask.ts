@@ -1,3 +1,5 @@
+import { userId } from '../lib/guards.js';
+import { isOwner } from './delta.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { SUGGESTIONS } from '../lib/ask/parse.js';
@@ -38,10 +40,13 @@ export const notesStore = {
   },
 };
 
-export function buildContext(): AskContext {
+export function buildContext(who?: { userId: string; owner: boolean }): AskContext {
+  const owner = who ? who.owner : true;
   return {
     now: Date.now(),
-    notes: notesStore,
+    userId: who?.userId,
+    owner,
+    notes: owner ? notesStore : undefined, // teaching notes are the owner's
     // compiled into the server (see scripts/build-knowledge.ts); never read from the public web folder
     knowledge: () => [...GLOSSARY, ...DOCS_INDEX],
     q: async (sql, params) => (await pool.query(sql, params as never)).rows,
@@ -81,7 +86,7 @@ export const askRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       await ensureBotSchema();
     } catch { /* answers about other tables can still work */ }
-    const a = await answer(body.data.question, buildContext());
+    const a = await answer(body.data.question, buildContext({ userId: userId(req), owner: isOwner(req) }));
     return { success: true, ...a };
   });
 };

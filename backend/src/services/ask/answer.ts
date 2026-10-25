@@ -23,6 +23,9 @@ export interface Answer {
 
 export interface AskContext {
   q(sql: string, params?: unknown[]): Promise<Array<Record<string, any>>>;
+  /** The signed-in user (their own paper account) and whether they are the desk owner (personal journal tables, teaching notes). */
+  userId?: string;
+  owner?: boolean;
   now: number;
   live: {
     botEnabled(): boolean;
@@ -545,11 +548,12 @@ async function learning(_p: Parsed, c: AskContext): Promise<Answer> {
 }
 
 async function paper(_p: Parsed, c: AskContext): Promise<Answer> {
+  const mine = c.userId ?? '00000000-0000-0000-0000-000000000001';
   const [acct, pos, work, fills] = await Promise.all([
-    c.q('SELECT cash::float AS cash, start_balance::float AS start, realized_total::float AS realized, fees_total::float AS fees FROM paper_account WHERE id = 1'),
-    c.q('SELECT symbol, lots, avg_entry::float AS avg_entry, leverage FROM paper_positions ORDER BY symbol'),
-    c.q("SELECT symbol, side, otype, lots, filled_lots, price::float AS price, stop_price::float AS stop_price, reduce_only FROM paper_orders WHERE status = 'working' ORDER BY created_at"),
-    c.q('SELECT at, symbol, side, lots, price::float AS price, fee::float AS fee, maker, realized::float AS realized FROM paper_fills ORDER BY at DESC, id DESC LIMIT 5'),
+    c.q('SELECT cash::float AS cash, start_balance::float AS start, realized_total::float AS realized, fees_total::float AS fees FROM paper_account WHERE account_id = $1', [mine]),
+    c.q('SELECT symbol, lots, avg_entry::float AS avg_entry, leverage FROM paper_positions WHERE account_id = $1 ORDER BY symbol', [mine]),
+    c.q("SELECT symbol, side, otype, lots, filled_lots, price::float AS price, stop_price::float AS stop_price, reduce_only FROM paper_orders WHERE account_id = $1 AND status = 'working' ORDER BY created_at", [mine]),
+    c.q('SELECT at, symbol, side, lots, price::float AS price, fee::float AS fee, maker, realized::float AS realized FROM paper_fills WHERE account_id = $1 ORDER BY at DESC, id DESC LIMIT 5', [mine]),
   ]);
   const a = acct[0];
   if (!a) return { intent: 'paper', sources: ['paper_account'], text: 'Your paper account has not been opened yet. Open the Paper page: it starts with $10,000 of fake cash, and every order you place there is recorded here.' };

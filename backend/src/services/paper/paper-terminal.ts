@@ -6,6 +6,7 @@ import {
 } from '../../lib/bot/paper-terminal.js';
 import { portfolioMargin } from '../../lib/bot/portfolio-margin.js';
 import { DAY, istDateKey, istMidnightMs } from '../../lib/bot/schedule.js';
+import { DESK_USER_ID } from '../auth-store.js';
 import { parseExpiry } from '../bot/delta-public.js';
 import { DeltaMarket, type MarketProvider, type MarketSnapshot } from './market.js';
 
@@ -96,6 +97,18 @@ CREATE TABLE IF NOT EXISTS paper_strategy_legs (
   exit_fee numeric NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS paper_strategy_legs_idx ON paper_strategy_legs (strategy_id);
+ALTER TABLE paper_account ADD COLUMN IF NOT EXISTS account_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001';
+ALTER TABLE paper_account DROP CONSTRAINT IF EXISTS paper_account_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS paper_account_acct ON paper_account (account_id);
+ALTER TABLE paper_positions ADD COLUMN IF NOT EXISTS account_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001';
+ALTER TABLE paper_positions DROP CONSTRAINT IF EXISTS paper_positions_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS paper_positions_acct_symbol ON paper_positions (account_id, symbol);
+ALTER TABLE paper_orders ADD COLUMN IF NOT EXISTS account_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001';
+ALTER TABLE paper_fills ADD COLUMN IF NOT EXISTS account_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001';
+ALTER TABLE paper_strategies ADD COLUMN IF NOT EXISTS account_id uuid NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001';
+CREATE INDEX IF NOT EXISTS paper_orders_acct ON paper_orders (account_id, status);
+CREATE INDEX IF NOT EXISTS paper_fills_acct ON paper_fills (account_id, at);
+CREATE INDEX IF NOT EXISTS paper_strategies_acct ON paper_strategies (account_id, status);
 `;
 
 const START_BALANCE = Number(process.env.PAPER_START_USD ?? 10_000);
@@ -200,7 +213,12 @@ export class PaperTerminal {
   /** Nothing is open or working, so the 5-second tick does not touch the database or the market until an order is placed. */
   private idle = false;
 
-  constructor(private readonly market: MarketProvider = new DeltaMarket()) {}
+  constructor(private readonly market: MarketProvider = sharedMarket(), readonly accountId: string = DESK_USER_ID) {}
+
+  /** True while this account has something open or working, so the shared timer knows to tick it. */
+  get active(): boolean {
+    return !this.idle;
+  }
 
   get enabled(): boolean {
     return process.env.PAPER_TERMINAL !== 'false';
@@ -208,7 +226,8 @@ export class PaperTerminal {
 
   start(): void {
     if (!this.enabled || this.timer) return;
-    this.timer = setInterval(() => void this.tick(), 5_000);
+    this.timer = setInterval(() => void tickAllPaper(), 5_000);
+    void discoverActiveAccounts().catch(() => undefined);
     void this.quick().catch(() => undefined); // the first visit finds the chain already loaded
   }
 
@@ -231,8 +250,8 @@ export class PaperTerminal {
     await ensurePaperSchema();
     if (this.accountReady) return;
     await pool.query(
-      `INSERT INTO paper_account (id, cash, start_balance) VALUES (1, $1, $1) ON CONFLICT (id) DO NOTHING`,
-      [START_BALANCE],
+      `INSERT INTO paper_account (account_id, cash, start_balance) VALUES ($2, $1, $1) ON CONFLICT (account_id) DO NOTHING`,
+      [START_BALANCE, this.accountId],
     );
     this.accountReady = true;
   }
@@ -244,9 +263,9 @@ export class PaperTerminal {
 
   private async load(): Promise<State> {
     const [a, p, w] = await Promise.all([
-      pool.query('SELECT * FROM paper_account WHERE id = 1'),
-      pool.query('SELECT * FROM paper_positions'),
-      pool.query(`SELECT * FROM paper_orders WHERE status = 'working' ORDER BY created_at, id`),
+      pool.query('SELECT * FROM paper_account WHERE account_id = $1', [this.accountId]),
+      pool.query('SELECT * FROM paper_positions WHERE account_id = $1', [this.accountId]),
+      pool.query(`SELECT * FROM paper_orders WHERE account_id = $1 AND status = 'working' ORDER BY created_at, id`, [this.accountId]),
     ]);
     const acct = a.rows[0]!;
     return {
@@ -301,24 +320,24 @@ export class PaperTerminal {
     const sym = inst.symbol;
     const slip = maker || !Number.isFinite(bestPrice) ? 0 : Math.abs(price - bestPrice) * lots * inst.contractValue;
     await pool.query(
-      `INSERT INTO paper_fills (order_id, symbol, kind, side, lots, price, fee, maker, slippage_usd, realized, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [o.id, sym, inst.kind, o.side, lots, price, sim.fee, maker, slip, sim.realized, note ?? null],
+      `INSERT INTO paper_fills (order_id, symbol, kind, side, lots, price, fee, maker, slippage_usd, realized, note, account_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      [o.id, sym, inst.kind, o.side, lots, price, sim.fee, maker, slip, sim.realized, note ?? null, this.accountId],
     );
     if (sim.newPos) {
       await pool.query(
-        `INSERT INTO paper_positions (symbol, kind, lots, avg_entry, leverage, realized) VALUES ($1,$2,$3,$4,$5,$6)
-         ON CONFLICT (symbol) DO UPDATE SET lots = EXCLUDED.lots, avg_entry = EXCLUDED.avg_entry, leverage = EXCLUDED.leverage, realized = EXCLUDED.realized,
+        `INSERT INTO paper_positions (symbol, kind, lots, avg_entry, leverage, realized, account_id) VALUES ($1,$2,$3,$4,$5,$6,$7)
+         ON CONFLICT (account_id, symbol) DO UPDATE SET lots = EXCLUDED.lots, avg_entry = EXCLUDED.avg_entry, leverage = EXCLUDED.leverage, realized = EXCLUDED.realized,
            opened_at = CASE WHEN paper_positions.lots = 0 THEN now() ELSE paper_positions.opened_at END`,
-        [sym, inst.kind, sim.newPos.lots, sim.newPos.avgEntry, sim.newPos.leverage, sim.newPos.realized],
+        [sym, inst.kind, sim.newPos.lots, sim.newPos.avgEntry, sim.newPos.leverage, sim.newPos.realized, this.accountId],
       );
       st.positions.set(sym, sim.newPos);
     } else {
-      await pool.query('DELETE FROM paper_positions WHERE symbol = $1', [sym]);
+      await pool.query('DELETE FROM paper_positions WHERE symbol = $1 AND account_id = $2', [sym, this.accountId]);
       st.positions.delete(sym);
     }
     await pool.query(
-      `UPDATE paper_account SET cash = $1, realized_total = realized_total + $2, fees_total = fees_total + $3, updated_at = now() WHERE id = 1`,
-      [sim.cashAfter, sim.realized, sim.fee],
+      `UPDATE paper_account SET cash = $1, realized_total = realized_total + $2, fees_total = fees_total + $3, updated_at = now() WHERE account_id = $4`,
+      [sim.cashAfter, sim.realized, sim.fee, this.accountId],
     );
     st.cash = sim.cashAfter;
     st.realizedTotal += sim.realized;
@@ -410,9 +429,9 @@ export class PaperTerminal {
           reduceOnly: !!req.reduceOnly, leverage: req.leverage ?? null, status: 'working', avgPrice: null, fee: 0, reason: null, ocoGroup: null, basketId: null, ...extra,
         };
         await pool.query(
-          `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, price, stop_price, reduce_only, leverage, status, reason, oco_group)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-          [o.id, o.symbol, o.kind, o.side, o.type, o.lots, o.price, o.stopPrice, o.reduceOnly, o.leverage, o.status, o.reason, o.ocoGroup],
+          `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, price, stop_price, reduce_only, leverage, status, reason, oco_group, account_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [o.id, o.symbol, o.kind, o.side, o.type, o.lots, o.price, o.stopPrice, o.reduceOnly, o.leverage, o.status, o.reason, o.ocoGroup, this.accountId],
         );
         return o;
       };
@@ -484,9 +503,9 @@ export class PaperTerminal {
         reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'bracket exit', ocoGroup: group, basketId: null,
       };
       await pool.query(
-        `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, price, stop_price, reduce_only, leverage, status, reason, oco_group)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,NULL,'working',$9,$10)`,
-        [c.id, c.symbol, c.kind, c.side, c.type, c.lots, c.price, c.stopPrice, c.reason, c.ocoGroup],
+        `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, price, stop_price, reduce_only, leverage, status, reason, oco_group, account_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,true,NULL,'working',$9,$10,$11)`,
+        [c.id, c.symbol, c.kind, c.side, c.type, c.lots, c.price, c.stopPrice, c.reason, c.ocoGroup, this.accountId],
       );
       st.working.push(c);
       out.push(c);
@@ -499,10 +518,10 @@ export class PaperTerminal {
   cancel(id: string) {
     return this.serial(async () => {
       await this.ensure();
-      const r = await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'cancelled by you', updated_at = now() WHERE id = $1 AND status = 'working' RETURNING id, oco_group`, [id]);
+      const r = await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'cancelled by you', updated_at = now() WHERE id = $1 AND account_id = $2 AND status = 'working' RETURNING id, oco_group`, [id, this.accountId]);
       if (!r.rowCount) return false;
       const g = (r.rows[0] as any).oco_group;
-      if (g) await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'cancelled with its bracket partner', updated_at = now() WHERE oco_group = $1 AND status = 'working'`, [g]);
+      if (g) await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'cancelled with its bracket partner', updated_at = now() WHERE oco_group = $1 AND account_id = $2 AND status = 'working'`, [g, this.accountId]);
       return true;
     });
   }
@@ -510,7 +529,7 @@ export class PaperTerminal {
   cancelAll() {
     return this.serial(async () => {
       await this.ensure();
-      const r = await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'cancelled by you', updated_at = now() WHERE status = 'working'`);
+      const r = await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'cancelled by you', updated_at = now() WHERE account_id = $1 AND status = 'working'`, [this.accountId]);
       return r.rowCount ?? 0;
     });
   }
@@ -527,7 +546,7 @@ export class PaperTerminal {
       if (pos) {
         const test = this.view(st, [{ ...pos, leverage }, ...[...st.positions.values()].filter((p) => p.symbol !== symbol)], snap);
         if (test.available < -EPS) return { ok: false, reason: `${leverage}x would need ${money(test.margin)} margin, more than the ${money(test.equity)} equity you have` };
-        await pool.query('UPDATE paper_positions SET leverage = $2 WHERE symbol = $1', [symbol, leverage]);
+        await pool.query('UPDATE paper_positions SET leverage = $2 WHERE symbol = $1 AND account_id = $3', [symbol, leverage, this.accountId]);
       }
       return { ok: true };
     });
@@ -536,8 +555,12 @@ export class PaperTerminal {
   reset(balance: number) {
     return this.serial(async () => {
       await ensurePaperSchema();
-      await pool.query('DELETE FROM paper_fills; DELETE FROM paper_orders; DELETE FROM paper_positions; DELETE FROM paper_strategy_legs; DELETE FROM paper_strategies; DELETE FROM paper_account;');
-      await pool.query('INSERT INTO paper_account (id, cash, start_balance) VALUES (1, $1, $1)', [balance]);
+      const mine = [this.accountId];
+      await pool.query('DELETE FROM paper_strategy_legs WHERE strategy_id IN (SELECT id FROM paper_strategies WHERE account_id = $1)', mine);
+      for (const t of ['paper_fills', 'paper_orders', 'paper_positions', 'paper_strategies', 'paper_account']) await pool.query(`DELETE FROM ${t} WHERE account_id = $1`, mine);
+      await pool.query('INSERT INTO paper_account (account_id, cash, start_balance) VALUES ($2, $1, $1)', [balance, this.accountId]);
+      this.accountReady = true;
+      this.idle = false;
     });
   }
 
@@ -615,7 +638,7 @@ export class PaperTerminal {
           return { ok: false, reason: `${mode} margin would need ${money(v.margin)} for the positions you hold, more than the ${money(v.equity)} of equity. Close some positions first.` };
         }
       }
-      await pool.query('UPDATE paper_account SET margin_mode = $1, updated_at = now() WHERE id = 1', [mode]);
+      await pool.query('UPDATE paper_account SET margin_mode = $1, updated_at = now() WHERE account_id = $2', [mode, this.accountId]);
       return { ok: true, mode };
     });
   }
@@ -714,8 +737,8 @@ export class PaperTerminal {
           price: null, stopPrice: null, reduceOnly: false, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'strategy leg', ocoGroup: null, basketId,
         };
         await pool.query(
-          `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason, basket_id) VALUES ($1,$2,$3,$4,'market',$5,false,'working','strategy leg',$6)`,
-          [o.id, o.symbol, o.kind, o.side, o.lots, basketId],
+          `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason, basket_id, account_id) VALUES ($1,$2,$3,$4,'market',$5,false,'working','strategy leg',$6,$7)`,
+          [o.id, o.symbol, o.kind, o.side, o.lots, basketId, this.accountId],
         );
         // the whole package was checked together above, so each leg is applied without a separate margin test
         const lev = st.positions.get(o.symbol)?.leverage ?? DEFAULT_LEVERAGE;
@@ -726,8 +749,8 @@ export class PaperTerminal {
       }
       const label = name?.trim() || p.planned.map((l) => `${l.side === 'sell' ? 'S' : 'B'} ${l.inst.option ? `${l.inst.option.strike}${l.inst.option.type === 'call' ? 'C' : 'P'}` : l.inst.symbol}`).join(' · ');
       await pool.query(
-        `INSERT INTO paper_strategies (id, name, margin_at_entry, net_premium) VALUES ($1,$2,$3,$4)`,
-        [basketId, label.slice(0, 120), Math.max(p.view.margin - marginBefore, 0), p.netPremium],
+        `INSERT INTO paper_strategies (id, name, margin_at_entry, net_premium, account_id) VALUES ($1,$2,$3,$4,$5)`,
+        [basketId, label.slice(0, 120), Math.max(p.view.margin - marginBefore, 0), p.netPremium, this.accountId],
       );
       for (let i = 0; i < p.planned.length; i++) {
         const leg = p.planned[i]!;
@@ -772,8 +795,8 @@ export class PaperTerminal {
         reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'strategy close', ocoGroup: null, basketId: id,
       };
       await pool.query(
-        `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason, basket_id) VALUES ($1,$2,$3,$4,'market',$5,true,'working','strategy close',$6)`,
-        [o.id, o.symbol, o.kind, o.side, o.lots, id],
+        `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason, basket_id, account_id) VALUES ($1,$2,$3,$4,'market',$5,true,'working','strategy close',$6,$7)`,
+        [o.id, o.symbol, o.kind, o.side, o.lots, id, this.accountId],
       );
       await this.takeFromBook(st, o, inst, snap);
       if (o.filledLots < lots) {
@@ -792,7 +815,7 @@ export class PaperTerminal {
   closeStrategy(id: string, reason = 'closed by you') {
     return this.serial(async () => {
       await this.ensure();
-      const s = (await pool.query(`SELECT status FROM paper_strategies WHERE id = $1`, [id])).rows[0] as { status: string } | undefined;
+      const s = (await pool.query(`SELECT status FROM paper_strategies WHERE id = $1 AND account_id = $2`, [id, this.accountId])).rows[0] as { status: string } | undefined;
       if (!s) return { ok: false, reason: 'no strategy with that id' };
       if (s.status !== 'open') return { ok: false, reason: 'that strategy is already closed' };
       const snap = await this.market.snapshot(1_500);
@@ -807,7 +830,7 @@ export class PaperTerminal {
   setStops(id: string, stops: Array<{ symbol: string; stop: number | null }>) {
     return this.serial(async () => {
       await this.ensure();
-      const s = (await pool.query(`SELECT status FROM paper_strategies WHERE id = $1`, [id])).rows[0] as { status: string } | undefined;
+      const s = (await pool.query(`SELECT status FROM paper_strategies WHERE id = $1 AND account_id = $2`, [id, this.accountId])).rows[0] as { status: string } | undefined;
       if (!s) return { ok: false, reason: 'no strategy with that id' };
       if (s.status !== 'open') return { ok: false, reason: 'that strategy is already closed' };
       const legs = (await pool.query('SELECT * FROM paper_strategy_legs WHERE strategy_id = $1 AND exit_price IS NULL', [id])).rows as any[];
@@ -832,7 +855,8 @@ export class PaperTerminal {
   private async checkStops(st: State, snap: MarketSnapshot): Promise<void> {
     const rows = (await pool.query(
       `SELECT l.* FROM paper_strategy_legs l JOIN paper_strategies s ON s.id = l.strategy_id
-       WHERE s.status = 'open' AND l.exit_price IS NULL AND l.stop_price IS NOT NULL ORDER BY l.id`,
+       WHERE s.status = 'open' AND s.account_id = $1 AND l.exit_price IS NULL AND l.stop_price IS NOT NULL ORDER BY l.id`,
+      [this.accountId],
     )).rows as any[];
     if (!rows.length) return;
     const q = this.quoteFn(snap);
@@ -850,7 +874,7 @@ export class PaperTerminal {
 
   /** Strategies whose positions are gone (expired, settled, liquidated) are closed at their settlement or the mark. */
   private async syncStrategies(st: State, snap: MarketSnapshot): Promise<void> {
-    const open = (await pool.query(`SELECT DISTINCT l.strategy_id FROM paper_strategy_legs l JOIN paper_strategies s ON s.id = l.strategy_id WHERE s.status = 'open' AND l.exit_price IS NULL`)).rows as any[];
+    const open = (await pool.query(`SELECT DISTINCT l.strategy_id FROM paper_strategy_legs l JOIN paper_strategies s ON s.id = l.strategy_id WHERE s.status = 'open' AND s.account_id = $1 AND l.exit_price IS NULL`, [this.accountId])).rows as any[];
     for (const r of open) {
       const legs = (await pool.query('SELECT symbol FROM paper_strategy_legs WHERE strategy_id = $1 AND exit_price IS NULL', [r.strategy_id])).rows as any[];
       if (legs.every((l) => !st.positions.has(l.symbol))) {
@@ -865,9 +889,9 @@ export class PaperTerminal {
     return this.serial(async () => {
       await this.ensure();
       const ss = (await pool.query(
-        `SELECT * FROM paper_strategies WHERE status = 'open'
-         UNION ALL (SELECT * FROM paper_strategies WHERE status <> 'open' ORDER BY closed_at DESC LIMIT $1)`,
-        [closedLimit],
+        `SELECT * FROM paper_strategies WHERE account_id = $2 AND status = 'open'
+         UNION ALL (SELECT * FROM paper_strategies WHERE account_id = $2 AND status <> 'open' ORDER BY closed_at DESC LIMIT $1)`,
+        [closedLimit, this.accountId],
       )).rows as any[];
       if (!ss.length) return { open: [], closed: [], marketError: null as string | null };
       const ids = ss.map((s) => `'${String(s.id).replace(/[^0-9a-f-]/gi, '')}'`).join(',');
@@ -941,12 +965,12 @@ export class PaperTerminal {
       const side: Side = pos.lots > 0 ? 'sell' : 'buy';
       const cash = st.cash + (side === 'sell' ? 1 : -1) * px * Math.abs(pos.lots) * 0.001;
       await pool.query(
-        `INSERT INTO paper_fills (symbol, kind, side, lots, price, fee, maker, realized, note) VALUES ($1,'option',$2,$3,$4,0,false,$5,'expiry settlement at the index price')`,
-        [pos.symbol, side, Math.abs(pos.lots), px, realized],
+        `INSERT INTO paper_fills (symbol, kind, side, lots, price, fee, maker, realized, note, account_id) VALUES ($1,'option',$2,$3,$4,0,false,$5,'expiry settlement at the index price',$6)`,
+        [pos.symbol, side, Math.abs(pos.lots), px, realized, this.accountId],
       );
-      await pool.query('DELETE FROM paper_positions WHERE symbol = $1', [pos.symbol]);
-      await pool.query(`UPDATE paper_account SET cash = $1, realized_total = realized_total + $2, updated_at = now() WHERE id = 1`, [cash, realized]);
-      await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'contract expired', updated_at = now() WHERE symbol = $1 AND status = 'working'`, [pos.symbol]);
+      await pool.query('DELETE FROM paper_positions WHERE symbol = $1 AND account_id = $2', [pos.symbol, this.accountId]);
+      await pool.query(`UPDATE paper_account SET cash = $1, realized_total = realized_total + $2, updated_at = now() WHERE account_id = $3`, [cash, realized, this.accountId]);
+      await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'contract expired', updated_at = now() WHERE symbol = $1 AND account_id = $2 AND status = 'working'`, [pos.symbol, this.accountId]);
       st.cash = cash;
       st.realizedTotal += realized;
       st.positions.delete(pos.symbol);
@@ -1000,7 +1024,7 @@ export class PaperTerminal {
     st.working = st.working.filter((o) => o.status === 'working');
     const v = this.view(st, st.positions.values(), snap);
     if (!shouldLiquidate(v)) return;
-    await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'liquidation', updated_at = now() WHERE status = 'working'`);
+    await pool.query(`UPDATE paper_orders SET status = 'cancelled', reason = 'liquidation', updated_at = now() WHERE account_id = $1 AND status = 'working'`, [this.accountId]);
     st.working = [];
     const q = this.quoteFn(snap);
     for (const pos of [...st.positions.values()]) {
@@ -1014,8 +1038,8 @@ export class PaperTerminal {
         reduceOnly: true, leverage: null, status: 'working', avgPrice: null, fee: 0, reason: 'liquidation', ocoGroup: null, basketId: null,
       };
       await pool.query(
-        `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason) VALUES ($1,$2,$3,$4,'market',$5,true,'working','liquidation')`,
-        [o.id, o.symbol, o.kind, o.side, o.lots],
+        `INSERT INTO paper_orders (id, symbol, kind, side, otype, lots, reduce_only, status, reason, account_id) VALUES ($1,$2,$3,$4,'market',$5,true,'working','liquidation',$6)`,
+        [o.id, o.symbol, o.kind, o.side, o.lots, this.accountId],
       );
       const sim = this.simulate(st, inst, snap, side, o.lots, px, false, pos.leverage);
       await this.commit(st, o, inst, sim, o.lots, px, false, px, 'liquidation at the mark');
@@ -1027,8 +1051,8 @@ export class PaperTerminal {
   async orders(status: string | null, limit: number): Promise<OrderRow[]> {
     await ensurePaperSchema();
     const r = await pool.query(
-      `SELECT * FROM paper_orders WHERE lots > 0 AND ($1::text IS NULL OR status = $1) ORDER BY created_at DESC, id LIMIT $2`,
-      [status, limit],
+      `SELECT * FROM paper_orders WHERE account_id = $3 AND lots > 0 AND ($1::text IS NULL OR status = $1) ORDER BY created_at DESC, id LIMIT $2`,
+      [status, limit, this.accountId],
     );
     return (r.rows as any[]).map(mapOrder);
   }
@@ -1048,10 +1072,10 @@ export class PaperTerminal {
               COALESCE(SUM(realized - fee) FILTER (WHERE at >= to_timestamp($1 / 1000.0)), 0)::float AS today,
               COALESCE(SUM(realized - fee) FILTER (WHERE at >= to_timestamp($2 / 1000.0)), 0)::float AS week,
               COUNT(*) FILTER (WHERE realized <> 0 AND at >= to_timestamp($1 / 1000.0))::int AS today_closes
-         FROM paper_fills GROUP BY kind`,
-      [dayStart, now - 7 * DAY],
+         FROM paper_fills WHERE account_id = $3 GROUP BY kind`,
+      [dayStart, now - 7 * DAY, this.accountId],
     );
-    const openStrategies = Number(((await pool.query(`SELECT COUNT(*)::int AS n FROM paper_strategies WHERE status = 'open'`)).rows[0] as any)?.n ?? 0);
+    const openStrategies = Number(((await pool.query(`SELECT COUNT(*)::int AS n FROM paper_strategies WHERE status = 'open' AND account_id = $1`, [this.accountId])).rows[0] as any)?.n ?? 0);
     const positions = (a.positions ?? []) as Array<{ kind: string; unrealized: number | null }>;
     const side = (fut: boolean) => {
       const row = (r.rows as any[]).find((x) => (x.kind === 'perp') === fut);
@@ -1072,7 +1096,7 @@ export class PaperTerminal {
 
   async fills(limit: number) {
     await ensurePaperSchema();
-    const r = await pool.query('SELECT * FROM paper_fills ORDER BY at DESC, id DESC LIMIT $1', [limit]);
+    const r = await pool.query('SELECT * FROM paper_fills WHERE account_id = $2 ORDER BY at DESC, id DESC LIMIT $1', [limit, this.accountId]);
     return (r.rows as any[]).map((f) => ({
       id: Number(f.id), at: new Date(f.at).getTime(), orderId: f.order_id, symbol: f.symbol, kind: f.kind, side: f.side, lots: Number(f.lots), price: Number(f.price),
       fee: Number(f.fee), maker: !!f.maker, slippageUsd: Number(f.slippage_usd), realized: Number(f.realized), note: f.note,
@@ -1116,7 +1140,30 @@ export class PaperTerminal {
   }
 }
 
-export const paperTerminal = new PaperTerminal();
+// One market feed for everybody (so ten users cost one Delta fetch every 3 s) and one PaperTerminal per account.
+let sharedMarketFeed: DeltaMarket | null = null;
+function sharedMarket(): DeltaMarket {
+  return (sharedMarketFeed ??= new DeltaMarket());
+}
+const accounts = new Map<string, PaperTerminal>();
+export function paperFor(userId: string): PaperTerminal {
+  let t = accounts.get(userId);
+  if (!t) accounts.set(userId, (t = new PaperTerminal(sharedMarket(), userId)));
+  return t;
+}
+/** Every 5 seconds: only accounts that hold something are ticked, so stops, expiry and liquidation run for everyone, screen off. */
+export async function tickAllPaper(): Promise<void> {
+  await Promise.all([...accounts.values()].filter((a) => a.active).map((a) => a.tick()));
+}
+/** After a restart: find accounts with open positions, working orders or open strategies and wake them. */
+export async function discoverActiveAccounts(): Promise<void> {
+  await ensurePaperSchema();
+  const r = await pool.query(
+    `SELECT account_id FROM paper_positions UNION SELECT account_id FROM paper_orders WHERE status = 'working' UNION SELECT account_id FROM paper_strategies WHERE status = 'open'`,
+  );
+  for (const row of r.rows as Array<{ account_id: string }>) paperFor(row.account_id);
+}
+export const paperTerminal = paperFor(DESK_USER_ID);
 
 export interface BasketLeg {
   symbol: string;

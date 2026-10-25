@@ -49,7 +49,7 @@ describe('Macro Stress API (/api/v1/macro/stress)', () => {
 
   it('updates weights with a login, and refuses nonsense', async () => {
     const app = await build();
-    const h = { authorization: `Bearer ${app.jwt.sign({ sub: 't' })}` };
+    const h = { authorization: `Bearer ${app.jwt.sign({ sub: '00000000-0000-0000-0000-000000000001', role: 'admin' })}` };
     const ok = await app.inject({ method: 'POST', url: '/api/v1/macro/weights', headers: h, payload: { forex: 0.20, event: 0.25 } });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().weights.forex).toBe(0.20);

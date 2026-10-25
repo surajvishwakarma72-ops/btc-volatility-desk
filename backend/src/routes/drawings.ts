@@ -1,9 +1,9 @@
+import { userId } from '../lib/guards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import { db, chartDrawings } from '../db/index.js';
 import { drawingsQuery, idParam, drawingCreate, drawingUpdate } from '../schemas.js';
 
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * Chart Drawings & Annotations Routes
@@ -15,6 +15,8 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  * - DELETE /api/v1/drawings/:id       Delete drawing
  */
 export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook('preHandler', (fastify as any).authenticate); // everything here is somebody's own data
+
   // GET /api/v1/drawings - List drawings
   fastify.get('/', { schema: { querystring: drawingsQuery } }, async (request) => {
     const { symbol = 'BTCUSDT' } = request.query as { symbol?: string };
@@ -22,7 +24,7 @@ export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
     const drawings = await db
       .select()
       .from(chartDrawings)
-      .where(and(eq(chartDrawings.userId, DEFAULT_USER_ID), eq(chartDrawings.symbol, symbol)));
+      .where(and(eq(chartDrawings.userId, userId(request)), eq(chartDrawings.symbol, symbol)));
 
     return {
       success: true,
@@ -37,7 +39,7 @@ export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
 
     const newDrawing = {
       id: crypto.randomUUID(),
-      userId: DEFAULT_USER_ID,
+      userId: userId(request),
       symbol: body.symbol || 'BTCUSDT',
       drawingType: body.drawingType || 'HORIZONTAL_RAY',
       points: body.points,
@@ -71,7 +73,7 @@ export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
     const updated = await db
       .update(chartDrawings)
       .set(updates)
-      .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, DEFAULT_USER_ID)))
+      .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, userId(request))))
       .returning();
 
     if (!updated.length) {
@@ -90,7 +92,7 @@ export const drawingRoutes: FastifyPluginAsync = async (fastify) => {
 
     const deleted = await db
       .delete(chartDrawings)
-      .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, DEFAULT_USER_ID)))
+      .where(and(eq(chartDrawings.id, id), eq(chartDrawings.userId, userId(request))))
       .returning({ id: chartDrawings.id });
 
     if (!deleted.length) {

@@ -1,9 +1,9 @@
+import { userId } from '../lib/guards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, desc, and } from 'drizzle-orm';
 import { db, alertRules, alertLogs } from '../db/index.js';
 import { alertRuleCreate, idParam, alertsHistoryQuery, alertTest, registerDevice } from '../schemas.js';
 
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * Alert Rules & Notification History Routes
@@ -15,12 +15,14 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  * - GET    /api/v1/alerts/history     List triggered alert logs & VolTurn signals
  */
 export const alertRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook('preHandler', (fastify as any).authenticate); // everything here is somebody's own data
+
   // GET /api/v1/alerts/rules - List rules
-  fastify.get('/rules', async () => {
+  fastify.get('/rules', async (request) => {
     const rules = await db
       .select()
       .from(alertRules)
-      .where(eq(alertRules.userId, DEFAULT_USER_ID))
+      .where(eq(alertRules.userId, userId(request)))
       .orderBy(desc(alertRules.createdAt));
 
     return {
@@ -36,7 +38,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
 
     const newRule = {
       id: crypto.randomUUID(),
-      userId: DEFAULT_USER_ID,
+      userId: userId(request),
       ruleName: body.ruleName,
       ruleType: body.ruleType,
       thresholdValue: String(body.thresholdValue),
@@ -62,7 +64,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
 
     const deleted = await db
       .delete(alertRules)
-      .where(and(eq(alertRules.id, id), eq(alertRules.userId, DEFAULT_USER_ID)))
+      .where(and(eq(alertRules.id, id), eq(alertRules.userId, userId(request))))
       .returning({ id: alertRules.id });
 
     if (!deleted.length) {
@@ -87,7 +89,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
       offset?: number;
     };
 
-    const conditions = [eq(alertLogs.userId, DEFAULT_USER_ID)];
+    const conditions = [eq(alertLogs.userId, userId(request))];
     if (channel) conditions.push(eq(alertLogs.channel, channel));
 
     const logs = await db
@@ -138,7 +140,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
     const existing = await db
       .select()
       .from(pushDevices)
-      .where(and(eq(pushDevices.token, token), eq(pushDevices.userId, DEFAULT_USER_ID)));
+      .where(and(eq(pushDevices.token, token), eq(pushDevices.userId, userId(request))));
 
     let result;
     if (existing.length > 0) {
@@ -158,7 +160,7 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
         .insert(pushDevices)
         .values({
           id: crypto.randomUUID(),
-          userId: DEFAULT_USER_ID,
+          userId: userId(request),
           token,
           platform,
           soundChoice,
@@ -177,12 +179,12 @@ export const alertRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/alerts/device-settings - Get latest device push & sound settings
-  fastify.get('/device-settings', async () => {
+  fastify.get('/device-settings', async (request) => {
     const { pushDevices } = await import('../db/index.js');
     const devices = await db
       .select()
       .from(pushDevices)
-      .where(eq(pushDevices.userId, DEFAULT_USER_ID))
+      .where(eq(pushDevices.userId, userId(request)))
       .orderBy(desc(pushDevices.updatedAt))
       .limit(1);
 

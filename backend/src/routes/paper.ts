@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { paperTerminal } from '../services/paper/paper-terminal.js';
+import { paperFor } from '../services/paper/paper-terminal.js';
+import { userId } from '../lib/guards.js';
 import { getOptionFlow } from '../services/paper/flow.js';
 
 /**
@@ -35,18 +36,18 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   const fail = (reply: { code: (n: number) => { send: (b: unknown) => unknown } }, e: unknown) =>
     reply.code(502).send({ success: false, error: `market data unavailable: ${(e as Error).message}` });
 
-  fastify.get('/account', auth, async (_req, reply) => {
+  fastify.get('/account', auth, async (req, reply) => {
     try {
-      return { success: true, ...(await paperTerminal.account()) };
+      return { success: true, ...(await paperFor(userId(req)).account()) };
     } catch (e) {
       return fail(reply, e);
     }
   });
 
   // PnL panels at the top of the page: options and futures, open now / today / 7 days / all closed, plus the account line.
-  fastify.get('/pnl', auth, async (_req, reply) => {
+  fastify.get('/pnl', auth, async (req, reply) => {
     try {
-      return { success: true, ...(await paperTerminal.pnl()) };
+      return { success: true, ...(await paperFor(userId(req)).pnl()) };
     } catch (e) {
       return fail(reply, e);
     }
@@ -57,7 +58,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const query = req.query as { expiry?: string; lots?: string };
       const lots = Math.min(Math.max(Math.floor(Number(query.lots)) || 100, 1), 100_000);
-      const { snap, rows, mode, available } = await paperTerminal.boardWithMargin(lots);
+      const { snap, rows, mode, available } = await paperFor(userId(req)).boardWithMargin(lots);
       const wanted = Number(query.expiry);
       const expiry = snap.expiries.includes(wanted) ? wanted : snap.expiries[0] ?? null;
       const byStrike = new Map<number, { strike: number; call: unknown; put: unknown }>();
@@ -84,7 +85,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     const s = symbol.safeParse((req.query as { symbol?: string }).symbol);
     if (!s.success) return bad(reply, 'symbol is required');
     try {
-      const b = await paperTerminal.book(s.data);
+      const b = await paperFor(userId(req)).book(s.data);
       return { success: true, symbol: s.data, bids: b.bids.slice(0, 12), asks: b.asks.slice(0, 12) };
     } catch (e) {
       return fail(reply, e);
@@ -95,7 +96,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     const b = orderBody.safeParse(req.body);
     if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid order');
     try {
-      return { success: true, preview: await paperTerminal.preview(b.data) };
+      return { success: true, preview: await paperFor(userId(req)).preview(b.data) };
     } catch (e) {
       return fail(reply, e);
     }
@@ -105,7 +106,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     const b = orderBody.safeParse(req.body);
     if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid order');
     try {
-      const r = await paperTerminal.place(b.data);
+      const r = await paperFor(userId(req)).place(b.data);
       return { success: true, order: r.order, children: r.children };
     } catch (e) {
       return fail(reply, e);
@@ -117,7 +118,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     const b = strategyBody.safeParse(req.body);
     if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid strategy');
     try {
-      return { success: true, preview: await paperTerminal.previewBasket(b.data.legs) };
+      return { success: true, preview: await paperFor(userId(req)).previewBasket(b.data.legs) };
     } catch (e) {
       return fail(reply, e);
     }
@@ -127,7 +128,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     const b = strategyBody.safeParse(req.body);
     if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid strategy');
     try {
-      const r = await paperTerminal.placeBasket(b.data.legs, b.data.name);
+      const r = await paperFor(userId(req)).placeBasket(b.data.legs, b.data.name);
       return r.ok ? { success: true, ...r } : reply.code(400).send({ success: false, error: r.reason });
     } catch (e) {
       return fail(reply, e);
@@ -135,9 +136,9 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Executed strategies: net PnL, each leg's PnL and stop, and the controls to edit stops or close everything.
-  fastify.get('/strategies', auth, async (_req, reply) => {
+  fastify.get('/strategies', auth, async (req, reply) => {
     try {
-      return { success: true, ...(await paperTerminal.strategies()) };
+      return { success: true, ...(await paperFor(userId(req)).strategies()) };
     } catch (e) {
       return fail(reply, e);
     }
@@ -147,7 +148,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = req.params as { id: string };
     if (!/^[0-9a-f-]{36}$/i.test(id)) return bad(reply, 'invalid strategy id');
     try {
-      const r = await paperTerminal.closeStrategy(id);
+      const r = await paperFor(userId(req)).closeStrategy(id);
       return r.ok ? { success: true } : reply.code(400).send({ success: false, error: r.reason });
     } catch (e) {
       return fail(reply, e);
@@ -159,7 +160,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     if (!/^[0-9a-f-]{36}$/i.test(id)) return bad(reply, 'invalid strategy id');
     const b = z.object({ stops: z.array(z.object({ symbol, stop: price.nullable() })).min(1).max(8) }).safeParse(req.body);
     if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid stops');
-    const r = await paperTerminal.setStops(id, b.data.stops);
+    const r = await paperFor(userId(req)).setStops(id, b.data.stops);
     return r.ok ? { success: true } : reply.code(400).send({ success: false, error: r.reason });
   });
 
@@ -167,35 +168,35 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/margin-mode', auth, async (req, reply) => {
     const b = z.object({ mode: z.enum(['portfolio', 'standard']) }).safeParse(req.body);
     if (!b.success) return bad(reply, 'mode must be portfolio or standard');
-    const r = await paperTerminal.setMarginMode(b.data.mode);
+    const r = await paperFor(userId(req)).setMarginMode(b.data.mode);
     return r.ok ? { success: true, mode: b.data.mode } : reply.code(400).send({ success: false, error: r.reason });
   });
 
   fastify.delete('/orders/:id', auth, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!/^[0-9a-f-]{36}$/i.test(id)) return bad(reply, 'invalid order id');
-    const ok = await paperTerminal.cancel(id);
+    const ok = await paperFor(userId(req)).cancel(id);
     return ok ? { success: true } : reply.code(404).send({ success: false, error: 'no working order with that id' });
   });
 
-  fastify.post('/orders/cancel-all', auth, async () => ({ success: true, cancelled: await paperTerminal.cancelAll() }));
+  fastify.post('/orders/cancel-all', auth, async (req) => ({ success: true, cancelled: await paperFor(userId(req)).cancelAll() }));
 
   fastify.get('/orders', auth, async (req) => {
     const { status, limit } = req.query as { status?: string; limit?: string };
     const st = ['working', 'filled', 'cancelled', 'rejected'].includes(status ?? '') ? status! : null;
-    return { success: true, orders: await paperTerminal.orders(st, Math.min(Math.max(Number(limit) || 50, 1), 300)) };
+    return { success: true, orders: await paperFor(userId(req)).orders(st, Math.min(Math.max(Number(limit) || 50, 1), 300)) };
   });
 
   fastify.get('/fills', auth, async (req) => {
     const { limit } = req.query as { limit?: string };
-    return { success: true, fills: await paperTerminal.fills(Math.min(Math.max(Number(limit) || 50, 1), 300)) };
+    return { success: true, fills: await paperFor(userId(req)).fills(Math.min(Math.max(Number(limit) || 50, 1), 300)) };
   });
 
   fastify.post('/leverage', auth, async (req, reply) => {
     const b = z.object({ symbol, leverage: z.number().int().min(1).max(500) }).safeParse(req.body);
     if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid leverage');
     try {
-      const r = await paperTerminal.setLeverage(b.data.symbol, b.data.leverage);
+      const r = await paperFor(userId(req)).setLeverage(b.data.symbol, b.data.leverage);
       return r.ok ? { success: true } : reply.code(400).send({ success: false, error: r.reason });
     } catch (e) {
       return fail(reply, e);
@@ -206,7 +207,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/reset', auth, async (req, reply) => {
     const b = z.object({ balance: z.number().min(100).max(10_000_000), confirm: z.literal('RESET') }).safeParse(req.body);
     if (!b.success) return bad(reply, 'send { balance: 100 to 10,000,000, confirm: "RESET" }');
-    await paperTerminal.reset(b.data.balance);
+    await paperFor(userId(req)).reset(b.data.balance);
     return { success: true };
   });
 };

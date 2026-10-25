@@ -10,6 +10,7 @@ import type { Parsed } from '../../lib/ask/parse.js';
 export interface ExploreContext {
   q(sql: string, params?: unknown[]): Promise<Array<Record<string, any>>>;
   now: number;
+  owner?: boolean;
 }
 
 export interface ExploreAnswer {
@@ -18,7 +19,9 @@ export interface ExploreAnswer {
   sources: string[];
 }
 
-export const BLOCKED_TABLES = new Set(['users', 'api_credentials', 'push_devices']);
+export const BLOCKED_TABLES = new Set(['users', 'api_credentials', 'push_devices', 'desk_delta_keys', 'desk_invites', 'session_audit_logs']);
+/** Tables that hold one person's own data: only the desk owner may browse them through Ask. */
+export const PERSONAL_TABLES = new Set(['trades', 'trade_legs', 'nightly_reviews', 'chart_drawings', 'user_preferences', 'alert_rules', 'alert_logs', 'paper_account', 'paper_orders', 'paper_positions', 'paper_fills', 'paper_strategies', 'paper_strategy_legs']);
 /** Column names that can hold secrets; never selected. "tags" is fine, "tag" (an auth tag) is not. */
 export const HIDDEN_COLUMN = /^(password.*|.*_hash|.*secret.*|.*token.*|salt|iv|tag|encrypted.*|api_key|api_secret|auth.*|fcm.*|endpoint|p256dh|keys?)$/i;
 
@@ -74,7 +77,7 @@ export async function loadCatalog(c: ExploreContext): Promise<Catalog> {
   );
   const tables = new Map<string, Array<{ name: string; type: string }>>();
   for (const r of rows) {
-    if (BLOCKED_TABLES.has(r.table_name)) continue;
+    if (BLOCKED_TABLES.has(r.table_name) || (c.owner === false && PERSONAL_TABLES.has(r.table_name))) continue;
     (tables.get(r.table_name) ?? tables.set(r.table_name, []).get(r.table_name)!).push({ name: r.column_name, type: r.data_type });
   }
   return { tables };
@@ -121,7 +124,7 @@ export async function tableSummary(p: Parsed, c: ExploreContext): Promise<Explor
   const cat = await loadCatalog(c);
   const name = resolveTable(p.table, cat);
   if (!name) {
-    const blocked = p.table && BLOCKED_TABLES.has(p.table);
+    const blocked = p.table && (BLOCKED_TABLES.has(p.table) || (c.owner === false && PERSONAL_TABLES.has(p.table)));
     return {
       sources: ['database catalog'],
       text: blocked

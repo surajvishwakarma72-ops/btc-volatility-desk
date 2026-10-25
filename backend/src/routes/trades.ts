@@ -1,9 +1,9 @@
+import { userId } from '../lib/guards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, desc, and } from 'drizzle-orm';
 import { db, trades, tradeLegs } from '../db/index.js';
 import { listQuery, idParam, tradeCreate, tradePatch } from '../schemas.js';
 
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * Trades & Strangle Execution Routes
@@ -17,6 +17,8 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  * - DELETE /api/v1/trades/:id         Delete trade
  */
 export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook('preHandler', (fastify as any).authenticate); // everything here is somebody's own data
+
   // GET /api/v1/trades - List trades with optional status filter
   fastify.get('/', { schema: { querystring: listQuery } }, async (request) => {
     const { status, limit = 50, offset = 0 } = request.query as {
@@ -25,7 +27,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
       offset?: number;
     };
 
-    const conditions = [eq(trades.userId, DEFAULT_USER_ID)];
+    const conditions = [eq(trades.userId, userId(request))];
     if (status) {
       conditions.push(eq(trades.status, status));
     }
@@ -46,11 +48,11 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/trades/active - Get currently open strangle
-  fastify.get('/active', async () => {
+  fastify.get('/active', async (request) => {
     const active = await db
       .select()
       .from(trades)
-      .where(and(eq(trades.userId, DEFAULT_USER_ID), eq(trades.status, 'OPEN')))
+      .where(and(eq(trades.userId, userId(request)), eq(trades.status, 'OPEN')))
       .orderBy(desc(trades.entryTime))
       .limit(1);
 
@@ -80,7 +82,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
     const tradeRes = await db
       .select()
       .from(trades)
-      .where(and(eq(trades.id, id), eq(trades.userId, DEFAULT_USER_ID)))
+      .where(and(eq(trades.id, id), eq(trades.userId, userId(request))))
       .limit(1);
 
     if (!tradeRes.length) {
@@ -109,7 +111,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
     const tradeId = crypto.randomUUID();
     const newTrade = {
       id: tradeId,
-      userId: DEFAULT_USER_ID,
+      userId: userId(request),
       strategy: body.strategy || 'SHORT_STRANGLE',
       status: body.status || 'OPEN',
       underlying: body.underlying || 'BTC',
@@ -176,7 +178,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
     const updated = await db
       .update(trades)
       .set(updates)
-      .where(and(eq(trades.id, id), eq(trades.userId, DEFAULT_USER_ID)))
+      .where(and(eq(trades.id, id), eq(trades.userId, userId(request))))
       .returning();
 
     if (!updated.length) {
@@ -195,7 +197,7 @@ export const tradeRoutes: FastifyPluginAsync = async (fastify) => {
 
     const deleted = await db
       .delete(trades)
-      .where(and(eq(trades.id, id), eq(trades.userId, DEFAULT_USER_ID)))
+      .where(and(eq(trades.id, id), eq(trades.userId, userId(request))))
       .returning({ id: trades.id });
 
     if (!deleted.length) {

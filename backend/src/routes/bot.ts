@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { pool } from '../db/index.js';
 import { DAY, istDateKey, istMidnightMs } from '../lib/bot/schedule.js';
+import { requireAdmin } from '../lib/guards.js';
 import { buildTimeline, type SlotRun } from '../lib/bot/timeline.js';
 import { buildAnalytics, type RunRecord } from '../lib/bot/analytics.js';
 import { DEFAULT_PARAMS, DEFAULT_THRESHOLDS } from '../lib/bot/learn.js';
@@ -321,14 +322,14 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Run the review now. `?dry=1` evaluates without promoting.
-  fastify.post('/learn/run', auth, async (req) => {
+  fastify.post('/learn/run', { preHandler: requireAdmin }, async (req) => {
     await ensureBotSchema();
     const dry = q<{ dry?: string }>(req).dry === '1';
     const reports = await runLearning(Date.now(), autoLearnOn() && !dry);
     return { success: true, reports: reports.map((r) => ({ strategy: r.strategy, days: r.days, promoted: r.promoted, note: r.note, champion: r.champion })) };
   });
 
-  fastify.post('/learn/rollback', auth, async (req, reply) => {
+  fastify.post('/learn/rollback', { preHandler: requireAdmin }, async (req, reply) => {
     const s = (req.body as { strategy?: string } | undefined)?.strategy;
     if (!s || !(LEARNED_STRATEGIES as readonly string[]).includes(s)) return bad(reply, `strategy must be one of ${LEARNED_STRATEGIES.join(', ')}`);
     const r = await rollbackLast(s);
@@ -336,19 +337,19 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     return { success: true, restored: r.restored };
   });
 
-  fastify.post('/pause', auth, async () => {
+  fastify.post('/pause', { preHandler: requireAdmin }, async () => {
     await setConfig({ paused: true });
     return { success: true, paused: true };
   });
-  fastify.post('/resume', auth, async () => {
+  fastify.post('/resume', { preHandler: requireAdmin }, async () => {
     await setConfig({ paused: false });
     return { success: true, paused: false };
   });
-  fastify.post('/kill', auth, async () => {
+  fastify.post('/kill', { preHandler: requireAdmin }, async () => {
     await setConfig({ killSwitch: true, paused: true });
     return { success: true, killSwitch: true };
   });
-  fastify.post('/kill/reset', auth, async () => {
+  fastify.post('/kill/reset', { preHandler: requireAdmin }, async () => {
     await setConfig({ killSwitch: false });
     return { success: true, killSwitch: false };
   });

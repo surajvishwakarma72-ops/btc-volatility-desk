@@ -1,9 +1,9 @@
+import { userId } from '../lib/guards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, desc, and, sql } from 'drizzle-orm';
 import { db, nightlyReviews } from '../db/index.js';
 import { nightsQuery, dateParam, nightCreate } from '../schemas.js';
 
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * Nightly Reviews & Day Coach Calendar History Routes
@@ -16,6 +16,8 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  * - DELETE /api/v1/nights/:date       Delete a night review
  */
 export const nightRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook('preHandler', (fastify as any).authenticate); // everything here is somebody's own data
+
   // GET /api/v1/nights - List all reviews
   fastify.get('/', { schema: { querystring: nightsQuery } }, async (request) => {
     const { verdict, outcome, limit = 100, offset = 0 } = request.query as {
@@ -25,7 +27,7 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
       offset?: number;
     };
 
-    const conditions = [eq(nightlyReviews.userId, DEFAULT_USER_ID)];
+    const conditions = [eq(nightlyReviews.userId, userId(request))];
     if (verdict) conditions.push(eq(nightlyReviews.verdict, verdict));
     if (outcome) conditions.push(eq(nightlyReviews.outcome, outcome));
 
@@ -45,11 +47,11 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // GET /api/v1/nights/stats - Aggregated stats for the Day & Season Coach
-  fastify.get('/stats', async () => {
+  fastify.get('/stats', async (request) => {
     const all = await db
       .select()
       .from(nightlyReviews)
-      .where(eq(nightlyReviews.userId, DEFAULT_USER_ID));
+      .where(eq(nightlyReviews.userId, userId(request)));
 
     const total = all.length;
     let profitCount = 0;
@@ -96,7 +98,7 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
     const review = await db
       .select()
       .from(nightlyReviews)
-      .where(and(eq(nightlyReviews.userId, DEFAULT_USER_ID), eq(nightlyReviews.sessionDate, date)))
+      .where(and(eq(nightlyReviews.userId, userId(request)), eq(nightlyReviews.sessionDate, date)))
       .limit(1);
 
     if (!review.length) {
@@ -114,7 +116,7 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
     const body = request.body as any;
 
     const reviewData = {
-      userId: DEFAULT_USER_ID,
+      userId: userId(request),
       sessionDate: body.sessionDate,
       verdict: body.verdict,
       outcome: body.outcome || null,
@@ -163,7 +165,7 @@ export const nightRoutes: FastifyPluginAsync = async (fastify) => {
 
     const deleted = await db
       .delete(nightlyReviews)
-      .where(and(eq(nightlyReviews.userId, DEFAULT_USER_ID), eq(nightlyReviews.sessionDate, date)))
+      .where(and(eq(nightlyReviews.userId, userId(request)), eq(nightlyReviews.sessionDate, date)))
       .returning({ sessionDate: nightlyReviews.sessionDate });
 
     if (!deleted.length) {

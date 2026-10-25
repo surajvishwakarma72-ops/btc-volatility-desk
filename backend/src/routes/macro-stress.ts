@@ -1,3 +1,4 @@
+import { requireAdmin } from '../lib/guards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { macroStressWorker } from '../services/macro-stress-worker.js';
 
@@ -16,7 +17,7 @@ export const macroStressRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // POST /api/v1/macro/weights (re-fit weights on demand). Changes what the score and the bot's gate see, so it needs the desk login.
-  fastify.post('/weights', { preHandler: (fastify as any).authenticate }, async (request, reply) => {
+  fastify.post('/weights', { preHandler: requireAdmin }, async (request, reply) => {
     try {
       const body = request.body as any;
       if (!body || typeof body !== 'object' || Array.isArray(body)) {

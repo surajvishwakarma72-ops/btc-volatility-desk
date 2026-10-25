@@ -72,9 +72,22 @@ describe('bot routes', () => {
 
   it('rollback only accepts a learned strategy', async () => {
     const app = await build();
-    const token = app.jwt.sign({ sub: 'test' });
+    const token = app.jwt.sign({ sub: '00000000-0000-0000-0000-000000000001', role: 'admin' });
     const res = await app.inject({ method: 'POST', url: '/bot/learn/rollback', headers: { authorization: `Bearer ${token}` }, payload: { strategy: 'EVE_LONG' } });
     expect(res.statusCode).toBe(400);
+    await app.close();
+  });
+
+  it('a friend (trader token) can watch the bot but cannot pause, kill or change it; the owner passes the guard', async () => {
+    const app = await build();
+    const friend = { authorization: `Bearer ${app.jwt.sign({ sub: '11111111-1111-1111-1111-111111111111', role: 'trader' })}` };
+    for (const url of ['/bot/pause', '/bot/resume', '/bot/kill', '/bot/kill/reset', '/bot/learn/run', '/bot/learn/rollback']) {
+      expect((await app.inject({ method: 'POST', url, headers: friend })).statusCode, url).toBe(403);
+    }
+    expect((await app.inject({ method: 'GET', url: '/bot/status', headers: friend })).statusCode).toBe(200); // read-only access stays
+    const owner = { authorization: `Bearer ${app.jwt.sign({ sub: '00000000-0000-0000-0000-000000000001', role: 'trader' })}` };
+    const r = await app.inject({ method: 'POST', url: '/bot/resume', headers: owner });
+    expect([401, 403]).not.toContain(r.statusCode); // past the guard (the engine is off in tests, so the route itself answers)
     await app.close();
   });
 

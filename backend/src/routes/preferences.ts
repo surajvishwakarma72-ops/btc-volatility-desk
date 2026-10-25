@@ -1,9 +1,9 @@
+import { userId } from '../lib/guards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { eq, sql } from 'drizzle-orm';
 import { db, userPreferences } from '../db/index.js';
 import { preferencesUpdate } from '../schemas.js';
 
-const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 /**
  * User Preferences & Workspace Settings Routes
@@ -13,12 +13,14 @@ const DEFAULT_USER_ID = '00000000-0000-0000-0000-000000000001';
  * - PUT /api/v1/preferences           Update workspace preferences
  */
 export const preferenceRoutes: FastifyPluginAsync = async (fastify) => {
+  fastify.addHook('preHandler', (fastify as any).authenticate); // everything here is somebody's own data
+
   // GET /api/v1/preferences - Retrieve preferences
-  fastify.get('/', async () => {
+  fastify.get('/', async (request) => {
     const prefs = await db
       .select()
       .from(userPreferences)
-      .where(eq(userPreferences.userId, DEFAULT_USER_ID))
+      .where(eq(userPreferences.userId, userId(request)))
       .limit(1);
 
     if (!prefs.length) {
@@ -46,7 +48,7 @@ export const preferenceRoutes: FastifyPluginAsync = async (fastify) => {
 
     const newPrefs = {
       id: crypto.randomUUID(),
-      userId: DEFAULT_USER_ID,
+      userId: userId(request),
       theme: body.theme || 'coinglass_dark',
       activeIndicators: Array.isArray(body.activeIndicators) ? body.activeIndicators : [],
       chartLayout: body.chartLayout || {},
