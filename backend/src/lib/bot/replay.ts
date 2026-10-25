@@ -42,7 +42,6 @@ export interface ReplayConfig {
   feeRate: number;
   feePremiumCap: number;
   bodyDelta: number;
-  wingDelta: number;
   /** DVOL at or above this makes the `gated` book skip. */
   gateDvolMax: number;
   /** Mark-to-market path resolution in minutes (stored for the exit grid). */
@@ -58,7 +57,6 @@ export const DEFAULT_REPLAY: ReplayConfig = {
   feeRate: 0.0001,
   feePremiumCap: 0.035,
   bodyDelta: 0.125,
-  wingDelta: 0.04,
   gateDvolMax: 65,
   pathStepMin: 15,
   calendar: DEFAULT_CALENDAR,
@@ -133,7 +131,6 @@ function planLegs(id: ReplayStrategy, spot: number, t: number, iv: IvFn, cfg: Re
     ];
   }
   const isLong = id === 'EVE_LONG' || id === 'PRE_LONG';
-  const isIC = id === 'ASIA_IC' || id === 'NY_IC';
   const expiryMs = isLong ? ex[1]! : ex[2]!;
   if (isLong) {
     const K = nearestStrike(spot);
@@ -144,14 +141,7 @@ function planLegs(id: ReplayStrategy, spot: number, t: number, iv: IvFn, cfg: Re
   const T = yrs(expiryMs - t);
   const Kc = roundStrike(strike(spot, T, sigma, cfg.bodyDelta, 'c'), spot, 'c');
   const Kp = roundStrike(strike(spot, T, sigma, cfg.bodyDelta, 'p'), spot, 'p');
-  const legs = [mkLeg(expiryMs, 'call', 'short', 'body', Kc, cfg.lots), mkLeg(expiryMs, 'put', 'short', 'body', Kp, cfg.lots)];
-  if (isIC) {
-    const Wc = roundStrike(strike(spot, T, sigma, cfg.wingDelta, 'c'), spot, 'c');
-    const Wp = roundStrike(strike(spot, T, sigma, cfg.wingDelta, 'p'), spot, 'p');
-    if (Wc <= Kc || Wp >= Kp) return null;
-    legs.push(mkLeg(expiryMs, 'call', 'long', 'wing', Wc, cfg.lots), mkLeg(expiryMs, 'put', 'long', 'wing', Wp, cfg.lots));
-  }
-  return legs;
+  return [mkLeg(expiryMs, 'call', 'short', 'body', Kc, cfg.lots), mkLeg(expiryMs, 'put', 'short', 'body', Kp, cfg.lots)];
 }
 
 const markOf = (leg: Leg, spot: number, t: number, iv: number): number =>
@@ -185,7 +175,14 @@ export function windowFor(id: ReplayStrategy, dateKey: string, cfg: ReplayConfig
   return runWindow(id, dateKey);
 }
 
-/** Simulate one strategy on one IST date. Returns null when data, strikes or the entry condition are unavailable. */
+/** How often the replay re-checks the entry conditions inside a wait window (the live bot checks every minute). */
+const REPLAY_RETRY_MIN = 5;
+
+/**
+ * Simulate one strategy on one IST date. Returns null when data, strikes or the entry condition are unavailable.
+ * Strategies with a wait window (the short strangles) retry the entry through the window and take the first
+ * time it passes, exactly like the live engine; the exit clock does not move.
+ */
 export function replayRun(
   data: ReplayData,
   id: ReplayStrategy,
@@ -194,11 +191,28 @@ export function replayRun(
   cfg: ReplayConfig = DEFAULT_REPLAY,
 ): ReplayRun | null {
   const w = windowFor(id, dateKey, cfg);
-  const bars = data.barsBetween(w.entryAtMs - 15 * MIN, w.exitAtMs + 5 * MIN);
-  if (!bars.length) return null;
-  const entryBar = bars.find((b) => b.t >= w.entryAtMs - MIN) ?? null;
-  if (!entryBar || entryBar.t > w.entryAtMs + 15 * MIN) return null;
-  const t0 = w.entryAtMs;
+  const wait = id === 'CAL_BACK' ? 0 : SLOTS[id].waitMin;
+  for (let off = 0; off <= Math.max(wait - 1, 0); off += REPLAY_RETRY_MIN) {
+    const r = replayAt(data, id, dateKey, book, cfg, w.exitAtMs, w.entryAtMs + off * MIN);
+    if (r) return r;
+  }
+  return null;
+}
+
+function replayAt(
+  data: ReplayData,
+  id: ReplayStrategy,
+  dateKey: string,
+  book: 'always' | 'gated',
+  cfg: ReplayConfig,
+  exitAtMs: number,
+  entryAtMs: number,
+): ReplayRun | null {
+  const w: Window = { entryAtMs, exitAtMs };
+  const head = data.barsBetween(entryAtMs - 15 * MIN, entryAtMs + 15 * MIN);
+  const entryBar = head.find((b) => b.t >= entryAtMs - MIN) ?? null;
+  if (!entryBar || entryBar.t > entryAtMs + 15 * MIN) return null;
+  const t0 = entryAtMs;
   const spot0 = entryBar.c;
 
   const dvol = data.dvolAt(t0);
@@ -208,6 +222,8 @@ export function replayRun(
   const ivNow: IvFn = (exp, t) => data.ivAt(exp, t) ?? data.dvolAt(t);
   const planned = planLegs(id, spot0, t0, ivNow, cfg);
   if (!planned) return null;
+  const bars = data.barsBetween(entryAtMs - 15 * MIN, exitAtMs + 5 * MIN);
+  if (!bars.length) return null;
 
   // Each leg is repriced with the IV of its own expiry (matters for the calendar).
   const iv0 = new Map<number, number>();

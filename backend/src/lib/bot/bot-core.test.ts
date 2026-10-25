@@ -4,7 +4,7 @@ import { computePnl, evaluateExit, exitConfigFor, calendarExitConfig } from './r
 import { feeToRiskOk, futuresFee, optionFee, walkBook } from './costs.js';
 import { chooseLeverage, futuresLots } from './sizing.js';
 import { checkRisk } from './risk-guard.js';
-import { pickAtmStraddle, pickBodyLeg, pickWing, type ChainOption } from './strike-picker.js';
+import { pickAtmStraddle, pickBodyLeg, type ChainOption } from './strike-picker.js';
 import type { Leg, PositionSnapshot } from './types.js';
 
 const MIN = 60_000;
@@ -23,13 +23,9 @@ describe('schedule', () => {
     expect(runWindow('ASIA_SHORT', '2026-10-26').exitAtMs).toBe(ms + 6 * 60 * MIN);
   });
 
-  it('NY short exits at 07:00 IST the next day; iron condors run a full 24h', () => {
+  it('NY short exits at 07:00 IST the next day', () => {
     const ny = runWindow('NY_SHORT', '2026-10-26');
     expect(ny.exitAtMs - ny.entryAtMs).toBe(8.5 * 60 * MIN);
-    const ic = runWindow('ASIA_IC', '2026-10-26');
-    expect(ic.exitAtMs - ic.entryAtMs).toBe(24 * 60 * MIN);
-    const nyIc = runWindow('NY_IC', '2026-10-26');
-    expect(nyIc.exitAtMs - nyIc.entryAtMs).toBe(24 * 60 * MIN);
   });
 
   it('IST date key rolls over at IST midnight, not UTC', () => {
@@ -39,16 +35,29 @@ describe('schedule', () => {
     expect(istMidnightMs('2026-10-26')).toBe(Date.parse('2026-10-25T18:30:00Z'));
   });
 
-  it('dueEntries fires inside the grace window only', () => {
-    const entry = runWindow('ASIA_SHORT', '2026-10-26').entryAtMs;
-    expect(dueEntries(entry - MIN).some((d) => d.id === 'ASIA_SHORT')).toBe(false);
-    expect(dueEntries(entry).some((d) => d.id === 'ASIA_SHORT' && d.dateKey === '2026-10-26')).toBe(true);
-    expect(dueEntries(entry + 9 * MIN).some((d) => d.id === 'ASIA_SHORT')).toBe(true);
-    expect(dueEntries(entry + 11 * MIN).some((d) => d.id === 'ASIA_SHORT')).toBe(false);
+  it('long straddles only get the short restart grace', () => {
+    const entry = runWindow('EVE_LONG', '2026-10-26').entryAtMs;
+    expect(dueEntries(entry - MIN).some((d) => d.id === 'EVE_LONG')).toBe(false);
+    expect(dueEntries(entry + 9 * MIN).some((d) => d.id === 'EVE_LONG')).toBe(true);
+    expect(dueEntries(entry + 11 * MIN).some((d) => d.id === 'EVE_LONG')).toBe(false);
+    expect(dueEntries(entry).find((d) => d.id === 'EVE_LONG')!.final).toBe(true);
+  });
+
+  it('the Asia short strangle waits 2h and the New York one 3h, flagging the last minute as final', () => {
+    const asia = runWindow('ASIA_SHORT', '2026-10-26').entryAtMs;
+    const at = (t: number, id: string) => dueEntries(t).find((d) => d.id === id && d.dateKey === '2026-10-26');
+    expect(at(asia, 'ASIA_SHORT')).toMatchObject({ final: false, windowEndMs: asia + 120 * MIN });
+    expect(at(asia + 119 * MIN - 1, 'ASIA_SHORT')).toMatchObject({ final: false });
+    expect(at(asia + 119 * MIN, 'ASIA_SHORT')).toMatchObject({ final: true });
+    expect(at(asia + 120 * MIN, 'ASIA_SHORT')).toBeUndefined();
+    const ny = runWindow('NY_SHORT', '2026-10-26').entryAtMs;
+    expect(at(ny + 179 * MIN - 1, 'NY_SHORT')).toMatchObject({ final: false });
+    expect(at(ny + 179 * MIN, 'NY_SHORT')).toMatchObject({ final: true });
+    expect(at(ny + 180 * MIN, 'NY_SHORT')).toBeUndefined();
   });
 
   it('builds an idempotent run key and floors to the minute', () => {
-    expect(runKey('NY_IC', '2026-10-26', 'gated')).toBe('NY_IC:2026-10-26:gated');
+    expect(runKey('NY_SHORT', '2026-10-26', 'gated')).toBe('NY_SHORT:2026-10-26:gated');
     expect(floorToMinute(61_999)).toBe(60_000);
   });
 });
@@ -102,8 +111,8 @@ describe('evaluateExit', () => {
     expect(d).toMatchObject({ action: 'exit', reason: 'stop' });
   });
 
-  it('stop has priority over take profit and ignores long wings', () => {
-    const wing: Leg = { ...call, symbol: 'W', side: 'long', role: 'wing', entryPrice: 5 };
+  it('the stop only watches short body legs, not bought protection', () => {
+    const wing: Leg = { ...call, symbol: 'W', side: 'long', role: 'back', entryPrice: 5 };
     const hold = evaluateExit(
       snap({ legs: [call, put, wing], marks: [{ symbol: 'C', mark: 100 }, { symbol: 'P', mark: 100 }, { symbol: 'W', mark: 50 }] }),
       cfg,
@@ -139,13 +148,6 @@ describe('evaluateExit', () => {
       1,
     );
     expect(win).toMatchObject({ action: 'exit', reason: 'tp' });
-  });
-
-  it('iron condor has no intraday time exit before its 24h mark', () => {
-    const w = runWindow('ASIA_IC', '2026-10-26');
-    const icCfg = exitConfigFor('ASIA_IC', w.exitAtMs);
-    expect(evaluateExit(snap(), icCfg, w.entryAtMs + 6 * 60 * MIN).action).toBe('hold');
-    expect(evaluateExit(snap(), icCfg, w.exitAtMs)).toMatchObject({ reason: 'time' });
   });
 
   it('calendar: exits on breakeven breach, and hard-closes an hour before front expiry', () => {
@@ -272,13 +274,6 @@ describe('strike picker', () => {
   it('never sells a far-OTM strike as the body just because nothing sits in the band', () => {
     const farOnly = [opt({ symbol: 'C-FAR', type: 'call', strike: 90000, delta: 0.04 })];
     expect(pickBodyLeg(farOnly, 'call', EXP)).toBeNull();
-  });
-
-  it('picks a wing further out than the body', () => {
-    const body = chain.find((o) => o.symbol === 'C-82500')!;
-    expect(pickWing(chain, body, 0.04)?.symbol).toBe('C-84000');
-    const putBody = chain.find((o) => o.symbol === 'P-78000')!;
-    expect(pickWing(chain, putBody, 0.04)?.symbol).toBe('P-76000');
   });
 
   it('finds the ATM straddle nearest spot', () => {

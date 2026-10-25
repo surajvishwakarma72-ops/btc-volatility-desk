@@ -77,14 +77,12 @@ export function evaluateExit(p: PositionSnapshot, cfg: ExitConfig, nowMs: number
 
 /** Exit configuration per strategy (single source of truth, mirrors the approved plan). */
 export function exitConfigFor(
-  id: 'ASIA_SHORT' | 'NY_SHORT' | 'ASIA_IC' | 'NY_IC' | 'EVE_LONG' | 'PRE_LONG',
+  id: 'ASIA_SHORT' | 'NY_SHORT' | 'EVE_LONG' | 'PRE_LONG',
   exitAtMs: number,
 ): ExitConfig {
   switch (id) {
     case 'ASIA_SHORT':
     case 'NY_SHORT':
-    case 'ASIA_IC':
-    case 'NY_IC':
       return { stopMultiple: 2, tpPctOfMargin: 0.1, exitAtMs };
     case 'EVE_LONG':
     case 'PRE_LONG':

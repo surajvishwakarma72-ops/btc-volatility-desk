@@ -9,8 +9,6 @@ export type StrategyId =
   | 'NY_SHORT'
   | 'EVE_LONG'
   | 'PRE_LONG'
-  | 'ASIA_IC'
-  | 'NY_IC'
   | 'CAL_BACK';
 
 /** `always` trades daily; `gated` trades only when the GO/WAIT gate says GO. */
@@ -31,8 +29,8 @@ export interface Leg {
   lots: number;
   /** Average fill price (USD premium per 1 BTC underlying). */
   entryPrice: number;
-  /** Role inside multi-leg structures. Wings are bought protection, bodies are the income legs. */
-  role: 'body' | 'wing' | 'front' | 'back';
+  /** Role inside multi-leg structures: bodies are the straddle/strangle legs, front/back the calendar's. */
+  role: 'body' | 'front' | 'back';
 }
 
 export interface LegMark {

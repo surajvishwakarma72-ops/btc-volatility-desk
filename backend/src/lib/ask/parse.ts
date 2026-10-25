@@ -57,8 +57,6 @@ const dateKeyOf = (ms: number) => new Date(ms + IST).toISOString().slice(0, 10);
 export const STRATEGY_NAMES: Record<string, string> = {
   ASIA_SHORT: 'Asia short strangle (10:00 IST)',
   NY_SHORT: 'New York short strangle (22:30 IST)',
-  ASIA_IC: 'Asia iron condor, 24h (10:00 IST)',
-  NY_IC: 'New York iron condor, 24h (22:30 IST)',
   EVE_LONG: 'Evening long straddle (17:30 IST)',
   PRE_LONG: 'Pre-dawn long straddle (05:00 IST)',
   CAL_BACK: 'Calendar spread in backwardation (18:00 IST)',
@@ -71,8 +69,6 @@ const ALL = Object.keys(STRATEGY_NAMES);
 
 /** Most specific alias first. */
 const STRATEGY_ALIASES: Array<[RegExp, string]> = [
-  [/\b(asia|10\s*(am|:00)?)\b.*\b(iron\s*condor|condor|ic)\b|\b(iron\s*condor|condor)\b.*\basia\b/, 'ASIA_IC'],
-  [/\b(ny|new\s*york|night|22:30|10:30\s*pm)\b.*\b(iron\s*condor|condor|ic)\b|\b(iron\s*condor|condor)\b.*\b(ny|new\s*york)\b/, 'NY_IC'],
   [/\b(london)\b.*\bsweep|london\s*sweep|ldn\s*sweep|fut_sweep_ldn/, 'FUT_SWEEP_LDN'],
   [/\b(ny|new\s*york)\b.*\bsweep|ny\s*sweep|fut_sweep_ny/, 'FUT_SWEEP_NY'],
   [/\bfut_signal|futures?\s*signal|price\s*signal/, 'FUT_SIGNAL'],
@@ -85,7 +81,6 @@ const STRATEGY_ALIASES: Array<[RegExp, string]> = [
 
 const STRATEGY_GROUPS: Array<[RegExp, { label: string; ids: string[] }]> = [
   [/\bfutures?\b/, { label: 'futures strategies', ids: ['FUT_SWEEP_LDN', 'FUT_SWEEP_NY', 'FUT_SIGNAL'] }],
-  [/\b(iron\s*condors?|condors?)\b/, { label: 'iron condors', ids: ['ASIA_IC', 'NY_IC'] }],
   [/\bstraddles?\b/, { label: 'long straddles', ids: ['EVE_LONG', 'PRE_LONG'] }],
   [/\b(short\s*strangles?|strangles?)\b/, { label: 'short strangles', ids: ['ASIA_SHORT', 'NY_SHORT'] }],
   [/\boptions?\b/, { label: 'option strategies', ids: ALL.filter((i) => !i.startsWith('FUT_')) }],
@@ -185,7 +180,7 @@ export function parseDate(q: string, nowMs: number): string | undefined {
 }
 
 export function parseStrategy(q: string): { strategy?: string; group?: { label: string; ids: string[] } } {
-  const direct = /\b(asia_short|ny_short|asia_ic|ny_ic|eve_long|pre_long|cal_back|fut_sweep_ldn|fut_sweep_ny|fut_signal)\b/i.exec(q);
+  const direct = /\b(asia_short|ny_short|eve_long|pre_long|cal_back|fut_sweep_ldn|fut_sweep_ny|fut_signal)\b/i.exec(q);
   if (direct) return { strategy: direct[1]!.toUpperCase() };
   for (const [re, id] of STRATEGY_ALIASES) if (re.test(q)) return { strategy: id };
   for (const [re, g] of STRATEGY_GROUPS) if (re.test(q)) return { group: g };

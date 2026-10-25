@@ -41,8 +41,6 @@ const spec: Array<[string, 'call' | 'put', number, number, number]> = [
   // symbol, type, strike, abs delta, expiry
   ['C-BODY', 'call', 82500, 0.12, E3],
   ['P-BODY', 'put', 78500, 0.13, E3],
-  ['C-WING', 'call', 84000, 0.04, E3],
-  ['P-WING', 'put', 76500, 0.04, E3],
   ['C-ATM', 'call', 80800, 0.5, E2],
   ['P-ATM', 'put', 80800, 0.5, E2],
   // calendar fixtures: the same ATM strike on the current (E1) and N2N (E3) expiries
@@ -51,7 +49,7 @@ const spec: Array<[string, 'call' | 'put', number, number, number]> = [
   ['C-CB', 'call', 80800, 0.5, E3],
   ['P-CB', 'put', 80800, 0.5, E3],
 ];
-const BASE: Record<string, number> = { 'C-BODY': 100, 'P-BODY': 90, 'C-WING': 20, 'P-WING': 18, 'C-ATM': 500, 'P-ATM': 490, 'C-CF': 300, 'P-CF': 290, 'C-CB': 620, 'P-CB': 610 };
+const BASE: Record<string, number> = { 'C-BODY': 100, 'P-BODY': 90,'C-ATM': 500, 'P-ATM': 490, 'C-CF': 300, 'P-CF': 290, 'C-CB': 620, 'P-CB': 610 };
 
 function chain(): ChainSnapshot {
   const options: ChainOption[] = spec.map(([symbol, type, strike, delta, expiryMs]) => {
@@ -107,28 +105,24 @@ beforeEach(async () => {
 });
 
 describe('bot engine on a real Postgres', () => {
-  it('enters both books of ASIA_SHORT and ASIA_IC at 10:00 IST, once, and records the minute', async () => {
+  it('enters both books of ASIA_SHORT at 10:00 IST, once, and records the minute', async () => {
     const e = await newEngine();
     vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
     await e.tick();
     await e.tick(); // same minute again: idempotent
 
     const runs = await q('SELECT strategy, book, status, margin_usd FROM bot_runs ORDER BY run_key');
-    expect(runs.map((r) => `${r.strategy}:${r.book}:${r.status}`)).toEqual([
-      'ASIA_IC:always:open', 'ASIA_IC:gated:open', 'ASIA_SHORT:always:open', 'ASIA_SHORT:gated:open',
-    ]);
-    const short = runs.find((r) => r.strategy === 'ASIA_SHORT')!;
-    expect(Number(short.margin_usd)).toBeGreaterThan(0);
+    expect(runs.map((r) => `${r.strategy}:${r.book}:${r.status}`)).toEqual(['ASIA_SHORT:always:open', 'ASIA_SHORT:gated:open']);
+    expect(Number(runs[0]!.margin_usd)).toBeGreaterThan(0);
 
-    const legs = await q(`SELECT l.symbol, l.side, l.role, l.entry_price FROM bot_legs l JOIN bot_runs r ON r.id = l.run_id WHERE r.run_key = 'ASIA_IC:2026-10-26:always' ORDER BY l.id`);
-    expect(legs.map((l) => `${l.side}:${l.role}:${l.symbol}`)).toEqual(['short:body:C-BODY', 'short:body:P-BODY', 'long:wing:C-WING', 'long:wing:P-WING']);
-    // shorts sell into bids (mark-2) with a 1-tick pad against us; wings buy the asks
+    const legs = await q(`SELECT l.symbol, l.side, l.role, l.entry_price FROM bot_legs l JOIN bot_runs r ON r.id = l.run_id WHERE r.run_key = 'ASIA_SHORT:2026-10-26:always' ORDER BY l.id`);
+    expect(legs.map((l) => `${l.side}:${l.role}:${l.symbol}`)).toEqual(['short:body:C-BODY', 'short:body:P-BODY']);
+    // shorts sell into bids (mark-2) with a 1-tick pad against us
     expect(Number(legs[0]!.entry_price)).toBeCloseTo(98 - 0.5, 6);
-    expect(Number(legs[2]!.entry_price)).toBeCloseTo(22 + 0.5, 6);
 
-    expect((await q('SELECT COUNT(*)::int AS n FROM bot_fills'))[0].n).toBe(12);
+    expect((await q('SELECT COUNT(*)::int AS n FROM bot_fills'))[0].n).toBe(4);
     const marks = await q('SELECT COUNT(*)::int AS n FROM bot_minute_marks');
-    expect(marks[0].n).toBe(4);
+    expect(marks[0].n).toBe(2);
     expect((await q('SELECT COUNT(*)::int AS n FROM bot_minute_context'))[0].n).toBe(1);
     const snap = (await q('SELECT snapshot FROM bot_minute_marks LIMIT 1'))[0].snapshot;
     expect(snap.legs[0]).toMatchObject({ symbol: expect.any(String), delta: expect.any(Number), vega: 20 });
@@ -152,36 +146,85 @@ describe('bot engine on a real Postgres', () => {
     expect(await q(`SELECT 1 FROM bot_events WHERE type = 'exit'`)).not.toHaveLength(0);
   });
 
-  it('time-exits ASIA_SHORT at 16:00 IST but lets the 24h iron condor run on', async () => {
+  it('time-exits ASIA_SHORT at 16:00 IST', async () => {
     const e = await newEngine();
     vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
     await e.tick();
     vi.setSystemTime(istToUtc('2026-10-26', 15, 59, 0));
     await e.tick();
-    expect((await q(`SELECT COUNT(*)::int AS n FROM bot_runs WHERE status = 'open'`))[0].n).toBe(4);
+    expect((await q(`SELECT COUNT(*)::int AS n FROM bot_runs WHERE status = 'open'`))[0].n).toBe(2);
     vi.setSystemTime(istToUtc('2026-10-26', 16, 0, 5));
     await e.tick();
-    const st = await q(`SELECT strategy, status, exit_reason FROM bot_runs ORDER BY run_key`);
-    expect(st.filter((r) => r.strategy === 'ASIA_SHORT').every((r) => r.status === 'closed' && r.exit_reason === 'time')).toBe(true);
-    expect(st.filter((r) => r.strategy === 'ASIA_IC').every((r) => r.status === 'open')).toBe(true);
-    // next day 10:00 IST the condor reaches its 24h exit
-    vi.setSystemTime(istToUtc('2026-10-27', 10, 0, 5));
-    await e.tick();
-    const ic = await q(`SELECT status, exit_reason FROM bot_runs WHERE run_key LIKE 'ASIA_IC:2026-10-26:%'`);
-    expect(ic.every((r) => r.status === 'closed' && r.exit_reason === 'time')).toBe(true);
+    const st = await q(`SELECT status, exit_reason FROM bot_runs`);
+    expect(st.every((r) => r.status === 'closed' && r.exit_reason === 'time')).toBe(true);
   });
 
-  it('the gated book skips on WAIT while the always book still trades', async () => {
+  it('the gated book waits on WAIT while the always book trades; it enters later in the window once the gate is GO', async () => {
     h.gateGo = false;
     const e = await newEngine();
     vi.setSystemTime(istToUtc('2026-10-26', 22, 30, 20));
     await e.tick();
-    const runs = await q(`SELECT run_key, status FROM bot_runs WHERE strategy = 'NY_SHORT' ORDER BY run_key`);
-    expect(runs).toEqual([
-      { run_key: 'NY_SHORT:2026-10-26:always', status: 'open' },
-      { run_key: 'NY_SHORT:2026-10-26:gated', status: 'skipped' },
-    ]);
-    expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_skipped'`)).not.toHaveLength(0);
+    let runs = await q(`SELECT run_key, status FROM bot_runs WHERE strategy = 'NY_SHORT' ORDER BY run_key`);
+    // no placeholder row while it is still waiting: only the always book exists
+    expect(runs).toEqual([{ run_key: 'NY_SHORT:2026-10-26:always', status: 'open' }]);
+    expect(e.waitingEntries()).toMatchObject([{ key: 'NY_SHORT:2026-10-26:gated', attempts: 1, lastReason: expect.stringContaining('gate WAIT') }]);
+    expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_waiting'`)).toHaveLength(1);
+
+    // the gate stays WAIT: a minute later it re-checks but does not repeat the same reason
+    vi.setSystemTime(istToUtc('2026-10-26', 22, 31, 20));
+    await e.tick();
+    expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_waiting'`)).toHaveLength(1);
+    expect(e.waitingEntries()[0]!.attempts).toBe(2);
+
+    // 50 minutes in the gate turns GO: it enters then, and says how long it waited
+    h.gateGo = true;
+    vi.setSystemTime(istToUtc('2026-10-27', 0, 20, 20));
+    await e.tick();
+    runs = await q(`SELECT run_key, status, tags FROM bot_runs WHERE strategy = 'NY_SHORT' ORDER BY run_key`);
+    expect(runs.map((r) => `${r.run_key}:${r.status}`)).toEqual(['NY_SHORT:2026-10-26:always:open', 'NY_SHORT:2026-10-26:gated:open']);
+    expect(runs[1]!.tags.enteredAfterWaitMin).toBe(110);
+    expect(runs[1]!.tags.reasonsBeforeEntry[0].reason).toMatch(/gate WAIT/);
+    expect(e.waitingEntries()).toHaveLength(0);
+    // the forced exit time did not move
+    const planned = await q(`SELECT planned_exit_at FROM bot_runs WHERE run_key = 'NY_SHORT:2026-10-26:gated'`);
+    expect(new Date(planned[0].planned_exit_at).getTime()).toBe(istToUtc('2026-10-27', 7, 0));
+  });
+
+  it('a gated entry that never gets a GO within the window is recorded as dropped, with the reasons seen', async () => {
+    h.gateGo = false;
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    vi.setSystemTime(istToUtc('2026-10-26', 11, 30, 20));
+    await e.tick();
+    expect(await q(`SELECT 1 FROM bot_runs WHERE run_key = 'ASIA_SHORT:2026-10-26:gated'`)).toHaveLength(0); // still inside the 2h window
+    vi.setSystemTime(istToUtc('2026-10-26', 11, 59, 20));
+    await e.tick();
+    const r = (await q(`SELECT status, tags FROM bot_runs WHERE run_key = 'ASIA_SHORT:2026-10-26:gated'`))[0];
+    expect(r.status).toBe('skipped');
+    expect(r.tags.reason).toMatch(/gate WAIT/);
+    expect(r.tags.attempts).toBe(3); // one try per ticked minute here (10:00, 11:30, 11:59)
+    expect(r.tags.reasonsSeen).toHaveLength(1);
+    expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_skipped' AND message LIKE '%dropped%'`)).toHaveLength(1);
+    // the window is closed: it is never retried
+    vi.setSystemTime(istToUtc('2026-10-26', 12, 5, 0));
+    await e.tick();
+    expect((await q(`SELECT COUNT(*)::int AS n FROM bot_runs WHERE run_key = 'ASIA_SHORT:2026-10-26:gated'`))[0].n).toBe(1);
+  });
+
+  it('the New York window is 3h: still waiting at 2h58, dropped in its last minute (01:29 IST)', async () => {
+    h.gateGo = false;
+    const e = await newEngine();
+    vi.setSystemTime(istToUtc('2026-10-26', 22, 30, 20));
+    await e.tick();
+    vi.setSystemTime(istToUtc('2026-10-27', 1, 28, 20));
+    await e.tick();
+    expect(await q(`SELECT 1 FROM bot_runs WHERE run_key = 'NY_SHORT:2026-10-26:gated'`)).toHaveLength(0);
+    expect(e.waitingEntries()).toHaveLength(1);
+    vi.setSystemTime(istToUtc('2026-10-27', 1, 29, 20));
+    await e.tick();
+    expect(await q(`SELECT 1 FROM bot_runs WHERE run_key = 'NY_SHORT:2026-10-26:gated' AND status = 'skipped'`)).toHaveLength(1);
+    expect(e.waitingEntries()).toHaveLength(0);
   });
 
   it('long straddles enter on the next expiry ATM strike, always book only', async () => {
@@ -274,23 +317,51 @@ describe('bot engine on a real Postgres', () => {
     const e2 = await newEngine(); // simulates a process restart
     vi.setSystemTime(istToUtc('2026-10-26', 10, 2, 0));
     await e2.tick();
-    expect((await q('SELECT COUNT(*)::int AS n FROM bot_runs'))[0].n).toBe(4);
+    expect((await q('SELECT COUNT(*)::int AS n FROM bot_runs'))[0].n).toBe(2);
     const live = await e2.livePositions();
-    expect(live).toHaveLength(4);
+    expect(live).toHaveLength(2);
     expect(live[0]!.pnl).not.toBeNull();
   });
 
-  it('marks a run failed (and never re-tries it) when the order book cannot fill 100 lots', async () => {
+  it('keeps retrying when no strike is tradable, and records the day as failed only when the 2h window ends', async () => {
     const e = await newEngine();
-    process.env.BOT_OPTION_LOTS = '100';
-    // swap in a thin book for the call body by making the mark tiny-depth: emulate via marks of 0 bid
     h.marks.set('C-BODY', 1); // bid becomes -1 -> unfillable quote, picker skips it, so no tradable call
     vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
     await e.tick();
-    const r = await q(`SELECT strategy, status FROM bot_runs WHERE strategy = 'ASIA_SHORT'`);
-    expect(r.every((x) => x.status === 'failed')).toBe(true);
+    expect(await q(`SELECT 1 FROM bot_runs WHERE strategy = 'ASIA_SHORT'`)).toHaveLength(0);
+    expect(e.waitingEntries()).toHaveLength(2);
+
+    // the quote recovers 40 minutes in: both books enter then
+    h.marks.delete('C-BODY');
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 40, 20));
+    await e.tick();
+    const r = await q(`SELECT status, tags FROM bot_runs WHERE strategy = 'ASIA_SHORT'`);
+    expect(r.map((x) => x.status)).toEqual(['open', 'open']);
+    expect(r[0]!.tags.enteredAfterWaitMin).toBe(40);
+    expect(r[0]!.tags.reasonsBeforeEntry[0].reason).toMatch(/no tradable strikes/);
+  });
+
+  it('marks the day failed with the reason (and never re-tries it) when strikes stay untradable through the window', async () => {
+    const e = await newEngine();
+    h.marks.set('C-BODY', 1);
+    vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
+    await e.tick();
+    vi.setSystemTime(istToUtc('2026-10-26', 11, 59, 20));
+    await e.tick();
+    const r = await q(`SELECT status, tags FROM bot_runs WHERE strategy = 'ASIA_SHORT'`);
+    expect(r.map((x) => x.status)).toEqual(['failed', 'failed']);
+    expect(r[0]!.tags.reason).toMatch(/no tradable strikes/);
     await e.tick();
     expect((await q(`SELECT COUNT(*)::int AS n FROM bot_runs WHERE strategy = 'ASIA_SHORT'`))[0].n).toBe(2);
     expect(await q(`SELECT 1 FROM bot_events WHERE type = 'entry_failed'`)).not.toHaveLength(0);
+  });
+
+  it('a long straddle gets no wait window: a failure at its time is recorded at once', async () => {
+    const e = await newEngine();
+    h.marks.set('C-ATM', -5); // ask below zero: not a tradable quote
+    vi.setSystemTime(istToUtc('2026-10-26', 17, 30, 20));
+    await e.tick();
+    const r = await q(`SELECT status FROM bot_runs WHERE strategy = 'EVE_LONG'`);
+    expect(r).toEqual([{ status: 'failed' }]);
   });
 });

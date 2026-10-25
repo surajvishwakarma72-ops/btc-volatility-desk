@@ -58050,7 +58050,7 @@ document.addEventListener('click', function(e) {
   const pct = (v, d = 0) => v == null || !isFinite(v) ? '-' : (v * 100).toFixed(d) + '%';
   const cls = v => `class="${sgn(v)}"`;
   const IST = ms => new Date(ms + 19800000).toISOString().slice(5, 16).replace('T', ' ');
-  const STRAT = { ASIA_SHORT: 'Asia short strangle 10:00', NY_SHORT: 'NY short strangle 22:30', ASIA_IC: 'Asia iron condor 24h', NY_IC: 'NY iron condor 24h', EVE_LONG: 'Evening long straddle 17:30', PRE_LONG: 'Pre-dawn long straddle 05:00', CAL_BACK: 'Calendar spread, backwardation 18:00', FUT_SWEEP_LDN: 'Futures: London sweeps Asia', FUT_SWEEP_NY: 'Futures: New York sweeps London', FUT_SIGNAL: 'Futures: price-action signal' };
+  const STRAT = { ASIA_SHORT: 'Asia short strangle 10:00', NY_SHORT: 'NY short strangle 22:30', EVE_LONG: 'Evening long straddle 17:30', PRE_LONG: 'Pre-dawn long straddle 05:00', CAL_BACK: 'Calendar spread, backwardation 18:00', FUT_SWEEP_LDN: 'Futures: London sweeps Asia', FUT_SWEEP_NY: 'Futures: New York sweeps London', FUT_SIGNAL: 'Futures: price-action signal' };
   const name = k => { const [s, b] = k.split('|'); return (STRAT[s] || s) + (b ? ' · ' + b : ''); };
   const COLORS = ['#58A6D6', '#E3AE45', '#A98BE6', '#45BFA9', '#EF5A5E', '#35BB7D', '#8FA3B5', '#D69E2E', '#E58BC1', '#9CC9EE', '#C9A36B', '#7BD1E0'];
   const WDORD = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
@@ -58058,7 +58058,7 @@ document.addEventListener('click', function(e) {
   /* ---------- next-up countdown (kept in step with backend/src/lib/bot/schedule.ts; a test compares them) ---------- */
   // NEXTUP-START
   const MIN_MS = 60000, DAY_MS = 86400000, IST_MS = 19800000, GRACE_MS = 10 * MIN_MS;
-  const ENTRY_MIN = { PRE_LONG: 300, ASIA_SHORT: 600, ASIA_IC: 600, EVE_LONG: 1050, CAL_BACK: 1080, NY_SHORT: 1350, NY_IC: 1350 };
+  const ENTRY_MIN = { PRE_LONG: 300, ASIA_SHORT: 600, EVE_LONG: 1050, CAL_BACK: 1080, NY_SHORT: 1350 };
   function nextUp(now, sess) {
     const day0 = Math.floor((now + IST_MS) / DAY_MS), found = [];
     for (let d = day0 - 1; d <= day0 + 2; d++) {
@@ -58078,7 +58078,7 @@ document.addEventListener('click', function(e) {
     return [...byTime.values()].sort((a, b) => a.at - b.at);
   }
   // NEXTUP-END
-  const SHORT_NAME = { ASIA_SHORT: 'Asia short strangle', ASIA_IC: 'Asia iron condor', NY_SHORT: 'New York short strangle', NY_IC: 'New York iron condor', EVE_LONG: 'Evening long straddle', PRE_LONG: 'Pre-dawn long straddle', CAL_BACK: 'Calendar spread (if backwardation)', FUT_SWEEP_LDN: 'Futures: London sweep window opens', FUT_SWEEP_NY: 'Futures: New York sweep window opens' };
+  const SHORT_NAME = { ASIA_SHORT: 'Asia short strangle', NY_SHORT: 'New York short strangle', EVE_LONG: 'Evening long straddle', PRE_LONG: 'Pre-dawn long straddle', CAL_BACK: 'Calendar spread (if backwardation)', FUT_SWEEP_LDN: 'Futures: London sweep window opens', FUT_SWEEP_NY: 'Futures: New York sweep window opens' };
   const evName = e => e.ids.map(i => SHORT_NAME[i] || i).join(' + ');
   const hms = ms => { const s = Math.max(0, Math.floor(ms / 1000)); return String(Math.floor(s / 3600)).padStart(2, '0') + ':' + String(Math.floor(s % 3600 / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
   function renderNext() {

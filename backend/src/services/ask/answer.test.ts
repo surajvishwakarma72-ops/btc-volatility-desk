@@ -214,14 +214,14 @@ describe('ranking and exit quality', () => {
     const replay = {
       range: { from: '2025-10-02', to: '2026-10-18', days: 382 },
       runs: [{ strategy: 'NY_SHORT', netPnl: -1.5 }, { strategy: 'NY_SHORT', netPnl: -1.5 }, { strategy: 'ASIA_SHORT', netPnl: -3 }, { strategy: 'ASIA_SHORT', netPnl: -3 }],
-      analytics: { exitGrid: [{ strategy: 'ASIA_IC', book: 'always', actual: -3.63, points: [{ offsetMin: 240, avgPnl: -1.66, winRate: 0.44 }, { offsetMin: 1440, avgPnl: -3.63, winRate: 0.27 }] }] },
+      analytics: { exitGrid: [{ strategy: 'ASIA_SHORT', book: 'always', actual: -3.63, points: [{ offsetMin: 240, avgPnl: -1.66, winRate: 0.44 }, { offsetMin: 1440, avgPnl: -3.63, winRate: 0.27 }] }] },
     };
     const r = await answer('which session is best?', ctx(live({ replay: () => replay })));
     expect(r.text).toMatch(/Replay.*best session by average PnL per trade is New York/);
     expect(r.text).toMatch(/loses least/);
-    const e = await answer('best exit time for the asia condor', ctx(live({ replay: () => replay })));
+    const e = await answer('best exit time for the asia strangle', ctx(live({ replay: () => replay })));
     expect(e.intent).toBe('exit_quality');
-    expect(e.table!.rows[0]).toEqual(['Asia iron condor, 24h (10:00 IST)', '-$3.63', '4 h after entry', '-$1.66']);
+    expect(e.table!.rows[0]).toEqual(['Asia short strangle (10:00 IST)', '-$3.63', '4 h after entry', '-$1.66']);
   });
 
   it('live exit quality reports peak versus final and the give-back', async () => {

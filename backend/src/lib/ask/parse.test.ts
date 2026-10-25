@@ -12,8 +12,6 @@ describe('parseStrategy', () => {
     expect(parseStrategy(' how is the ny short doing ').strategy).toBe('NY_SHORT');
     expect(parseStrategy(' asia strangle ').strategy).toBe('ASIA_SHORT');
     expect(parseStrategy(' the 10 am trade ').strategy).toBe('ASIA_SHORT');
-    expect(parseStrategy(' new york iron condor ').strategy).toBe('NY_IC');
-    expect(parseStrategy(' asia condor ').strategy).toBe('ASIA_IC');
     expect(parseStrategy(' evening straddle ').strategy).toBe('EVE_LONG');
     expect(parseStrategy(' pre-dawn straddle ').strategy).toBe('PRE_LONG');
     expect(parseStrategy(' calendar spread ').strategy).toBe('CAL_BACK');
@@ -26,7 +24,8 @@ describe('parseStrategy', () => {
   it('recognises strategy families', () => {
     expect(parseStrategy(' all futures ').group?.ids).toEqual(['FUT_SWEEP_LDN', 'FUT_SWEEP_NY', 'FUT_SIGNAL']);
     expect(parseStrategy(' the straddles ').group?.ids).toEqual(['EVE_LONG', 'PRE_LONG']);
-    expect(parseStrategy(' condors ').group?.label).toBe('iron condors');
+    expect(parseStrategy(' the short strangles ').group?.ids).toEqual(['ASIA_SHORT', 'NY_SHORT']);
+    expect(parseStrategy(' condors ')).toEqual({}); // removed from the bot
   });
 });
 
@@ -127,7 +126,7 @@ describe('parseQuestion intents', () => {
     expect(i('which session is best?')).toBe('ranking');
     expect(i('best strategy this month')).toBe('ranking');
     expect(i('how much did it give back from peak')).toBe('exit_quality');
-    expect(i('when should I exit the asia condor')).toBe('exit_quality');
+    expect(i('when should I exit the asia strangle')).toBe('exit_quality');
     expect(i('market now')).toBe('market');
     expect(i('what is dvol and funding')).toBe('concept');
     expect(i('replay summary')).toBe('replay');

@@ -3,7 +3,7 @@ import { calendarExitConfig, computePnl, evaluateExit, exitConfigFor } from '../
 import { checkRisk, type PortfolioState, type RiskLimits } from '../../lib/bot/risk-guard.js';
 import { dueCalendar, dueEntries, floorToMinute, istDateKey, istMidnightMs, runKey, runWindow, DAY, MIN, type RunWindow } from '../../lib/bot/schedule.js';
 import { portfolioMargin, type MarginPosition } from '../../lib/bot/portfolio-margin.js';
-import { pickAtmStraddle, pickBodyLeg, pickWing, type ChainOption } from '../../lib/bot/strike-picker.js';
+import { pickAtmStraddle, pickBodyLeg, type ChainOption } from '../../lib/bot/strike-picker.js';
 import type { ExitConfig, Leg, StrategyId } from '../../lib/bot/types.js';
 import {
   closeRun, getConfig, getOpenRuns, insertFill, insertLeg, insertRun, logEvent, pnlSince, runKeyExists, setLegExit,
@@ -20,8 +20,7 @@ const TICK_MS = 5_000;
 
 type OptionStrategy = Exclude<StrategyId, 'CAL_BACK'>;
 
-const SHORT_VOL: ReadonlySet<StrategyId> = new Set(['ASIA_SHORT', 'NY_SHORT', 'ASIA_IC', 'NY_IC', 'CAL_BACK']);
-const isIronCondor = (id: StrategyId) => id === 'ASIA_IC' || id === 'NY_IC';
+const SHORT_VOL: ReadonlySet<StrategyId> = new Set(['ASIA_SHORT', 'NY_SHORT', 'CAL_BACK']);
 const isLong = (id: StrategyId) => id === 'EVE_LONG' || id === 'PRE_LONG';
 
 const LIMITS: RiskLimits = {
@@ -43,6 +42,14 @@ interface OpenRun {
   closing: boolean;
 }
 
+interface WaitState {
+  lastMinute: number;
+  attempts: number;
+  /** Each distinct reason the entry was declined, in order, with when it was first seen. */
+  reasons: Array<{ atMs: number; reason: string }>;
+  windowEndMs: number;
+}
+
 /**
  * Paper trading engine. Strategy code is pure (lib/bot); this class only schedules, fetches
  * market data, and persists. Nothing here can place a real order: live mode is not implemented
@@ -55,6 +62,7 @@ export class BotEngine {
   private timer: NodeJS.Timeout | null = null;
   private busy = false;
   private open = new Map<string, OpenRun>();
+  private waits = new Map<string, WaitState>();
   private chain: ChainSnapshot | null = null;
   private lastMinute = 0;
   readonly futures = new FuturesLive({
@@ -158,13 +166,13 @@ export class BotEngine {
             for (const due of dueEntries(now)) {
               for (const book of ['always', 'gated'] as const) {
                 if (book === 'gated' && !SHORT_VOL.has(due.id)) continue;
-                await this.enter(due.id, due.dateKey, book, due.window, chain, now);
+                await this.enter(due.id, due.dateKey, book, due.window, chain, now, due.final, due.windowEndMs);
               }
             }
             const cal = dueCalendar(now);
             if (cal) {
               const front = chain.expiries[0];
-              if (front) await this.enter('CAL_BACK', cal.dateKey, 'always', { entryAtMs: cal.entryAtMs, exitAtMs: front - DEFAULT_CALENDAR.hardCloseBeforeMs }, chain, now);
+              if (front) await this.enter('CAL_BACK', cal.dateKey, 'always', { entryAtMs: cal.entryAtMs, exitAtMs: front - DEFAULT_CALENDAR.hardCloseBeforeMs }, chain, now, true, cal.entryAtMs + 10 * MIN);
             }
           }
           for (const run of [...this.open.values()]) await this.monitor(run, chain, now);
@@ -250,16 +258,7 @@ export class BotEngine {
     const body = (o: ChainOption): PlannedLeg => ({
       symbol: o.symbol, type: o.type, side: 'short', strike: o.strike, expiryMs, lots: LOTS, role: 'body', intendedPrice: o.bid,
     });
-    const legs = [body(call), body(put)];
-    if (isIronCondor(id)) {
-      const wc = pickWing(chain.options, call);
-      const wp = pickWing(chain.options, put);
-      if (!wc || !wp) return null;
-      for (const w of [wc, wp]) {
-        legs.push({ symbol: w.symbol, type: w.type, side: 'long', strike: w.strike, expiryMs, lots: LOTS, role: 'wing', intendedPrice: w.ask });
-      }
-    }
-    return { legs, expiryMs };
+    return { legs: [body(call), body(put)], expiryMs };
   }
 
   private async portfolioState(now: number): Promise<PortfolioState> {
@@ -275,29 +274,72 @@ export class BotEngine {
     };
   }
 
-  private async enter(id: StrategyId, dateKey: string, book: 'always' | 'gated', w: RunWindow, chain: ChainSnapshot, now: number): Promise<void> {
+  /** Entries still waiting for their conditions (short strangles keep trying through their wait window). */
+  waitingEntries() {
+    return [...this.waits.entries()].map(([key, s]) => ({
+      key, attempts: s.attempts, lastReason: s.reasons.at(-1)?.reason ?? null, reasonsSeen: s.reasons, windowEndMs: s.windowEndMs,
+    }));
+  }
+
+  /**
+   * One entry attempt. A strategy with a wait window is retried once a minute until it enters or the window
+   * closes; only then is the day recorded as dropped, with every distinct reason seen on the way.
+   */
+  private async enter(
+    id: StrategyId, dateKey: string, book: 'always' | 'gated', w: RunWindow, chain: ChainSnapshot, now: number,
+    final: boolean, windowEndMs: number,
+  ): Promise<void> {
     const key = runKey(id, dateKey, book);
-    if (await runKeyExists(key)) return;
+    const minute = floorToMinute(now);
+    const st = this.waits.get(key) ?? { lastMinute: 0, attempts: 0, reasons: [], windowEndMs };
+    if (st.lastMinute === minute) return;
+    if (await runKeyExists(key)) { this.waits.delete(key); return; }
+    st.attempts++;
+    this.waits.set(key, st);
+    const done = await this.tryEnter(id, dateKey, book, w, chain, now, key, st, final);
+    if (done) this.waits.delete(key);
+    else st.lastMinute = minute;
+  }
+
+  /** Records why an attempt did not trade; returns true once the drop is final (and persisted). */
+  private async decline(
+    st: WaitState, key: string, id: StrategyId, dateKey: string, book: 'always' | 'gated', final: boolean,
+    status: 'skipped' | 'failed', reason: string, tags: Record<string, unknown>, now: number, eventType: string,
+  ): Promise<boolean> {
+    const changed = st.reasons.at(-1)?.reason !== reason;
+    if (changed) st.reasons.push({ atMs: now, reason });
+    if (changed || final) {
+      await logEvent({
+        strategy: id, type: final ? eventType : 'entry_waiting', severity: status === 'failed' ? 'warn' : 'info',
+        message: final ? `${key}: dropped, ${reason}` : `${key}: not entered yet, ${reason}; trying again until ${new Date(st.windowEndMs + 19_800_000).toISOString().slice(11, 16)} IST`,
+      });
+    }
+    if (!final) return false;
+    await insertRun({
+      runKey: key, strategy: id, book, mode: 'paper', dateKey, status,
+      tags: { ...tags, reason, attempts: st.attempts, reasonsSeen: st.reasons },
+    });
+    return true;
+  }
+
+  private async tryEnter(
+    id: StrategyId, dateKey: string, book: 'always' | 'gated', w: RunWindow, chain: ChainSnapshot, now: number,
+    key: string, st: WaitState, final: boolean,
+  ): Promise<boolean> {
     const mode = 'paper';
     const gate = evaluateGate();
     const tags = { gate, expiries: chain.expiries.slice(0, 4) };
 
     if (book === 'gated' && !gate.go) {
-      await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'skipped', tags });
-      await logEvent({ strategy: id, type: 'entry_skipped', message: `${key}: gate WAIT (${gate.reasons.join('; ')})`, data: gate });
-      return;
+      return this.decline(st, key, id, dateKey, book, final, 'skipped', `gate WAIT (${gate.reasons.join('; ')})`, tags, now, 'entry_skipped');
     }
 
     const plan = this.plan(id, chain);
     if (plan && 'skip' in plan) {
-      await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'skipped', tags: { ...tags, reason: plan.skip } });
-      await logEvent({ strategy: id, type: 'entry_skipped', message: `${key}: ${plan.skip}` });
-      return;
+      return this.decline(st, key, id, dateKey, book, final, 'skipped', plan.skip, tags, now, 'entry_skipped');
     }
     if (!plan) {
-      await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'failed', tags });
-      await logEvent({ strategy: id, type: 'entry_failed', severity: 'warn', message: `${key}: no tradable strikes/expiry in the chain` });
-      return;
+      return this.decline(st, key, id, dateKey, book, final, 'failed', 'no tradable strikes or expiry in the chain (short strangles need a 0.10-0.15 delta strike with a bid)', tags, now, 'entry_failed');
     }
 
     const symbols = plan.legs.map((l) => l.symbol);
@@ -307,9 +349,7 @@ export class BotEngine {
     ]);
     const exec = paperExecute(plan.legs, 'entry', books, rates, chain.spot);
     if (!exec.ok) {
-      await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'failed', tags: { ...tags, reason: exec.reason } });
-      await logEvent({ strategy: id, type: 'entry_failed', severity: 'warn', message: `${key}: ${exec.reason}` });
-      return;
+      return this.decline(st, key, id, dateKey, book, final, 'failed', `order book not fillable: ${exec.reason}`, tags, now, 'entry_failed');
     }
 
     const legs: Leg[] = plan.legs.map((l, i) => ({
@@ -325,9 +365,7 @@ export class BotEngine {
       { eventInWindow: gate.eventInWindow },
     );
     if (!verdict.allowed) {
-      await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'skipped', tags: { ...tags, blocked: verdict.reasons } });
-      await logEvent({ strategy: id, type: 'entry_blocked', severity: 'warn', message: `${key}: ${verdict.reasons.join('; ')}` });
-      return;
+      return this.decline(st, key, id, dateKey, book, final, 'skipped', `risk guard blocked: ${verdict.reasons.join('; ')}`, { ...tags, blocked: verdict.reasons }, now, 'entry_blocked');
     }
 
     let exitCfg: ExitConfig;
@@ -341,9 +379,7 @@ export class BotEngine {
         netDebit,
       );
       if (!be) {
-        await insertRun({ runKey: key, strategy: id, book, mode, dateKey, status: 'skipped', tags: { ...tags, reason: 'no profit zone at front expiry for this net debit' } });
-        await logEvent({ strategy: id, type: 'entry_skipped', message: `${key}: the net debit ${netDebit.toFixed(1)} cannot be repaid at front expiry` });
-        return;
+        return this.decline(st, key, id, dateKey, book, final, 'skipped', `the net debit ${netDebit.toFixed(1)} cannot be repaid at front expiry (no profit zone)`, tags, now, 'entry_skipped');
       }
       exitCfg = calendarExitConfig({ low: be.low, high: be.high }, f0.expiryMs);
     } else {
@@ -351,9 +387,12 @@ export class BotEngine {
     }
     const runId = await insertRun({
       runKey: key, strategy: id, book, mode, dateKey, status: 'open', entryAtMs: now, plannedExitAtMs: w.exitAtMs,
-      spotEntry: chain.spot, marginUsd, feesEntry: exec.fees, exitConfig: exitCfg, tags,
+      spotEntry: chain.spot, marginUsd, feesEntry: exec.fees, exitConfig: exitCfg,
+      tags: st.attempts > 1 || st.reasons.length
+        ? { ...tags, enteredAfterWaitMin: Math.round((now - w.entryAtMs) / MIN), attempts: st.attempts, reasonsBeforeEntry: st.reasons }
+        : tags,
     });
-    if (!runId) return;
+    if (!runId) return true;
     for (const l of legs) await insertLeg(runId, l);
     for (const f of exec.fills) {
       await insertFill(runId, { legSymbol: f.symbol, action: 'entry', side: f.side, lots: f.lots, intendedPrice: f.intendedPrice, avgPrice: f.avgPrice, filled: f.filled, partial: f.partial, fee: f.fee });
@@ -364,6 +403,7 @@ export class BotEngine {
       message: `${key} entered: ${legs.map((l) => `${l.side} ${l.symbol}@${l.entryPrice.toFixed(1)}`).join(', ')}; margin ${marginUsd.toFixed(2)}`,
       data: { legs, marginUsd, fees: exec.fees, spot: chain.spot, gate: gate.go },
     });
+    return true;
   }
 
   // ---------- monitoring and exits ----------
@@ -470,7 +510,7 @@ export class BotEngine {
       expiries: chain.expiries.slice(0, 4),
       openRuns: this.open.size,
       accountMargin: account ? { margin: account.margin, risk: account.riskMargin, floor: account.floor } : null,
-      nextEntries: (['ASIA_SHORT', 'NY_SHORT', 'EVE_LONG', 'PRE_LONG', 'ASIA_IC', 'NY_IC'] as OptionStrategy[]).map((id) => {
+      nextEntries: (['ASIA_SHORT', 'NY_SHORT', 'EVE_LONG', 'PRE_LONG'] as OptionStrategy[]).map((id) => {
         const today = runWindow(id, istDateKey(now)).entryAtMs;
         return { id, nextEntryAt: today >= now ? today : runWindow(id, istDateKey(now + DAY)).entryAtMs };
       }),

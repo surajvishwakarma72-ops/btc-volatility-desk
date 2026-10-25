@@ -12,21 +12,33 @@ interface Slot {
   entryMin: number;
   /** Time exit, minutes after the entry day's IST midnight (can exceed 1440 for next-day exits). */
   exitMin: number;
+  /**
+   * Wait window: if no valid trade is found at the entry time the bot keeps re-checking for this many
+   * minutes and enters the first time the conditions pass. 0 means the short 10-minute restart grace only.
+   */
+  waitMin: number;
 }
 
 /**
  * Entry and forced-exit clock per strategy (IST).
  * CAL_BACK is signal-driven (backwardation), so it has no fixed slot.
+ * The short strangles wait up to 2h (Asia) and 3h (New York) for a valid entry; the exit time never moves,
+ * so a late entry simply has a shorter hold.
  */
 export const SLOTS: Record<Exclude<StrategyId, 'CAL_BACK'>, Slot> = {
-  ASIA_SHORT: { entryMin: 10 * 60, exitMin: 16 * 60 },
-  NY_SHORT: { entryMin: 22 * 60 + 30, exitMin: 24 * 60 + 7 * 60 },
-  EVE_LONG: { entryMin: 17 * 60 + 30, exitMin: 21 * 60 },
-  PRE_LONG: { entryMin: 5 * 60, exitMin: 9 * 60 },
-  // Iron condors run a full 24h, no intraday time exit.
-  ASIA_IC: { entryMin: 10 * 60, exitMin: 24 * 60 + 10 * 60 },
-  NY_IC: { entryMin: 22 * 60 + 30, exitMin: 24 * 60 + 22 * 60 + 30 },
+  ASIA_SHORT: { entryMin: 10 * 60, exitMin: 16 * 60, waitMin: 120 },
+  NY_SHORT: { entryMin: 22 * 60 + 30, exitMin: 24 * 60 + 7 * 60, waitMin: 180 },
+  EVE_LONG: { entryMin: 17 * 60 + 30, exitMin: 21 * 60, waitMin: 0 },
+  PRE_LONG: { entryMin: 5 * 60, exitMin: 9 * 60, waitMin: 0 },
 };
+
+export const RESTART_GRACE_MS = 10 * 60_000;
+
+/** How long after its start a strategy may still enter (its wait window, or the restart grace). */
+export function entryWindowMs(id: Exclude<StrategyId, 'CAL_BACK'>): number {
+  const w = SLOTS[id].waitMin * 60_000;
+  return w > 0 ? w : RESTART_GRACE_MS;
+}
 
 export function hasFixedSlot(id: StrategyId): id is Exclude<StrategyId, 'CAL_BACK'> {
   return id !== 'CAL_BACK';
@@ -53,22 +65,33 @@ export function runWindow(id: Exclude<StrategyId, 'CAL_BACK'>, dateKey: string):
   return { entryAtMs: base + s.entryMin * MIN, exitAtMs: base + s.exitMin * MIN };
 }
 
+export interface DueEntry {
+  id: Exclude<StrategyId, 'CAL_BACK'>;
+  dateKey: string;
+  window: RunWindow;
+  /** When the entry window closes (entry time + wait window, or + restart grace). */
+  windowEndMs: number;
+  /** True in the last minute of the window (or for strategies with no wait window): a failed attempt is then recorded as the day's drop. */
+  final: boolean;
+}
+
 /**
- * Entries that are due now: the IST date's entry time has passed, but not by more than
- * `graceMs`, so a late restart still enters within a short window but never chases a
- * stale setup hours later.
+ * Entries that may still be attempted now: the IST date's entry time has passed, but not by more than
+ * the strategy's entry window (`graceMs` overrides it). Short strangles keep trying for their wait
+ * window; the others only get the short restart grace, so a stale setup is never chased hours later.
  */
-export function dueEntries(
-  nowMs: number,
-  graceMs = 10 * MIN,
-): Array<{ id: Exclude<StrategyId, 'CAL_BACK'>; dateKey: string; window: RunWindow }> {
-  const out: Array<{ id: Exclude<StrategyId, 'CAL_BACK'>; dateKey: string; window: RunWindow }> = [];
+export function dueEntries(nowMs: number, graceMs?: number): DueEntry[] {
+  const out: DueEntry[] = [];
   const today = istDateKey(nowMs);
   const yesterday = istDateKey(nowMs - DAY);
   for (const id of Object.keys(SLOTS) as Array<Exclude<StrategyId, 'CAL_BACK'>>) {
+    const span = graceMs ?? entryWindowMs(id);
     for (const dateKey of [today, yesterday]) {
       const w = runWindow(id, dateKey);
-      if (nowMs >= w.entryAtMs && nowMs < w.entryAtMs + graceMs) out.push({ id, dateKey, window: w });
+      const windowEndMs = w.entryAtMs + span;
+      if (nowMs >= w.entryAtMs && nowMs < windowEndMs) {
+        out.push({ id, dateKey, window: w, windowEndMs, final: SLOTS[id].waitMin === 0 || nowMs >= windowEndMs - MIN });
+      }
     }
   }
   return out;

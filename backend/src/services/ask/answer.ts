@@ -48,10 +48,8 @@ const ids = (p: Parsed): string[] | null => (p.strategy ? [p.strategy] : p.group
 const scopeLabel = (p: Parsed) => (p.strategy ? nm(p.strategy) : p.group ? p.group.label : 'all strategies');
 
 export const RULES_TEXT: Record<string, string> = {
-  ASIA_SHORT: 'Sells a call and a put on the N2N expiry at about 0.125 delta (band 0.10-0.15) at 10:00 IST, 100 lots per leg. Exits: take profit at +10% of margin, close everything if either sold leg reaches 2x its entry price, or force-close at 16:00 IST. Runs in two books: "always" and "gated" (only when the GO gate says GO).',
-  NY_SHORT: 'Same structure as the Asia short strangle but entered at 22:30 IST. Exits: +10% of margin, 2x stop on either leg (closes both), or force-close at 07:00 IST. Two books: always and gated.',
-  ASIA_IC: 'The Asia short strangle plus a bought wing on each side (about 0.04 delta) at 10:00 IST. Runs a full 24 hours with no intraday time exit (leaves next day 10:00); take profit +10% of margin and the 2x stop on the short legs still apply, and one stop closes everything.',
-  NY_IC: 'The New York short strangle plus bought wings at 22:30 IST, held 24 hours (exits next day 22:30), +10% of margin target and the 2x stop on the short legs.',
+  ASIA_SHORT: 'Sells a call and a put on the N2N expiry at about 0.125 delta (band 0.10-0.15) at 10:00 IST, 100 lots per leg. If no valid trade is found at 10:00 it keeps checking every minute for 2 hours (until 12:00 IST) and enters the first time the conditions pass; if they never do, the day is recorded as dropped with the reasons it saw. Exits: take profit at +10% of margin, close everything if either sold leg reaches 2x its entry price, or force-close at 16:00 IST (the exit time does not move for a late entry). Runs in two books: "always" and "gated" (only when the GO gate says GO).',
+  NY_SHORT: 'Same structure as the Asia short strangle but entered at 22:30 IST, with a 3 hour wait window (until 01:30 IST). Exits: +10% of margin, 2x stop on either leg (closes both), or force-close at 07:00 IST. Two books: always and gated.',
   EVE_LONG: 'Buys the ATM straddle (call and put at the same strike) on the next expiry at 17:30 IST, every day. Exits: +50% of margin, -10% of margin, or time exit about 21:00 IST.',
   PRE_LONG: 'Buys the ATM straddle on the next expiry at 05:00 IST, every day. Exits: +50% of margin, -10% of margin, or time exit at 09:00 IST.',
   CAL_BACK: 'At 18:00 IST, if the current expiry\'s IV is at least 2 points above the N2N expiry\'s (backwardation), sells the current-expiry ATM call and put and buys the same strikes on N2N. Exits only at +10% of margin or when spot leaves the breakeven band computed at entry, with a hard close one hour before the front expiry so the short leg is never left to settle.',
@@ -237,7 +235,7 @@ async function whyNoTrade(p: Parsed, c: AskContext): Promise<Answer> {
   };
 }
 
-const SESSION_OF: Record<string, string> = { ASIA_SHORT: 'Asia', ASIA_IC: 'Asia', NY_SHORT: 'New York', NY_IC: 'New York', EVE_LONG: 'Evening (pre-NY)', PRE_LONG: 'Pre-dawn', CAL_BACK: 'Evening (calendar)', FUT_SWEEP_LDN: 'London', FUT_SWEEP_NY: 'New York', FUT_SIGNAL: 'Any time' };
+const SESSION_OF: Record<string, string> = { ASIA_SHORT: 'Asia', NY_SHORT: 'New York', EVE_LONG: 'Evening (pre-NY)', PRE_LONG: 'Pre-dawn', CAL_BACK: 'Evening (calendar)', FUT_SWEEP_LDN: 'London', FUT_SWEEP_NY: 'New York', FUT_SIGNAL: 'Any time' };
 const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 async function ranking(p: Parsed, c: AskContext): Promise<Answer> {
@@ -483,7 +481,7 @@ function help(): Answer {
     text: [
       'I answer from your own data only: the database, the live market feeds and the stored replay. I never guess; if something is not recorded I will say so. Ask me things like:',
       '- Running positions / how is the NY short doing',
-      "- Today's PnL, this week by strategy, last 30 days of the Asia condor",
+      "- Today's PnL, this week by strategy, last 30 days of the Asia short strangle",
       '- Why was the last trade stopped? / Why no trade today?',
       '- What was happening at 10:05 (or 22:30 yesterday)?',
       '- Which session is best? / How much did it give back from the peak? / best exit time',

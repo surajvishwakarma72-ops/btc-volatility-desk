@@ -43,22 +43,6 @@ export function pickBodyLeg(chain: readonly ChainOption[], type: OptionType, exp
   return above.length ? above.reduce((best, o) => (o.delta < best.delta ? o : best)) : null;
 }
 
-/**
- * Bought wing for an iron condor: further OTM than the body, closest to `wingDelta`.
- * Wings must have an ask (we are buying them).
- */
-export function pickWing(chain: readonly ChainOption[], body: ChainOption, wingDelta = 0.04): ChainOption | null {
-  const farther = chain.filter(
-    (o) =>
-      o.type === body.type &&
-      o.expiryMs === body.expiryMs &&
-      o.ask > 0 &&
-      (body.type === 'call' ? o.strike > body.strike : o.strike < body.strike),
-  );
-  if (!farther.length) return null;
-  return farther.reduce((best, o) => (Math.abs(o.delta - wingDelta) < Math.abs(best.delta - wingDelta) ? o : best));
-}
-
 /** ATM straddle: the strike nearest spot that has both a call and a put with an ask. */
 export function pickAtmStraddle(
   chain: readonly ChainOption[],

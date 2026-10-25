@@ -52,20 +52,28 @@ describe('replayRun', () => {
     expect(r.netPnl).toBeLessThan(0);
   });
 
-  it('iron condor wings cap the loss versus the plain strangle and hold past 16:00 IST', () => {
-    const entry = runWindow('ASIA_IC', '2026-01-03').entryAtMs;
+  it('the gated Asia strangle waits up to 2h for the gate and enters the first time it passes', () => {
+    const entry = runWindow('ASIA_SHORT', '2026-01-03').entryAtMs;
     const flat = dataFrom(() => 80_000);
-    const ic = replayRun(flat, 'ASIA_IC', '2026-01-03', 'always')!;
-    // no intraday time exit: it only leaves at the 24h mark or earlier on its target/stop
-    expect(['time', 'tp', 'stop']).toContain(ic.exitReason);
-    if (ic.exitReason === 'time') expect(ic.exitMs - entry).toBe(24 * 60 * MIN);
-    expect(ic.exitMs - entry).toBeGreaterThan(6 * 60 * MIN);
-    expect(ic.legs.filter((l) => l.role === 'wing')).toHaveLength(2);
-    // crash through everything
-    const crash = dataFrom((t) => (t < entry + 60 * MIN ? 80_000 : 62_000));
-    const icLoss = replayRun(crash, 'ASIA_IC', '2026-01-03', 'always')!;
-    const strLoss = replayRun(crash, 'ASIA_SHORT', '2026-01-03', 'always')!;
-    expect(icLoss.netPnl).toBeGreaterThan(strLoss.netPnl - 1e-9);
+    const lateGo = (opens: number): ReplayData => ({ ...flat, dvolAt: (t) => (t < entry + opens * MIN ? 70 : 45) });
+    const r = replayRun(lateGo(35), 'ASIA_SHORT', '2026-01-03', 'gated')!;
+    expect(r).not.toBeNull();
+    expect(r.entryMs).toBe(entry + 35 * MIN);
+    // the exit clock never moves, so a late entry just holds for less time
+    expect(r.exitMs).toBeLessThanOrEqual(runWindow('ASIA_SHORT', '2026-01-03').exitAtMs);
+    // the always book is unaffected and enters on time
+    expect(replayRun(lateGo(35), 'ASIA_SHORT', '2026-01-03', 'always')!.entryMs).toBe(entry);
+    // a gate that opens after the 2h window never trades; the New York window is 3h
+    expect(replayRun(lateGo(125), 'ASIA_SHORT', '2026-01-03', 'gated')).toBeNull();
+    const nyEntry = runWindow('NY_SHORT', '2026-01-03').entryAtMs;
+    const nyLate: ReplayData = { ...flat, dvolAt: (t) => (t < nyEntry + 150 * MIN ? 70 : 45) };
+    expect(replayRun(nyLate, 'NY_SHORT', '2026-01-03', 'gated')!.entryMs).toBe(nyEntry + 150 * MIN);
+  });
+
+  it('long straddles never wait: no entry at their time means no trade', () => {
+    const entry = runWindow('EVE_LONG', '2026-01-03').entryAtMs;
+    const noBarsAtEntry = dataFrom(() => 80_000, { from: entry + 30 * MIN, to: Date.parse('2026-01-06T00:00:00Z') });
+    expect(replayRun(noBarsAtEntry, 'EVE_LONG', '2026-01-03', 'always')).toBeNull();
   });
 
   it('long straddle goes long both legs of the same ATM strike on the next expiry', () => {
@@ -98,8 +106,7 @@ describe('replayAll', () => {
     const { runs } = replayAll(d, { fromDate: '2026-01-04', toDate: '2026-01-04' });
     const keys = runs.map((r) => `${r.strategy}|${r.book}`).sort();
     expect(keys).toEqual([
-      'ASIA_IC|always', 'ASIA_IC|gated', 'ASIA_SHORT|always', 'ASIA_SHORT|gated',
-      'EVE_LONG|always', 'NY_IC|always', 'NY_IC|gated', 'NY_SHORT|always', 'NY_SHORT|gated', 'PRE_LONG|always',
+      'ASIA_SHORT|always', 'ASIA_SHORT|gated', 'EVE_LONG|always', 'NY_SHORT|always', 'NY_SHORT|gated', 'PRE_LONG|always',
     ]);
   });
 });

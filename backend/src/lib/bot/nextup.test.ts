@@ -44,10 +44,10 @@ describe('Bot page countdown schedule', () => {
     const evening = list.find((e) => e.ids.includes('EVE_LONG'))!;
     expect(evening.at).toBe(runWindow('EVE_LONG', istDateKey(now)).entryAtMs);
     const ny = list.find((e) => e.ids.includes('NY_SHORT'))!;
-    expect(ny.ids.sort()).toEqual(['NY_IC', 'NY_SHORT']);
+    expect(ny.ids).toEqual(['NY_SHORT']);
     expect(ny.at).toBe(runWindow('NY_SHORT', istDateKey(now)).entryAtMs);
     const asiaTomorrow = list.find((e) => e.ids.includes('ASIA_SHORT'))!;
-    expect(asiaTomorrow.ids.sort()).toEqual(['ASIA_IC', 'ASIA_SHORT']);
+    expect(asiaTomorrow.ids).toEqual(['ASIA_SHORT']);
     expect(asiaTomorrow.at).toBe(runWindow('ASIA_SHORT', istDateKey(now + 86_400_000)).entryAtMs);
   });
 
