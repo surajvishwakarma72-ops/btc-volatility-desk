@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseDate, parsePeriod, parseQuestion, parseStrategy, parseTime } from './parse.js';
+import { parseDate, parsePeriod, parseQuestion, parseStrategy, parseTable, parseTime } from './parse.js';
 
 // 2026-10-28 (Wednesday) 12:00 IST
 const NOW = Date.parse('2026-10-28T06:30:00Z');
@@ -77,6 +77,36 @@ describe('parsePeriod (IST)', () => {
   });
 });
 
+describe('parseTable and the broader intents', () => {
+  it('finds tables by their names and by what people call them', () => {
+    expect(parseTable(' summarise bot runs ')).toBe('bot_runs');
+    expect(parseTable(' the alert logs ')).toBe('alert_logs');
+    expect(parseTable(' indicator_snapshots ')).toBe('indicator_snapshots');
+    expect(parseTable(' option flow ')).toBe('option_flow_buckets');
+    expect(parseTable(' my nightly reviews ')).toBe('nightly_reviews');
+    expect(parseTable(' minute records ')).toBe('bot_minute_marks');
+    expect(parseTable(' nothing here ')).toBeUndefined();
+  });
+
+  it('routes database and concept questions', () => {
+    const q = (s: string) => parseQuestion(s, NOW);
+    expect(q('what data do you have?').intent).toBe('data_overview');
+    expect(q('list all tables').intent).toBe('data_overview');
+    expect(q('how much data is stored in the database').intent).toBe('data_overview');
+    expect(q('summarise bot runs').intent).toBe('table_summary');
+    expect(q('summary of indicator snapshots last 7 days')).toMatchObject({ intent: 'table_summary', table: 'indicator_snapshots', period: { label: 'last 7 days' } });
+    expect(q('how many rows in alert_logs').intent).toBe('table_summary');
+    expect(q('describe the nightly reviews table')).toMatchObject({ intent: 'table_summary', table: 'nightly_reviews' });
+    expect(q('what is risk adx?').intent).toBe('concept');
+    expect(q('explain n2n').intent).toBe('concept');
+    expect(q('difference between contango and backwardation').intent).toBe('concept');
+    // existing, more specific intents still win
+    expect(q('latest nightly review').intent).toBe('nights');
+    expect(q('what is the ny short rule').intent).toBe('rules');
+    expect(q('why was the asia trade stopped').intent).toBe('explain');
+  });
+});
+
 describe('parseQuestion intents', () => {
   const i = (q: string) => parseQuestion(q, NOW).intent;
 
@@ -99,7 +129,7 @@ describe('parseQuestion intents', () => {
     expect(i('how much did it give back from peak')).toBe('exit_quality');
     expect(i('when should I exit the asia condor')).toBe('exit_quality');
     expect(i('market now')).toBe('market');
-    expect(i('what is dvol and funding')).toBe('market');
+    expect(i('what is dvol and funding')).toBe('concept');
     expect(i('replay summary')).toBe('replay');
     expect(i('what is the ny short rule?')).toBe('rules');
     expect(i('how does the calendar spread work')).toBe('rules');

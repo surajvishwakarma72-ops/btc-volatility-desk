@@ -58358,7 +58358,7 @@ document.addEventListener('click', function(e) {
   if (D.getElementById('askFab')) return;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { try { return localStorage.getItem('desk_jwt'); } catch (x) { return null; } } };
-  const S = { open: false, msgs: [], busy: false, suggestions: ['Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'Recent errors', 'Replay summary', 'What is the NY short rule?'], loginErr: null };
+  const S = { open: false, msgs: [], busy: false, suggestions: ['Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Replay summary', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
 
   const fab = D.createElement('button');
   fab.id = 'askFab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Ask me about the desk data'); fab.setAttribute('aria-expanded', 'false');
@@ -58389,7 +58389,7 @@ document.addEventListener('click', function(e) {
       body = '<div class="ak-login"><div class="ak-note">Your desk data is private. Log in with your desk password to ask questions.</div><input id="akPw" type="password" placeholder="Desk password" autocomplete="current-password"><button type="button" class="ak-send" data-ak="login">Log in</button>' + (S.loginErr ? '<div class="ak-err">' + esc(S.loginErr) + '</div>' : '') + '</div>';
     } else {
       body = '<div class="ak-msgs" id="akMsgs">' +
-        (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me anything about your desk data: running positions, PnL by day or strategy, why a trade stopped, what happened at a given minute, the market now, the replay results, or any strategy rule. I answer only from what is recorded. I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
+        (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me about anything in your terminal. I can read every table in your database (try "what data do you have?" or "summarise bot runs"), your positions and PnL, why a trade stopped, what happened at a given minute, the live market and the replay results. I can also explain any concept on the terminal, such as Risk-ADX, N2N, the entry gauge or the GO/WAIT gate, from your own docs. I answer only from what is recorded and I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
         S.msgs.map(m => m.role === 'user'
           ? '<div class="ak-user">' + esc(m.text) + '</div>'
           : '<div class="ak-bot">' + text(m.text) + table(m.table) + (m.sources && m.sources.length ? '<div class="ak-src">From: ' + esc(m.sources.join(', ')) + '</div>' : '') + (m.suggestions && m.suggestions.length ? chips(m.suggestions) : '') + '</div>').join('') +

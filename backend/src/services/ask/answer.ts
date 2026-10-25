@@ -1,6 +1,8 @@
 import { SLOTS } from '../../lib/bot/schedule.js';
 
-import { STRATEGY_NAMES, SUGGESTIONS, parseQuestion, type Intent, type Parsed } from '../../lib/ask/parse.js';
+import { KNOWLEDGE_MAX_UNKNOWN, KNOWLEDGE_MIN_COVERAGE, KNOWLEDGE_MIN_SCORE, searchKnowledge, type KnowledgeEntry } from '../../lib/ask/knowledge.js';
+import { STRATEGY_NAMES, SUGGESTIONS, isForecast, parseQuestion, type Intent, type Parsed } from '../../lib/ask/parse.js';
+import { dataOverview, loadCatalog, tableSummary } from './explore.js';
 
 /**
  * Answers a question using ONLY the desk's own data: the Postgres tables (bot runs, fills, minute
@@ -26,6 +28,8 @@ export interface AskContext {
     market(): { spot: number | null; mark: number | null; funding: number | null; oi: number | null; dvol: number | null; macro: { score: number; zone: string; direction: string; nextEvent: string; tradeRule: string } | null };
     replay(): any | null;
   };
+  /** The terminal's written knowledge: glossary plus text from the docs and tooltips. */
+  knowledge?: () => KnowledgeEntry[];
 }
 
 const IST = 19_800_000;
@@ -444,6 +448,35 @@ async function alerts(p: Parsed, c: AskContext): Promise<Answer> {
   };
 }
 
+/** Terms whose answer is better with the number right now. */
+function liveLine(entryId: string, c: AskContext): string | null {
+  const m = c.live.market();
+  const map: Record<string, string | null> = {
+    'glossary:dvol': m.dvol == null ? null : `Right now DVOL is ${m.dvol.toFixed(1)}${m.dvol >= 65 ? ' (above the 65 gate limit)' : ' (below the 65 gate limit)'}.`,
+    'glossary:funding': m.funding == null ? null : `Right now the BTC perpetual funding rate is ${(m.funding * 100).toFixed(4)}%.`,
+    'glossary:oi': m.oi == null ? null : `Right now perpetual open interest is ${Math.round(m.oi).toLocaleString('en-US')}.`,
+    'glossary:macro': m.macro ? `Right now the stress score is ${m.macro.score}/100, zone ${m.macro.zone}, ${m.macro.direction}.` : null,
+  };
+  return map[entryId] ?? null;
+}
+
+function knowledgeAnswer(question: string, c: AskContext, intent: Intent): Answer | null {
+  if (isForecast(question)) return null; // a forecast is never answered from a glossary entry that happens to share a word
+  const entries = c.knowledge?.() ?? [];
+  const hits = searchKnowledge(question, entries, 4);
+  // the best answer is the highest-scoring entry that also covers most of the question
+  const usable = hits.filter((h) => h.score >= KNOWLEDGE_MIN_SCORE && h.coverage >= KNOWLEDGE_MIN_COVERAGE && h.unknownShare <= KNOWLEDGE_MAX_UNKNOWN);
+  const best = usable[0];
+  if (!best) return null;
+  const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n).replace(/\s+\S*$/, '')}…` : s);
+  const lines = [`${best.entry.title}`, clip(best.entry.text, best.entry.source === 'glossary' ? 1500 : 900)];
+  const live = liveLine(best.entry.id, c);
+  if (live) lines.push(live);
+  const related = hits.filter((h) => h !== best).filter((h) => h.score >= KNOWLEDGE_MIN_SCORE * 0.6).slice(0, 2);
+  if (related.length) lines.push(`Related: ${related.map((h) => `${h.entry.title}${h.entry.source === 'glossary' ? '' : ` (${h.entry.source})`}`).join('; ')}. Ask me about any of them.`);
+  return { intent, sources: [best.entry.source === 'glossary' ? 'terminal glossary' : `doc: ${best.entry.source}`], text: lines.join('\n\n') };
+}
+
 function help(): Answer {
   return {
     intent: 'help', sources: [],
@@ -458,17 +491,53 @@ function help(): Answer {
       '- Replay summary / replay of the futures',
       '- What is the calendar spread rule?',
       '- Recent errors, last alerts, my manual trades, nightly reviews, recalibration, audit',
+      '- What data do you have? / summarise bot runs / describe indicator snapshots last 7 days (any table in the database)',
+      '- What is Risk-ADX? / explain N2N / difference between contango and backwardation (concepts from the terminal and its docs)',
     ].join('\n'),
     suggestions: SUGGESTIONS,
   };
 }
 
+/**
+ * If the question names a table that really exists in the database (any table, including ones added
+ * later), treat it as a request to profile that table. The name comes from the catalog, never the text.
+ */
+async function tableNamedInQuestion(question: string, c: AskContext): Promise<string | null> {
+  try {
+    const q = ` ${question.toLowerCase().replace(/[^a-z0-9_ ]/g, ' ').replace(/\s+/g, ' ')} `;
+    const cat = await loadCatalog(c);
+    for (const name of cat.tables.keys()) {
+      if (q.includes(` ${name} `) || q.includes(` ${name.replace(/_/g, ' ')} `)) return name;
+    }
+  } catch { /* no catalog available */ }
+  return null;
+}
+
 export async function answer(question: string, c: AskContext): Promise<Answer> {
-  const p = parseQuestion(question, c.now);
+  let p = parseQuestion(question, c.now);
+  if ((p.intent === 'unknown' || p.intent === 'concept') && !p.table && !isForecast(question)) {
+    const named = await tableNamedInQuestion(question, c);
+    if (named) p = { ...p, intent: 'table_summary', table: named };
+  }
   const base: Answer = { intent: p.intent, text: '', sources: [] };
   switch (p.intent) {
     case 'help': return help();
-    case 'rules': return rules(p);
+    case 'data_overview': return safe(base, async () => ({ intent: 'data_overview' as Intent, ...(await dataOverview(c)) }));
+    case 'table_summary': return safe(base, async () => ({ intent: 'table_summary' as Intent, ...(await tableSummary(p, c)) }));
+    case 'concept': {
+      const k = knowledgeAnswer(question, c, 'concept');
+      if (k) return k;
+      // a concept-shaped question about a live number ("what is the price") is a market question
+      if (/\b(price|spot|btc|funding|dvol|open interest)\b/i.test(question)) return safe(base, () => market(p, c));
+      return notFound();
+    }
+    case 'rules': {
+      if (!p.strategy && !p.group) {
+        const k = knowledgeAnswer(question, c, 'rules');
+        if (k) return k;
+      }
+      return rules(p);
+    }
     case 'market': return safe(base, () => market(p, c));
     case 'replay': return safe(base, () => replay(p, c));
     case 'positions': return safe(base, () => positions(p, c));
@@ -484,12 +553,20 @@ export async function answer(question: string, c: AskContext): Promise<Answer> {
     case 'audit': return safe(base, () => audit(p, c));
     case 'recalibration': return safe(base, () => recalibration(p, c));
     case 'alerts': return safe(base, () => alerts(p, c));
-    default:
-      return {
-        intent: 'unknown', sources: [],
-        text: "I could not match that to something in my data. I only report what was recorded; I do not predict prices or tell you what to trade. I answer from the desk's own records (bot runs and minute records, trades, reviews, audits, alerts, live market, replay). Try one of these:",
-        suggestions: SUGGESTIONS,
-      };
+    default: {
+      // not one of the data intents: the written knowledge may still know the term
+      const k = knowledgeAnswer(question, c, 'concept');
+      if (k) return k;
+      return notFound();
+    }
   }
+}
+
+function notFound(): Answer {
+  return {
+        intent: 'unknown', sources: [],
+        text: "I could not match that to something I know. I answer from your own data (any table in the database, the live market, the replay results) and from the terminal's glossary and docs. I only report what was recorded: I do not predict prices or tell you what to trade. Try one of these, or ask \"what data do you have?\":",
+        suggestions: SUGGESTIONS,
+  };
 }
 

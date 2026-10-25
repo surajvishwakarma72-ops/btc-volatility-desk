@@ -17,6 +17,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 const { answer } = await import('./answer.js');
+const { GLOSSARY } = await import('../../lib/ask/glossary.js');
 const { ensureBotSchema } = await import('../bot/bot-store.js');
 const { pool } = await import('../../db/index.js');
 
@@ -33,7 +34,8 @@ const live = (over: Record<string, unknown> = {}) => ({
   replay: () => null as any,
   ...over,
 });
-const ctx = (l = live()) => ({ q: async (sql: string, params?: unknown[]) => (await pool.query(sql, params as never)).rows, now: NOW, live: l });
+const DOCS = [{ id: 'TEST.md#0', title: 'Zebra protocol', keywords: [], text: 'The zebra protocol says to restart the striped gateway every Tuesday before the herd migrates, and to log the migration in the savanna ledger.', source: 'TEST.md' }];
+const ctx = (l = live(), knowledge = () => [...GLOSSARY, ...DOCS]) => ({ q: async (sql: string, params?: unknown[]) => (await pool.query(sql, params as never)).rows, now: NOW, live: l, knowledge });
 
 let seq = 0;
 async function run(o: { strategy: string; book?: string; date: string; entry: number; exit?: number; net?: number; reason?: string; status?: string; peak?: number; trough?: number; margin?: number; feesE?: number; feesX?: number; tags?: object; detail?: string }) {
@@ -55,11 +57,14 @@ beforeAll(async () => {
     CREATE TABLE IF NOT EXISTS session_audit_logs (id serial, session_date date, day_name text, session_status text, outcome text, telemetry_match boolean, mismatch_reason text);
     CREATE TABLE IF NOT EXISTS recalibration_audits (id serial, run_at timestamptz, total_sessions int, in_sample_sessions int, out_of_sample_sessions int, cleared_bonferroni boolean, oos_stability_verdict text, combo_stop_rate numeric, oos_stop_rate numeric, combo_p_value numeric);
     CREATE TABLE IF NOT EXISTS alert_logs (id serial, delivered_at timestamptz, channel text, status text, title text, message text);
+    CREATE TABLE IF NOT EXISTS users (id serial, email text, password_hash text);
+    CREATE TABLE IF NOT EXISTS api_credentials (id serial, api_key text, api_secret text);
     CREATE TABLE IF NOT EXISTS indicator_snapshots (id serial, recorded_at timestamptz, atm_iv numeric, n2n_iv numeric, term_current_n2n numeric, term_next_n2n numeric, skew_25d numeric);
   `);
 });
 
 beforeEach(async () => {
+  await pool.query('DROP TABLE IF EXISTS secret_test; CREATE TABLE secret_test (id serial, name text, api_token text, password_hash text, created_at timestamptz DEFAULT now());');
   await pool.query('DELETE FROM bot_minute_marks; DELETE FROM bot_minute_context; DELETE FROM bot_events; DELETE FROM bot_fills; DELETE FROM bot_legs; DELETE FROM bot_runs; DELETE FROM trades; DELETE FROM nightly_reviews; DELETE FROM session_audit_logs; DELETE FROM recalibration_audits; DELETE FROM alert_logs; DELETE FROM indicator_snapshots;');
 });
 
@@ -295,5 +300,180 @@ describe('positions, market, replay, events and desk records', () => {
     const a = await answer('last alerts', ctx());
     expect(a.text).toMatch(/alert_logs.*does not exist/);
     await pool.query('CREATE TABLE alert_logs (id serial, delivered_at timestamptz, channel text, status text, title text, message text)');
+  });
+});
+
+
+describe('concepts from the terminal glossary and docs', () => {
+  it('explains a terminal concept in plain words and names its source', async () => {
+    const a = await answer('what is risk adx?', ctx());
+    expect(a.intent).toBe('concept');
+    expect(a.text).toMatch(/0-100 stop-risk line/);
+    expect(a.text).toMatch(/green at or below 25/);
+    expect(a.sources).toEqual(['terminal glossary']);
+  });
+
+  it('adds the live number for terms that have one', async () => {
+    const a = await answer('what is dvol', ctx());
+    expect(a.text).toMatch(/Deribit/);
+    expect(a.text).toMatch(/Right now DVOL is 38\.1 \(below the 65 gate limit\)/);
+    const f = await answer('explain funding rate', ctx());
+    expect(f.text).toMatch(/Right now the BTC perpetual funding rate is 0\.0100%/);
+  });
+
+  it('answers a bare term, a comparison and a "how does it work" question', async () => {
+    expect((await answer('n2n', ctx())).text).toMatch(/next-to-next/);
+    expect((await answer('difference between contango and backwardation', ctx())).text).toMatch(/Backwardation means the near expiry is richer/);
+    expect((await answer('how does the entry gauge turn green', ctx())).text).toMatch(/two hours under 30/);
+  });
+
+  it('falls back to text from the project docs, citing the document', async () => {
+    const a = await answer('tell me about the zebra protocol', ctx());
+    expect(a.text).toMatch(/striped gateway every Tuesday/);
+    expect(a.sources).toEqual(['doc: TEST.md']);
+  });
+
+  it('a concept-shaped question about a live number is answered as a market question', async () => {
+    const a = await answer('what is the price of btc', ctx());
+    expect(a.intent).toBe('market');
+    expect(a.text).toMatch(/spot 80800/);
+  });
+
+  it('says it does not know a term it has nothing on, and never invents one', async () => {
+    const a = await answer('what is flurbo glorp', ctx());
+    expect(a.intent).toBe('unknown');
+    expect(a.text).toMatch(/could not match/);
+    expect(a.text).toMatch(/what data do you have/);
+  });
+
+  it('rule and timing questions are explained from the glossary, not mistaken for data lookups', async () => {
+    const thu = await answer('why is thursday skipped', ctx());
+    expect(thu.intent).toBe('concept');
+    expect(thu.text).toMatch(/Sunday 3-day expiry shock/);
+    const fri = await answer('when is the best time to enter on friday', ctx());
+    expect(fri.intent).toBe('concept');
+    expect(fri.text).toMatch(/later \(about 23:00 IST\)/);
+    const trap = await answer('what is the 17:30 settlement trap', ctx());
+    expect(trap.intent).not.toBe('at_time');
+    expect(trap.text).toMatch(/17:30 IST/);
+    expect(trap.text).toMatch(/settlement trap/);
+    const crush = await answer('what does iv crush mean', ctx());
+    expect(crush.text).toMatch(/178 crush/);
+  });
+
+  it('does not answer from a glossary entry that merely shares one word with the question', async () => {
+    for (const q of ['what is the weather today', 'who won the football match', 'how do i add a new strategy']) {
+      const a = await answer(q, ctx());
+      expect(a.intent, q).toBe('unknown');
+    }
+  });
+
+  it('never answers a forecast from the glossary', async () => {
+    for (const q of ['what will the price be next week', 'will thursday be a good day tomorrow', 'should i buy now']) {
+      const a = await answer(q, ctx());
+      expect(a.intent, q).toBe('unknown');
+      expect(a.text, q).toMatch(/do not predict/);
+    }
+  });
+
+  it('works with no knowledge provider at all', async () => {
+    const a = await answer('what is n2n', { ...ctx(), knowledge: undefined });
+    expect(a.intent).toBe('unknown');
+  });
+});
+
+describe('exploring the database', () => {
+  it('lists every readable table with counts and date ranges, and hides accounts and credentials', async () => {
+    await run({ strategy: 'NY_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 22, 30), exit: istMs('2026-10-28', 7), net: 8.3, reason: 'tp' });
+    await pool.query("INSERT INTO users (email, password_hash) VALUES ('a@b.c', 'HASH')");
+    const a = await answer('what data do you have?', ctx());
+    expect(a.intent).toBe('data_overview');
+    expect(a.text).toMatch(/readable tables/);
+    expect(a.text).toMatch(/browser.s own storage/);
+    const names = a.table!.rows.map((r) => r[0]);
+    expect(names).toEqual(expect.arrayContaining(['bot_runs', 'bot_events', 'alert_logs', 'trades', 'nightly_reviews']));
+    expect(names).not.toContain('users');
+    expect(names).not.toContain('api_credentials');
+    const runs = a.table!.rows.find((r) => r[0] === 'bot_runs')!;
+    expect(runs[1]).toBe(1);
+    expect(String(runs[2])).toMatch(/2026-10-27/);
+    expect(JSON.stringify(a)).not.toMatch(/HASH|a@b\.c/);
+  });
+
+  it('profiles a table: row count, time range, numbers, common values and the latest rows', async () => {
+    await run({ strategy: 'NY_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 22, 30), exit: istMs('2026-10-28', 7), net: 8.3, reason: 'tp' });
+    await run({ strategy: 'NY_SHORT', date: '2026-10-26', entry: istMs('2026-10-26', 22, 30), exit: istMs('2026-10-27', 7), net: -12.7, reason: 'stop' });
+    await run({ strategy: 'ASIA_SHORT', date: '2026-10-26', entry: istMs('2026-10-26', 10), exit: istMs('2026-10-26', 16), net: 3, reason: 'time' });
+    const a = await answer('summarise bot runs', ctx());
+    expect(a.intent).toBe('table_summary');
+    expect(a.sources).toEqual(['bot_runs']);
+    expect(a.text).toMatch(/every paper trade the bot took or skipped/);
+    expect(a.text).toMatch(/3 rows\./);
+    expect(a.text).toMatch(/entry_at runs from .*2026-10-26.* to .*2026-10-27/);
+    expect(a.text).toMatch(/strategy: NY_SHORT \(2\), ASIA_SHORT \(1\)/);
+    expect(a.text).toMatch(/exit_reason: .*stop \(1\)/);
+    const flat = JSON.stringify(a.table);
+    expect(flat).toMatch(/net_pnl/);
+    expect(flat).toMatch(/Latest 3 rows/);
+    // net_pnl: average (8.3 - 12.7 + 3) / 3 = -0.467
+    const net = a.table!.rows.find((r) => r[0] === 'net_pnl')!;
+    expect(net[2]).toBe('-0.467');
+    expect(net[3]).toBe('-12.7');
+    expect(net[4]).toBe('8.3');
+    expect(net[5]).toBe('-1.4');
+  });
+
+  it('respects a period, and says so when it is empty', async () => {
+    await run({ strategy: 'NY_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 22, 30), exit: istMs('2026-10-28', 7), net: 8.3, reason: 'tp' });
+    await run({ strategy: 'NY_SHORT', date: '2026-09-01', entry: istMs('2026-09-01', 22, 30), exit: istMs('2026-09-02', 7), net: 1, reason: 'tp' });
+    const week = await answer('summary of bot runs last 3 days', ctx());
+    expect(week.text).toMatch(/1 rows in last 3 days \(2 in total\)/);
+    const none = await answer('summarise alert logs yesterday', ctx());
+    expect(none.text).toMatch(/0 rows in yesterday/);
+    expect(none.text).toMatch(/nothing in it/i);
+  });
+
+  it('never shows secret-looking columns, and says how many it hid', async () => {
+    await pool.query("INSERT INTO secret_test (name, api_token, password_hash) VALUES ('visible-name', 'TOPSECRETTOKEN', 'TOPSECRETHASH')");
+    const a = await answer('describe secret_test', ctx());
+    // not a table the parser knows by name: it is recognised through the database catalog
+    expect(a.intent).toBe('table_summary');
+    expect(a.sources).toEqual(['secret_test']);
+    expect(JSON.stringify(a)).toMatch(/visible-name/);
+    expect(JSON.stringify(a)).not.toMatch(/TOPSECRET|api_token|password_hash/);
+    expect(a.text).toMatch(/Columns: id, name, created_at \(2 hidden for safety\)/);
+  });
+
+  it('refuses to open accounts and credentials', async () => {
+    await pool.query("INSERT INTO users (email, password_hash) VALUES ('a@b.c', 'HASH')");
+    for (const q of ['summarise users', 'describe the users table', 'show me the api_credentials table', 'summarise api keys']) {
+      const a = await answer(q, ctx());
+      expect(JSON.stringify(a), q).not.toMatch(/HASH|a@b\.c|api_secret/);
+      expect(a.text, q).toMatch(/never show|could not find|do not open/i);
+    }
+  });
+
+  it('cannot be used to run SQL: table names only ever come from the catalog', async () => {
+    await run({ strategy: 'NY_SHORT', date: '2026-10-27', entry: istMs('2026-10-27', 22, 30), exit: istMs('2026-10-28', 7), net: 1, reason: 'tp' });
+    const a = await answer('summarise bot runs; DROP TABLE bot_runs; --', ctx());
+    expect(a.intent).toBe('table_summary');
+    expect((await pool.query('SELECT COUNT(*)::int AS n FROM bot_runs')).rows[0].n).toBe(1);
+    const b = await answer('summarise "bot_runs\"; DROP TABLE bot_events;--"', ctx());
+    expect(b.text).toBeTruthy();
+    expect((await pool.query('SELECT COUNT(*)::int AS n FROM bot_events')).rows[0].n).toBeGreaterThanOrEqual(0);
+  });
+
+  it('a table that does not exist gives a plain message that lists what does', async () => {
+    const a = await answer('summarise chart drawings', ctx());
+    expect(a.text).toMatch(/could not find a table matching "chart_drawings"/);
+    expect(a.text).toMatch(/bot_runs/);
+  });
+
+  it('works on the other desk tables too (alert logs and nightly reviews)', async () => {
+    await pool.query(`INSERT INTO alert_logs (delivered_at, channel, status, title, message) VALUES (now(), 'telegram', 'SENT', 'Stop hit', 'x'), (now(), 'ntfy', 'FAILED', 'Entry', 'y'), (now(), 'telegram', 'SENT', 'Exit', 'z')`);
+    const a = await answer('how many rows in alert logs', ctx());
+    expect(a.text).toMatch(/3 rows\./);
+    expect(a.text).toMatch(/channel: telegram \(2\), ntfy \(1\)/);
+    expect(a.text).toMatch(/status: SENT \(2\), FAILED \(1\)/);
   });
 });

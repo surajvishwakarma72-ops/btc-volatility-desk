@@ -21,6 +21,9 @@ export type Intent =
   | 'audit'
   | 'recalibration'
   | 'alerts'
+  | 'concept'
+  | 'data_overview'
+  | 'table_summary'
   | 'unknown';
 
 export interface Period {
@@ -36,6 +39,8 @@ export interface Parsed {
   /** Prefix for a family of strategies, e.g. FUT_ or a list of ids. */
   group?: { label: string; ids: string[] };
   period?: Period;
+  /** A database table the question refers to (a hint; validated against the catalog later). */
+  table?: string;
   /** HH:MM, 24h, IST. */
   time?: string;
   /** YYYY-MM-DD (IST). */
@@ -73,7 +78,7 @@ const STRATEGY_ALIASES: Array<[RegExp, string]> = [
   [/\bfut_signal|futures?\s*signal|price\s*signal/, 'FUT_SIGNAL'],
   [/\bcalendar|cal_back|backwardation\b/, 'CAL_BACK'],
   [/\b(pre[\s-]*dawn|5\s*am|05:00|pre_long)\b/, 'PRE_LONG'],
-  [/\b(evening|17:30|5:30\s*pm|eve_long)\b.*\b(straddle|long)?|\beve_long\b/, 'EVE_LONG'],
+  [/\b(evening|eve_long)\b|\b(17:30|5:30\s*pm)\s*(trade|straddle|entry|long)\b/, 'EVE_LONG'],
   [/\b(asia|10\s*am|10:00|asia_short)\b/, 'ASIA_SHORT'],
   [/\b(ny|new\s*york|22:30|10:30\s*pm|ny_short)\b/, 'NY_SHORT'],
 ];
@@ -85,6 +90,37 @@ const STRATEGY_GROUPS: Array<[RegExp, { label: string; ids: string[] }]> = [
   [/\b(short\s*strangles?|strangles?)\b/, { label: 'short strangles', ids: ['ASIA_SHORT', 'NY_SHORT'] }],
   [/\boptions?\b/, { label: 'option strategies', ids: ALL.filter((i) => !i.startsWith('FUT_')) }],
 ];
+
+/** Words people use for each database table. The real table name is validated against the catalog. */
+const TABLE_ALIASES: Array<[RegExp, string]> = [
+  [/\btrade[\s_]*legs?\b/, 'trade_legs'],
+  [/\b(chart[\s_]*)?drawings?\b/, 'chart_drawings'],
+  [/\b(user[\s_]*)?preferences?\b/, 'user_preferences'],
+  [/\balert[\s_]*rules?\b/, 'alert_rules'],
+  [/\balert[\s_]*logs?\b/, 'alert_logs'],
+  [/\b(market[\s_]*)?time[\s_]*series\b|\bmarket[\s_]*data\b/, 'market_timeseries'],
+  [/\bindicator[\s_]*snapshots?\b|\bsnapshots?\b/, 'indicator_snapshots'],
+  [/\boption[\s_]*flow\b|\bflow[\s_]*buckets?\b/, 'option_flow_buckets'],
+  [/\bsession[\s_]*audit(?:[\s_]*logs?)?\b|\baudit[\s_]*logs?\b/, 'session_audit_logs'],
+  [/\brecalibration(?:[\s_]*audits?)?\b/, 'recalibration_audits'],
+  [/\bbot[\s_]*runs?\b/, 'bot_runs'],
+  [/\bbot[\s_]*legs?\b/, 'bot_legs'],
+  [/\bbot[\s_]*(fills?|executions?)\b/, 'bot_fills'],
+  [/\bbot[\s_]*events?\b/, 'bot_events'],
+  [/\b(minute[\s_]*marks?|minute[\s_]*records?|bot[\s_]*minute[\s_]*marks?)\b/, 'bot_minute_marks'],
+  [/\bminute[\s_]*context\b/, 'bot_minute_context'],
+  [/\bbot[\s_]*config\b/, 'bot_config'],
+  [/\bnightly[\s_]*reviews?\b|\bnights\b/, 'nightly_reviews'],
+  [/\b(users?|accounts?|credentials?|api[\s_]*keys?|push[\s_]*devices?)\b/, 'users'],
+  [/\btrades\b|\btrades?[\s_]*table\b/, 'trades'],
+];
+
+export function parseTable(q: string): string | undefined {
+  const direct = /\b(trade_legs|chart_drawings|user_preferences|alert_rules|alert_logs|market_timeseries|indicator_snapshots|option_flow_buckets|session_audit_logs|recalibration_audits|bot_runs|bot_legs|bot_fills|bot_events|bot_minute_marks|bot_minute_context|bot_config|nightly_reviews|trades|users|api_credentials|push_devices)\b/.exec(q);
+  if (direct) return direct[1];
+  for (const [re, name] of TABLE_ALIASES) if (re.test(q)) return name;
+  return undefined;
+}
 
 const WEEKDAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
@@ -158,10 +194,15 @@ export function parseStrategy(q: string): { strategy?: string; group?: { label: 
 
 const has = (q: string, re: RegExp) => re.test(q);
 
+/** A question about the future or a buy/sell call: it can only be answered from recorded facts, never forecast. */
+export function isForecast(question: string): boolean {
+  return /\b(will|predict|prediction|forecast|going to|gonna|expect|tomorrow|next week|next month|should i (buy|sell))\b/i.test(question);
+}
+
 export function parseQuestion(raw: string, nowMs: number = Date.now()): Parsed {
   const q = ` ${raw.toLowerCase().replace(/[?!]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
   const time = parseTime(q);
-  const base = { raw, ...parseStrategy(q), period: parsePeriod(q, nowMs), time, dateKey: parseDate(q, nowMs) };
+  const base = { raw, ...parseStrategy(q), period: parsePeriod(q, nowMs), time, dateKey: parseDate(q, nowMs), table: parseTable(q) };
   const limit = (() => {
     const m = /\b(?:top|last|latest|recent)\s+(\d{1,2})\b/.exec(q);
     return m ? Number(m[1]) : undefined;
@@ -170,8 +211,18 @@ export function parseQuestion(raw: string, nowMs: number = Date.now()): Parsed {
 
   if (has(q, /\b(help|what can you|what do you|commands|capabilit\w*|how do i ask|examples)\b/)) return out('help');
 
-  const askingAt = time && has(q, /\b(what|happen|happened|saw|see|doing|was|were|state|record|position)\b/);
+  // "what data do you have": the whole database, not one table
+  if (has(q, /\b(what|which|list|show)\b.*\b(data|tables?|records?|information)\b.*\b(you|have|available|stored|database|db|access|know|see)\b|\b(summar\w*|overview|contents?|inventory)\b.*\b(database|db)\b|\b(database|db)\b.*\b(summary|overview|tables|contents|inventory)\b|\ball (the )?tables\b|\bwhat (?:do|can) you (?:know|see|access|read)\b|\bhow much data\b|\bwhat.?s stored\b|\bdata (?:you|do you) have\b|\beverything (?:you|that) (?:have|know)\b/) && !(base.table && has(q, /\b(summar|describe|columns?|rows)/))) return out('data_overview');
+
+  // a generic "tell me about this table" request
+  if (base.table && has(q, /\b(summar\w*|describe|columns?|schema|how many rows|row count|rows in|contents? of|what.?s in|overview of|profile|stats? (?:of|for|on)|show (?:me )?(?:the )?(?:latest|last|recent|all)|latest rows?|look at|data in|table)\b/)) return out('table_summary');
+
+  const askingAt = time && has(q, /\b(happen\w*|saw|see|seeing|doing|state|record\w*|positions?|going on|status)\b/);
   if (askingAt && !has(q, /\b(entry|enter|entered)\b.*\b(rule|when)\b/)) return out('at_time');
+
+  const hasPastRun = has(q, /\b(today|yesterday|tonight|last night|this morning)\b|\b20\d{2}-\d{2}-\d{2}\b/);
+  if (has(q, /\bwhy (is|are|does|do)\b/) && !hasPastRun) return out('concept');
+  if (has(q, /\b(when|what time|which time|best time)\b.*\b(enter|entry|sell|start|trade)\b/) && !has(q, /\b(exit|close)\b/)) return out('concept');
 
   if (has(q, /\bwhy\b.*\b(not|no|n't|didn|skip|skipped|wait|waited|blocked|failed|fail)\b.*\b(trade|trad|enter|entry|entered|position|run|take|taken)\b|\bwhy\b.*\b(no trade|skipped|didn.?t trade)\b|\bno trade\b.*\bwhy\b/)) return out('why_no_trade');
 
@@ -198,6 +249,8 @@ export function parseQuestion(raw: string, nowMs: number = Date.now()): Parsed {
 
   if (has(q, /\b(error|errors|warning|warnings|problem|problems|events?|logs?|failed|failures?|broken|issue)\b/)) return out('events');
 
+  if (has(q, /\b(what is|what's|what are|what does|what do|meaning of|mean by|means|explain|define|definition of|tell me about|how does|how do|why is|why does|difference between)\b/)) return out('concept');
+
   if (has(q, /\b(will|predict|prediction|forecast|going to|gonna|expect|tomorrow|next week|next month|should i (buy|sell))\b/) && !has(q, /\b(pnl|trade|trades|position|positions|strateg\w*|rule|rules)\b/)) return out('unknown');
 
   if (has(q, /\b(market|spot|price|btc|dvol|iv|volatility|funding|open interest|oi|macro|stress|vix|gate|go or wait)\b/)) return out('market');
@@ -216,7 +269,11 @@ export const SUGGESTIONS = [
   'Why no trade today?',
   'Best session',
   'Market now',
-  'Recent errors',
+  'What data do you have?',
+  'Summarise bot runs',
+  'What is Risk-ADX?',
+  'Explain N2N',
   'Replay summary',
+  'Recent errors',
   'What is the NY short rule?',
 ];

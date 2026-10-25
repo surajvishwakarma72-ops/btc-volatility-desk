@@ -5,6 +5,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { SUGGESTIONS } from '../lib/ask/parse.js';
 import { pool } from '../db/index.js';
+import { GLOSSARY } from '../lib/ask/glossary.js';
+import type { KnowledgeEntry } from '../lib/ask/knowledge.js';
 import { answer, type AskContext } from '../services/ask/answer.js';
 import { botEngine } from '../services/bot/bot-engine.js';
 import { ensureBotSchema } from '../services/bot/bot-store.js';
@@ -36,9 +38,33 @@ function loadReplay(): any | null {
   return data;
 }
 
+let docsCache: { at: number; entries: KnowledgeEntry[] } | null = null;
+/** Text cut from the project docs, tooltips and rulebook (frontend/public/data/knowledge.json, built by scripts/build-knowledge.ts). */
+function loadDocs(): KnowledgeEntry[] {
+  if (docsCache && Date.now() - docsCache.at < 10 * 60_000) return docsCache.entries;
+  const candidates = [
+    path.resolve(here, '../../../frontend/dist/data/knowledge.json'),
+    path.resolve(here, '../../../frontend/public/data/knowledge.json'),
+    path.resolve(process.cwd(), 'frontend/dist/data/knowledge.json'),
+    path.resolve(process.cwd(), '../frontend/dist/data/knowledge.json'),
+  ];
+  let entries: KnowledgeEntry[] = [];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        entries = (JSON.parse(fs.readFileSync(p, 'utf8')) as { entries: KnowledgeEntry[] }).entries ?? [];
+        break;
+      }
+    } catch { /* try the next location */ }
+  }
+  docsCache = { at: Date.now(), entries };
+  return entries;
+}
+
 export function buildContext(): AskContext {
   return {
     now: Date.now(),
+    knowledge: () => [...GLOSSARY, ...loadDocs()],
     q: async (sql, params) => (await pool.query(sql, params as never)).rows,
     live: {
       botEnabled: () => botEngine.enabled,
