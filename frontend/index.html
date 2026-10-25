@@ -58423,6 +58423,19 @@ document.addEventListener('click', function(e) {
   sync();
 })();
 </script>
+<style id="deskGridCss">
+/* Decision and P&L on a desktop screen: the picture cards sit in a grid and every chart has a height cap, instead of one huge column. */
+@media (min-width:1000px){
+  #pgDecision #v156Vis,#pgPnl #v158Deep{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:start}
+  #pgDecision #v156Vis>.vbar,#pgPnl #v158Deep>.bar{grid-column:1/-1;margin:0}
+  #pgDecision #v156Vis>.vc,#pgPnl #v158Deep>.kc{margin:0}
+  #pgDecision #v156Vis svg,#pgPnl #v158Deep svg{max-height:210px}
+  #pgDecision #v156Vis>.vbar+.vc,#pgPnl #v158Deep>.bar+.kc{grid-column:1/-1}
+  #pgDecision #v156Vis>.vbar+.vc svg,#pgPnl #v158Deep>.bar+.kc svg{max-height:150px}
+  #pgDecision #v156Vis>.vc:last-child{grid-column:1/-1}
+  #pgDecision #v156Vis>.vc:last-child svg{max-height:240px}
+}
+</style>
 <style id="ppCss">
 #pgPaper .pp{max-width:1360px;margin:0 auto;padding:4px 2px 24px;color:var(--text)}
 #pgPaper .pp-top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 10px}
