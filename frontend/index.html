@@ -31623,7 +31623,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
 
       /* ---------- pages ---------- */
       const PAGES = ['pgDesk', 'pgFlow', 'pgEvents', 'pgSettings', 'pgBot'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
-      let page = 'pgDesk';   /* v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
+      let page = LS('v80_page') === 'pgBot' ? 'pgBot' : 'pgDesk';   /* the Bot page survives a refresh; v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
       function slotMoves(p) {
         // the engine's IV panes (#charts) + hero live on the Desk in row mode and on the Vol page in stack mode
         const charts = $('charts'), evp = $('evPanel');
@@ -58224,17 +58224,24 @@ document.addEventListener('click', function(e) {
     void keep;
   }
 
-  async function loadLive() {
-    if (!tok() || S.busy) { draw(); return; } S.busy = true;
+  const REFRESH_MS = 5000, ANALYTICS_MS = 60000;
+  async function loadLive(force) {
+    if (!tok()) { draw(); return; }
+    if (S.busy) return; S.busy = true;
+    const before = S.sig;
     try {
       S.liveErr = null;
       S.status = await api('/status');
       const [runs, events] = await Promise.all([api('/runs?limit=60'), api('/events?limit=60')]);
       S.runs = runs.runs; S.events = events.events;
       if (S.status.enabled) { try { S.positions = (await api('/positions')).positions; } catch (e) { S.positions = []; } } else S.positions = [];
-      S.live = await api('/analytics');
+      // the analytics query is the heavy one: once a minute is plenty
+      if (force || !S.live || Date.now() - (S.analyticsAt || 0) > ANALYTICS_MS) { S.live = await api('/analytics'); S.analyticsAt = Date.now(); }
     } catch (e) { S.liveErr = e.message; if (e.status === 401) S.status = null; }
-    S.busy = false; draw();
+    S.busy = false;
+    // redraw only when the data changed, so a refresh every 5 s never flickers or resets what you are reading
+    S.sig = JSON.stringify([S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr]);
+    if (force || S.sig !== before) draw();
   }
   async function loadReplay() {
     if (S.replay || S.replayErr) return;
@@ -58280,7 +58287,7 @@ document.addEventListener('click', function(e) {
 
   root.addEventListener('click', e => {
     const t = e.target.closest('[data-bt],[data-bt-view],[data-bt-split],[data-bt-run]'); if (!t) return;
-    if (t.dataset.btView) { S.view = t.dataset.btView; draw(); if (S.view === 'replay') loadReplay(); else loadLive(); return; }
+    if (t.dataset.btView) { S.view = t.dataset.btView; draw(); if (S.view === 'replay') loadReplay(); else loadLive(true); return; }
     if (t.dataset.btSplit) { S.sel.split = t.dataset.btSplit; draw(); return; }
     if (t.dataset.btRun) { openRun(t.dataset.btRun); return; }
     const a = t.dataset.bt;
@@ -58292,10 +58299,22 @@ document.addEventListener('click', function(e) {
 
   setInterval(() => { if (!D.hidden && D.body.dataset.page === 'pgBot') renderNext(); }, 1000);
 
+  // Start/stop with the page itself, so it also works after a hard refresh that reopens on the Bot page.
   let timer = 0;
-  function poll() { clearInterval(timer); timer = setInterval(() => { if (!D.hidden && D.body.dataset.page === 'pgBot' && S.view === 'live') loadLive(); }, 20000); }
-  D.addEventListener('click', e => { if (e.target.closest('[data-page="pgBot"]')) { draw(); if (S.view === 'live') loadLive(); else loadReplay(); poll(); } });
+  function onBotPage() { return D.body.dataset.page === 'pgBot'; }
+  function enter() {
+    draw();
+    if (S.view === 'live') loadLive(true); else loadReplay();
+    clearInterval(timer);
+    timer = setInterval(() => { if (!D.hidden && onBotPage() && S.view === 'live') loadLive(); }, REFRESH_MS);
+  }
+  function leave() { clearInterval(timer); timer = 0; }
+  let wasOn = false;
+  const sync = () => { const on = onBotPage(); if (on && !wasOn) enter(); else if (!on && wasOn) leave(); wasOn = on; };
+  new MutationObserver(sync).observe(D.body, { attributes: true, attributeFilter: ['data-page'] });
+  D.addEventListener('visibilitychange', () => { if (!D.hidden && onBotPage() && S.view === 'live') loadLive(); });
   draw();
+  sync();
 })();
 </script><style id="askCss">
 #askFab{position:fixed;right:16px;bottom:16px;z-index:9990;display:inline-flex;align-items:center;gap:8px;background:var(--panel2,#182A3B);color:var(--text,#E4ECF2);border:1px solid var(--focus,#9CC9EE);border-radius:999px;padding:10px 16px;font:700 14px var(--font,system-ui);cursor:pointer;box-shadow:0 6px 22px rgba(0,0,0,.35)}
