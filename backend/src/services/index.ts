@@ -4,6 +4,7 @@ import { deltaWorker } from './delta-market-worker.js';
 import { recalibrationScheduler } from './recalibration-scheduler.js';
 import { macroStressWorker } from './macro-stress-worker.js';
 import { botEngine } from './bot/bot-engine.js';
+import { paperTerminal } from './paper/paper-terminal.js';
 
 export { alertService } from './alert-service.js';
 export { binanceWorker } from './binance-market-worker.js';
@@ -29,6 +30,7 @@ export class WorkerManager {
     recalibrationScheduler.start(); // Daily Bonferroni & 50/50 OOS re-validation
     macroStressWorker.start(); // 5-minute outside market pressure recording
     void botEngine.start(); // paper trading bot; no-op unless BOT_ENABLED=true
+    paperTerminal.start(); // the user's own paper account: working orders, stops, expiry (idle when nothing is open)
   }
 
   stopAll() {
@@ -40,6 +42,7 @@ export class WorkerManager {
     recalibrationScheduler.stop();
     macroStressWorker.stop();
     botEngine.stop();
+    paperTerminal.stop();
   }
 
   getStatus() {

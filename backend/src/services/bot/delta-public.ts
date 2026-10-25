@@ -85,6 +85,9 @@ async function getJson<T>(path: string, timeoutMs = 12_000): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Plain GET against the public Delta API (used by the paper terminal for the board and perpetual ticker). */
+export const deltaGet = getJson;
+
 export async function fetchChain(nowMs = Date.now()): Promise<ChainSnapshot> {
   const [calls, puts] = await Promise.all([
     getJson<{ result?: DeltaTicker[] }>('/v2/tickers?contract_types=call_options&underlying_asset_symbols=BTC'),
