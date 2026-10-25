@@ -53,6 +53,35 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   // Every scheduled slot of the IST day (and last night's overnight one) with where it stands, for the Bot page's "Today" panel.
+  // Options and futures PnL side by side for the top of the Bot page: open now, closed today / 7 days / all time. Always book only,
+  // because the gated book repeats the same trades on GO days and would count them twice.
+  fastify.get('/pnl', auth, async () => {
+    await ensureBotSchema();
+    const now = Date.now();
+    const dayStart = istMidnightMs(istDateKey(now));
+    const r = await pool.query(
+      `SELECT (strategy LIKE 'FUT\\_%') AS fut, COUNT(*)::int AS trades, COUNT(*) FILTER (WHERE net_pnl > 0)::int AS wins,
+              COALESCE(SUM(net_pnl), 0)::float AS total,
+              COALESCE(SUM(net_pnl) FILTER (WHERE exit_at >= to_timestamp($1 / 1000.0)), 0)::float AS today,
+              COALESCE(SUM(net_pnl) FILTER (WHERE exit_at >= to_timestamp($2 / 1000.0)), 0)::float AS week,
+              COUNT(*) FILTER (WHERE exit_at >= to_timestamp($1 / 1000.0))::int AS today_trades
+         FROM bot_runs WHERE status = 'closed' AND net_pnl IS NOT NULL AND book <> 'gated' GROUP BY 1`,
+      [dayStart, now - 7 * DAY],
+    );
+    const live = botEngine.enabled ? await botEngine.livePositions().catch(() => []) : [];
+    const side = (fut: boolean) => {
+      const row = (r.rows as any[]).find((x) => !!x.fut === fut);
+      const open = (live as any[]).filter((p) => p.book !== 'gated' && String(p.strategy).startsWith('FUT_') === fut);
+      const openPnl = open.reduce((a, p) => a + (p.pnl ? p.pnl.netPnl : 0), 0);
+      return {
+        openCount: open.length, openPnl, openKnown: open.every((p) => p.pnl),
+        today: row ? Number(row.today) : 0, todayTrades: row ? Number(row.today_trades) : 0, week: row ? Number(row.week) : 0,
+        total: row ? Number(row.total) : 0, trades: row ? Number(row.trades) : 0, wins: row ? Number(row.wins) : 0,
+      };
+    };
+    return { success: true, now, engine: botEngine.status, options: side(false), futures: side(true) };
+  });
+
   fastify.get('/today', auth, async () => {
     await ensureBotSchema();
     const now = Date.now();

@@ -70,4 +70,24 @@ describe('GET /bot/today and the richer run list', () => {
     expect(Number(mine.gross_pnl) - Number(mine.fees_entry) - Number(mine.fees_exit)).toBeCloseTo(Number(mine.net_pnl), 6);
     await app.close();
   });
+
+  it('/bot/pnl splits options from futures, counts the always book only, and separates today from older trades', async () => {
+    const day = istDateKey(Date.now());
+    const t = istMidnightMs(day) + 11 * 3_600_000;
+    await pool.query('DELETE FROM bot_fills; DELETE FROM bot_runs;');
+    const ins = (key: string, strat: string, book: string, net: number, exitAt: number) => pool.query(
+      `INSERT INTO bot_runs (run_key, strategy, book, mode, date_key, status, entry_at, exit_at, net_pnl) VALUES ($1,$2,$3,'paper',$4,'closed', to_timestamp($5/1000.0), to_timestamp($5/1000.0), $6)`,
+      [key, strat, book, day, exitAt, net]);
+    await ins('a', 'ASIA_SHORT', 'always', 5, t);
+    await ins('b', 'ASIA_SHORT', 'gated', 5, t); // same trade, must not be counted twice
+    await ins('c', 'EVE_LONG', 'always', -2, t - 3 * 86_400_000); // older: in the week and the total, not today
+    await ins('d', 'FUT_SWEEP_LDN', 'always', 3, t);
+    await ins('e', 'FUT_SIGNAL', 'always', -1, t - 20 * 86_400_000); // older than a week: total only
+    const app = await build();
+    const hdr = { authorization: `Bearer ${app.jwt.sign({ sub: 't' })}` };
+    const r = (await app.inject({ method: 'GET', url: '/bot/pnl', headers: hdr })).json();
+    expect(r.options).toMatchObject({ today: 5, todayTrades: 1, week: 3, total: 3, trades: 2, wins: 1, openCount: 0 });
+    expect(r.futures).toMatchObject({ today: 3, week: 3, total: 2, trades: 2, wins: 1 });
+    await app.close();
+  });
 });
