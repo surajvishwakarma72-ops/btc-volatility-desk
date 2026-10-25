@@ -58012,6 +58012,16 @@ document.addEventListener('click', function(e) {
 #pgBot .bt-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 10px;box-shadow:var(--shadow)}
 #pgBot .bt-card h3{margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 #pgBot .bt-card .sub{font-size:12px;color:var(--faint);margin:-2px 0 8px;line-height:1.45}
+#pgBot .bt-top{border-color:var(--focus,#9CC9EE);animation:btFlash 2.6s ease-in-out infinite}
+@keyframes btFlash{0%,100%{box-shadow:0 0 0 0 rgba(156,201,238,0)}50%{box-shadow:0 0 0 3px rgba(156,201,238,.3)}}
+@media (prefers-reduced-motion:reduce){#pgBot .bt-top{animation:none}}
+#pgBot .bt-top .tp-name{font-size:17px;font-weight:700;margin:2px 0 4px}
+#pgBot .bt-top .tp-why{font-size:13px;line-height:1.5;color:var(--text)}
+#pgBot .bt-top .tp-src{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#pgBot .bt-why{font-size:12px;line-height:1.45;white-space:normal;min-width:240px;text-align:left}
+#pgBot .bt-wait{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
+#pgBot .bt-wait .w{border:1px solid var(--warn,#D69E2E);border-radius:8px;padding:6px 10px;font-size:12px;line-height:1.4;max-width:100%}
+#pgBot .bt-btn.small{padding:3px 9px;font-size:12px}
 #pgBot .bt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:10px}
 #pgBot .bt-scroll{overflow-x:auto}
 #pgBot table.bt-t{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
@@ -58166,12 +58176,62 @@ document.addEventListener('click', function(e) {
     return h;
   }
 
+  /* ---------- top performer, dropped trades, auto-learn ---------- */
+  const SESS_NAME = { ASIA_SHORT: 'Asia', NY_SHORT: 'New York' };
+  const PNAME = { dvolMax: 'DVOL limit for the gated book', stopMultiple: 'Stop (x sold price)', tpPct: 'Take profit (% of margin)' };
+  const pval = (k, v) => v >= 1000 ? 'off' : k === 'tpPct' ? Math.round(v * 100) + '%' : k === 'stopMultiple' ? v + 'x' : String(v);
+
+  function topCard(pick, src) {
+    if (!pick) return '';
+    const n = name(pick.key);
+    return `<div class="bt-card bt-top"><div class="tp-src">Top performer · ${esc(src)}${pick.confident ? '' : ' · early read'}</div><div class="tp-name">${esc(n)} <span class="${sgn(pick.avgPnl)}">${pick.avgPnl >= 0 ? '+' : ''}${usd(pick.avgPnl)} per trade</span></div><div class="tp-why">${esc(pick.reason)}</div></div>`;
+  }
+
+  function dropsCard() {
+    const d = S.drops; if (!d) return '';
+    const now = Date.now();
+    const waiting = (d.waiting || []).map(w => {
+      const left = Math.max(0, w.windowEndMs - now);
+      return `<div class="w"><b>${esc(name(w.key.split(':')[0] + '|' + w.key.split(':')[2]))}</b> is waiting for a valid entry · tried ${w.attempts}× · ${left > 0 ? 'window closes in ' + hms(left) : 'window closing'}<br><span class="dim">Right now: ${esc(w.lastReason || 'checking')}</span></div>`;
+    }).join('');
+    const rows = (d.drops || []).slice(0, 25);
+    return `<div class="bt-card"><h3>Why the bot did not trade</h3><div class="sub">The two short strangles keep checking every minute for 2 hours (Asia, from 10:00) and 3 hours (New York, from 22:30) and enter the first time everything passes. A day is only listed here once its whole window ended with nothing valid, together with every reason seen along the way.</div>${waiting ? `<div class="bt-wait">${waiting}</div>` : ''}${rows.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Strategy</th><th>Date</th><th>Outcome</th><th>Tries</th><th>Why</th></tr></thead><tbody>${rows.map(r => {
+      const seen = (r.reasonsSeen || []).map(x => x.reason);
+      const why = r.reason ? esc(r.reason) + (seen.length > 1 ? `<br><span class="dim">Also seen: ${esc(seen.filter(s => s !== r.reason).join(' · '))}</span>` : '') : '<span class="dim">no reason recorded</span>';
+      return `<tr><td>${esc(name(r.strategy + '|' + r.book))}</td><td>${esc(r.dateKey)}</td><td>${r.status === 'failed' ? 'could not trade' : 'skipped'}</td><td>${r.attempts}</td><td class="bt-why">${why}</td></tr>`;
+    }).join('')}</tbody></table></div>` : '<div class="bt-note">No dropped trades yet.</div>'}</div>`;
+  }
+
+  function learnCard() {
+    const L = S.learn; if (!L) return '';
+    const th = L.thresholds;
+    let h = `<div class="bt-card"><h3>Auto-learn · champion vs challenger</h3><div class="sub">Paper only. Each night after 09:30 IST the bot replays slightly different rules over its own recorded days (one knob at a time: stop level, take-profit level, DVOL limit) and compares them with the rules it trades now, day by day. A challenger takes over only if it has at least ${th.minDays} days of data, beats the champion by at least ${usd(th.minGainUsd)} (or ${Math.round(th.minGainFrac * 100)}%) a day, passes a significance test corrected for the number of challengers, and does not draw down harder. Open trades keep the rules they started with, and every change can be rolled back. Automatic promotion is <b>${L.auto ? 'on' : 'off'}</b>.</div>`;
+    for (const s of Object.keys(L.params)) {
+      const p = L.params[s], latest = (L.latest || []).find(x => x.strategy === s);
+      const ev = latest && latest.evidence, chal = ev && ev.challengers ? ev.challengers.slice().sort((a, b) => (b.gainPerDay || 0) - (a.gainPerDay || 0)).slice(0, 5) : [];
+      const changed = Object.keys(p).some(k => p[k] !== L.defaults[k]);
+      h += `<div class="bt-row" style="margin-top:6px"><b>${esc(SESS_NAME[s] || s)} short strangle</b>${Object.keys(p).map(k => `<span class="bt-chip">${esc(PNAME[k])} <b>${esc(pval(k, p[k]))}</b></span>`).join('')}${changed ? `<button type="button" class="bt-btn small" data-bt-rb="${esc(s)}">Roll back last change</button>` : ''}</div>`;
+      h += `<div class="bt-note">${latest ? esc(IST(new Date(latest.at).getTime())) + ' IST · ' + esc(latest.reason) : 'No review has run yet.'}</div>`;
+      if (chal.length) h += `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Challenger</th><th>Avg / day</th><th>vs champion</th><th>p</th><th>Verdict</th></tr></thead><tbody>${chal.map(c => `<tr><td>${esc(PNAME[c.changed])} → ${esc(pval(c.changed, c.value))}</td><td ${cls(c.meanPerDay)}>${usd(c.meanPerDay)}</td><td ${cls(c.gainPerDay)}>${c.gainPerDay >= 0 ? '+' : ''}${usd(c.gainPerDay)}</td><td>${c.p == null ? '-' : c.p.toFixed(3)}</td><td class="bt-why">${c.qualifies ? '<b class="pos">qualifies</b>' : esc((c.failed || [])[0] || '')}</td></tr>`).join('')}</tbody></table></div>`;
+    }
+    const log = (L.log || []).filter(x => x.kind !== 'evaluation').slice(0, 8);
+    h += `<div class="bt-row" style="margin-top:8px"><b>Change log</b><button type="button" class="bt-btn small" data-bt="learnrun">Review now (no changes)</button></div>`;
+    h += log.length ? `<pre class="bt-pre">${log.map(x => `${IST(new Date(x.at).getTime())}  ${x.kind.toUpperCase()}  ${x.reason}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No rule has been changed yet.</div>';
+    if (S.learnMsg) h += `<div class="bt-note">${esc(S.learnMsg)}</div>`;
+    return h + '</div>';
+  }
+
   /* ---------- live view ---------- */
   function liveView() {
     if (!tok()) return `<div class="bt-card bt-login"><h3>Log in</h3><div class="bt-note">The live bot data is private. Use your desk password.</div><input type="password" id="btPw" placeholder="Desk password" autocomplete="current-password"><button type="button" class="bt-btn" data-bt="login">Log in</button>${S.loginErr ? `<div class="bt-note warn">${esc(S.loginErr)}</div>` : ''}</div>`;
     const st = S.status; let h = '';
     if (S.liveErr) h += `<div class="bt-card"><div class="bt-note warn">${esc(S.liveErr)}</div></div>`;
     if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded. The Replay tab shows how the same rules would have done on 13 months of history.</div></div>`;
+    if (S.top) {
+      const t = S.top, usedLive = t.live && (t.live.confident || !t.replay);
+      h += topCard(usedLive ? t.live : (t.replay || t.live), usedLive ? 'live paper trades' : '13-month replay');
+      if (!usedLive && t.live) h += `<div class="bt-note" style="margin:-4px 0 10px">Live paper trades so far: ${esc(t.live.reason)}</div>`;
+    }
     h += `<div class="bt-card"><h3>Running positions</h3>${S.positions.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Margin</th><th>Net PnL</th><th>% margin</th><th>To TP</th><th>Stop distance</th><th>Time exit</th><th>Spot</th></tr></thead><tbody>${S.positions.map(p => {
       const fut = p.exit && p.exit.kind === 'futures';
       const tp = fut ? null : (p.exit && p.exit.tpPctOfMargin != null && p.pnl ? p.exit.tpPctOfMargin * p.marginUsd - p.pnl.netPnl : null);
@@ -58180,12 +58240,14 @@ document.addEventListener('click', function(e) {
       const futTp = fut ? Math.abs(p.exit.target - p.spot) : null, futSl = fut ? Math.abs(p.spot - p.exit.stop) : null;
       return `<tr class="click" data-bt-run="${esc(p.id)}"><td>${esc(name(p.strategy + '|' + p.book))}${fl ? ` <span class="dim">${esc(fl.side)} ${fl.lots} lots @ ${Math.round(fl.entryPrice)}</span>` : ''}</td><td>${usd(p.marginUsd)}</td><td ${cls(p.pnl && p.pnl.netPnl)}>${p.pnl ? usd(p.pnl.netPnl) : '-'}</td><td ${cls(p.pnl && p.pnl.pctOfMargin)}>${p.pnl ? pct(p.pnl.pctOfMargin, 1) : '-'}</td><td>${fut ? usd(futTp, 0) + ' of price' : tp == null ? '-' : usd(tp)}</td><td>${fut ? usd(futSl, 0) + ' of price' : stops.length ? usd(Math.min(...stops)) : '-'}</td><td>${p.minutesToTimeExit == null ? '-' : (p.minutesToTimeExit / 60).toFixed(1) + ' h'}</td><td>${Math.round(p.spot)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="bt-note">No open positions.</div>'}</div>`;
 
+    h += dropsCard();
     h += `<div class="bt-grid"><div class="bt-card"><h3>Recent runs</h3>${S.runs.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Date</th><th>Status</th><th>Exit</th><th>Net PnL</th></tr></thead><tbody>${S.runs.slice(0, 40).map(r => `<tr class="click ${S.sel.timeline && S.sel.timeline.id === r.id ? 'sel' : ''}" data-bt-run="${esc(r.id)}"><td>${esc(name(r.strategy + '|' + r.book))}</td><td>${esc(r.date_key)}</td><td>${esc(r.status)}</td><td>${esc(r.exit_reason || '')}</td><td ${cls(r.net_pnl == null ? null : Number(r.net_pnl))}>${r.net_pnl == null ? '-' : usd(Number(r.net_pnl))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="bt-note">No runs recorded yet.</div>'}</div>`;
     const tl = S.sel.timeline;
     h += `<div class="bt-card"><h3>Trade timeline${tl ? ' · ' + esc(name(tl.strategy + '|' + tl.book)) : ''}</h3>${tl ? `<div class="sub">${esc(tl.summary || '')}</div>${lineChart([{ label: 'Net PnL', points: tl.points, color: '#58A6D6', marks: tl.marks }], { title: 'Trade PnL timeline', fmtX: v => (v / 60).toFixed(1) + 'h' })}` : '<div class="bt-note">Click a run to see its PnL minute by minute, with the exit marked and how much was given back from the peak.</div>'}</div></div>`;
 
     h += `<div class="bt-card"><h3>Ask: what was happening at a given minute?</h3><div class="bt-row"><input id="btAskT" placeholder="HH:MM (IST)" size="8"><input id="btAskD" placeholder="YYYY-MM-DD (today)" size="14"><button type="button" class="bt-btn" data-bt="ask">Look up</button></div>${S.sel.askOut ? `<pre class="bt-pre">${esc(S.sel.askOut)}</pre>` : '<div class="bt-note">Shows every position, the market context and every decision the bot recorded at that minute.</div>'}</div>`;
     h += `<div class="bt-card"><h3>Recent events</h3>${S.events.length ? `<pre class="bt-pre">${S.events.slice(0, 40).map(e => `${IST(new Date(e.at).getTime())}  ${String(e.severity).toUpperCase().padEnd(5)} ${e.type}: ${e.message}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No events yet.</div>'}</div>`;
+    h += learnCard();
     h += S.live ? renderAnalytics(S.live.analytics, null, 'live paper') : '';
     return h;
   }
@@ -58194,7 +58256,7 @@ document.addEventListener('click', function(e) {
     if (S.replayErr) return `<div class="bt-card"><div class="bt-note warn">Replay results are not available: ${esc(S.replayErr)}. Generate them with <b>npx tsx src/scripts/bot-replay.ts</b> in the backend folder.</div></div>`;
     const r = S.replay; if (!r) return '<div class="bt-card"><div class="bt-note">Loading replay…</div></div>';
     const c = r.config || {};
-    let h = `<div class="bt-card"><h3>Replay · ${esc(r.range.from)} to ${esc(r.range.to)} (${r.range.days} days)</h3><div class="sub">${esc(r.method)}</div><div class="bt-row"><span class="bt-chip">Lots <b>${c.lots}</b></span><span class="bt-chip">Half-spread <b>${pct(c.halfSpreadPct, 1)}</b></span><span class="bt-chip">Option fee <b>${(c.feeRate * 100).toFixed(2)}%</b> (cap ${(c.feePremiumCap * 100).toFixed(1)}%)</span><span class="bt-chip">Body delta <b>${c.bodyDelta}</b></span><span class="bt-chip">Wing delta <b>${c.wingDelta}</b></span><span class="bt-chip warn">Variants tested <b>${r.trials}</b></span></div>`;
+    let h = `<div class="bt-card"><h3>Replay · ${esc(r.range.from)} to ${esc(r.range.to)} (${r.range.days} days)</h3><div class="sub">${esc(r.method)}</div><div class="bt-row"><span class="bt-chip">Lots <b>${c.lots}</b></span><span class="bt-chip">Half-spread <b>${pct(c.halfSpreadPct, 1)}</b></span><span class="bt-chip">Option fee <b>${(c.feeRate * 100).toFixed(2)}%</b> (cap ${(c.feePremiumCap * 100).toFixed(1)}%)</span><span class="bt-chip">Body delta <b>${c.bodyDelta}</b></span><span class="bt-chip warn">Variants tested <b>${r.trials}</b></span></div>`;
     h += `<div class="bt-note warn" style="margin-top:8px">Read with care: option prices are modelled from spot and ATM IV with one flat IV per expiry (no skew), the window is one regime, and ${r.trials} variants were tested together, so the best-looking line is likelier to be luck than a real edge. A positive replay is a reason to paper trade, not to go live.</div></div>`;
     const fc = r.futuresConfig;
     if (fc) {
@@ -58202,6 +58264,7 @@ document.addEventListener('click', function(e) {
       const ft = (r.futuresTrades || []).slice(-12).reverse();
       h += `<div class="bt-card"><h3>Futures strategies · how they are tested</h3><div class="sub">${esc(r.futuresNote || '')}</div><div class="bt-row"><span class="bt-chip">Risk per trade <b>${usd(fc.riskUsd, 0)}</b></span><span class="bt-chip">Max lots <b>${fc.maxLots}</b></span><span class="bt-chip">Target <b>${fc.targetR}R</b></span><span class="bt-chip">Breakeven at <b>${fc.breakevenR}R</b></span><span class="bt-chip">Trail from <b>${fc.trailStartR}R</b></span><span class="bt-chip">Max hold <b>${(fc.maxHoldMin / 60).toFixed(0)} h</b></span><span class="bt-chip">Max leverage <b>${fc.maxLeverage}x</b></span><span class="bt-chip">Taker fee <b>${(fc.takerRate * 100).toFixed(2)}%</b> + GST</span></div>${rej ? `<div class="bt-note" style="margin-top:6px">Signals skipped before trading, by reason:</div><ul class="bt-note" style="margin:4px 0 8px 18px">${rej}</ul><div class="bt-note">At a ${usd(fc.riskUsd, 0)} risk and the 25-lot cap, a tight stop leaves the round-trip fee above ${(fc.maxFeeToRisk * 100).toFixed(0)}% of the risk, so the fee guard skips it. A bigger risk per trade or maker (post-only) entries would let more of them through.</div>` : ''}${ft.length ? `<div class="bt-scroll" style="margin-top:8px"><table class="bt-t"><thead><tr><th>Latest trades</th><th>Side</th><th>Lots</th><th>Entry</th><th>Exit</th><th>Exit reason</th><th>Net PnL</th><th>Why it entered</th></tr></thead><tbody>${ft.map((x) => `<tr><td>${esc(name(x.strategy))} · ${esc(x.dateKey)}</td><td>${esc(x.dir)}</td><td>${x.lots}</td><td>${Math.round(x.entry)}</td><td>${Math.round(x.exit)}</td><td>${esc(x.exitReason)}</td><td ${cls(x.netPnl)}>${usd(x.netPnl)}</td><td style="text-align:left;white-space:normal;min-width:220px">${esc(x.note)}</td></tr>`).join('')}</tbody></table></div>` : ''}</div>`;
     }
+    if (S.top && S.top.replay) h = topCard(S.top.replay, '13-month replay') + h;
     h += renderAnalytics(r.analytics, r.runs, 'replay');
     return h;
   }
@@ -58236,11 +58299,17 @@ document.addEventListener('click', function(e) {
       S.runs = runs.runs; S.events = events.events;
       if (S.status.enabled) { try { S.positions = (await api('/positions')).positions; } catch (e) { S.positions = []; } } else S.positions = [];
       // the analytics query is the heavy one: once a minute is plenty
-      if (force || !S.live || Date.now() - (S.analyticsAt || 0) > ANALYTICS_MS) { S.live = await api('/analytics'); S.analyticsAt = Date.now(); }
+      // dropped trades and waiting entries change minute by minute, so they ride the 5 s refresh
+      try { S.drops = await api('/drops?limit=30'); } catch (e) { S.drops = null; }
+      if (force || !S.live || Date.now() - (S.analyticsAt || 0) > ANALYTICS_MS) {
+        S.live = await api('/analytics'); S.analyticsAt = Date.now();
+        try { S.top = await api('/top'); } catch (e) { S.top = null; }
+        try { S.learn = await api('/learn'); } catch (e) { S.learn = null; }
+      }
     } catch (e) { S.liveErr = e.message; if (e.status === 401) S.status = null; }
     S.busy = false;
     // redraw only when the data changed, so a refresh every 5 s never flickers or resets what you are reading
-    S.sig = JSON.stringify([S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr]);
+    S.sig = JSON.stringify([S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (force || S.sig !== before) draw();
   }
   async function loadReplay() {
@@ -58283,15 +58352,27 @@ document.addEventListener('click', function(e) {
     } catch (e) { S.loginErr = e.message; }
     S.busy = false; await loadLive();
   }
+  async function reviewNow() {
+    try { const j = await api('/learn/run?dry=1', { method: 'POST' }); S.learnMsg = j.reports.map(r => (SESS_NAME[r.strategy] || r.strategy) + ': ' + r.note).join(' ');
+      S.learn = await api('/learn'); } catch (e) { S.learnMsg = 'Review failed: ' + e.message; }
+    draw();
+  }
+  async function rollback(strategy) {
+    if (!window.confirm('Put the ' + (SESS_NAME[strategy] || strategy) + ' short strangle back on the rules it had before its latest auto-learn change? Open trades are not affected.')) return;
+    try { await api('/learn/rollback', { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + tok() }, body: JSON.stringify({ strategy }) }); S.learnMsg = 'Rolled back.'; S.learn = await api('/learn'); }
+    catch (e) { S.learnMsg = 'Rollback failed: ' + e.message; }
+    draw();
+  }
   async function act(path) { try { await api(path, { method: 'POST' }); } catch (e) { S.liveErr = e.message; } await loadLive(); }
 
   root.addEventListener('click', e => {
-    const t = e.target.closest('[data-bt],[data-bt-view],[data-bt-split],[data-bt-run]'); if (!t) return;
+    const t = e.target.closest('[data-bt],[data-bt-view],[data-bt-split],[data-bt-run],[data-bt-rb]'); if (!t) return;
+    if (t.dataset.btRb) { rollback(t.dataset.btRb); return; }
     if (t.dataset.btView) { S.view = t.dataset.btView; draw(); if (S.view === 'replay') loadReplay(); else loadLive(true); return; }
     if (t.dataset.btSplit) { S.sel.split = t.dataset.btSplit; draw(); return; }
     if (t.dataset.btRun) { openRun(t.dataset.btRun); return; }
     const a = t.dataset.bt;
-    if (a === 'login') login(); else if (a === 'ask') ask(); else if (a === 'pause') act('/pause'); else if (a === 'resume') act('/resume'); else if (a === 'killreset') act('/kill/reset');
+    if (a === 'login') login(); else if (a === 'learnrun') reviewNow(); else if (a === 'ask') ask(); else if (a === 'pause') act('/pause'); else if (a === 'resume') act('/resume'); else if (a === 'killreset') act('/kill/reset');
     else if (a === 'kill') { if (S.killArm > Date.now()) { S.killArm = 0; act('/kill'); } else { S.killArm = Date.now() + 5000; draw(); setTimeout(draw, 5100); } }
   });
   root.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.bt === 'strat') { S.sel.strat = t.value; draw(); } });
