@@ -37,7 +37,7 @@ const callInst = (): Instrument => ({
 });
 
 function snapshot(): MarketSnapshot {
-  const row: BoardRow = { symbol: CALL, type: 'call', strike: 82000, expiryMs: EXP, bid: mk.callMark - 10, ask: mk.callMark + 10, bidSize: 100, askSize: 100, mark: mk.callMark, iv: 40, delta: 0.3, gamma: 0, theta: 0, vega: 0, oi: 0, volume: 0 };
+  const row: BoardRow = { symbol: CALL, type: 'call', strike: 82000, expiryMs: EXP, bid: mk.callMark - 10, ask: mk.callMark + 10, bidSize: 100, askSize: 100, mark: mk.callMark, iv: 40, delta: 0.3, gamma: 0, theta: 0, vega: 0, oi: 0, volume: 0, tick: 5 };
   return {
     at: Date.now(), spot: mk.px, perp: { symbol: 'BTCUSD', mark: mk.px, bid: mk.px - 0.5, ask: mk.px + 0.5, last: mk.px, funding: 0, oi: 0 },
     rows: [row], expiries: [EXP], insts: new Map([['BTCUSD', perpInst], [CALL, callInst()]]),

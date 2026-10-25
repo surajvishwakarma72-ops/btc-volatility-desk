@@ -22,6 +22,7 @@ export interface BoardRow {
   vega: number;
   oi: number;
   volume: number;
+  tick: number;
 }
 
 export interface PerpQuote {
@@ -53,7 +54,7 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-export function parseBoardRow(t: DeltaTicker & { oi?: string; volume?: number | string }): BoardRow | null {
+export function parseBoardRow(t: DeltaTicker & { oi?: string; volume?: number | string; tick_size?: string }): BoardRow | null {
   const symbol = t.symbol;
   const type = t.contract_type === 'call_options' ? 'call' : t.contract_type === 'put_options' ? 'put' : null;
   const expiryMs = symbol ? parseExpiry(symbol) : null;
@@ -66,7 +67,7 @@ export function parseBoardRow(t: DeltaTicker & { oi?: string; volume?: number | 
     // Delta quotes IV as a fraction; the desk shows vol points.
     iv: num(t.quotes?.mark_iv) * 100,
     delta: num(t.greeks?.delta), gamma: num(t.greeks?.gamma), theta: num(t.greeks?.theta), vega: num(t.greeks?.vega),
-    oi: num(t.oi), volume: num(t.volume),
+    oi: num(t.oi), volume: num(t.volume), tick: num(t.tick_size) || 0.1,
   };
 }
 
@@ -120,7 +121,7 @@ export class DeltaMarket implements MarketProvider {
       const f = rates.get(r.symbol);
       insts.set(r.symbol, {
         symbol: r.symbol, kind: 'option', contractValue: f?.contractValue ?? 0.001, takerRate: f?.takerRate ?? 0.0001, makerRate: f?.makerRate ?? 0.0001,
-        premiumCapRate: f?.premiumCapRate ?? 0.035, tick: 5, maxLeverage: 1, option: { type: r.type, strike: r.strike, expiryMs: r.expiryMs, iv: r.iv },
+        premiumCapRate: f?.premiumCapRate ?? 0.035, tick: r.tick, maxLeverage: 1, option: { type: r.type, strike: r.strike, expiryMs: r.expiryMs, iv: r.iv },
       });
     }
     return { at: now, spot, perp, rows, expiries: [...new Set(rows.map((r) => r.expiryMs))].sort((a, b) => a - b), insts };

@@ -19823,6 +19823,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         <button type="button" data-page="pgFlow">Flow</button>
         <button type="button" data-page="pgEvents">Events</button>
         <button type="button" data-page="pgBot">Bot</button>
+        <button type="button" data-page="pgPaper">Paper</button>
         <button type="button" data-page="pgSettings">Settings</button>
       </nav>
       <div class="top-actions">
@@ -20467,6 +20468,10 @@ The floating P&L pill still shows the live P&L on top of everything. */
         <div id="btRoot"></div>
       </section>
 
+          <section class="page" id="pgPaper" aria-label="Paper Trade: your own Delta-style paper account">
+        <div id="ppRoot"></div>
+      </section>
+
     </main>
 
     <!-- ───────── phone tab bar ───────── -->
@@ -20479,6 +20484,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
     <div class="more-sheet" id="moreSheet" hidden>
       <button type="button" data-page="pgEvents" class="ms-ev">Events &amp; calendar</button>
       <button type="button" data-page="pgBot">Bot · paper trading</button>
+      <button type="button" data-page="pgPaper">Paper Trade · your own account</button>
       <button type="button" data-page="pgSettings">Settings &amp; backups</button>
       <button type="button" id="moreTheme">Switch theme</button>
     </div>
@@ -31622,8 +31628,8 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
       document.body.classList.add('v80');
 
       /* ---------- pages ---------- */
-      const PAGES = ['pgDesk', 'pgFlow', 'pgEvents', 'pgSettings', 'pgBot'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
-      let page = LS('v80_page') === 'pgBot' ? 'pgBot' : 'pgDesk';   /* the Bot page survives a refresh; v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
+      const PAGES = ['pgDesk', 'pgFlow', 'pgEvents', 'pgSettings', 'pgBot', 'pgPaper'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
+      let page = (LS('v80_page') === 'pgBot' || LS('v80_page') === 'pgPaper') ? LS('v80_page') : 'pgDesk';   /* the Bot page survives a refresh; v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
       function slotMoves(p) {
         // the engine's IV panes (#charts) + hero live on the Desk in row mode and on the Vol page in stack mode
         const charts = $('charts'), evp = $('evPanel');
@@ -31638,7 +31644,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
       function show(p) {
         if (!PAGES.includes(p)) return; page = p; LS('v80_page', p);
         for (const id of PAGES) { const el = $(id); if (el) el.classList.toggle('on', id === p); }
-        document.querySelectorAll('#nav button,#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === p || (b.id === 'moreTab' && (p === 'pgBot' || p === 'pgStudy' || p === 'pgSettings' || p === 'pgEvidence' || (p === 'pgEvents' && !document.body.classList.contains('reg-off'))))));
+        document.querySelectorAll('#nav button,#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === p || (b.id === 'moreTab' && (p === 'pgBot' || p === 'pgPaper' || p === 'pgStudy' || p === 'pgSettings' || p === 'pgEvidence' || (p === 'pgEvents' && !document.body.classList.contains('reg-off'))))));
         $('moreSheet') && ($('moreSheet').hidden = true);
         slotMoves(p);
         document.body.dataset.page = p;
@@ -58397,7 +58403,374 @@ document.addEventListener('click', function(e) {
   draw();
   sync();
 })();
-</script><style id="askCss">
+</script>
+<style id="ppCss">
+#pgPaper .pp{max-width:1360px;margin:0 auto;padding:4px 2px 24px;color:var(--text)}
+#pgPaper .pp-top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 10px}
+#pgPaper .pp-top h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
+#pgPaper .pp-sp{flex:1}
+#pgPaper .pp-chip{display:inline-flex;gap:6px;align-items:center;padding:3px 9px;border:1px solid var(--line2);border-radius:999px;font-size:12px;color:var(--muted);background:var(--panel)}
+#pgPaper .pp-chip b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+#pgPaper .pp-chip.warn b{color:var(--warn)}
+#pgPaper .pp-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 10px;box-shadow:var(--shadow)}
+#pgPaper .pp-card h3{margin:0 0 6px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#pgPaper .pp-note{font-size:12px;color:var(--muted);line-height:1.5}
+#pgPaper .pp-note.warn{color:var(--warn)}
+#pgPaper .pp-cols{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:10px;align-items:start}
+#pgPaper .pp-stack{display:flex;flex-direction:column;min-width:0}
+#pgPaper .pp-scroll{overflow:auto}
+#pgPaper .pp-scroll.board{max-height:430px}
+#pgPaper table.pp-t{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+#pgPaper .pp-t th{position:sticky;top:0;background:var(--panel);text-align:right;color:var(--muted);font-weight:600;padding:4px 7px;border-bottom:1px solid var(--line2);white-space:nowrap}
+#pgPaper .pp-t td{text-align:right;padding:3px 7px;border-bottom:1px solid var(--line);white-space:nowrap}
+#pgPaper .pp-t th:first-child,#pgPaper .pp-t td:first-child{text-align:left}
+#pgPaper .pp-t td.k{text-align:center;font-weight:700;background:var(--panel2)}
+#pgPaper .pp-t tr.atm td{background:rgba(227,174,69,.12)}
+#pgPaper .pp-t tr.atm td.k{background:rgba(227,174,69,.28)}
+#pgPaper .pp-t td.q{cursor:pointer}
+#pgPaper .pp-t td.q:hover{outline:1px solid var(--focus);outline-offset:-1px}
+#pgPaper .pp-t td.q.buy{color:var(--down)}
+#pgPaper .pp-t td.q.sell{color:var(--up)}
+#pgPaper .pp-t td.sel{box-shadow:inset 0 0 0 2px var(--focus)}
+#pgPaper .pp-t th.grp{text-align:center;border-bottom:0;letter-spacing:.08em;text-transform:uppercase}
+#pgPaper .pos{color:var(--down)}
+#pgPaper .neg{color:var(--up)}
+#pgPaper .dim{color:var(--faint)}
+#pgPaper .pp-perp{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:0 0 8px;font-size:13px}
+#pgPaper .pp-perp b{font-variant-numeric:tabular-nums}
+#pgPaper button.pp-btn{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:5px 11px;font:600 12px var(--font);cursor:pointer}
+#pgPaper button.pp-btn:hover{border-color:var(--focus)}
+#pgPaper button.pp-btn.small{padding:2px 8px}
+#pgPaper .pp-seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+#pgPaper .pp-seg button{background:var(--panel);color:var(--muted);border:0;padding:6px 14px;font:600 13px var(--font);cursor:pointer}
+#pgPaper .pp-seg button.on{background:var(--panel2);color:var(--text);box-shadow:inset 0 -2px 0 var(--focus)}
+#pgPaper .pp-seg.side button.on.buy{background:rgba(53,187,125,.18);color:var(--down);box-shadow:inset 0 -2px 0 var(--down)}
+#pgPaper .pp-seg.side button.on.sell{background:rgba(239,90,94,.18);color:var(--up);box-shadow:inset 0 -2px 0 var(--up)}
+#pgPaper .pp-tk{display:flex;flex-direction:column;gap:8px}
+#pgPaper .pp-tk label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+#pgPaper .pp-tk input[type=number],#pgPaper .pp-in{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:6px 8px;font:600 14px var(--font);width:100%;box-sizing:border-box;font-variant-numeric:tabular-nums}
+#pgPaper .pp-tk .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#pgPaper .pp-tk .chips{display:flex;gap:6px;flex-wrap:wrap}
+#pgPaper .pp-tk .chk{flex-direction:row;align-items:center;gap:6px}
+#pgPaper .pp-contract{font-size:15px;font-weight:700}
+#pgPaper .pp-prev{font-size:12px;line-height:1.5;border:1px dashed var(--line2);border-radius:8px;padding:7px 9px;color:var(--muted);min-height:54px}
+#pgPaper .pp-prev b{color:var(--text)}
+#pgPaper button.pp-go{border:0;border-radius:8px;padding:10px;font:700 14px var(--font);cursor:pointer;color:#06130d}
+#pgPaper button.pp-go.buy{background:var(--down)}
+#pgPaper button.pp-go.sell{background:var(--up);color:#fff}
+#pgPaper button.pp-go:disabled{opacity:.5;cursor:default}
+#pgPaper .pp-msg{font-size:12.5px;line-height:1.45;padding:6px 8px;border-radius:8px;border:1px solid var(--line2)}
+#pgPaper .pp-msg.ok{border-color:var(--down)}
+#pgPaper .pp-msg.bad{border-color:var(--up)}
+#pgPaper .pp-book{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;font-size:12px;font-variant-numeric:tabular-nums}
+#pgPaper .pp-book div{display:flex;justify-content:space-between;padding:1px 0}
+#pgPaper .pp-book .a{color:var(--up)}
+#pgPaper .pp-book .b{color:var(--down)}
+@media (max-width:980px){#pgPaper .pp-cols{grid-template-columns:1fr}}
+</style>
+<script data-block="paper-page">
+/* Paper Trade page: a Delta-style terminal on fake money against the real Delta order books.
+   Own account (cash, orders, positions, fills), separate from the bot. Data from /api/v1/paper/*. */
+(function paperPage() {
+  'use strict';
+  const D = document, $ = id => D.getElementById(id);
+  const root = $('ppRoot'); if (!root) return;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { return localStorage.getItem('desk_jwt'); } };
+  const sgn = v => v == null || !isFinite(v) ? 'dim' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'dim';
+  const usd = (v, d = 2) => v == null || !isFinite(v) ? '-' : (v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const px = (v, d) => v == null || !isFinite(v) || v === 0 ? '-' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d == null ? 1 : d, maximumFractionDigits: d == null ? 1 : d });
+  const IST = ms => new Date(ms + 19800000).toISOString().slice(5, 16).replace('T', ' ');
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const dayLbl = ms => { const d = new Date(ms); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()]; };
+  const PERP = 'BTCUSD';
+
+  const S = { acct: null, board: null, expiry: null, sel: null, t: { side: 'buy', type: 'market', lots: '10', price: '', stop: '', reduce: false, lev: 10, tp: '', sl: '' },
+    preview: null, msg: null, orders: [], fills: [], hist: 'orders', book: null, loginErr: null, err: null, busy: false, scrolled: false, built: false };
+
+  async function api(path, opt) {
+    const t = tok(); if (!t) { const e = new Error('Not logged in'); e.status = 401; throw e; }
+    const o = Object.assign({ headers: { Accept: 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' }, opt || {});
+    if (o.body && typeof o.body !== 'string') { o.body = JSON.stringify(o.body); o.headers['Content-Type'] = 'application/json'; }
+    const r = await fetch('/api/v1/paper' + path, o);
+    if (r.status === 401) { try { localStorage.removeItem('desk_jwt'); } catch (e) { } const e = new Error('Session expired, log in again'); e.status = 401; throw e; }
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.success === false) throw new Error((j && j.error) || 'HTTP ' + r.status);
+    return j;
+  }
+
+  /* ---------- helpers over the board ---------- */
+  function rowOf(symbol) {
+    const b = S.board; if (!b) return null;
+    for (const s of b.strikes) { if (s.call && s.call.symbol === symbol) return s.call; if (s.put && s.put.symbol === symbol) return s.put; }
+    return null;
+  }
+  function labelOf(symbol) {
+    if (symbol === PERP) return 'BTC perpetual (BTCUSD)';
+    const m = /^([CP])-BTC-(\d+)-(\d{2})(\d{2})(\d{2})$/.exec(symbol); if (!m) return symbol;
+    return (m[1] === 'C' ? 'Call ' : 'Put ') + Number(m[2]).toLocaleString('en-US') + ' · ' + Number(m[3]) + ' ' + MON[Number(m[4]) - 1];
+  }
+  const isPerp = s => s === PERP;
+  function quoteOf(symbol) {
+    if (isPerp(symbol)) { const p = S.board && S.board.perp; return p ? { bid: p.bid, ask: p.ask, mark: p.mark } : null; }
+    const r = rowOf(symbol); return r ? { bid: r.bid, ask: r.ask, mark: r.mark } : null;
+  }
+  function select(symbol, side) {
+    S.sel = symbol; if (side) S.t.side = side; S.preview = null; S.msg = null; S.book = null;
+    const q = quoteOf(symbol);
+    if (q && S.t.type === 'limit') { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; }
+    syncTicket(); renderMsg(); renderBook(); loadBook(); schedulePreview();
+  }
+
+  /* ---------- rendering ---------- */
+  function build() {
+    root.innerHTML = '<div class="pp"><div class="pp-top"><h2>Paper Trade</h2><span id="ppHead" class="pp-sp"></span><span id="ppBtns"></span></div>' +
+      '<div class="pp-note" style="margin:-4px 0 10px">Fake money, real Delta order books. Market orders walk the live book, so slippage and fees are what Delta would charge. This is separate from the bot and cannot place a real order.</div>' +
+      '<div id="ppLogin"></div>' +
+      '<div class="pp-cols"><div class="pp-stack">' +
+      '<div class="pp-card"><h3>Markets</h3><div id="ppPerp" class="pp-perp"></div><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-note">Option expiry</span><select id="ppExp" class="pp-in" style="width:auto"></select><span class="pp-note" id="ppBoardAt"></span></div><div class="pp-scroll board" id="ppBoard"></div><div class="pp-note" style="margin-top:6px">Click an ask to buy it or a bid to sell it. The highlighted row is the strike nearest spot.</div></div>' +
+      '<div class="pp-card"><h3>Positions</h3><div id="ppPos" class="pp-scroll"></div></div>' +
+      '<div class="pp-card"><h3>Working orders</h3><div id="ppWork" class="pp-scroll"></div></div>' +
+      '<div class="pp-card"><div style="display:flex;gap:8px;align-items:center;margin:0 0 6px"><span class="pp-seg" id="ppHistTabs"><button type="button" data-pp-hist="orders" class="on">Order history</button><button type="button" data-pp-hist="fills">Fills</button></span></div><div id="ppHist" class="pp-scroll"></div></div>' +
+      '</div><div class="pp-stack">' +
+      '<div class="pp-card"><h3>Order ticket</h3><div class="pp-tk">' +
+      '<div id="ppTkLabel" class="pp-contract">Pick a contract on the board</div><div id="ppTkQuote" class="pp-note"></div>' +
+      '<span class="pp-seg side" id="ppSide"><button type="button" data-pp-side="buy" class="on buy">Buy / Long</button><button type="button" data-pp-side="sell">Sell / Short</button></span>' +
+      '<span class="pp-seg" id="ppType"><button type="button" data-pp-type="market" class="on">Market</button><button type="button" data-pp-type="limit">Limit</button><button type="button" data-pp-type="stop_market">Stop</button></span>' +
+      '<label>Size (lots; 1 lot = 0.001 BTC)<input type="number" id="ppLots" min="1" step="1" value="10"></label>' +
+      '<div class="chips" id="ppLotChips">' + [1, 10, 100, 500].map(n => '<button type="button" class="pp-btn small" data-pp-lots="' + n + '">' + n + '</button>').join('') + '</div>' +
+      '<label id="ppPriceW" hidden>Limit price<input type="number" id="ppPrice" step="any"></label>' +
+      '<label id="ppStopW" hidden>Stop (trigger) price<input type="number" id="ppStop" step="any"></label>' +
+      '<label id="ppLevW" hidden>Leverage: <b id="ppLevV">10x</b><input type="range" id="ppLev" min="1" max="100" value="10"></label>' +
+      '<div class="row2" id="ppBrk"><label>Take profit<input type="number" id="ppTp" step="any" placeholder="optional"></label><label>Stop loss<input type="number" id="ppSl" step="any" placeholder="optional"></label></div>' +
+      '<label class="chk"><input type="checkbox" id="ppRO"> Reduce only</label>' +
+      '<div id="ppPrev" class="pp-prev">Estimate appears here: average fill from the live book, fee, slippage and margin.</div>' +
+      '<button type="button" class="pp-go buy" id="ppGo" data-pp-act="submit" disabled>Pick a contract</button>' +
+      '<div id="ppMsg"></div></div></div>' +
+      '<div class="pp-card"><h3>Order book · <span id="ppBookName">-</span></h3><div id="ppBookBody" class="pp-book"></div></div>' +
+      '</div></div></div>';
+    S.built = true; wire();
+  }
+
+  function renderHead() {
+    const a = S.acct, v = a && a.view, ac = a && a.account;
+    $('ppHead').innerHTML = !ac ? '' : [
+      ['Equity', v ? usd(v.equity) : '-', ''], ['Cash', usd(ac.cash), ''], ['Margin used', v ? usd(v.margin) : '-', ''], ['Available', v ? usd(v.available) : '-', v && v.available < 0 ? 'warn' : ''],
+      ['Unrealised', v ? usd((a.positions || []).reduce((s, p) => s + (p.unrealized || 0), 0)) : '-', ''],
+      ['Realised', usd(ac.realizedTotal), ''], ['Fees paid', usd(ac.feesTotal), ''],
+      ['Return', v ? ((v.equity / ac.startBalance - 1) * 100).toFixed(2) + '%' : '-', ''],
+    ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ');
+    $('ppBtns').innerHTML = tok() ? '<button type="button" class="pp-btn" data-pp-act="reset">Reset account</button>' : '';
+  }
+
+  function renderPerp() {
+    const b = S.board; if (!b) { $('ppPerp').innerHTML = ''; return; }
+    const p = b.perp, sel = S.sel === PERP;
+    $('ppPerp').innerHTML = '<span><b>BTCUSD</b> perpetual</span><span>Mark <b>' + px(p.mark) + '</b></span><span class="neg">Sell <b data-pp-q="' + PERP + '|sell" style="cursor:pointer">' + px(p.bid) + '</b></span><span class="pos">Buy <b data-pp-q="' + PERP + '|buy" style="cursor:pointer">' + px(p.ask) + '</b></span>' +
+      '<span class="dim">Funding ' + (p.funding == null ? '-' : (p.funding * 100).toFixed(4) + '%') + '</span><span class="dim">Max ' + b.perpInfo.maxLeverage + 'x · taker ' + (b.perpInfo.takerRate * 100).toFixed(3) + '% + GST</span>' + (sel ? '<span class="pp-chip"><b>selected</b></span>' : '');
+  }
+
+  function renderBoard() {
+    const b = S.board; const el = $('ppBoard');
+    if (!b) { el.innerHTML = '<div class="pp-note">Loading the option board…</div>'; return; }
+    const sel = $('ppExp'), sig = b.expiries.join(',');
+    if (sel.dataset.sig !== sig) { sel.dataset.sig = sig; sel.innerHTML = b.expiries.map(e => '<option value="' + e + '">' + dayLbl(e) + ' · ' + IST(e).slice(6) + ' IST</option>').join(''); }
+    sel.value = String(b.expiry);
+    $('ppBoardAt').textContent = 'Spot ' + px(b.spot, 0) + ' · updated ' + new Date(b.at).toLocaleTimeString();
+    let atm = null, best = Infinity; for (const s of b.strikes) { const d = Math.abs(s.strike - b.spot); if (d < best) { best = d; atm = s.strike; } }
+    const side = (r, which) => {
+      if (!r) return '<td class="dim">-</td>'.repeat(6);
+      const sy = r.symbol, on = S.sel === sy ? ' sel' : '';
+      const cells = [
+        '<td class="dim">' + (r.oi ? r.oi.toFixed(1) : '-') + '</td>', '<td class="dim">' + (r.iv ? r.iv.toFixed(1) : '-') + '</td>', '<td>' + (r.delta ? Math.abs(r.delta).toFixed(2) : '-') + '</td>',
+        '<td class="q sell' + on + '" data-pp-q="' + sy + '|sell" title="Sell at the bid (' + r.bidSize + ' lots)">' + px(r.bid, 1) + '</td>', '<td class="q buy' + on + '" data-pp-q="' + sy + '|buy" title="Buy at the ask (' + r.askSize + ' lots)">' + px(r.ask, 1) + '</td>', '<td class="dim">' + px(r.mark, 1) + '</td>'];
+      return (which === 'call' ? cells : cells.slice().reverse()).join('');
+    };
+    const head = '<tr><th colspan="6" class="grp pos">Calls</th><th></th><th colspan="6" class="grp neg">Puts</th></tr><tr><th>OI</th><th>IV</th><th>Δ</th><th>Bid</th><th>Ask</th><th>Mark</th><th>Strike</th><th>Mark</th><th>Ask</th><th>Bid</th><th>Δ</th><th>IV</th><th>OI</th></tr>';
+    const keepTop = el.scrollTop;
+    el.innerHTML = '<table class="pp-t"><thead>' + head + '</thead><tbody>' + b.strikes.map(s => '<tr' + (s.strike === atm ? ' class="atm" id="ppAtm"' : '') + '>' + side(s.call, 'call') + '<td class="k">' + s.strike.toLocaleString('en-US') + '</td>' + side(s.put, 'put') + '</tr>').join('') + '</tbody></table>';
+    el.scrollTop = keepTop;
+    if (!S.scrolled) { const a = $('ppAtm'); if (a) { el.scrollTop = Math.max(0, a.offsetTop - el.clientHeight / 2); S.scrolled = true; } }
+  }
+
+  function renderPositions() {
+    const a = S.acct; const el = $('ppPos');
+    if (!a || !a.positions || !a.positions.length) { el.innerHTML = '<div class="pp-note">No open positions.</div>'; return; }
+    el.innerHTML = '<table class="pp-t"><thead><tr><th>Contract</th><th>Size</th><th>Entry</th><th>Mark</th><th>Unrealised</th><th>Margin</th><th>Liq. price</th><th>Lev</th><th></th></tr></thead><tbody>' + a.positions.map(p =>
+      '<tr><td>' + esc(labelOf(p.symbol)) + '</td><td class="' + (p.lots > 0 ? 'pos' : 'neg') + '">' + (p.lots > 0 ? '+' : '') + p.lots + '</td><td>' + px(p.avgEntry, 1) + '</td><td>' + px(p.mark, 1) + '</td><td class="' + sgn(p.unrealized) + '">' + usd(p.unrealized) + '</td><td>' + (p.margin == null ? '<span class="dim">portfolio</span>' : usd(p.margin)) + '</td><td>' + (p.liquidationPrice ? px(p.liquidationPrice, 0) : '<span class="dim">-</span>') + '</td><td>' + (p.kind === 'perp' ? p.leverage + 'x' : '<span class="dim">-</span>') + '</td><td><button type="button" class="pp-btn small" data-pp-close="' + esc(p.symbol) + '">Close</button></td></tr>').join('') + '</tbody></table>';
+  }
+
+  function renderWorking() {
+    const w = S.acct && S.acct.working || []; const el = $('ppWork');
+    if (!w.length) { el.innerHTML = '<div class="pp-note">No working orders.</div>'; return; }
+    el.innerHTML = '<table class="pp-t"><thead><tr><th>Contract</th><th>Side</th><th>Type</th><th>Size</th><th>Price</th><th>Filled</th><th></th></tr></thead><tbody>' + w.map(o =>
+      '<tr><td>' + esc(labelOf(o.symbol)) + (o.reduceOnly ? ' <span class="dim">reduce-only</span>' : '') + '</td><td class="' + (o.side === 'buy' ? 'pos' : 'neg') + '">' + o.side + '</td><td>' + esc(o.type.replace('_', ' ')) + '</td><td>' + o.lots + '</td><td>' + (o.type === 'stop_market' ? 'stop ' + px(o.stopPrice, 1) : px(o.price, 1)) + '</td><td>' + o.filledLots + '</td><td><button type="button" class="pp-btn small" data-pp-cancel="' + esc(o.id) + '">Cancel</button></td></tr>').join('') +
+      '</tbody></table><div style="margin-top:6px"><button type="button" class="pp-btn small" data-pp-act="cancelall">Cancel all</button></div>';
+  }
+
+  function renderHist() {
+    const el = $('ppHist'); D.querySelectorAll('#ppHistTabs button').forEach(b => b.classList.toggle('on', b.dataset.ppHist === S.hist));
+    if (S.hist === 'fills') {
+      el.innerHTML = S.fills.length ? '<table class="pp-t"><thead><tr><th>Time (IST)</th><th>Contract</th><th>Side</th><th>Size</th><th>Price</th><th>Fee</th><th>Liquidity</th><th>Slippage</th><th>Realised</th></tr></thead><tbody>' + S.fills.map(f =>
+        '<tr><td>' + esc(IST(f.at)) + '</td><td>' + esc(labelOf(f.symbol)) + (f.note ? ' <span class="dim" title="' + esc(f.note) + '">·</span>' : '') + '</td><td class="' + (f.side === 'buy' ? 'pos' : 'neg') + '">' + f.side + '</td><td>' + f.lots + '</td><td>' + px(f.price, 2) + '</td><td>' + usd(f.fee) + '</td><td>' + (f.maker ? 'maker' : 'taker') + '</td><td>' + usd(f.slippageUsd) + '</td><td class="' + sgn(f.realized) + '">' + (f.realized ? usd(f.realized) : '-') + '</td></tr>').join('') + '</tbody></table>' : '<div class="pp-note">No fills yet.</div>';
+    } else {
+      el.innerHTML = S.orders.length ? '<table class="pp-t"><thead><tr><th>Time (IST)</th><th>Contract</th><th>Side</th><th>Type</th><th>Size</th><th>Avg fill</th><th>Fee</th><th>Status</th><th>Note</th></tr></thead><tbody>' + S.orders.map(o =>
+        '<tr><td>' + esc(IST(o.createdAt)) + '</td><td>' + esc(labelOf(o.symbol)) + '</td><td class="' + (o.side === 'buy' ? 'pos' : 'neg') + '">' + o.side + '</td><td>' + esc(o.type.replace('_', ' ')) + '</td><td>' + o.filledLots + '/' + o.lots + '</td><td>' + (o.avgPrice ? px(o.avgPrice, 2) : '-') + '</td><td>' + (o.fee ? usd(o.fee) : '-') + '</td><td class="' + (o.status === 'rejected' ? 'neg' : o.status === 'filled' ? 'pos' : 'dim') + '">' + o.status + '</td><td style="white-space:normal;text-align:left;min-width:200px">' + esc(o.reason || '') + '</td></tr>').join('') + '</tbody></table>' : '<div class="pp-note">No orders yet.</div>';
+    }
+  }
+
+  function renderBook() {
+    $('ppBookName').textContent = S.sel ? labelOf(S.sel) : '-';
+    const b = S.book; const el = $('ppBookBody');
+    if (!b) { el.innerHTML = '<div class="pp-note" style="grid-column:1/3">Select a contract to see its live order book.</div>'; return; }
+    const n = 8, bids = b.bids.slice(0, n), asks = b.asks.slice(0, n);
+    let h = '<div class="dim"><span>Bid price</span><span>lots</span></div><div class="dim"><span>Ask price</span><span>lots</span></div>';
+    for (let i = 0; i < n; i++) h += (bids[i] ? '<div class="b"><span>' + px(bids[i][0], 2) + '</span><span>' + bids[i][1] + '</span></div>' : '<div></div>') + (asks[i] ? '<div class="a"><span>' + px(asks[i][0], 2) + '</span><span>' + asks[i][1] + '</span></div>' : '<div></div>');
+    el.innerHTML = h;
+  }
+
+  function syncTicket() {
+    const t = S.t, sym = S.sel, perp = isPerp(sym);
+    $('ppTkLabel').textContent = sym ? labelOf(sym) : 'Pick a contract on the board';
+    const q = sym && quoteOf(sym); $('ppTkQuote').innerHTML = q ? 'Bid <b>' + px(q.bid, 2) + '</b> · Ask <b>' + px(q.ask, 2) + '</b> · Mark <b>' + px(q.mark, 2) + '</b>' : '';
+    D.querySelectorAll('#ppSide button').forEach(b => { const on = b.dataset.ppSide === t.side; b.classList.toggle('on', on); b.classList.toggle('buy', b.dataset.ppSide === 'buy'); b.classList.toggle('sell', b.dataset.ppSide === 'sell'); });
+    D.querySelectorAll('#ppType button').forEach(b => b.classList.toggle('on', b.dataset.ppType === t.type));
+    $('ppPriceW').hidden = t.type !== 'limit'; $('ppStopW').hidden = t.type !== 'stop_market'; $('ppLevW').hidden = !perp; $('ppBrk').hidden = t.type === 'stop_market' || t.reduce;
+    $('ppLevV').textContent = t.lev + 'x';
+    const go = $('ppGo'); go.disabled = !sym || S.busy; go.className = 'pp-go ' + t.side;
+    go.textContent = !sym ? 'Pick a contract' : (t.side === 'buy' ? (perp ? 'Buy / Long ' : 'Buy ') : (perp ? 'Sell / Short ' : 'Sell ')) + t.lots + ' lots' + (t.type === 'market' ? ' at market' : t.type === 'limit' ? ' (limit)' : ' (stop)');
+    if (perp && S.board) $('ppLev').max = S.board.perpInfo.maxLeverage;
+  }
+
+  function renderPreview() {
+    const p = S.preview, el = $('ppPrev');
+    if (!S.sel) { el.textContent = 'Estimate appears here: average fill from the live book, fee, slippage and margin.'; return; }
+    if (!p) { el.textContent = 'Checking the live book…'; return; }
+    if (!p.ok) { el.innerHTML = '<span class="neg">' + esc(p.reason || 'Not possible') + '</span>'; return; }
+    if (!p.fills) { el.textContent = p.note || ''; return; }
+    el.innerHTML = 'Fills <b>' + p.fills + '</b> lots at avg <b>' + px(p.avgPrice, 2) + '</b> (best ' + px(p.bestPrice, 2) + ')<br>Fee <b>' + usd(p.fee) + '</b> · slippage <b>' + usd(p.slippageUsd) + '</b><br>Margin after <b>' + usd(p.marginAfter) + '</b> · available after <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(p.availableAfter) + '</b>' + (p.note ? '<br><span class="neg">' + esc(p.note) + '</span>' : '') + (p.reason ? '<br><span class="neg">' + esc(p.reason) + '</span>' : '');
+  }
+
+  function renderMsg() { $('ppMsg').innerHTML = S.msg ? '<div class="pp-msg ' + S.msg.k + '">' + esc(S.msg.t) + '</div>' : ''; }
+
+  function renderLogin() {
+    const el = $('ppLogin');
+    if (tok()) { el.innerHTML = S.err ? '<div class="pp-card"><div class="pp-note warn">' + esc(S.err) + '</div></div>' : ''; return; }
+    el.innerHTML = '<div class="pp-card"><h3>Log in</h3><div class="pp-note">Your paper account is private. Use your desk password.</div><div style="display:flex;gap:8px;margin-top:8px;max-width:360px"><input type="password" id="ppPw" class="pp-in" placeholder="Desk password" autocomplete="current-password"><button type="button" class="pp-btn" data-pp-act="login">Log in</button></div>' + (S.loginErr ? '<div class="pp-note warn">' + esc(S.loginErr) + '</div>' : '') + '</div>';
+  }
+
+  function drawAll() { if (!S.built) build(); renderLogin(); renderHead(); renderPerp(); renderBoard(); renderPositions(); renderWorking(); renderHist(); renderBook(); syncTicket(); renderPreview(); renderMsg(); }
+
+  /* ---------- data ---------- */
+  let preTimer = 0, lastPreKey = '';
+  function reqBody() {
+    const t = S.t, n = v => (v === '' || v == null ? undefined : Number(v));
+    const b = { symbol: S.sel, side: t.side, type: t.type, lots: Math.floor(Number(t.lots)) || 0 };
+    if (t.type === 'limit') b.price = n(t.price);
+    if (t.type === 'stop_market') b.stopPrice = n(t.stop);
+    if (t.reduce) b.reduceOnly = true;
+    if (isPerp(S.sel)) b.leverage = Number(t.lev);
+    if (t.type !== 'stop_market' && !t.reduce) { if (n(t.tp)) b.takeProfit = n(t.tp); if (n(t.sl)) b.stopLoss = n(t.sl); }
+    return b;
+  }
+  function schedulePreview() {
+    clearTimeout(preTimer); if (!S.sel || !tok()) return;
+    preTimer = setTimeout(async () => {
+      const b = reqBody(); if (b.lots < 1 || (b.type === 'limit' && !b.price) || (b.type === 'stop_market' && !b.stopPrice)) { S.preview = null; renderPreview(); return; }
+      const key = JSON.stringify(b); lastPreKey = key;
+      try { const j = await api('/preview', { method: 'POST', body: b }); if (lastPreKey === key) { S.preview = j.preview; renderPreview(); } } catch (e) { S.preview = { ok: false, reason: e.message }; renderPreview(); }
+    }, 350);
+  }
+  async function loadBook() {
+    if (!S.sel || !tok()) return; const sym = S.sel;
+    try { const j = await api('/book?symbol=' + encodeURIComponent(sym)); if (S.sel === sym) { S.book = { bids: j.bids, asks: j.asks }; renderBook(); } } catch (e) { }
+  }
+  async function refresh(all) {
+    if (!tok()) { drawAll(); return; }
+    if (S.busy) return;
+    try {
+      S.err = null;
+      const [a, b] = await Promise.all([api('/account'), api('/board' + (S.expiry ? '?expiry=' + S.expiry : ''))]);
+      S.acct = a; S.board = b; S.expiry = b.expiry;
+      if (all || S.hist === 'orders') S.orders = (await api('/orders?limit=40')).orders;
+      if (all || S.hist === 'fills') S.fills = (await api('/fills?limit=40')).fills;
+      if (S.sel) loadBook();
+    } catch (e) { S.err = e.message; if (e.status === 401) { S.acct = null; } }
+    drawAll();
+  }
+  async function submit() {
+    if (!S.sel || S.busy) return; const b = reqBody();
+    S.busy = true; syncTicket();
+    try {
+      const j = await api('/orders', { method: 'POST', body: b }); const o = j.order;
+      const brk = j.children && j.children.length ? ' Take-profit / stop-loss attached.' : '';
+      S.msg = o.status === 'rejected' ? { k: 'bad', t: 'Rejected: ' + o.reason }
+        : o.status === 'working' ? { k: 'ok', t: 'Order is working' + (o.filledLots ? ' (' + o.filledLots + ' filled)' : '') + '.' + brk }
+          : o.status === 'cancelled' ? { k: o.filledLots ? 'ok' : 'bad', t: (o.filledLots ? 'Partly filled: ' + o.filledLots + ' lots at ' + px(o.avgPrice, 2) + '. ' : 'Not filled. ') + (o.reason || '') }
+            : { k: 'ok', t: 'Filled ' + o.filledLots + ' lots at avg ' + px(o.avgPrice, 2) + ', fee ' + usd(o.fee) + '.' + brk };
+    } catch (e) { S.msg = { k: 'bad', t: e.message }; }
+    S.busy = false; await refresh(true);
+  }
+  async function closePos(sym) {
+    const p = (S.acct && S.acct.positions || []).find(x => x.symbol === sym); if (!p) return;
+    try {
+      const j = await api('/orders', { method: 'POST', body: { symbol: sym, side: p.lots > 0 ? 'sell' : 'buy', type: 'market', lots: Math.abs(p.lots), reduceOnly: true } });
+      S.msg = j.order.status === 'filled' ? { k: 'ok', t: 'Closed ' + labelOf(sym) + ' at ' + px(j.order.avgPrice, 2) + '.' } : { k: 'bad', t: 'Close: ' + (j.order.reason || j.order.status) };
+    } catch (e) { S.msg = { k: 'bad', t: e.message }; }
+    await refresh(true);
+  }
+  async function login() {
+    const pw = ($('ppPw') || {}).value || ''; S.loginErr = null;
+    try {
+      const r = await fetch('/api/v1/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j || !j.token) throw new Error((j && j.error) || 'HTTP ' + r.status);
+      localStorage.setItem('desk_jwt', JSON.stringify(j.token));
+    } catch (e) { S.loginErr = e.message; }
+    await refresh(true);
+  }
+
+  /* ---------- events ---------- */
+  function wire() {
+    root.addEventListener('click', async e => {
+      const t = e.target.closest('[data-pp-q],[data-pp-side],[data-pp-type],[data-pp-lots],[data-pp-act],[data-pp-close],[data-pp-cancel],[data-pp-hist]'); if (!t) return; const d = t.dataset;
+      if (d.ppQ) { const [sy, sd] = d.ppQ.split('|'); select(sy, sd); renderBoard(); renderPerp(); if (window.innerWidth <= 980) { try { $('ppTkLabel').scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (er) { } } return; }
+      if (d.ppSide) { S.t.side = d.ppSide; const q = S.sel && quoteOf(S.sel); if (q && S.t.type === 'limit') { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; } syncTicket(); schedulePreview(); return; }
+      if (d.ppType) { S.t.type = d.ppType; const q = S.sel && quoteOf(S.sel); if (d.ppType === 'limit' && q && !S.t.price) { S.t.price = String(S.t.side === 'buy' ? q.ask || q.mark : q.bid || q.mark); $('ppPrice').value = S.t.price; } syncTicket(); schedulePreview(); return; }
+      if (d.ppLots) { S.t.lots = d.ppLots; $('ppLots').value = d.ppLots; syncTicket(); schedulePreview(); return; }
+      if (d.ppHist) { S.hist = d.ppHist; refresh(true); return; }
+      if (d.ppClose) { closePos(d.ppClose); return; }
+      if (d.ppCancel) { try { await api('/orders/' + d.ppCancel, { method: 'DELETE' }); } catch (er) { S.msg = { k: 'bad', t: er.message }; } refresh(true); return; }
+      if (d.ppAct === 'submit') submit();
+      else if (d.ppAct === 'login') login();
+      else if (d.ppAct === 'cancelall') { try { await api('/orders/cancel-all', { method: 'POST' }); } catch (er) { S.msg = { k: 'bad', t: er.message }; } refresh(true); }
+      else if (d.ppAct === 'reset') {
+        const v = window.prompt('Reset the paper account? This erases all positions, orders and history.\nEnter the starting balance in USD (you will be asked to type RESET next).', '10000'); if (v == null) return;
+        const bal = Number(v); if (!(bal >= 100)) { S.msg = { k: 'bad', t: 'Balance must be at least 100.' }; renderMsg(); return; }
+        if ((window.prompt('Type RESET to confirm') || '') !== 'RESET') return;
+        try { await api('/reset', { method: 'POST', body: { balance: bal, confirm: 'RESET' } }); S.msg = { k: 'ok', t: 'Account reset to ' + usd(bal, 0) + '.' }; } catch (er) { S.msg = { k: 'bad', t: er.message }; }
+        refresh(true);
+      }
+    });
+    const bind = (id, key) => $(id).addEventListener('input', e => { S.t[key] = e.target.type === 'checkbox' ? e.target.checked : (key === 'lev' ? Number(e.target.value) : e.target.value); syncTicket(); schedulePreview(); });
+    bind('ppLots', 'lots'); bind('ppPrice', 'price'); bind('ppStop', 'stop'); bind('ppLev', 'lev'); bind('ppTp', 'tp'); bind('ppSl', 'sl'); bind('ppRO', 'reduce');
+    $('ppExp').addEventListener('change', e => { S.expiry = Number(e.target.value); S.scrolled = false; refresh(false); });
+    root.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'ppPw') login(); });
+  }
+
+  /* ---------- lifecycle: poll only while the page is open and visible ---------- */
+  let timer = 0, wasOn = false;
+  const on = () => D.body.dataset.page === 'pgPaper';
+  function enter() { drawAll(); refresh(true); clearInterval(timer); timer = setInterval(() => { if (!D.hidden && on()) refresh(false); }, 3000); }
+  function leave() { clearInterval(timer); timer = 0; }
+  const sync = () => { const o = on(); if (o && !wasOn) enter(); else if (!o && wasOn) leave(); wasOn = o; };
+  new MutationObserver(sync).observe(D.body, { attributes: true, attributeFilter: ['data-page'] });
+  D.addEventListener('visibilitychange', () => { if (!D.hidden && on()) refresh(false); });
+  drawAll(); sync();
+})();
+</script>
+
+<style id="askCss">
 #askFab{position:fixed;right:16px;bottom:16px;z-index:9990;display:inline-flex;align-items:center;gap:8px;background:var(--panel2,#182A3B);color:var(--text,#E4ECF2);border:1px solid var(--focus,#9CC9EE);border-radius:999px;padding:10px 16px;font:700 14px var(--font,system-ui);cursor:pointer;box-shadow:0 6px 22px rgba(0,0,0,.35)}
 #askFab:hover{filter:brightness(1.12)}
 #askFab .ak-dot{width:9px;height:9px;border-radius:50%;background:var(--down,#35BB7D);box-shadow:0 0 0 3px rgba(53,187,125,.2)}
