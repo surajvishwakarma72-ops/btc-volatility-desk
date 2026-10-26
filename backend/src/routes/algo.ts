@@ -209,7 +209,7 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
     const paper = (await paperFor(uid).strategies(0).catch(() => ({ open: [] as Array<{ id: string; name: string; netPnl: number | null; legs: unknown[] }> }))).open.map((s) => ({ id: s.id, name: s.name, netPnl: s.netPnl, legs: s.legs.length }));
     let delta: Array<{ symbol: string; size: number; entry: number }> = [];
     let deltaNote: string | null = null;
-    const key = (await loadDeltaKey(uid, 'trade')) ?? (await loadDeltaKey(uid, 'read'));
+    const key = (await loadDeltaKey(uid, 'read')) ?? (await loadDeltaKey(uid, 'trade'));
     if (!key) deltaNote = 'Save a Delta key in Settings to see your real option positions here.';
     else {
       try { delta = (await fetchOptionPositions(key.key, key.secret)).map((p) => ({ symbol: p.symbol, size: p.size, entry: p.entry })); } catch (e) { deltaNote = (e as Error).message; }

@@ -111,7 +111,7 @@ const walletCache = new Map<string, { at: number; v: Wallet | null }>();
 export async function fetchWallet(userId: string): Promise<Wallet | null> {
   const hit = walletCache.get(userId);
   if (hit && Date.now() - hit.at < 15_000) return hit.v;
-  const creds = (await loadDeltaKey(userId, 'trade')) ?? (await loadDeltaKey(userId, 'read')) ?? (userId === DESK_USER_ID && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET ? { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET } : null);
+  const creds = (await loadDeltaKey(userId, 'read')) ?? (await loadDeltaKey(userId, 'trade')) ?? (userId === DESK_USER_ID && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET ? { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET } : null);
   let v: Wallet | null = null;
   if (creds) {
     try {

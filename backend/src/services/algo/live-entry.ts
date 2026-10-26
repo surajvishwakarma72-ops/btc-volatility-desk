@@ -21,6 +21,8 @@ export interface LiveEntryDeps {
   liveEnabled(): boolean;
   cfg(userId: string): Promise<{ liveArmed: boolean; dryRun: boolean }>;
   tradeKey(userId: string): Promise<{ key: string; secret: string } | null>;
+  /** The read-only key, used to watch the position; the trade key is used only when status finds no read key. */
+  readKey?(userId: string): Promise<{ key: string; secret: string } | null>;
   positions(key: string, secret: string): Promise<OptionPosition[]>;
   book(symbol: string): Promise<Book>;
   productId(symbol: string): Promise<number>;
@@ -101,7 +103,7 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
 
     async status(userId: string, ref: string): Promise<BrokerStatus | null> {
       const r = parseRef(ref);
-      const creds = await d.tradeKey(userId);
+      const creds = (await d.readKey?.(userId)) ?? (await d.tradeKey(userId));
       if (!r || !creds) return null;
       try {
         const mine = (await d.positions(creds.key, creds.secret)).filter((p) => r.symbols.includes(p.symbol));
@@ -170,6 +172,7 @@ export const realLiveEntryDeps: LiveEntryDeps = {
   liveEnabled: () => process.env.LIVE_TRADING_ENABLED === 'true',
   cfg: (uid) => getWatchConfig(uid, 0),
   tradeKey: (uid) => loadDeltaKey(uid, 'trade'),
+  readKey: (uid) => loadDeltaKey(uid, 'read'),
   positions: fetchOptionPositions,
   book: (s) => fetchBook(s, 20),
   async productId(symbol) {
