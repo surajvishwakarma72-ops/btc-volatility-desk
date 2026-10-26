@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { paperFor } from '../services/paper/paper-terminal.js';
 import { userId } from '../lib/guards.js';
 import { getOptionFlow } from '../services/paper/flow.js';
+import { getPaperMarks } from '../services/paper/paper-marks.js';
 
 /**
  * The Paper Trade terminal's API. The account is fake money against real Delta order books; there is no
@@ -139,6 +140,32 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get('/strategies', auth, async (req, reply) => {
     try {
       return { success: true, ...(await paperFor(userId(req)).strategies()) };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  // PnL by minute of one strategy, for the scoreboard's graph with the hairline.
+  fastify.get('/strategy/:id/pnl', auth, async (req, reply) => {
+    const id = z.string().uuid().safeParse((req.params as { id?: string }).id);
+    if (!id.success) return bad(reply, 'invalid strategy id');
+    try {
+      const all = await paperFor(userId(req)).strategies(1000);
+      const st = [...all.open, ...all.closed].find((x) => x.id === id.data);
+      if (!st) return reply.code(404).send({ success: false, error: 'no strategy with that id' });
+      const m = await getPaperMarks(st.id);
+      const isOpen = st.status === 'open';
+      const t = m.t.slice(), net = m.net.slice();
+      if (isOpen && st.netPnl != null) { t.push(Date.now()); net.push(st.netPnl); }
+      // a closed strategy ends at its recorded result, so the graph and the tile agree
+      else if (!isOpen && st.netPnl != null && st.closedAt != null && (t.length === 0 || t[t.length - 1]! < st.closedAt)) { t.push(st.closedAt); net.push(st.netPnl); }
+      let peak: { t: number; net: number } | null = null, trough: { t: number; net: number } | null = null;
+      net.forEach((v, i) => { if (!peak || v > peak.net) peak = { t: t[i]!, net: v }; if (!trough || v < trough.net) trough = { t: t[i]!, net: v }; });
+      return {
+        success: true, t, net, gross: net, spot: t.map(() => null), legs: [], tp: null, stats: { peak, trough },
+        run: { id: st.id, name: st.name, status: isOpen ? 'open' : 'closed', mode: 'paper', lots: null, enteredAt: st.openedAt, exitedAt: st.closedAt, exitReason: st.closeReason, margin: st.marginAtEntry },
+        recordedMinutes: m.t.length,
+      };
     } catch (e) {
       return fail(reply, e);
     }
