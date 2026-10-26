@@ -5,6 +5,7 @@ import { recalibrationScheduler } from './recalibration-scheduler.js';
 import { macroStressWorker } from './macro-stress-worker.js';
 import { botEngine } from './bot/bot-engine.js';
 import { paperTerminal } from './paper/paper-terminal.js';
+import { watchService } from './watch/sources.js';
 
 export { alertService } from './alert-service.js';
 export { binanceWorker } from './binance-market-worker.js';
@@ -31,6 +32,7 @@ export class WorkerManager {
     macroStressWorker.start(); // 5-minute outside market pressure recording
     void botEngine.start(); // paper trading bot; no-op unless BOT_ENABLED=true
     paperTerminal.start(); // the user's own paper account: working orders, stops, expiry (idle when nothing is open)
+    watchService.start(); // the stop alarm: watches every open position (bot, paper strategies, real Delta) for its stop
   }
 
   stopAll() {
@@ -43,6 +45,7 @@ export class WorkerManager {
     macroStressWorker.stop();
     botEngine.stop();
     paperTerminal.stop();
+    watchService.stop();
   }
 
   getStatus() {

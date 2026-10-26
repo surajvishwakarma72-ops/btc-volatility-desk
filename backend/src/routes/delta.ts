@@ -22,8 +22,8 @@ const DELTA_BASE = 'https://api.india.delta.exchange';
  * message = method + timestamp + path + queryString
  * queryString is the '?'-prefixed query string, or empty string.
  */
-export function signDelta(secret: string, method: string, ts: string, path: string, query: string): string {
-  return crypto.createHmac('sha256', secret).update(method + ts + path + query).digest('hex');
+export function signDelta(secret: string, method: string, ts: string, path: string, query: string, body = ''): string {
+  return crypto.createHmac('sha256', secret).update(method + ts + path + query + body).digest('hex');
 }
 
 /** The only account endpoints the signed relay will call. Everything is a GET; nothing here can place or change an order. */
@@ -49,6 +49,29 @@ export async function deltaSignedGet(key: string, secret: string, path: string, 
     return { ok: upstream.ok && (data as any)?.success !== false, status: upstream.status, body, errorText: upstream.ok ? '' : String((data as any)?.error?.code ?? (data as any)?.error ?? upstream.status) };
   } catch (err: any) {
     return { ok: false, status: 502, body: { success: false, error: `Failed to reach Delta: ${err?.message || 'timeout'}` }, errorText: err?.message || 'timeout' };
+  }
+}
+
+/**
+ * One signed POST to Delta. This is the ONLY place in the desk that can write to the exchange, and it is used by exactly one caller:
+ * services/watch/live-exit.ts, which sends reduce-only closing orders and sits behind several locks. It never logs the key or secret.
+ */
+export async function deltaSignedPost(key: string, secret: string, path: string, payload: unknown): Promise<{ ok: boolean; status: number; body: any; errorText: string }> {
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = JSON.stringify(payload);
+  const sig = signDelta(secret, 'POST', ts, path, '', body);
+  try {
+    const upstream = await fetch(`${DELTA_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'api-key': key, timestamp: ts, signature: sig, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
+      body,
+      signal: AbortSignal.timeout(8_000),
+    });
+    const data = await upstream.json().catch(() => null);
+    const ok = upstream.ok && (data as any)?.success !== false;
+    return { ok, status: upstream.status, body: data, errorText: ok ? '' : String((data as any)?.error?.code ?? (data as any)?.error ?? upstream.status) };
+  } catch (err: any) {
+    return { ok: false, status: 502, body: null, errorText: err?.message || 'timeout' };
   }
 }
 

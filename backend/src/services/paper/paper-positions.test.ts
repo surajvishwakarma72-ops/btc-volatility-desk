@@ -205,4 +205,29 @@ describe('strategy positions', () => {
     expect(p.options.total).toBeLessThan(0);
     expect(p.futures.openCount).toBe(1); // the future is still open
   });
+
+  it('closes the whole strategy 5 points BEFORE a leg reaches its stop (hard exit), and holds when it is further away', async () => {
+    await t.placeBasket(strangle());
+    const leg = (await t.strategies()).open[0]!.legs.find((l) => l.symbol === sym('C', 84000))!;
+    const base = markOf('C', 84000);
+    mk.bump.set(sym('C', 84000), leg.stop! - 8 - base); // 8 points from the stop: nothing yet
+    await t.tick();
+    expect((await t.strategies()).open).toHaveLength(1);
+    mk.bump.set(sym('C', 84000), leg.stop! - 3 - base); // 3 points from the stop: out now, before the stop is reached
+    await t.tick();
+    const s = await t.strategies();
+    expect(s.open).toHaveLength(0);
+    expect(s.closed[0]!.closeReason).toMatch(/hard exit.*within 5 points/);
+    expect(((await t.account()) as any).positions).toHaveLength(0); // both legs are closed
+  });
+
+  it('lists every sold leg with its entry, stop and mark for the stop alarm', async () => {
+    await t.placeBasket(strangle());
+    const legs = await t.watchLegs();
+    expect(legs).toHaveLength(2);
+    expect(legs[0]).toMatchObject({ source: 'paper', side: 'sold', lots: 100 });
+    for (const l of legs) { expect(l.stop).toBeCloseTo(l.entry * 2, 0); expect(l.mark).toBeGreaterThan(0); }
+    await t.closeStrategy((await t.strategies()).open[0]!.id);
+    expect(await t.watchLegs()).toEqual([]);
+  });
 });

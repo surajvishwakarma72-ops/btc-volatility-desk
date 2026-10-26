@@ -30,11 +30,14 @@ export function evaluateExit(p: PositionSnapshot, cfg: ExitConfig, nowMs: number
     for (const leg of p.legs) {
       if (leg.side !== 'short' || leg.role !== 'body') continue;
       const mark = markOf.get(leg.symbol);
-      if (mark != null && mark >= leg.entryPrice * cfg.stopMultiple) {
+      const stop = leg.entryPrice * cfg.stopMultiple, hard = Math.max(0, cfg.hardPoints ?? 0);
+      if (mark != null && mark >= stop - hard) {
         return {
           action: 'exit',
           reason: 'stop',
-          detail: `${leg.symbol} mark ${mark.toFixed(2)} reached ${cfg.stopMultiple}x entry ${leg.entryPrice.toFixed(2)}`,
+          detail: mark >= stop
+            ? `${leg.symbol} mark ${mark.toFixed(2)} reached ${cfg.stopMultiple}x entry ${leg.entryPrice.toFixed(2)}`
+            : `hard exit: ${leg.symbol} mark ${mark.toFixed(2)} was within ${hard} points of its stop ${stop.toFixed(2)} (${cfg.stopMultiple}x entry ${leg.entryPrice.toFixed(2)})`,
         };
       }
     }

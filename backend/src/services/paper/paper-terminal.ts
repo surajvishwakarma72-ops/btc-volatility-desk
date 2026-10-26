@@ -7,6 +7,8 @@ import {
 import { portfolioMargin } from '../../lib/bot/portfolio-margin.js';
 import { DAY, istDateKey, istMidnightMs } from '../../lib/bot/schedule.js';
 import { DESK_USER_ID } from '../auth-store.js';
+import type { WatchLeg } from '../../lib/watch/classify.js';
+import { getWatchConfig } from '../watch/watch-store.js';
 import { parseExpiry } from '../bot/delta-public.js';
 import { DeltaMarket, type MarketProvider, type MarketSnapshot } from './market.js';
 
@@ -860,15 +862,22 @@ export class PaperTerminal {
     )).rows as any[];
     if (!rows.length) return;
     const q = this.quoteFn(snap);
+    const hard = await getWatchConfig(this.accountId).then((c) => c.hardPoints).catch(() => 0);
     const done = new Set<string>();
     for (const l of rows) {
       if (done.has(l.strategy_id)) continue;
       const mark = this.markOf(q(l.symbol));
       if (mark == null) continue;
       const closeSide: Side = l.side === 'sell' ? 'buy' : 'sell';
-      if (!stopTriggered(closeSide, Number(l.stop_price), mark)) continue;
+      const stop = Number(l.stop_price);
+      // a sold leg is closed `hard` points BEFORE its stop; a bought leg `hard` points above it
+      const early = closeSide === 'buy' ? stop - hard : stop + hard;
+      if (!stopTriggered(closeSide, early, mark)) continue;
       done.add(l.strategy_id);
-      await this.closeStrategyLegs(st, snap, l.strategy_id, `stop: ${l.symbol} reached ${mark.toFixed(1)}, its stop was ${Number(l.stop_price).toFixed(1)}`);
+      const hit = stopTriggered(closeSide, stop, mark);
+      await this.closeStrategyLegs(st, snap, l.strategy_id, hit
+        ? `stop: ${l.symbol} reached ${mark.toFixed(1)}, its stop was ${stop.toFixed(1)}`
+        : `stop: hard exit, ${l.symbol} at ${mark.toFixed(1)} was within ${hard} points of its stop ${stop.toFixed(1)}`);
     }
   }
 
@@ -882,6 +891,20 @@ export class PaperTerminal {
         await this.closeStrategyLegs(st, snap, r.strategy_id, expired ? 'expired and settled' : 'positions were closed (liquidation or manual orders)');
       }
     }
+  }
+
+  /** Every open leg that has a stop, for the stop alarm. */
+  async watchLegs(): Promise<WatchLeg[]> {
+    if (this.idle) return [];
+    const s = await this.strategies(0);
+    const out: WatchLeg[] = [];
+    for (const st of s.open) {
+      for (const l of st.legs) {
+        if (l.exit != null || l.stop == null) continue;
+        out.push({ source: 'paper', group: st.id, groupLabel: st.name, symbol: l.symbol, side: l.side === 'sell' ? 'sold' : 'bought', entry: l.entry, mark: l.mark, stop: l.stop, lots: l.lots });
+      }
+    }
+    return out;
   }
 
   /** Open strategies with live per-leg and net PnL, then the most recent closed ones. */
@@ -1163,6 +1186,10 @@ export async function discoverActiveAccounts(): Promise<void> {
   );
   for (const row of r.rows as Array<{ account_id: string }>) paperFor(row.account_id);
 }
+/** The accounts holding something right now (for the stop alarm), and one account if it exists. */
+export const activePaperIds = (): string[] => [...accounts.entries()].filter(([, a]) => a.active).map(([id]) => id);
+export const peekPaper = (userId: string): PaperTerminal | undefined => accounts.get(userId);
+export const marketFeed = (): DeltaMarket => sharedMarket();
 export const paperTerminal = paperFor(DESK_USER_ID);
 
 export interface BasketLeg {

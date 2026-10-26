@@ -41,6 +41,8 @@ export interface LegMark {
 export interface ExitConfig {
   /** Short-leg stop: exit everything when any short body leg mark reaches this multiple of its entry price. */
   stopMultiple?: number;
+  /** Hard exit: close everything when a short body leg is within this many option points of its stop (default 0 = only at the stop). */
+  hardPoints?: number;
   /** Take profit as a fraction of margin, e.g. 0.10 = 10% of margin. */
   tpPctOfMargin?: number;
   /** Stop loss as a fraction of margin (long straddles): 0.10 = lose 10% of margin. */

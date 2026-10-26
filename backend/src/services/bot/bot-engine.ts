@@ -15,6 +15,9 @@ import { fetchBook, fetchChain, fetchOptionFeeRates, type Book, type ChainSnapsh
 import { FuturesLive } from './futures-live.js';
 import { evaluateGate } from './gate.js';
 import { paperExecute, type PlannedLeg } from './paper-broker.js';
+import type { WatchLeg } from '../../lib/watch/classify.js';
+import { DESK_USER_ID } from '../auth-store.js';
+import { getWatchConfig } from '../watch/watch-store.js';
 
 /** Node's AggregateError (failed connections) and wrapped fetch errors have an empty message; say what actually failed. */
 export function describeError(e: unknown): string {
@@ -70,6 +73,8 @@ interface WaitState {
  * market data, and persists. Nothing here can place a real order: live mode is not implemented
  * and the engine refuses to start in any mode but `paper`.
  */
+const STRATEGY_LABEL: Record<string, string> = { ASIA_SHORT: 'Asia short strangle', NY_SHORT: 'New York short strangle', EVE_LONG: 'Evening long straddle', PRE_LONG: 'Pre-dawn long straddle', CAL_BACK: 'Calendar spread' };
+
 export class BotEngine {
   status: 'stopped' | 'running' | 'error' = 'stopped';
   lastTickAt = 0;
@@ -518,7 +523,8 @@ export class BotEngine {
       return;
     }
     const snap = { legs: run.legs, marks, spot: chain.spot, marginUsd: run.marginUsd, contractValue: CONTRACT_VALUE, feesPaidUsd: run.feesEntry };
-    const d = evaluateExit(snap, run.exitCfg, now);
+    const hardPoints = await getWatchConfig(DESK_USER_ID).then((c) => c.hardPoints).catch(() => 0);
+    const d = evaluateExit(snap, { ...run.exitCfg, hardPoints }, now);
     if (d.action === 'exit') await this.exit(run, chain, now, d.reason, d.detail);
   }
 
@@ -616,6 +622,23 @@ export class BotEngine {
   }
 
   /** Live view for the API: open runs with current marks, computed from the latest chain. */
+  /** The sold legs of every open always-book run with the stop each one is held to, for the stop alarm. */
+  async watchLegs(): Promise<WatchLeg[]> {
+    const runs = [...this.open.values()].filter((r) => r.book !== 'gated' && r.exitCfg.stopMultiple != null);
+    if (!runs.length) return [];
+    const chain = await this.getChain(10_000);
+    const out: WatchLeg[] = [];
+    for (const run of runs) {
+      const marks = new Map(this.marksFor(run, chain).map((m) => [m.symbol, m.mark]));
+      for (const l of run.legs) {
+        if (l.side !== 'short' || l.role !== 'body') continue;
+        const m = marks.get(l.symbol);
+        out.push({ source: 'bot', group: run.id, groupLabel: STRATEGY_LABEL[run.strategy] ?? run.strategy, symbol: l.symbol, side: 'sold', entry: l.entryPrice, mark: m != null && Number.isFinite(m) ? m : null, stop: l.entryPrice * run.exitCfg.stopMultiple!, lots: l.lots });
+      }
+    }
+    return out;
+  }
+
   async livePositions() {
     const now = Date.now();
     const futures = this.futures.positions();
