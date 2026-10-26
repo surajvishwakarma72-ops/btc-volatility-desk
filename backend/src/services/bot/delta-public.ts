@@ -101,7 +101,7 @@ export async function fetchChain(nowMs = Date.now()): Promise<ChainSnapshot> {
     const p = parseTicker(t);
     if (!p || p.expiryMs <= nowMs) continue;
     const { gamma, theta, vega, ...opt } = p;
-    options.push(opt);
+    options.push({ ...opt, gamma: Number.isFinite(gamma) ? gamma : undefined, theta: Number.isFinite(theta) ? theta : undefined, vega: Number.isFinite(vega) ? vega : undefined });
     const signedDelta = num(t.greeks?.delta);
     greeks.set(opt.symbol, { delta: signedDelta, gamma, theta, vega });
     if (!Number.isFinite(spot)) spot = num(t.spot_price ?? t.greeks?.spot);

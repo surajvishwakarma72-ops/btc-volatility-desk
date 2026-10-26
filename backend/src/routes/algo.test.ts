@@ -17,7 +17,7 @@ vi.mock('../db/index.js', () => ({
 
 const E1 = Date.now() + 20 * 3_600_000, E2 = E1 + 86_400_000, E3 = E2 + 86_400_000;
 const code = (ms: number) => { const d = new Date(ms); const p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getUTCDate())}${p(d.getUTCMonth() + 1)}${String(d.getUTCFullYear()).slice(2)}`; };
-const opt = (type: 'call' | 'put', strike: number, delta: number, e: number): ChainOption => ({ symbol: `${type === 'call' ? 'C' : 'P'}-BTC-${strike}-${code(e)}`, type, strike, expiryMs: e, delta, bid: 60, ask: 65, mark: 62, iv: 0.5 });
+const opt = (type: 'call' | 'put', strike: number, delta: number, e: number): ChainOption => ({ symbol: `${type === 'call' ? 'C' : 'P'}-BTC-${strike}-${code(e)}`, type, strike, expiryMs: e, delta, bid: 60, ask: 65, mark: 62, iv: 50, gamma: 0.00003, theta: -20 });
 const chain = [E1, E2, E3].flatMap((e) => [opt('call', 105_000, 0.12, e), opt('put', 95_000, 0.12, e)]);
 
 vi.mock('../services/algo/algo-runtime.js', () => ({
@@ -159,6 +159,48 @@ describe('algo API', () => {
     expect(p.margin).toMatchObject({ required: 120 });
     expect(p.stops).toContain('2x');
     expect(p.plan).toBeUndefined();
+    await app.close();
+  });
+
+  it('the preview gives each leg its gamma and IV against ATM, the time-decay profit to the exit, and the margin available', async () => {
+    const app = await build();
+    const r = await app.inject({ method: 'POST', url: '/algo/preview', headers: tok(app, U), payload: { rule: defaultStrangle(), lots: 50 } });
+    const p = r.json().preview;
+    expect(p.legs[0]).toMatchObject({ gamma: 0.00003, theta: -20, iv: 50, thetaPerDayUsd: 1 });
+    expect(p.legs[0].gammaPctOfAtm).toBeGreaterThan(0);
+    expect(p.atm.iv).toBe(50);
+    // two sold legs, theta -20 each, 50 lots: 2 dollars a day, until the expiry about 68 hours away
+    expect(p.profit.perDayUsd).toBeCloseTo(2);
+    expect(p.profit.toExitUsd).toBeGreaterThan(4);
+    expect(p.profit.maxUsd).toBeGreaterThan(0);
+    expect(p.margin).toMatchObject({ required: 120, availableAfter: 880, available: 1000 });
+    expect(p.wallet).toBeNull(); // Paper: no real wallet
+    await app.close();
+  });
+
+  it('a daytime exit time shortens the decay window, and a Live preview asks for the wallet without breaking when there is no key', async () => {
+    const app = await build();
+    const withExit = await app.inject({ method: 'POST', url: '/algo/preview', headers: tok(app, U), payload: { rule: { ...defaultStrangle(), exit: { ...defaultStrangle().exit, exitTime: '07:00' } }, lots: 50, when: 'now' } });
+    const noExit = await app.inject({ method: 'POST', url: '/algo/preview', headers: tok(app, U), payload: { rule: defaultStrangle(), lots: 50 } });
+    expect(withExit.json().preview.profit.hoursToExit).toBeLessThan(noExit.json().preview.profit.hoursToExit);
+    const live = await app.inject({ method: 'POST', url: '/algo/preview', headers: tok(app, '99999999-9999-9999-9999-999999999999'), payload: { rule: { ...defaultStrangle(), mode: 'live' }, lots: 50 } });
+    expect(live.statusCode).toBe(200);
+    expect(live.json().preview.wallet).toBeNull();
+    await app.close();
+  });
+
+  it('the strike picker chain: strikes of the chosen expiry with delta, gamma, IV and quotes', async () => {
+    const app = await build();
+    const r = (await app.inject({ method: 'GET', url: '/algo/chain?mode=n2n', headers: tok(app, U) })).json();
+    expect(r.success).toBe(true);
+    expect(r.expiry).toBe(code(E3));
+    expect(r.rows.map((x: any) => x.strike)).toEqual([95_000, 105_000]);
+    expect(r.rows[1].call).toMatchObject({ delta: 0.12, bid: 60, iv: 50, gamma: 0.00003 });
+    expect(r.rows[1].put).toBeNull();
+    expect(r.atm.iv).toBe(50);
+    expect((await app.inject({ method: 'GET', url: '/algo/chain?mode=next', headers: tok(app, U) })).json().expiry).toBe(code(E2));
+    expect((await app.inject({ method: 'GET', url: '/algo/chain?mode=nonsense', headers: tok(app, U) })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/algo/chain' })).statusCode).toBe(401);
     await app.close();
   });
 

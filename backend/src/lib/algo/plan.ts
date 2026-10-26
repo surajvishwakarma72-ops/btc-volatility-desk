@@ -13,6 +13,12 @@ export interface PlannedLeg {
   strike: number;
   expiryCode: string;
   type: 'call' | 'put';
+  /** Expiry instant, epoch ms (for the hours to expiry). */
+  expiryMs?: number;
+  /** From the live chain, when it has them. */
+  gamma?: number | null;
+  theta?: number | null;
+  iv?: number | null;
 }
 
 export type PlanResult = { ok: true; legs: PlannedLeg[]; expiries: string[]; spot: number; premium: number; notes: string[] } | { ok: false; reason: string };
@@ -84,7 +90,8 @@ export function planOptionEntry(rule: AlgoStrategy, chain: readonly ChainOption[
     for (const l of rule.legs) {
       const o = atmPair && straddle ? (l.type === 'call' ? straddle.call : straddle.put) : pickLeg(l, chain, ex, spot);
       if (typeof o === 'string') return { ok: false, reason: `${code}: ${o}` };
-      legs.push({ symbol: o.symbol, side: l.side, lots: l.lots ?? lots, bid: o.bid, ask: o.ask, delta: o.delta, strike: o.strike, expiryCode: code, type: l.type });
+      const fin = (v: number | undefined) => (v != null && Number.isFinite(v) ? v : null);
+      legs.push({ symbol: o.symbol, side: l.side, lots: l.lots ?? lots, bid: o.bid, ask: o.ask, delta: o.delta, strike: o.strike, expiryCode: code, type: l.type, expiryMs: ex, gamma: fin(o.gamma), theta: fin(o.theta), iv: fin(o.iv) });
     }
     if (chosen.length > 1) notes.push(`${code}: ${rule.legs.length} legs`);
   }

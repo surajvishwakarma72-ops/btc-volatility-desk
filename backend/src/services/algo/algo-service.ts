@@ -12,6 +12,11 @@ import { killAllLive, liveBroker } from './live-entry.js';
 import { loadMarket } from './algo-runtime.js';
 import { loadInsights } from './insights-service.js';
 import { speedVsIv } from '../../lib/algo/conditions.js';
+import { compareToAtm, estimateProfit, thetaPerDayUsd, type ProfitEstimate } from '../../lib/algo/profit.js';
+import { entryState, exitAtMs, windowOn, type EntryWindow } from '../../lib/algo/rule.js';
+import { deltaSignedGet } from '../../routes/delta.js';
+import { loadDeltaKey } from '../delta-keys.js';
+import { DESK_USER_ID } from '../auth-store.js';
 
 /**
  * What the Algo routes and the Ask-me trading commands share: a preview of an entry, an immediate entry, exit-all, the unlock
@@ -42,8 +47,13 @@ export interface Preview {
   expiries: string[];
   premium: number | null;
   spot: number;
-  legs: Array<{ symbol: string; side: 'buy' | 'sell'; lots: number; strike: number; type: 'call' | 'put'; expiryCode: string; price: number; delta: number }>;
-  margin: { required: number | null; availableAfter: number | null; note: string } | null;
+  legs: Array<{ symbol: string; side: 'buy' | 'sell'; lots: number; strike: number; type: 'call' | 'put'; expiryCode: string; price: number; delta: number; gamma: number | null; theta: number | null; iv: number | null; gammaPctOfAtm: number | null; ivVsAtm: number | null; thetaPerDayUsd: number | null }>;
+  atm: { iv: number | null; gamma: number | null } | null;
+  /** Estimated profit from time decay until the exit. Options only. */
+  profit: ProfitEstimate | null;
+  margin: { required: number | null; availableAfter: number | null; available: number | null; note: string } | null;
+  /** Live trades: what the real Delta wallet holds (null on Paper or when it cannot be read). */
+  wallet: Wallet | null;
   stops: string;
   conditions: Array<{ label: string; ok: boolean; now: string }>;
   conditionsMet: boolean;
@@ -95,7 +105,38 @@ export async function recommend(rule: AlgoStrategy, lots: number, m: Awaited<Ret
 }
 
 /** Everything the trade summary shows, without placing anything. */
-export async function previewEntry(userId: string, rule: AlgoStrategy, lots: number): Promise<Preview> {
+export interface Wallet { assets: Array<{ symbol: string; balance: number; available: number }>; note: string }
+const walletCache = new Map<string, { at: number; v: Wallet | null }>();
+/** The real Delta wallet, read with the user's own key. Cached for a few seconds so editing a summary does not hammer the exchange. */
+export async function fetchWallet(userId: string): Promise<Wallet | null> {
+  const hit = walletCache.get(userId);
+  if (hit && Date.now() - hit.at < 15_000) return hit.v;
+  const creds = (await loadDeltaKey(userId, 'trade')) ?? (await loadDeltaKey(userId, 'read')) ?? (userId === DESK_USER_ID && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET ? { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET } : null);
+  let v: Wallet | null = null;
+  if (creds) {
+    try {
+      const r = await deltaSignedGet(creds.key, creds.secret, '/v2/wallet/balances', '');
+      if (r.ok) {
+        const list = (((r.body as { result?: unknown[] })?.result ?? []) as Array<Record<string, unknown>>);
+        const assets = list.map((a) => ({ symbol: String(a.asset_symbol ?? a.symbol ?? (a.asset as { symbol?: string } | undefined)?.symbol ?? '?'), balance: Number(a.balance ?? 0), available: Number(a.available_balance ?? a.available ?? a.balance ?? 0) })).filter((a) => Number.isFinite(a.available) && (a.available > 0 || a.balance > 0));
+        v = { assets, note: 'your Delta wallet, read with your key' };
+      }
+    } catch { v = null; }
+  }
+  walletCache.set(userId, { at: Date.now(), v });
+  return v;
+}
+
+/** When the trade would start: now for a trade placed now, otherwise the next time the entry window opens. */
+function startOf(rule: AlgoStrategy, when: 'now' | 'later', now: number): { startMs: number; window: EntryWindow } {
+  if (when === 'now') return { startMs: now, window: { dateKey: istDateKey(now), startMs: now, endMs: now } };
+  const es = entryState(rule, now);
+  if (es.state !== 'closed') return { startMs: es.window.startMs <= now ? now : es.window.startMs, window: es.window };
+  const w = windowOn(rule.entry, istDateKey(now + 86_400_000));
+  return { startMs: w.startMs, window: w };
+}
+
+export async function previewEntry(userId: string, rule: AlgoStrategy, lots: number, when: 'now' | 'later' = 'now'): Promise<Preview> {
   const now = Date.now();
   const conds = conditionsOf(rule);
   const m = await loadMarket(true, needsHist(conds)); // candles are always loaded so the recommendation can read speed vs IV
@@ -112,15 +153,37 @@ export async function previewEntry(userId: string, rule: AlgoStrategy, lots: num
         ? plan.legs.map((l) => ({ symbol: l.symbol, side: l.side, lots: l.lots }))
         : [{ symbol: 'BTCUSD', side: plan.future.side === 'long' ? 'buy' as const : 'sell' as const, lots: plan.future.lots }];
       const pv = await paperFor(userId).previewBasket(legs) as { ok: boolean; marginRequired?: number; availableAfter?: number };
-      margin = { required: pv.marginRequired ?? null, availableAfter: pv.availableAfter ?? null, note: 'estimated with the desk portfolio margin model on your Paper account' };
+      margin = { required: pv.marginRequired ?? null, availableAfter: pv.availableAfter ?? null, available: pv.availableAfter != null && pv.marginRequired != null ? pv.availableAfter + pv.marginRequired : null, note: 'estimated with the desk portfolio margin model on your Paper account' };
     } catch { margin = null; }
   }
+  // greeks of each leg against the at-the-money strike of the same expiry, time decay until the exit, and what the account has
+  let atm: Preview['atm'] = null, profit: ProfitEstimate | null = null;
+  const legExtras = new Map<string, { gamma: number | null; theta: number | null; iv: number | null; gammaPctOfAtm: number | null; ivVsAtm: number | null; thetaPerDayUsd: number | null }>();
+  if (plan?.kind === 'option') {
+    const expiryMs = plan.legs[0]?.expiryMs;
+    const row = expiryMs ? m.chain.filter((o) => o.expiryMs === expiryMs) : [];
+    if (row.length) {
+      const k = row.reduce((b, o) => (Math.abs(o.strike - m.spot) < Math.abs(b - m.spot) ? o.strike : b), row[0]!.strike);
+      const at = row.filter((o) => o.strike === k), avg = (xs: Array<number | undefined>) => { const v = xs.filter((x): x is number => x != null && Number.isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+      atm = { iv: avg(at.map((o) => o.iv)), gamma: avg(at.map((o) => o.gamma)) };
+    }
+    for (const l of plan.legs) {
+      const c = atm ? compareToAtm(l, atm) : { gammaPctOfAtm: null, ivVsAtm: null };
+      legExtras.set(l.symbol + l.side, { gamma: l.gamma ?? null, theta: l.theta ?? null, iv: l.iv ?? null, gammaPctOfAtm: c.gammaPctOfAtm, ivVsAtm: c.ivVsAtm, thetaPerDayUsd: thetaPerDayUsd([l]) });
+    }
+    const { startMs, window } = startOf(rule, when, now);
+    const exitMs = exitAtMs(rule.exit, window, startMs);
+    const stopAt = Math.min(...plan.legs.map((l) => l.expiryMs ?? Infinity));
+    const endMs = exitMs != null ? Math.min(exitMs, stopAt) : stopAt;
+    profit = Number.isFinite(endMs) ? estimateProfit(plan.legs, (endMs - startMs) / 3_600_000, plan.premium) : null;
+  }
+  const wallet = rule.mode === 'live' ? await fetchWallet(userId).catch(() => null) : null;
   return {
-    ok: !!plan, reason, spot: m.spot, stops,
+    ok: !!plan, reason, spot: m.spot, stops, atm, profit, wallet,
     lines: plan ? describePlan(plan) : [],
     expiries: plan?.kind === 'option' ? plan.expiries : [],
     premium: plan?.kind === 'option' ? plan.premium : null,
-    legs: plan?.kind === 'option' ? plan.legs.map((l) => ({ symbol: l.symbol, side: l.side, lots: l.lots, strike: l.strike, type: l.type, expiryCode: l.expiryCode, price: l.side === 'sell' ? l.bid : l.ask, delta: l.delta })) : [],
+    legs: plan?.kind === 'option' ? plan.legs.map((l) => ({ symbol: l.symbol, side: l.side, lots: l.lots, strike: l.strike, type: l.type, expiryCode: l.expiryCode, price: l.side === 'sell' ? l.bid : l.ask, delta: l.delta, ...(legExtras.get(l.symbol + l.side) ?? { gamma: null, theta: null, iv: null, gammaPctOfAtm: null, ivVsAtm: null, thetaPerDayUsd: null }) })) : [],
     margin, conditions: ev.results, conditionsMet: ev.met, recommend: await recommend(rule, lots, m, plan).catch(() => null), plan,
   };
 }

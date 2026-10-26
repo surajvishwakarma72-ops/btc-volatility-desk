@@ -58894,6 +58894,35 @@ document.addEventListener('click', function(e) {
 #pgAlgo .al-reco{border:1px solid var(--warn);border-radius:10px;padding:8px 12px;margin:4px 0 10px;background:rgba(227,174,69,.07)}
 #pgAlgo .al-rh{font-weight:700;margin:0 0 6px}
 #pgAlgo .al-rr2{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px}
+#askPanel.big{height:calc(100vh - 84px);max-height:calc(100vh - 84px)}
+@media (max-width:760px){#askPanel.big{top:8px;bottom:70px;height:auto;max-height:none}}
+#askPanel .at-sec{border:1px solid var(--line2,#2c394a);border-radius:9px;margin:8px 0;padding:0 10px}
+#askPanel .at-sec>summary{cursor:pointer;font-weight:700;font-size:12.5px;padding:7px 0;list-style:none}
+#askPanel .at-sec>summary::before{content:'▸ ';color:var(--muted,#8fa3b5)}#askPanel .at-sec[open]>summary::before{content:'▾ '}
+#askPanel .at-scroll{overflow:auto;max-height:200px}
+#askPanel table.at-t{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+#askPanel .at-t th{text-align:right;color:var(--muted,#8fa3b5);font-weight:600;padding:3px 6px;border-bottom:1px solid var(--line2,#2c394a);position:sticky;top:0;background:var(--panel2,#1a2330)}
+#askPanel .at-t td{text-align:right;padding:3px 6px;border-bottom:1px solid var(--line,#22303f);white-space:nowrap}
+#askPanel .at-t th:first-child,#askPanel .at-t td:first-child{text-align:left}
+#askPanel .at-t tr[data-at=pickstrike]{cursor:pointer}#askPanel .at-t tr[data-at=pickstrike]:hover td{background:rgba(88,166,214,.12)}#askPanel .at-t tr.sel td{background:rgba(21,128,61,.2);font-weight:700}
+#askPanel .at-pks{display:grid;grid-template-columns:1fr 1fr;gap:8px}#askPanel .at-pkh{font-size:11px;font-weight:700;color:var(--muted,#8fa3b5);margin:2px 0}
+@media (max-width:520px){#askPanel .at-pks{grid-template-columns:1fr}}
+#askPanel .at-days{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
+#askPanel .at-day{display:inline-flex;gap:5px;align-items:center}
+#askPanel .at-day.on{background:rgba(21,128,61,.16);color:#15803D;border-color:#15803D}#askPanel .at-day.off{background:rgba(197,48,48,.12);color:#C53030;border-color:#C53030}
+#askPanel .at-day i{font-style:normal;font-weight:800}
+#askPanel .at-fxl{max-height:230px;overflow:auto;margin-top:6px;padding-right:4px}
+#askPanel .at-fx{border-top:1px solid var(--line,#22303f);padding:5px 0}
+#askPanel .at-fxh{display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}#askPanel .at-fxh span{font-size:11px;color:var(--muted,#8fa3b5);flex:1;min-width:120px}
+#askPanel .at-fxa{display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;font-size:11px}
+#askPanel .at-fxg{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#8fa3b5);margin:8px 0 2px}
+#askPanel .at-cc{background:var(--panel,#121a24);color:var(--text,#e6edf5);border:1px solid var(--line2,#2c394a);border-radius:999px;padding:3px 10px;font:600 11.5px inherit;cursor:pointer}
+#askPanel .at-cc.rec{border-color:var(--warn,#E3AE45);background:rgba(227,174,69,.14)}
+#askPanel .at-i{background:none;border:1px solid var(--line2,#2c394a);color:var(--muted,#8fa3b5);border-radius:50%;width:20px;height:20px;line-height:16px;font-size:12px;cursor:pointer;padding:0}
+#askPanel .at-how{margin:4px 0;padding:6px 8px;border-left:3px solid var(--focus,#58A6D6);font-size:12px;line-height:1.45;background:var(--panel,#121a24)}
+#askPanel .at-conds{display:flex;flex-direction:column;gap:4px;margin:4px 0}#askPanel .at-cond{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:12px;border:1px solid var(--line2,#2c394a);border-radius:8px;padding:4px 8px}
+#askPanel .at-x{background:none;border:1px solid var(--line2,#2c394a);color:var(--muted,#8fa3b5);border-radius:6px;cursor:pointer;padding:0 7px}
+#askPanel .at-recs{font-size:12px;margin:6px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 #pgAlgo .al-ev{list-style:none;margin:0;padding:0;font-size:12.5px}
 #pgAlgo .al-ev li{padding:4px 0;border-bottom:1px solid var(--line)}
 #pgAlgo .al-ev li.bad{color:var(--up)}
@@ -59564,7 +59593,7 @@ document.addEventListener('click', function(e) {
   function tick() { if (active() && !D.hidden) refresh(); }
   new MutationObserver(() => { if (active() && Date.now() - S.at > 1500) { S.at = Date.now(); refresh(); } }).observe($('pgAlgo'), { attributes: true, attributeFilter: ['class'] });
   timer = setInterval(tick, 5000);
-  window.algoPage = { refresh, toRule, words, fill, reset: () => { S.form = newForm(); S.formTouched = false; S.pv = null; if (S.built) skeleton(); }, track: id => { S.sel = id; S.pnl = null; S.hair = -1; S.tab = 'runs'; const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb) nb.click(); S.built = false; refresh(); } };
+  window.algoPage = { refresh, toRule, words, fill, condWords, fx: { items: fxItems, map: FXMAP, extra: EXTRA, def: COND_DEF },  reset: () => { S.form = newForm(); S.formTouched = false; S.pv = null; if (S.built) skeleton(); }, track: id => { S.sel = id; S.pnl = null; S.hair = -1; S.tab = 'runs'; const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb) nb.click(); S.built = false; refresh(); } };
   if (active()) refresh();
 })();
 </script>
@@ -61595,6 +61624,15 @@ document.addEventListener('click', function(e) {
   const hasAny = p => Object.keys(p).length > 0;
   /** The exit time to start from: a daytime trade (05:00 to 15:59 IST) closes at 16:00 IST, a night trade (16:00 to 04:59) at 07:00 IST. hhmm is the entry time. */
   function defaultExitTime(hhmm) { const h = Number(String(hhmm || '').slice(0, 2)); return h >= 5 && h < 16 ? '16:00' : '07:00'; }
+  /** Capital in rupees from plain words: 10000, 10,000, 10k, ₹5k, rs 5000, 2 lakh. null when it is not an amount. */
+  function parseCapital(raw) {
+    const q = String(raw || '').toLowerCase().replace(/₹/g, ' ').replace(/,/g, '').replace(/\b(rs\.?|inr|rupees?|of|capital|available)\b/g, ' ').replace(/\s+/g, ' ').trim();
+    const m = /^(\d+(?:\.\d+)?)\s*(k|thousand|l|lakh|lac|lakhs)?$/.exec(q); if (!m) return null;
+    let v = Number(m[1]); if (m[2] === 'k' || m[2] === 'thousand') v *= 1000; else if (m[2]) v *= 100000;
+    return v >= 100 ? Math.round(v) : null;
+  }
+  /** The lot size to start from: 100 rupees of capital per lot (10,000 gives 100 lots, 5,000 gives 50). */
+  const lotsForCapital = inr => Math.max(1, Math.floor(inr / 100));
   /** The answer to "future or option?": a patch, or null when the text does not say. */
   /** "trade now" or "schedule": a patch, or null */
   function parseWhen(q) {
@@ -61618,6 +61656,9 @@ document.addEventListener('click', function(e) {
     if (!q) return null;
     if (pending && /^(ok|okay|yes|y|confirm|go|go ahead|do it|execute|place it|place order|yes do it|ok return)$/.test(q)) return { kind: 'ok' };
     if (pending && /^(cancel|no|n|abort|never ?mind|stop|dont|don't)$/.test(q)) return { kind: 'cancel' };
+    if (pending === 'capital') { const v = parseCapital(q); if (v) return { kind: 'capital', inr: v }; }
+    if (pending === 'lots') { const lm = /^(\d{1,6})(?:\s*lots?)?$/.exec(q); if (lm && Number(lm[1]) >= 1) return { kind: 'lotspick', lots: Number(lm[1]) }; }
+    if (pending === 'mode') { if (/\blive\b/.test(q)) return { kind: 'modepick', mode: 'live' }; if (/\b(paper|test|demo)\b/.test(q)) return { kind: 'modepick', mode: 'paper' }; }
     if (pending === 'when') { const c = parseWhen(q); if (c) return { kind: 'when', patch: Object.assign(parsePatch(q), c) }; }
     if (pending === 'choose') { const c = parseChoice(q); if (c) return { kind: 'choice', patch: Object.assign(parsePatch(q), c) }; }
     let m;
@@ -61625,6 +61666,8 @@ document.addEventListener('click', function(e) {
     if (/^(open |show )?(the )?score( page)?$/.test(q)) return { kind: 'dayscore' };
     if (/\b(indicators?|signals?)\b/.test(q) && /\b(futures?|options?|strangle|algo|trading|trade)\b/.test(q) && /\b(best|top|which|recommend\w*|suggest\w*|work\w*|learn\w*|use)\b/.test(q)) return { kind: 'insight', which: /\bfutures?\b/.test(q) && !/\boptions?\b/.test(q) ? 'future' : /\b(options?|strangle)\b/.test(q) && !/\bfutures?\b/.test(q) ? 'option' : 'both' };
     if (/^(?:please )?(?:exit|exit all|close all|kill all|kill|hard exit|hard kill|square ?off|square off all|exit everything|close everything|exit all positions|close all positions|kill all positions)(?: now)?$/.test(q)) return { kind: 'exit' };
+    // "entry" on its own starts the guided questions: capital, lots, option or future, paper or live, now or schedule
+    if ((m = /^(?:please )?(?:entry|enter|entre|new trade|place (?:a )?trade|start (?:a )?trade)(?:\s+((?:option|options|future|futures|perp|now|schedule\w*|paper|live|strangle|straddle|long|short)\b.*))?$/.exec(q))) return { kind: 'entry', lots: null, patch: Object.assign(parsePatch(m[1] || ''), /\blive\b/.test(m[1] || '') ? { mode: 'live' } : /\bpaper\b/.test(m[1] || '') ? { mode: 'paper' } : {}) };
     if ((m = /^(?:please )?(?:entry|enter|entre|sell|short|go short|open)\s+(\d{1,6})(?:\s*lots?)?\b(.*)$/.exec(q))) {
       const lots = Number(m[1]); if (lots >= 1) return { kind: 'entry', lots, patch: parsePatch(m[2]) };
     }
@@ -61672,13 +61715,13 @@ document.addEventListener('click', function(e) {
     expiry: { mode: 'n2n' }, entry: { kind: 'hard', time: '22:30' }, days: DAYN.slice(),
     exit: { legStopMultiple: 2, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true },
   });
-  const T = { stage: null, rule: null, lots: 0, pv: null, when: 'now', live: null, held: null };
+  const T = { capital: null, chain: null, ins: null, open: {}, fxOpen: {}, stage: null, rule: null, lots: 0, pv: null, when: 'now', live: null, held: null };
   const API = { push: null };
   const reset = () => { T.stage = null; T.rule = null; T.pv = null; T.when = 'now'; T.held = null; };
 
   async function loadDefaults() { try { return (await api('/defaults')).defaults || FALLBACK(); } catch (e) { return FALLBACK(); } }
   async function preview() {
-    try { T.pv = (await post('/preview', { rule: T.rule, lots: T.lots })).preview; }
+    try { T.pv = (await post('/preview', { rule: T.rule, lots: T.lots, when: T.when })).preview; }
     catch (e) { T.pv = { ok: false, reason: e.message, lines: [], conditions: [] }; }
   }
   const msg = (kind, o) => Object.assign({ kind }, o);
@@ -61689,8 +61732,15 @@ document.addEventListener('click', function(e) {
     if (!cmd) return null;
     if (cmd.kind === 'cancel') { reset(); return msg('text', { text: 'Cancelled. Nothing was placed.' }); }
     if (cmd.kind === 'entry') {
-      T.lots = cmd.lots; T.when = 'now'; T.held = cmd.patch;
+      T.lots = cmd.lots || 0; T.capital = null; T.when = 'now'; T.held = cmd.patch; T.chain = null; T.open = {};
       return next();
+    }
+    if (cmd.kind === 'capital') { T.capital = cmd.inr; T.lots = 0; return next(); }
+    if (cmd.kind === 'lotspick') { T.lots = cmd.lots; return next(); }
+    if (cmd.kind === 'modepick') {
+      await loadLive();
+      if (cmd.mode === 'live' && !(T.live && T.live.tradeKey)) return msg('mode', { keyed: false, note: 'Live needs a trading key, so it stays on Paper. Save a key in Settings (Stop alarm and hard exit) to unlock Live.' });
+      T.held = Object.assign({}, T.held || {}, { mode: cmd.mode }); return next();
     }
     if (cmd.kind === 'choice' || cmd.kind === 'when') { T.held = Object.assign({}, T.held || {}, cmd.patch); return next(); }
     if (cmd.kind === 'insight') return insight(cmd.which);
@@ -61718,17 +61768,27 @@ document.addEventListener('click', function(e) {
     return null;
   }
   /** The next question: option or future, then trade now or schedule, then the summary. */
+  async function loadLive() { try { T.live = (await api('/state')).live; } catch (e) { /* keep what we knew */ } }
   async function next() {
     const p = T.held || {};
+    // 1. capital and lots (skipped when the lots were typed with "entry 50")
+    if (!T.lots) {
+      if (T.capital == null) { T.stage = 'capital'; return msg('capital', {}); }
+      T.stage = 'lots'; return msg('lots', { capital: T.capital, suggest: lotsForCapital(T.capital) });
+    }
+    // 2. option or future
     if (!p.legs) { T.stage = 'choose'; return msg('choose', { lots: T.lots }); }
+    // 3. paper or live
+    if (!p.mode) { await loadLive(); T.stage = 'mode'; return msg('mode', { keyed: !!(T.live && T.live.tradeKey) }); }
+    // 4. trade now or schedule
     if (!p.when && !p.entryTime && !p.window) { T.stage = 'when'; return msg('when', { lots: T.lots, what: p.legs === 'future' ? 'BTC future ' + (p.side || 'long') : 'option strangle' }); }
     return build(p);
   }
   async function build(patch) {
     T.rule = applyPatch(await loadDefaults(), patch); T.held = null;
     T.when = patch.when || (patch.entryTime || patch.window ? 'later' : 'now');
-    await preview();
-    let note = T.when === 'later' ? 'Scheduled trade: set the entry time and the days below, then say ok to arm it. It places itself at that time.' : null;
+    await preview(); await loadChain(); await loadIns();
+    let note = T.when === 'later' ? 'Scheduled trade: set the time, days, repeat, valid-until and the entry conditions below, then say ok. It places itself when its time and conditions are met.' : null;
     try { T.live = (await api('/state')).live; } catch (e) { /* keep what we knew */ }
     {
       const x = T.rule.exit, at = T.rule.entry.kind === 'hard' ? T.rule.entry.time : T.rule.entry.kind === 'window' ? T.rule.entry.from : null;
@@ -61744,7 +61804,7 @@ document.addEventListener('click', function(e) {
       if (x.futTargetUsd == null && x.futTargetPct == null) { x.futTargetUsd = sg.targetUsd; filled.push('target $' + sg.targetUsd); }
       if (filled.length) note = (note ? note + ' ' : '') + 'I filled in ' + filled.join(' and ') + ' from the recommendation: change them if you like.';
     }
-    T.stage = T.when === 'later' ? 'builder' : 'summary';
+    T.stage = 'summary';
     return msg(T.stage, { snap: snap(), note });
   }
   /** Strategy-wise and day-wise PnL from the recorded trades of the bot, the Algo panel and Paper Trade */
@@ -61784,7 +61844,7 @@ document.addEventListener('click', function(e) {
     try { const j = await api('/insights'); return msg('insight', { data: j, which }); }
     catch (e) { return msg('text', { text: 'I could not work out the indicators now: ' + e.message }); }
   }
-  const snap = () => ({ rule: JSON.parse(JSON.stringify(T.rule)), lots: T.lots, pv: T.pv, when: T.when, stage: T.stage, live: null });
+  const snap = () => ({ rule: JSON.parse(JSON.stringify(T.rule)), lots: T.lots, pv: T.pv, when: T.when, stage: T.stage, live: T.live, chain: T.chain, ins: T.ins, capital: T.capital });
 
   async function place() {
     const rule = T.rule, lots = T.lots, pv = T.pv, when = T.when;
@@ -61825,27 +61885,112 @@ document.addEventListener('click', function(e) {
     h += '<div class="at-fine">Your own record: ' + (own.finished ? own.finished + ' finished runs, ' + own.wins + ' won' + (own.finished < 20 ? ' (too few to learn much from yet)' : '') : 'no finished runs yet, so nothing to learn from your trades yet') + '. ' + esc(mk.note) + ' Open the Algo page, tab What worked, to add any of these as an entry condition.</div></div>';
     return h;
   }
+  async function loadChain() {
+    const r = T.rule; if (!r || r.instrument !== 'option') { T.chain = null; return; }
+    const mode = r.expiry.mode === 'nearest' || r.expiry.mode === 'b2b' ? 'current' : r.expiry.mode, key = mode + (r.expiry.code || '');
+    if (T.chain && T.chain.key === key && Date.now() - T.chain.at < 30000) return;
+    try { const j = await api('/chain?mode=' + mode + (mode === 'fixed' && r.expiry.code ? '&code=' + r.expiry.code : '')); T.chain = Object.assign({ key, at: Date.now() }, j); }
+    catch (e) { T.chain = { key, at: Date.now(), error: e.message }; }
+  }
+  async function loadIns() { if (T.ins && Date.now() - T.insAt < 300000) return; try { T.ins = (await api('/insights')).market; } catch (e) { T.ins = { error: e.message }; } T.insAt = Date.now(); }
+  const AFX = () => (window.algoPage && window.algoPage.fx) || null;
+  const sec = (key, title, html, defOpen) => '<details class="at-sec" data-sec="' + key + '"' + ((T.open[key] != null ? T.open[key] : defOpen) ? ' open' : '') + '><summary>' + title + '</summary>' + html + '</details>';
+  const g2 = v => v == null || !isFinite(v) ? '-' : Number(v).toPrecision(2);
+
+  /** each leg with its gamma and IV set against the at-the-money strike of the same expiry */
+  function legsTable(pv) {
+    return '<div class="at-scroll"><table class="at-t"><thead><tr><th>Leg</th><th>Δ</th><th>Gamma vs ATM</th><th>IV vs ATM</th><th>Price</th><th>θ / day</th></tr></thead><tbody>' + pv.legs.map(l =>
+      '<tr><td>' + (l.side === 'sell' ? 'Sell ' : 'Buy ') + l.lots + ' × ' + l.strike + (l.type === 'call' ? ' C' : ' P') + ' <small>' + esc(l.expiryCode) + '</small></td><td>' + l.delta.toFixed(2) + '</td>' +
+      '<td>' + g2(l.gamma) + (l.gammaPctOfAtm == null ? '' : ' <small>(' + Math.round(l.gammaPctOfAtm) + '% of ATM)</small>') + '</td>' +
+      '<td>' + (l.iv == null ? '-' : l.iv.toFixed(1)) + (l.ivVsAtm == null ? '' : ' <small>(' + (l.ivVsAtm >= 0 ? '+' : '') + l.ivVsAtm.toFixed(1) + ')</small>') + '</td>' +
+      '<td>' + Number(l.price).toFixed(1) + '</td><td>' + (l.thetaPerDayUsd == null ? '-' : money(l.thetaPerDayUsd)) + '</td></tr>').join('') + '</tbody></table></div>' +
+      '<div class="at-fine">Gamma is how fast a leg\'s delta changes: a small share of the ATM gamma is a gentler leg. IV vs ATM is the skew you are selling (a positive number means this strike is richer than the middle).</div>';
+  }
+  /** the strike picker: the real chain of the chosen expiry, tap a strike to use it, or ask for a delta */
+  function pickerHtml(s) {
+    const c = s.chain, pv = s.pv;
+    if (!c) return '<div class="at-fine">Loading the option chain…</div>';
+    if (c.error) return '<div class="at-err">' + esc(c.error) + '</div>';
+    const on = {}; ((pv && pv.legs) || []).forEach(l => { on[l.type + l.strike] = true; });
+    const dl = (s.rule.legs.find(l => l.pick.mode === 'delta') || { pick: {} }).pick;
+    const rows = type => c.rows.filter(r => r[type]).map(r => { const x = r[type]; return '<tr class="' + (on[type + r.strike] ? 'sel' : '') + '" data-at="pickstrike" data-type="' + type + '" data-strike="' + r.strike + '" tabindex="0"><td>' + r.strike + '</td><td>' + x.delta.toFixed(2) + '</td><td>' + g2(x.gamma) + '</td><td>' + (x.iv == null ? '-' : x.iv.toFixed(1)) + '</td><td>' + (x.bid ? x.bid.toFixed(1) : '-') + '</td></tr>'; }).join('');
+    const tbl = (type, title) => '<div class="at-pk"><div class="at-pkh">' + title + '</div><div class="at-scroll"><table class="at-t"><thead><tr><th>Strike</th><th>Δ</th><th>Γ</th><th>IV</th><th>Bid</th></tr></thead><tbody>' + rows(type) + '</tbody></table></div></div>';
+    return '<div class="at-fine">Expiry ' + esc(c.expiry) + ' · BTC ' + Number(c.spot).toFixed(0) + (c.atm && c.atm.iv != null ? ' · ATM IV ' + c.atm.iv.toFixed(1) : '') + '. Tap a strike to use it for that side.</div>' +
+      '<div class="at-form"><label>Or by delta: nearest to<input data-atf="dtg2" type="number" step="0.01" value="' + (dl.target != null ? dl.target : 0.1) + '"></label></div><div class="at-act"><button type="button" class="at-btn" data-at="applydelta">Pick by delta</button></div>' +
+      '<div class="at-pks">' + tbl('call', 'Calls') + tbl('put', 'Puts') + '</div>';
+  }
+  /** the ƒx indicators, same list and order as the chart, with a how-to under each ⓘ; tap one to add it as an entry condition */
+  function fxAskHtml(s) {
+    const F = AFX(); if (!F) return '<div class="at-fine">The indicator list is not loaded.</div>';
+    const rec = recFor(s), recT = new Set(rec.map(x => x.cond.type));
+    const btn = v => '<button type="button" class="at-cc' + (recT.has(v[0]) ? ' rec' : '') + '" data-at="addcond" data-t="' + v[0] + '">' + (recT.has(v[0]) ? '★ ' : '+ ') + esc(v[1]) + '</button>';
+    let h = '';
+    for (const it of F.items()) {
+      const vars = F.map[it.k];
+      h += '<div class="at-fx"><div class="at-fxh"><b>' + esc(it.n) + '</b><span>' + esc(it.d) + '</span><button type="button" class="at-i" data-at="fxinfo" data-k="' + esc(it.k) + '" title="How to use it">ⓘ</button></div>' + (T.fxOpen[it.k] ? '<div class="at-how">' + it.how + '</div>' : '') +
+        '<div class="at-fxa">' + (vars ? vars.map(btn).join('') : '<small>chart only: the server cannot test this one yet</small>') + '</div></div>';
+    }
+    h += '<div class="at-fxg">More indicators</div>' + F.extra.map(x => '<div class="at-fx"><div class="at-fxh"><b>' + esc(x[1]) + '</b><button type="button" class="at-i" data-at="fxinfo" data-k="x_' + x[0] + '">ⓘ</button></div>' + (T.fxOpen['x_' + x[0]] ? '<div class="at-how">' + esc(x[2]) + '</div>' : '') + '<div class="at-fxa">' + btn([x[0], x[1]]) + '</div></div>').join('');
+    return h;
+  }
+  /** conditions that performed well recently for this kind of trade */
+  function recFor(s) {
+    const m = s.ins; if (!m || m.error) return [];
+    if (s.rule.instrument === 'future') { const side = s.rule.future && s.rule.future.side === 'short' ? 'short' : 'long'; return (m.futures || []).filter(x => x.score > 1 && x[side]).slice(0, 3).map(x => ({ cond: x[side], label: x.label, why: 'right ' + Math.round(x.winRate * 100) + '% of the time over 4 hours' })); }
+    return (m.options || []).filter(o => o.condition && o.calmerPct > 5).slice(0, 3).map(o => ({ cond: o.condition, label: o.label, why: o.calmerPct.toFixed(0) + '% calmer next 8 hours, ' + Math.round(o.calmRate * 100) + '% stayed inside 2%' }));
+  }
+  function scheduleHtml(s) {
+    const r = s.rule, o = (v, c, l) => '<option value="' + v + '"' + (v === c ? ' selected' : '') + '>' + l + '</option>';
+    const vu = r.validUntil == null ? 'none' : 'custom';
+    return '<div class="at-form">' +
+      (r.entry.kind === 'hard' ? '<label>Enter at (IST)<input data-atf="etime" type="time" value="' + esc(r.entry.time) + '"></label>' : '<label>Window from (IST)<input data-atf="etime" type="time" value="' + esc(r.entry.from) + '"></label><label>until<input data-atf="etime2" type="time" value="' + esc(r.entry.to) + '"></label>') +
+      '<label>Repeat<select data-atf="rep">' + o('daily', r.repeat || 'daily', 'Repeat until I cancel') + o('once', r.repeat || 'daily', 'One time only') + '</select></label>' +
+      '<label>Valid until<select data-atf="valid">' + o('none', vu, 'No limit: until I cancel') + (vu === 'custom' ? o('custom', vu, 'A set time (keep)') : '') + o('today', vu, 'End of today') + o('7', vu, '7 days') + o('30', vu, '30 days') + '</select></label></div>' +
+      '<div class="at-days">' + DAYN.map(d => '<button type="button" class="at-day ' + (r.days.includes(d) ? 'on' : 'off') + '" data-at="day" data-d="' + d + '">' + d[0].toUpperCase() + d.slice(1) + ' <i>' + (r.days.includes(d) ? '✓' : '✕') + '</i></button>').join('') + '</div>' +
+      '<div class="at-fine">Green days trade, red days do not. With conditions below it waits for them inside the window and enters once.</div><div class="at-act"><button type="button" class="at-btn" data-at="update">Update summary</button></div>';
+  }
+  function conditionsHtml(s) {
+    const r = s.rule, F = AFX(), list = r.entry.kind === 'window' ? r.entry.conditions : [];
+    const words = c => (window.algoPage && window.algoPage.condWords ? window.algoPage.condWords(c) : c.type);
+    const rec = recFor(s);
+    let h = list.length ? '<div class="at-conds">' + list.map((c, i) => '<div class="at-cond"><span>' + esc(words(c)) + '</span><button type="button" class="at-x" data-at="delcond" data-i="' + i + '" title="Remove">×</button></div>').join('') + '</div>' : '<div class="at-fine">No conditions yet: pick from the ƒx list below. A hard time ignores them.</div>';
+    if (rec.length) h += '<div class="at-recs"><b>★ Recommended</b> (performed well recently): ' + rec.map(x => '<button type="button" class="at-cc rec" data-at="addcondj" data-j="' + esc(JSON.stringify(x.cond)) + '" title="' + esc(x.why) + '">+ ' + esc(x.label) + '</button>').join('') + '</div>';
+    if (F) h += '<div class="at-fxl">' + fxAskHtml(s) + '</div>';
+    return h;
+  }
   function summaryCard(m, builder) {
-    const s = m.snap, r = s.rule, pv = s.pv;
-    let h = '<div class="at-card"><div class="at-h">' + (builder ? 'Strategy builder' : 'Trade summary') + '<span class="at-badge ' + (r.mode === 'live' ? 'live' : '') + '">' + (r.mode === 'live' ? 'LIVE' : 'Paper') + '</span></div>';
+    const s = m.snap, r = s.rule, pv = s.pv, later = s.when === 'later';
+    let h = '<div class="at-card"><div class="at-h">' + (builder ? 'Strategy builder' : 'Trade summary') + '<span class="at-badge ' + (r.mode === 'live' ? 'live' : '') + '">' + (r.mode === 'live' ? 'LIVE' : 'Paper') + '</span>' + (later ? '<span class="at-badge">Scheduled</span>' : '<span class="at-badge">Now</span>') + '</div>';
     if (m.note) h += '<div class="at-note">' + esc(m.note) + '</div>';
     if (!pv || !pv.ok) h += '<div class="at-err">I cannot build this trade now: ' + esc((pv && pv.reason) || 'unknown') + '</div>';
     else {
-      h += '<div class="at-sub">' + esc(r.name) + ' · ' + s.lots + ' lots</div><ul class="at-ul">' + pv.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' +
-        '<div class="at-kv"><span>Expiry</span><b>' + esc(expiryText(r, pv)) + '</b><span>Spot</span><b>' + Number(pv.spot).toFixed(0) + '</b>' +
+      h += '<div class="at-sub">' + esc(r.name) + ' · ' + s.lots + ' lots' + (s.capital ? ' · ₹' + Number(s.capital).toLocaleString('en-IN') + ' capital' : '') + '</div>';
+      h += pv.legs && pv.legs.length ? legsTable(pv) : '<ul class="at-ul">' + pv.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>';
+      const mg = pv.margin, wl = pv.wallet;
+      const avail = r.mode === 'live'
+        ? (wl && wl.assets.length ? wl.assets.map(a => Number(a.available).toLocaleString('en-IN', { maximumFractionDigits: 2 }) + ' ' + esc(a.symbol)).join(' · ') + ' <small>(' + esc(wl.note) + ')</small>' : 'could not read your Delta wallet (check the key and the IP whitelist)')
+        : (mg && mg.available != null ? money(mg.available) + ' <small>on your Paper account</small>' : '-');
+      h += '<div class="at-kv"><span>Expiry</span><b>' + esc(expiryText(r, pv)) + '</b><span>Spot</span><b>' + Number(pv.spot).toFixed(0) + '</b>' +
         (pv.premium != null ? '<span>Premium collected</span><b>' + money(pv.premium) + '</b>' : '') +
-        (pv.margin && pv.margin.required != null ? '<span>Margin needed</span><b>' + money(pv.margin.required) + '</b>' : '') +
+        (pv.profit ? '<span>Estimated profit till exit</span><b class="' + (pv.profit.toExitUsd >= 0 ? 'at-up' : 'at-dn') + '">' + money(pv.profit.toExitUsd) + '</b>' : '') +
+        (mg && mg.required != null ? '<span>Margin needed</span><b>' + money(mg.required) + '</b><span>Margin available</span><b>' + avail + '</b>' : '') +
         '<span>Entry</span><b>' + esc(entryText(r, s.when === 'now')) + '</b><span>Exit</span><b>' + esc((r.exit.exitTime ? r.exit.exitTime + ' IST' : 'no exit time') + (r.exit.netTargetUsd != null ? ', target $' + r.exit.netTargetUsd : '') + (r.exit.netStopUsd != null ? ', net stop $' + r.exit.netStopUsd : '')) + '</b>' +
-        '<span>Stoploss</span><b>' + esc(stopText(r)) + '</b><span>Days</span><b>' + esc(daysText(r.days)) + '</b>' + (s.when === 'later' ? '<span>Repeat</span><b>' + (r.repeat === 'once' ? 'one time only' : 'every selected day') + '</b>' : '') + '</div>';
+        '<span>Stoploss</span><b>' + esc(stopText(r)) + '</b>' + (later ? '<span>Days</span><b>' + esc(daysText(r.days)) + '</b><span>Repeat</span><b>' + (r.repeat === 'once' ? 'one time only' : 'repeat until I cancel') + '</b><span>Valid until</span><b>' + (r.validUntil ? new Date(r.validUntil + 19800000).toISOString().slice(0, 16).replace('T', ' ') + ' IST' : 'no limit, until I cancel') + '</b>' : '') + '</div>';
+      if (pv.profit) h += '<div class="at-fine">About ' + (pv.profit.hoursToExit >= 48 ? (pv.profit.hoursToExit / 24).toFixed(1) + ' days' : pv.profit.hoursToExit.toFixed(1) + ' h') + ' to the exit. Time decay earns ' + money(pv.profit.perDayUsd) + ' a day' + (pv.profit.maxUsd != null ? '; the most it can make is the ' + money(pv.profit.maxUsd) + ' premium' : '') + '. ' + esc(pv.profit.note) + '</div>';
       h += recHtml(pv.recommend);
-      if (pv.margin) h += '<div class="at-fine">Margin is ' + esc(pv.margin.note) + '.</div>';
-      if (r.entry.kind === 'window' && s.when !== 'now') h += condList(pv.conditions);
+      if (mg) h += '<div class="at-fine">Margin is ' + esc(mg.note) + '.</div>';
+      if (r.instrument === 'option') h += sec('strikes', 'Strike picker: choose the strikes and delta', pickerHtml(s), true);
+      if (later) {
+        h += sec('sched', 'Schedule: time, days, repeat, valid until', scheduleHtml(s), true);
+        h += sec('cond', 'Entry conditions: the ƒx indicators', conditionsHtml(s), true);
+        if (r.entry.kind === 'window' && pv.conditions && pv.conditions.length) h += condList(pv.conditions);
+      }
     }
-    if (builder) h += builderForm(s); else h += quickForm(s);
+    h += sec('exit', 'Exit, net dollars and Paper or Live', builder ? builderForm(s) : quickForm(s), true);
     h += '<div class="at-act">' + (pv && pv.ok ? '<button type="button" class="at-btn pri" data-at="ok">' + (builder ? (s.when === 'now' ? 'OK, place at market' : 'OK, arm it') : 'OK') + '</button>' : '') +
       (builder ? '<button type="button" class="at-btn" data-at="update">Update summary</button><button type="button" class="at-btn" data-at="savedef">Save as my default</button>' : '') +
       '<button type="button" class="at-btn" data-at="cancel">Cancel</button></div>';
-    h += '<div class="at-fine">' + (builder ? 'Change anything with the boxes, or type it: "delta 0.08-0.12", "expiry nearest", "stop 3x", "exit 07:00", "days mon tue". Then say ok.' : 'Say <b>ok</b> to open the strategy builder, or type a change such as "delta 0.08-0.12" or "expiry nearest".') + '</div></div>';
+    h += '<div class="at-fine">' + (builder ? 'Change anything with the boxes, or type it: "delta 0.08-0.12", "expiry nearest", "stop 3x", "exit 07:00", "days mon tue". Then say ok.' : 'Say <b>ok</b> to open the strategy builder, or type a change such as "delta 0.08-0.12" or "expiry next".') + '</div></div>';
     return h;
   }
   /** the few things to confirm before ok: when it closes, the net dollars, and Paper or Live */
@@ -61881,6 +62026,18 @@ document.addEventListener('click', function(e) {
     if (m.kind === 'text') return '<div class="at-card"><div>' + esc(m.text) + '</div></div>';
     if ((m.kind === 'wz' || m.kind === 'wzdone') && window.askWizard) return window.askWizard.render(m);
     if (m.kind === 'dayscore') return dayScoreCard(m);
+    if (m.kind === 'capital') {
+      const chips = [5000, 10000, 25000, 50000].map(v => '<button type="button" class="at-btn" data-at="say" data-v="' + v + '">₹' + v.toLocaleString('en-IN') + '</button>').join('');
+      return '<div class="at-card"><div class="at-h">Entry: how much capital is available?</div><div class="at-fine">In rupees. Type any amount: 10000, 10k, 2 lakh. I will suggest the lot size from it (₹100 of capital per lot).</div><div class="at-act">' + chips + '<button type="button" class="at-btn" data-at="cancel">Cancel</button></div></div>';
+    }
+    if (m.kind === 'lots') {
+      const n = m.suggest, chips = [[n, n + ' lots (suggested)'], [Math.max(1, Math.floor(n / 2)), Math.max(1, Math.floor(n / 2)) + ' lots (half)'], [n * 2, n * 2 + ' lots (double)']];
+      return '<div class="at-card"><div class="at-h">Lot size for ₹' + Number(m.capital).toLocaleString('en-IN') + '</div><div class="at-fine">Suggested ' + n + ' lots: ₹100 of capital per lot (₹10,000 gives 100 lots, ₹5,000 gives 50). One lot is 0.001 BTC. Type another number if you like.</div><div class="at-act">' +
+        chips.map((c, i) => '<button type="button" class="at-btn' + (i === 0 ? ' pri' : '') + '" data-at="say" data-v="' + c[0] + '">' + c[1] + '</button>').join('') + '<button type="button" class="at-btn" data-at="cancel">Cancel</button></div></div>';
+    }
+    if (m.kind === 'mode') {
+      return '<div class="at-card"><div class="at-h">Paper or Live?</div>' + (m.note ? '<div class="at-note">' + esc(m.note) + '</div>' : '') + '<div class="at-fine">Paper uses your fake-money account with real order books. Live sends real orders to Delta' + (m.keyed ? ': a trading key is saved, and Live still needs arming in Settings and starts in dry-run.' : ' and needs a trading key saved in Settings.') + '</div><div class="at-act"><button type="button" class="at-btn pri" data-at="say" data-v="paper">Paper account</button><button type="button" class="at-btn" data-at="say" data-v="live">Live' + (m.keyed ? '' : ' (needs a trading key)') + '</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div></div>';
+    }
     if (m.kind === 'choose') {
       return '<div class="at-card"><div class="at-h">Entry ' + m.lots + ' lots: option or future?</div><div class="at-act"><button type="button" class="at-btn pri" data-at="pick" data-k="strangle">Option: one strangle (2 legs, nearest 0.10 delta)</button><button type="button" class="at-btn" data-at="pick" data-k="long">Future: buy (long)</button><button type="button" class="at-btn" data-at="pick" data-k="short">Future: sell (short)</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div><div class="at-fine">Or type: option, future long, future short.</div></div>';
     }
@@ -61914,6 +62071,8 @@ document.addEventListener('click', function(e) {
 
   /* ---------- clicks and the builder boxes ---------- */
   async function answer(m) { if (API.push) API.push(m); }
+  /** a changed summary replaces the old one instead of adding another card to the chat */
+  async function replaceAnswer(m) { if (API.replace) API.replace(m); else answer(m); }
   D.addEventListener('click', async e => {
     const b = e.target.closest && e.target.closest('#askPanel [data-at]'); if (!b) return;
     const a = b.dataset.at;
@@ -61923,13 +62082,31 @@ document.addEventListener('click', function(e) {
     else if (a === 'track') { if (window.algoPage) window.algoPage.track(b.dataset.id); }
     else if (a === 'pick') { const k = b.dataset.k; const m = await handle(k === 'strangle' ? 'option' : 'future ' + k); if (m) answer(m); }
     else if (a === 'cancel') { reset(); answer(msg('text', { text: 'Cancelled. Nothing was placed.' })); }
+    else if (a === 'say') { const m = await handle(b.dataset.v); if (m) answer(m); }
     else if (a === 'day') {
       const d = b.dataset.d, r = T.rule; if (!r) return;
       r.days = r.days.includes(d) ? r.days.filter(x => x !== d) : r.days.concat(d);
       if (!r.days.length) r.days = [d];
-      await preview(); answer(msg('builder', { snap: snap() }));
+      await preview(); replaceAnswer(msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap() }));
     }
-    else if (a === 'update') { const nt = readForm(); await preview(); answer(msg(T.stage === 'summary' ? 'summary' : 'builder', { snap: snap(), note: nt })); }
+    else if (a === 'update') { const nt = readForm(); await preview(); await loadChain(); replaceAnswer(msg(T.stage === 'summary' ? 'summary' : 'builder', { snap: snap(), note: nt })); }
+    else if (a === 'pickstrike' || a === 'applydelta') {
+      const r = T.rule; if (!r || r.instrument !== 'option') return;
+      if (a === 'pickstrike') { const type = b.dataset.type, k = Number(b.dataset.strike); r.legs.forEach(l => { if (l.type === type) l.pick = { mode: 'strike', strike: k }; }); }
+      else { const el = D.querySelectorAll('#askPanel [data-atf="dtg2"]'); const v = Number((el[el.length - 1] || {}).value); if (v >= 0.01 && v <= 0.9) r.legs.forEach(l => { l.pick = { mode: 'delta', target: v }; }); }
+      await preview(); replaceAnswer(msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap(), note: a === 'pickstrike' ? 'Strike chosen.' : 'Strikes picked by delta.' }));
+    }
+    else if (a === 'fxinfo') { T.fxOpen[b.dataset.k] = !T.fxOpen[b.dataset.k]; replaceAnswer(msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap() })); }
+    else if (a === 'addcond' || a === 'addcondj' || a === 'delcond') {
+      const r = T.rule, F = AFX(); if (!r) return;
+      if (a === 'delcond') r.entry.conditions.splice(Number(b.dataset.i), 1);
+      else {
+        const c = a === 'addcondj' ? JSON.parse(b.dataset.j) : Object.assign({ type: b.dataset.t }, JSON.parse(JSON.stringify((F && F.def[b.dataset.t]) || {})));
+        if (r.entry.kind !== 'window') r.entry = { kind: 'window', from: r.entry.time || '22:30', to: '01:30', conditions: [] };
+        if (!r.entry.conditions.some(x => JSON.stringify(x) === JSON.stringify(c))) r.entry.conditions.push(c);
+      }
+      await preview(); replaceAnswer(msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap(), note: a === 'delcond' ? 'Condition removed.' : 'Condition added: the entry waits for it inside the window.' }));
+    }
     else if (a === 'savedef') {
       readForm();
       try { await api('/defaults', { method: 'PUT', body: JSON.stringify({ rule: T.rule }) }); answer(msg('saved', { rule: T.rule, lots: T.lots })); }
@@ -61957,6 +62134,9 @@ document.addEventListener('click', function(e) {
     if (md === 'live' && !(T.live && T.live.tradeKey)) { r.mode = 'paper'; note = 'Live needs a trading key, so it stays on Paper. Save a key in Settings (Stop alarm and hard exit) to unlock Live.'; }
     else if (md) r.mode = md;
     const rp = v('rep'); if (rp) r.repeat = rp;
+    const et2 = v('etime2'); if (et2 && r.entry.kind === 'window') r.entry.to = et2;
+    const vu = v('valid'), eod = n => Math.floor((Date.now() + 19800000) / 86400000) * 86400000 + (n + 1) * 86400000 - 19800000 - 60000;
+    if (vu === 'none') r.validUntil = null; else if (vu === 'today') r.validUntil = eod(0); else if (vu === '7' || vu === '30') r.validUntil = eod(Number(vu));
     return note;
   }
 
@@ -61974,7 +62154,7 @@ document.addEventListener('click', function(e) {
     '#askPanel .at-cl{list-style:none;margin:6px 0 0;padding:0}#askPanel .at-cl li.ok{color:var(--down,#35BB7D)}#askPanel .at-cl li.no{color:var(--warn,#E3AE45)}#askPanel .at-cl span{color:var(--muted,#8fa3b5)}';
   D.head.appendChild(style);
 
-  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, reset, defaultExitTime, congrats, API, active: () => T.stage };
+  window.askTrade = { setOpen: (k, v) => { T.open[k] = v; }, handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, reset, defaultExitTime, parseCapital, lotsForCapital, congrats, API, active: () => T.stage };
 })();
 </script><script id="askWizard">
 /* Ask me: "algo trading" starts a guided build of an Algo strategy. The Algo page opens beside the chat and its form fills in as you answer,
@@ -62549,6 +62729,19 @@ document.addEventListener('click', function(e) {
   }
 
   if (window.askTrade) window.askTrade.API.push = m => { S.msgs.push({ role: 'bot', trade: m }); S.busy = false; S.big = true; render(); };
+  if (window.askTrade) window.askTrade.API.replace = m => {
+    for (let i = S.msgs.length - 1; i >= 0; i--) {
+      const t = S.msgs[i].trade;
+      if (t && (t.kind === 'summary' || t.kind === 'builder')) {
+        const box = D.getElementById('akMsgs'), st = box ? box.scrollTop : null;
+        S.msgs[i] = { role: 'bot', trade: m }; S.busy = false; render();
+        const b2 = D.getElementById('akMsgs'); if (b2 && st != null) b2.scrollTop = st;
+        return;
+      }
+    }
+    S.msgs.push({ role: 'bot', trade: m }); S.busy = false; S.big = true; render();
+  };
+  D.addEventListener('toggle', e => { const d = e.target; if (d && d.dataset && d.dataset.sec && window.askTrade && window.askTrade.setOpen) window.askTrade.setOpen(d.dataset.sec, d.open); }, true);
   fab.addEventListener('click', () => { S.open = !S.open; render(); });
   panel.addEventListener('click', e => {
     const t = e.target.closest('[data-ak],[data-ak-q]'); if (!t) return;

@@ -12,6 +12,10 @@ export interface ChainOption {
   ask: number;
   mark: number;
   iv: number;
+  /** Greeks from the live chain (absent in replayed chains). Theta is per day, per 1 BTC. */
+  gamma?: number;
+  theta?: number;
+  vega?: number;
 }
 
 export interface DeltaBand {

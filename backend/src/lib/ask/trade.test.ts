@@ -12,10 +12,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.resolve(here, '../../../../frontend/index.html'), 'utf8');
 const a = html.indexOf('// ASKTRADE-CORE-START'), b = html.indexOf('// ASKTRADE-CORE-END');
 if (a < 0 || b < 0) throw new Error('ASKTRADE markers not found in frontend/index.html');
-const T = new Function(`${html.slice(a, b)}\nreturn { parseTrade, parsePatch, applyPatch, congrats, defaultExitTime };`)() as {
+const T = new Function(`${html.slice(a, b)}\nreturn { parseTrade, parsePatch, applyPatch, congrats, defaultExitTime, parseCapital, lotsForCapital };`)() as {
   parseTrade(q: string, pending?: string | null): { kind: string; lots?: number; patch?: any; which?: string } | null;
   parsePatch(q: string): any;
   defaultExitTime(hhmm: string): string;
+  parseCapital(q: string): number | null;
+  lotsForCapital(inr: number): number;
   applyPatch(rule: any, p: any): any;
   congrats(rule: any, lots: number, pv: any, res: any, when: string): { head: string; rows: string[][]; lines: string[] };
 };
@@ -82,6 +84,44 @@ describe('option or future?', () => {
     }
     expect(T.parseTrade('banana', 'choose')).toBeNull();
     expect(T.parseTrade('cancel', 'choose')).toMatchObject({ kind: 'cancel' });
+  });
+});
+
+describe('capital in rupees and the lot size it suggests', () => {
+  it('reads an amount in the ways people write it', () => {
+    for (const [q, v] of [['10000', 10000], ['10,000', 10000], ['10k', 10000], ['₹5k', 5000], ['rs 5000', 5000], ['2 lakh', 200000], ['1.5k', 1500], ['inr 25,000', 25000], ['50 thousand', 50000]] as const) expect(T.parseCapital(q), q).toBe(v);
+  });
+  it('anything that is not an amount is not an amount', () => {
+    for (const q of ['', 'lots', 'abc', '12', 'five thousand', '10k lots']) expect(T.parseCapital(q), q).toBeNull();
+  });
+  it('100 rupees of capital per lot: 10,000 gives 100 lots, 5,000 gives 50', () => {
+    expect(T.lotsForCapital(10000)).toBe(100);
+    expect(T.lotsForCapital(5000)).toBe(50);
+    expect(T.lotsForCapital(1500)).toBe(15);
+    expect(T.lotsForCapital(100)).toBe(1);
+    expect(T.lotsForCapital(40)).toBe(1);
+  });
+});
+
+describe('the guided entry questions', () => {
+  it('"entry" on its own starts them, with nothing guessed', () => {
+    for (const q of ['entry', 'Entry', 'enter', 'new trade', 'place a trade']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'entry', lots: null, patch: {} });
+    expect(T.parseTrade('entry option now')).toMatchObject({ kind: 'entry', lots: null, patch: { legs: 'strangle', when: 'now' } });
+    expect(T.parseTrade('entry live')!.patch).toMatchObject({ mode: 'live' });
+    expect(T.parseTrade('entry paper future long')!.patch).toMatchObject({ mode: 'paper', legs: 'future', side: 'long' });
+  });
+  it('"entry 50" still means 50 lots and skips the capital question', () => {
+    expect(T.parseTrade('entry 50')).toMatchObject({ kind: 'entry', lots: 50 });
+  });
+  it('the capital answer, the lots answer and the paper or live answer are read only at their own step', () => {
+    expect(T.parseTrade('10k', 'capital')).toMatchObject({ kind: 'capital', inr: 10000 });
+    expect(T.parseTrade('10k', 'lots')).toBeNull();
+    expect(T.parseTrade('100', 'lots')).toMatchObject({ kind: 'lotspick', lots: 100 });
+    expect(T.parseTrade('100 lots', 'lots')).toMatchObject({ kind: 'lotspick', lots: 100 });
+    expect(T.parseTrade('live', 'mode')).toMatchObject({ kind: 'modepick', mode: 'live' });
+    expect(T.parseTrade('paper', 'mode')).toMatchObject({ kind: 'modepick', mode: 'paper' });
+    expect(T.parseTrade('paper', null)).toBeNull();
+    expect(T.parseTrade('cancel', 'capital')).toMatchObject({ kind: 'cancel' });
   });
 });
 

@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { userId } from '../lib/guards.js';
 import { defaultStrangle, exitAtMs, exitSchema, strategySchema, type AlgoStrategy } from '../lib/algo/rule.js';
 import { istDateKey } from '../lib/bot/schedule.js';
-import { algoEngine } from '../services/algo/algo-runtime.js';
+import { algoEngine, loadMarket } from '../services/algo/algo-runtime.js';
+import { chooseExpiries, expiryCodeOf } from '../lib/algo/plan.js';
 import { conditionsOf } from '../services/algo/algo-engine.js';
 import { clearPending, createRun, deleteStrategy, finishRun, getDefaults, getMarks, getRunById, getStrategy, listStrategies, recentRuns, saveDefaults, saveStrategy, setArmed } from '../services/algo/algo-store.js';
 import { enterNow, exitAll, liveState, previewEntry } from '../services/algo/algo-service.js';
@@ -79,14 +80,41 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
 
   // The summary the user reads before saying ok. Places nothing.
   fastify.post('/preview', limited, async (req, reply) => {
-    const b = z.object({ rule: strategySchema, lots: lotsField }).safeParse(req.body);
+    const b = z.object({ rule: strategySchema, lots: lotsField, when: z.enum(['now', 'later']).optional() }).safeParse(req.body);
     if (!b.success) return bad(reply, need(b.error));
     try {
-      const { plan, ...p } = await previewEntry(userId(req), b.data.rule, b.data.lots);
+      const { plan, ...p } = await previewEntry(userId(req), b.data.rule, b.data.lots, b.data.when ?? 'now');
       void plan;
       return { success: true, preview: p };
     } catch (e) {
       return bad(reply, `market data unavailable: ${(e as Error).message}`, 502);
+    }
+  });
+
+  // The option chain for the strike picker: every strike near the money of one expiry, with delta, gamma, IV, theta and the quotes.
+  fastify.get('/chain', auth, async (req, reply) => {
+    const q = z.object({ mode: z.enum(['current', 'next', 'n2n', 'fixed']).default('n2n'), code: z.string().regex(/^\d{6}$/).optional() }).safeParse(req.query);
+    if (!q.success) return bad(reply, need(q.error));
+    try {
+      const m = await loadMarket(false);
+      const ex = chooseExpiries({ mode: q.data.mode, code: q.data.code }, m.expiries, Date.now());
+      if (typeof ex === 'string') return bad(reply, ex, 422);
+      const e = ex[0]!;
+      const fin = (v: number | undefined) => (v != null && Number.isFinite(v) ? v : null);
+      const by = new Map<number, { strike: number; call: any; put: any }>();
+      for (const o of m.chain.filter((x) => x.expiryMs === e)) {
+        const row = by.get(o.strike) ?? { strike: o.strike, call: null, put: null };
+        row[o.type] = { symbol: o.symbol, delta: o.delta, bid: o.bid, ask: o.ask, iv: fin(o.iv), gamma: fin(o.gamma), theta: fin(o.theta) };
+        by.set(o.strike, row);
+      }
+      // only strikes a seller might use: some delta between 0.02 and 0.5 on either side
+      const rows = [...by.values()].filter((r) => [r.call, r.put].some((s) => s && s.delta >= 0.02 && s.delta <= 0.5)).sort((a, b) => a.strike - b.strike);
+      const atmK = [...by.keys()].reduce((b, k) => (Math.abs(k - m.spot) < Math.abs(b - m.spot) ? k : b), rows[0]?.strike ?? m.spot);
+      const at = by.get(atmK);
+      const mean = (xs: Array<number | null | undefined>) => { const v = xs.filter((x): x is number => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+      return { success: true, expiry: expiryCodeOf(e), expiryMs: e, spot: m.spot, atm: { strike: atmK, iv: mean([at?.call?.iv, at?.put?.iv]), gamma: mean([at?.call?.gamma, at?.put?.gamma]) }, rows };
+    } catch (err) {
+      return bad(reply, `market data unavailable: ${(err as Error).message}`, 502);
     }
   });
 
