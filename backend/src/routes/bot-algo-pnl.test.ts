@@ -70,6 +70,24 @@ describe('PnL analysis includes algo runs (Paper and Live)', () => {
     await app.close();
   });
 
+  it('real Delta positions tracked by the alarm appear on the curve (closed) and in the open list, with a minute view', async () => {
+    const { pool } = await import('../db/index.js');
+    const t0 = Date.now() - 7_200_000;
+    const open = '33333333-3333-3333-3333-333333333331', closed = '33333333-3333-3333-3333-333333333332';
+    await pool.query(`INSERT INTO real_runs (id, user_id, account, expiry, name, status, entered_at) VALUES ($1,$2,'main','271026','Main account · 27 Oct expiry','open', to_timestamp($3::double precision/1000))`, [open, U, t0]);
+    await pool.query(`INSERT INTO real_runs (id, user_id, account, expiry, name, status, entered_at, exited_at, net_pnl) VALUES ($1,$2,'sub','261025','Sub-account · 26 Oct expiry','closed', to_timestamp($3::double precision/1000), to_timestamp($4::double precision/1000), 12.5)`, [closed, U, t0 - 3_600_000, t0 - 1_800_000]);
+    await recordMark(open, t0 + 60_000, 2, null); await recordMark(open, t0 + 120_000, 5, null);
+    const app = await build();
+    const j = (await app.inject({ method: 'GET', url: '/bot/pnl/trades?scope=algo', headers: tok(app, U) })).json();
+    expect(j.equity.find((e: any) => e.id === closed)).toMatchObject({ net: 12.5, strategy: 'Sub-account · 26 Oct expiry (live)' });
+    expect(j.open.find((o: any) => o.id === open)).toMatchObject({ name: 'Main account · 27 Oct expiry', mode: 'live' });
+    const d = (await app.inject({ method: 'GET', url: `/bot/runs/${open}/pnl`, headers: tok(app, U) })).json();
+    expect(d.net).toEqual([2, 5]);
+    expect(d.run).toMatchObject({ status: 'open', book: 'live' });
+    expect((await app.inject({ method: 'GET', url: `/bot/runs/${open}/pnl`, headers: tok(app, V) })).statusCode).toBe(404);
+    await app.close();
+  });
+
   it('the minute view opens an algo run, closed or open, only for its owner', async () => {
     const app = await build();
     const c = (await app.inject({ method: 'GET', url: `/bot/runs/${liveClosed}/pnl`, headers: tok(app, U) })).json();

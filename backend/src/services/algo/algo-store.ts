@@ -47,6 +47,19 @@ CREATE TABLE IF NOT EXISTS algo_run_marks (
   spot numeric,
   PRIMARY KEY (run_id, t)
 );
+CREATE TABLE IF NOT EXISTS real_runs (
+  id uuid PRIMARY KEY,
+  user_id uuid NOT NULL,
+  account text NOT NULL,
+  expiry text NOT NULL,
+  name text NOT NULL,
+  status text NOT NULL DEFAULT 'open',
+  symbols jsonb NOT NULL DEFAULT '[]',
+  entered_at timestamptz NOT NULL DEFAULT now(),
+  exited_at timestamptz,
+  net_pnl numeric
+);
+CREATE INDEX IF NOT EXISTS real_runs_user_idx ON real_runs (user_id, status);
 CREATE TABLE IF NOT EXISTS algo_defaults (
   user_id uuid PRIMARY KEY,
   rule jsonb NOT NULL,

@@ -203,7 +203,22 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     if (!run.rowCount) {
       // not a bot run: it may be one of the algo runs (Paper or Live), whose minutes are recorded in algo_run_marks
       const a = await getRunById(userId(req), id);
-      if (!a) return reply.code(404).send({ success: false, error: 'run not found' });
+      if (!a) {
+        // or one of the user's own real Delta positions (main account / sub-account), recorded in real_runs
+        await ensureAlgoSchema();
+        const rr = (await pool.query('SELECT * FROM real_runs WHERE id = $1 AND user_id = $2', [id, userId(req)])).rows[0] as any;
+        if (!rr) return reply.code(404).send({ success: false, error: 'run not found' });
+        const m = await getMarks(rr.id);
+        const pts: SeriesPoint[] = m.t.map((t, i) => ({ t, net: m.net[i]!, gross: m.net[i]!, spot: null, pct: null }));
+        const closed = rr.status !== 'open';
+        const net = rr.net_pnl != null ? Number(rr.net_pnl) : (m.net.length ? m.net[m.net.length - 1]! : null);
+        return {
+          success: true,
+          run: { id: rr.id, strategy: rr.name, book: 'live', status: closed ? 'closed' : 'open', dateKey: new Date(rr.entered_at).toISOString().slice(0, 10), entryMs: new Date(rr.entered_at).getTime(), exitMs: rr.exited_at ? new Date(rr.exited_at).getTime() : null, plannedExitMs: null, margin: null, feesEntry: null, feesExit: null, net, gross: net, exitReason: closed ? 'position closed' : null, exitDetail: null },
+          t: pts.map((p) => p.t), net: pts.map((p) => p.net), gross: pts.map((p) => p.gross), spot: pts.map(() => null), pct: pts.map(() => null),
+          legs: [], tp: null, stops: [], events: [], stats: analyzeSeries(pts),
+        };
+      }
       const m = await getMarks(a.id);
       const pts: SeriesPoint[] = m.t.map((t, i) => ({ t, net: m.net[i]!, gross: m.net[i]!, spot: m.spot[i] ?? null, pct: null }));
       const rule = (a.plan as { rule?: { exit?: { netTargetUsd?: number | null; futTargetUsd?: number | null } } } | null)?.rule;
@@ -270,6 +285,17 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
         net: Number(x.net_pnl), gross: Number(x.net_pnl), fees: 0, margin: null, reason: x.exit_reason ?? null,
       }));
       const open = rowsA.filter((x) => x.status === 'entered').map((x) => ({ id: x.id, name: x.name, mode: x.mode, entryMs: new Date(x.entered_at).getTime() }));
+      // the user's own real positions on Delta (main account and sub-account), tracked by the stop alarm's position reader
+      const real = (await pool.query(
+        `SELECT id, name, status, expiry, entered_at, exited_at,
+                COALESCE(net_pnl, (SELECT m.net FROM algo_run_marks m WHERE m.run_id = real_runs.id ORDER BY m.t DESC LIMIT 1)) AS net_pnl
+           FROM real_runs WHERE user_id = $1 ORDER BY entered_at DESC LIMIT $2`,
+        [userId(req), lim],
+      )).rows as any[];
+      for (const x of real) {
+        if (x.status === 'open') open.push({ id: x.id, name: x.name, mode: 'live', entryMs: new Date(x.entered_at).getTime() });
+        else if (x.net_pnl != null && x.exited_at) trades.push({ id: x.id, strategy: `${x.name} (live)`, book: 'live', dateKey: new Date(x.entered_at).toISOString().slice(0, 10), entryMs: new Date(x.entered_at).getTime(), exitMs: new Date(x.exited_at).getTime(), net: Number(x.net_pnl), gross: Number(x.net_pnl), fees: 0, margin: null, reason: 'position closed' });
+      }
       return { success: true, ...analyzeTrades(trades), open };
     }
     const r = await pool.query(

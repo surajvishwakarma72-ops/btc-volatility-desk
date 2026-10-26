@@ -4,6 +4,7 @@ import { DESK_USER_ID } from '../auth-store.js';
 import { loadDeltaKey, usersWithDeltaKey } from '../delta-keys.js';
 import { activePaperIds, marketFeed, peekPaper } from '../paper/paper-terminal.js';
 import { expiryOf, fetchOptionPositions, LiveExit, realLiveExitDeps, type OptionPosition } from './live-exit.js';
+import { observeReal } from './real-tracker.js';
 import { getWatchConfig } from './watch-store.js';
 import { WatchService, type WatchSources } from './watch.js';
 
@@ -28,18 +29,18 @@ async function realCreds(userId: string): Promise<{ key: string; secret: string 
  * Legs from the read account are watch-only when the two differ: they get their own group (":watch") that the hard exit never acts on,
  * because the hard exit only ever sends orders with the trading key.
  */
-async function watchedAccounts(userId: string): Promise<Array<{ creds: { key: string; secret: string }; watchOnly: boolean }>> {
+async function watchedAccounts(userId: string): Promise<Array<{ creds: { key: string; secret: string }; watchOnly: boolean; account: string }>> {
   const read = await realCreds(userId);
   const trade = await loadDeltaKey(userId, 'trade');
-  if (read && trade && read.key !== trade.key) return [{ creds: read, watchOnly: true }, { creds: trade, watchOnly: false }];
+  if (read && trade && read.key !== trade.key) return [{ creds: read, watchOnly: true, account: 'main' }, { creds: trade, watchOnly: false, account: 'sub' }];
   const one = trade ?? read;
-  return one ? [{ creds: one, watchOnly: false }] : [];
+  return one ? [{ creds: one, watchOnly: false, account: 'account' }] : [];
 }
 
 async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[] | null> {
   const accounts = await watchedAccounts(userId);
   if (!accounts.length) return null;
-  const lists: Array<{ list: OptionPosition[]; watchOnly: boolean }> = [];
+  const lists: Array<{ list: OptionPosition[]; watchOnly: boolean; account: string }> = [];
   for (const a of accounts) {
     const ck = `${userId}|${a.creds.key}`;
     let hit = posCache.get(ck);
@@ -47,12 +48,15 @@ async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[
       hit = { at: Date.now(), list: await fetchOptionPositions(a.creds.key, a.creds.secret) };
       posCache.set(ck, hit);
     }
-    lists.push({ list: hit.list, watchOnly: a.watchOnly });
+    lists.push({ list: hit.list, watchOnly: a.watchOnly, account: a.account });
   }
-  if (!lists.some((l) => l.list.length)) return [];
   const snap = await marketFeed().fast();
   const by = new Map(snap.rows.map((r) => [r.symbol, r]));
   for (const r of snap.rows) ticks.set(r.symbol, r.tick);
+  // live PnL of these real positions, recorded for the PnL analysis panel (also closes a run when its position is gone)
+  const markOf = (s: string): number | null => { const m = by.get(s)?.mark; return m != null && m > 0 ? m : null; };
+  for (const l of lists) await observeReal(userId, l.account, l.list, markOf);
+  if (!lists.some((l) => l.list.length)) return [];
   const out: WatchLeg[] = [];
   for (const { list, watchOnly } of lists) {
     for (const p of list) {
