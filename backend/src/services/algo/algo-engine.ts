@@ -31,7 +31,8 @@ export interface FuturePlan { side: 'long' | 'short'; lots: number; spot: number
 export type EntryPlan = { kind: 'option'; legs: PlannedLeg[]; expiries: string[]; spot: number; premium: number } | { kind: 'future'; future: FuturePlan };
 
 export type PlaceResult = { ok: true; ref: string; dry?: boolean; detail: string } | { ok: false; reason: string };
-export interface BrokerStatus { open: boolean; netPnl: number | null; closedReason?: string | null; /** futures: entry, mark and side of the one position */ future?: { entry: number; mark: number; side: 'long' | 'short' } }
+export interface LegStatus { symbol: string; side: 'buy' | 'sell'; lots: number; entry: number; mark: number | null; pnl: number | null }
+export interface BrokerStatus { open: boolean; netPnl: number | null; /** each leg's own PnL, before fees */ legs?: LegStatus[]; closedReason?: string | null; /** futures: entry, mark and side of the one position */ future?: { entry: number; mark: number; side: 'long' | 'short' } }
 
 export interface Broker {
   place(userId: string, rule: AlgoStrategy, plan: EntryPlan, name: string): Promise<PlaceResult>;

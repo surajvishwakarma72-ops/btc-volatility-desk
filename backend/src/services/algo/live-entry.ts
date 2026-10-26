@@ -107,13 +107,16 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
         const mine = (await d.positions(creds.key, creds.secret)).filter((p) => r.symbols.includes(p.symbol));
         if (!mine.length) return { open: false, netPnl: null, closedReason: 'no open position left in these contracts' };
         let net = 0;
+        const legs: NonNullable<BrokerStatus['legs']> = [];
         for (const p of mine) {
           const b = await d.book(p.symbol);
           const bid = b.bids[0]?.[0], ask = b.asks[0]?.[0];
           if (!bid || !ask) return { open: true, netPnl: null };
-          net += (p.size < 0 ? p.entry - (bid + ask) / 2 : (bid + ask) / 2 - p.entry) * Math.abs(p.size) * 0.001;
+          const mid = (bid + ask) / 2, pnl = (p.size < 0 ? p.entry - mid : mid - p.entry) * Math.abs(p.size) * 0.001;
+          net += pnl;
+          legs.push({ symbol: p.symbol, side: p.size < 0 ? 'sell' : 'buy', lots: Math.abs(p.size), entry: p.entry, mark: mid, pnl });
         }
-        return { open: true, netPnl: net };
+        return { open: true, netPnl: net, legs };
       } catch {
         return null;
       }

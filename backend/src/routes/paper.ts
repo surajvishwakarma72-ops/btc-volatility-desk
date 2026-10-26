@@ -162,7 +162,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
       let peak: { t: number; net: number } | null = null, trough: { t: number; net: number } | null = null;
       net.forEach((v, i) => { if (!peak || v > peak.net) peak = { t: t[i]!, net: v }; if (!trough || v < trough.net) trough = { t: t[i]!, net: v }; });
       return {
-        success: true, t, net, gross: net, spot: t.map(() => null), legs: [], tp: null, stats: { peak, trough },
+        success: true, t, net, gross: net, spot: t.map(() => null), legs: [], nowLegs: st.legs.map((l) => ({ symbol: l.symbol, side: l.side, lots: l.lots, entry: l.entry, mark: l.exit ?? l.mark, pnl: l.pnl })), tp: null, stats: { peak, trough },
         run: { id: st.id, name: st.name, status: isOpen ? 'open' : 'closed', mode: 'paper', lots: null, enteredAt: st.openedAt, exitedAt: st.closedAt, exitReason: st.closeReason, margin: st.marginAtEntry },
         recordedMinutes: m.t.length,
       };

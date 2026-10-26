@@ -58178,7 +58178,7 @@ document.addEventListener('click', function(e) {
 #pgBot .lv-big small{display:block;font:600 11.5px var(--font);color:var(--muted);margin-top:2px}
 #pgBot .lv-sp{width:100%;height:74px;display:block;color:var(--text);margin:4px 0}
 #pgBot .lv-spn{display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--muted);border:1px dashed var(--line2);border-radius:8px}
-#pgBot .lv-legs{font-size:12px;color:var(--muted);margin:2px 0 6px}
+#pgBot .lv-legs{font-size:12px;color:var(--muted);margin:2px 0 6px}#pgBot .lv-leg{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-top:1px solid var(--line,#8883)}#pgBot .lv-leg b{font-variant-numeric:tabular-nums}
 #pgBot .lv-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px 10px}
 #pgBot .lv-meta div{display:flex;flex-direction:column;gap:1px;font-size:13px}
 #pgBot .lv-meta span,#pgBot .lv-meta small{font-size:10.5px;color:var(--muted)}
@@ -58340,7 +58340,8 @@ document.addEventListener('click', function(e) {
       tile('Best so far', usd(hi), 'pos', hi > net ? 'now ' + usd(hi - net) + ' below it' : 'at its best now') +
       (d.spot && d.spot[i] != null ? tile('BTC', Number(d.spot[i]).toFixed(0), '', '') : '') +
       (d.tp != null ? tile('To take profit', usd(d.tp - net), '', 'target ' + usd(d.tp, 0)) : '') + '</div>' +
-      (legs ? '<div class="pcScroll"><table class="pcT"><thead><tr><th>Leg</th><th>Mark</th><th>PnL</th><th>IV</th><th>Delta</th></tr></thead><tbody>' + legs + '</tbody></table></div>' : '') + '</div>';
+      (legs ? '<div class="pcScroll"><table class="pcT"><thead><tr><th>Leg</th><th>Mark</th><th>PnL</th><th>IV</th><th>Delta</th></tr></thead><tbody>' + legs + '</tbody></table></div>'
+        : d.nowLegs && d.nowLegs.length ? '<div class="pcScroll"><table class="pcT"><thead><tr><th>Leg (now)</th><th>Entry</th><th>Mark</th><th>PnL</th></tr></thead><tbody>' + d.nowLegs.map(l => '<tr><td>' + esc(String(l.symbol).replace(/-BTC/, '')) + ' <span class="dim">' + (l.side === 'sell' ? 'sold' : 'bought') + ' ' + l.lots + '</span></td><td>' + (l.entry == null ? '-' : Number(l.entry).toFixed(1)) + '</td><td>' + (l.mark == null ? '-' : Number(l.mark).toFixed(1)) + '</td><td class="' + sg(l.pnl) + '">' + usd(l.pnl) + '</td></tr>').join('') + '</tbody></table></div>' : '') + '</div>';
   }
 
   function equityReadout(E, i) {
@@ -58850,6 +58851,7 @@ document.addEventListener('click', function(e) {
 #pgAlgo .pc .pcScroll{overflow:auto}
 #pgAlgo .pc table.pcT{border-collapse:collapse;width:100%;font-size:12px}
 #pgAlgo .pc .bt-note{font-size:12px;color:var(--muted);margin:6px 0}
+.al-legrow td{padding:2px 8px 8px;border-top:0;font-size:12px}.al-leg{display:inline-block;margin:2px 14px 2px 0}.al-leg b{font-variant-numeric:tabular-nums}
 #pgAlgo tr.al-rr{cursor:pointer}#pgAlgo tr.al-rr:hover td{background:var(--panel2)}#pgAlgo tr.al-rr.sel td{background:var(--panel2);box-shadow:inset 0 1px 0 var(--focus),inset 0 -1px 0 var(--focus)}
 @keyframes alFlash{0%{box-shadow:0 0 0 3px var(--focus,#58A6D6);background:rgba(88,166,214,.25)}100%{box-shadow:0 0 0 0 transparent}}
 #pgAlgo .al-flash{animation:alFlash 1.8s ease-out 1}
@@ -59320,7 +59322,8 @@ document.addEventListener('click', function(e) {
     return '<div class="al-scroll"><div class="al-note">Click a run to open its live PnL graph above the list.</div><table class="al-t"><thead><tr><th>Started (IST)</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Lots</th><th>Net PnL</th><th>Why / result</th><th></th></tr></thead><tbody>' + st.runs.map(r => {
       const pnl = r.status === 'entered' ? r.liveNetPnl : r.netPnl;
       return '<tr class="al-rr' + (S.sel === r.id ? ' sel' : '') + '" data-al="runchart" data-id="' + r.id + '" title="Click to see its PnL by minute"><td>' + IST(r.enteredAt || r.windowStart) + '</td><td>' + esc(r.name) + '</td><td>' + (r.mode === 'live' ? 'Live' : 'Paper') + '</td><td><span class="al-chip ' + badge(r.status) + '">' + esc(r.status) + '</span></td><td>' + (r.lots || '') + '</td><td class="' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '</td><td class="w">' + esc((r.status === 'entered' ? (r.plan && r.plan.why) || r.reason : r.exitReason || r.reason || '')) + '</td>' +
-        '<td>' + (r.status === 'entered' ? '<button type="button" class="al-btn" data-al="runexit" data-id="' + r.id + '">Exit now</button>' : '') + '</td></tr>';
+        '<td>' + (r.status === 'entered' ? '<button type="button" class="al-btn" data-al="runexit" data-id="' + r.id + '">Exit now</button>' : '') + '</td></tr>' +
+        (r.status === 'entered' && (r.liveLegs || []).length ? '<tr class="al-legrow"><td colspan="8">' + r.liveLegs.map(l => '<span class="al-leg">' + (l.side === 'sell' ? 'Sold ' : 'Bought ') + l.lots + ' x ' + esc(String(l.symbol).replace(/-BTC/, '')) + ' @ ' + Number(l.entry).toFixed(1) + (l.mark == null ? '' : ' now ' + Number(l.mark).toFixed(1)) + ' <b class="' + sgn(l.pnl) + '">' + (l.pnl == null ? '-' : usd(l.pnl)) + '</b></span>').join('') + '</td></tr>' : '');
     }).join('') + '</tbody></table></div>';
   }
   function openHtml() {
@@ -59869,7 +59872,10 @@ document.addEventListener('click', function(e) {
     return '<div class="bt-card lv" data-bt-run="' + esc(p.id) + '" title="Click to open this trade minute by minute">' +
       '<div class="lv-h"><b>' + esc(shortName(p.strategy)) + '</b><span class="lv-chip"><i></i>LIVE' + (entryMs ? ' · since ' + IST(entryMs).slice(6) + ' IST · ' + hmm(Math.round((Date.now() - entryMs) / 60000)) : '') + '</span></div>' +
       '<div class="lv-big ' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '<small>' + (p.pnl && p.pnl.pctOfMargin != null ? (p.pnl.pctOfMargin >= 0 ? '+' : '') + (p.pnl.pctOfMargin * 100).toFixed(1) + '% of margin · after fees' : 'waiting for a price') + '</small></div>' +
-      sparkSvg(p.id, tpT) + '<div class="lv-legs">' + esc(legs) + '</div>' +
+      sparkSvg(p.id, tpT) + '<div class="lv-legs">' + ((p.legs || []).length ? (p.legs || []).map(l => {
+        const mk = l.mark != null ? l.mark : (l.type === 'future' ? p.spot : null), sold = l.side === 'short', pl = mk == null || l.entryPrice == null ? null : (sold ? l.entryPrice - mk : mk - l.entryPrice) * l.lots * 0.001;
+        return '<div class="lv-leg"><span>' + esc((sold ? 'Sell ' : l.type === 'future' ? 'Long ' : 'Buy ') + l.lots + ' x ' + (l.strike ? Math.round(l.strike).toLocaleString('en-US') + (l.type === 'call' ? ' C' : ' P') : esc(l.symbol)) + ' @ ' + Number(l.entryPrice).toFixed(1) + (mk == null ? '' : ' now ' + Number(mk).toFixed(1))) + '</span><b class="' + sgn(pl) + '">' + (pl == null ? '-' : usd(pl)) + '</b></div>';
+      }).join('') : esc(legs)) + '</div>' +
       '<div class="lv-meta">' + meta.map(m => '<div><span>' + esc(m[0]) + '</span><b>' + esc(m[1]) + '</b>' + (m[2] ? '<small>' + esc(m[2]) + '</small>' : '') + '</div>').join('') + '</div></div>';
   }
   function pnlStrip() {

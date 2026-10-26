@@ -35,16 +35,18 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
     // open runs get their current net PnL
     const open = runs.filter((r) => r.status === 'entered' && r.ref);
     const net = new Map<string, number | null>();
+    const legsNow = new Map<string, unknown>();
     await Promise.all(open.map(async (r) => {
       const s = await (r.mode === 'live' ? liveBroker : paperBroker).status(uid, r.ref!).catch(() => null);
       net.set(r.id, s?.netPnl ?? null);
+      legsNow.set(r.id, s?.legs ?? []);
     }));
     return {
       success: true, live, defaults, now: Date.now(),
       // the stop alarm and hard exit distances that really apply (Settings), so the page can say them truthfully
       watch: { warnPoints: wc.warnPoints, hardPoints: wc.hardPoints, liveArmed: wc.liveArmed, dryRun: wc.dryRun },
       strategies: strategies.map((s) => ({ id: s.id, rule: s.rule, lots: s.lots, armed: s.armed, check: algoEngine.checks.get(s.id) ?? null })),
-      runs: runs.map((r) => ({ ...r, liveNetPnl: net.get(r.id) ?? null })),
+      runs: runs.map((r) => ({ ...r, liveNetPnl: net.get(r.id) ?? null, liveLegs: legsNow.get(r.id) ?? [] })),
       engineError: algoEngine.errors.get(uid) ?? null,
     };
   });
@@ -158,16 +160,18 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
     const run = await getRunById(uid, id.data);
     if (!run) return bad(reply, 'no such run', 404);
     const m = await getMarks(run.id);
+    let nowLegs: unknown[] = [];
     // an open run also gets the live point so the chart reaches "now"
     if (run.status === 'entered' && run.ref) {
       const st = await (run.mode === 'live' ? liveBroker : paperBroker).status(uid, run.ref).catch(() => null);
+      nowLegs = st?.legs ?? [];
       if (st?.netPnl != null) { m.t.push(Date.now()); m.net.push(st.netPnl); m.spot.push(st.future?.mark ?? null); }
     }
     const rule = (run.plan as { rule?: { exit?: { netTargetUsd?: number | null; futTargetUsd?: number | null } } } | null)?.rule;
     let peak = null as { t: number; net: number } | null, trough = null as { t: number; net: number } | null;
     m.net.forEach((v, i) => { if (!peak || v > peak.net) peak = { t: m.t[i]!, net: v }; if (!trough || v < trough.net) trough = { t: m.t[i]!, net: v }; });
     return {
-      success: true, t: m.t, net: m.net, gross: m.net, spot: m.spot, legs: [],
+      success: true, t: m.t, net: m.net, gross: m.net, spot: m.spot, legs: [], nowLegs,
       tp: rule?.exit?.netTargetUsd ?? rule?.exit?.futTargetUsd ?? null, stats: { peak, trough },
       run: { id: run.id, name: run.name, status: run.status === 'entered' ? 'open' : 'closed', mode: run.mode, lots: run.lots, enteredAt: run.enteredAt, exitedAt: run.exitedAt, exitReason: run.exitReason, margin: null },
     };

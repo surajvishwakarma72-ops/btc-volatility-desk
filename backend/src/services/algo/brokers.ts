@@ -46,7 +46,8 @@ export const paperBroker: Broker = {
     if (!hit) return { open: false, netPnl: null, closedReason: 'the strategy is no longer on the Paper page' };
     const leg = hit.legs[0];
     const fut = leg && /^BTCUSD$/.test(leg.symbol) && leg.mark != null ? { entry: leg.entry, mark: leg.mark, side: leg.side === 'buy' ? 'long' as const : 'short' as const } : undefined;
-    return { open: !!open, netPnl: hit.netPnl, closedReason: open ? null : (hit.closeReason ?? 'closed'), future: open ? fut : undefined };
+    const legs = hit.legs.map((l) => ({ symbol: l.symbol, side: l.side === 'buy' ? 'buy' as const : 'sell' as const, lots: l.lots, entry: l.entry, mark: l.exit ?? l.mark, pnl: l.pnl }));
+    return { open: !!open, netPnl: hit.netPnl, legs, closedReason: open ? null : (hit.closeReason ?? 'closed'), future: open ? fut : undefined };
   },
 
   async closeAll(userId: string, ref: string, reason: string) {
