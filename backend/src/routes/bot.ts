@@ -258,7 +258,9 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
       // the algo runs (Paper and Live) of the signed-in user; the open ones are listed beside the closed curve
       await ensureAlgoSchema();
       const a = await pool.query(
-        `SELECT id, name, mode, status, date_key, entered_at, exited_at, net_pnl, exit_reason FROM algo_runs
+        `SELECT id, name, mode, status, date_key, entered_at, exited_at, exit_reason,
+                COALESCE(net_pnl, (SELECT m.net FROM algo_run_marks m WHERE m.run_id = algo_runs.id ORDER BY m.t DESC LIMIT 1)) AS net_pnl
+           FROM algo_runs
           WHERE user_id = $1 AND entered_at IS NOT NULL AND status IN ('entered','exited') ORDER BY entered_at DESC LIMIT $2`,
         [userId(req), lim],
       );

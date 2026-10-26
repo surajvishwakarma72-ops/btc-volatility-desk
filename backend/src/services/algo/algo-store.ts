@@ -169,7 +169,11 @@ export async function createRun(run: Omit<RunRow, 'id' | 'exitedAt' | 'exitReaso
 
 export async function finishRun(id: string, status: RunStatus, exitReason: string, netPnl: number | null): Promise<void> {
   await ensureAlgoSchema();
-  await pool.query('UPDATE algo_runs SET status = $2, exit_reason = $3, net_pnl = $4, exited_at = now() WHERE id = $1', [id, status, exitReason, netPnl]);
+  // a position that was already gone when the engine looked (closed on Delta, hard exit) has no live figure: keep the last recorded minute's PnL
+  await pool.query(
+    'UPDATE algo_runs SET status = $2, exit_reason = $3, net_pnl = COALESCE($4::numeric, (SELECT net FROM algo_run_marks WHERE run_id = $1 ORDER BY t DESC LIMIT 1)), exited_at = now() WHERE id = $1',
+    [id, status, exitReason, netPnl],
+  );
 }
 
 export async function getRun(strategyId: string, dateKey: string): Promise<RunRow | null> {
