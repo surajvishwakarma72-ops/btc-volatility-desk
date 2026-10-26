@@ -45553,7 +45553,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function layers() { const want = { charts: !!on.pat, struct: !!on.pat, candles: !!on.cdl, sess: on.ses !== false, boxes: on.ses !== false, ivl: on.ses !== false };/* v142 + v143 (Session IV layers: IV change on each box, green = IV fell, red = rose): Session boxes item (v133 had switched them off with no way back) */for (const k in want) { const b = D.querySelector('.pa-tg[data-k="' + k + '"]'); if (b && (b.getAttribute('aria-pressed') === 'true') !== want[k]) b.click(); } }
       function tick() { try { button(); apply(false); } catch (e) { console.warn('v132 ind', e); } }
       setTimeout(tick, 600); setTimeout(tick, 2000); setInterval(() => { if (!D.hidden) tick(); }, 2500); addEventListener('resize', () => setTimeout(() => apply(false), 200));
-      W.v127 = { tick, state: () => ({ on }) }; W.v132ind = { open: openMenu, state: () => on, apply, paint, save: () => save() };
+      W.v127 = { tick, state: () => ({ on }) }; W.v132ind = { open: openMenu, state: () => on, apply, paint, save: () => save(), list: LIST };
     })();
   </script>
   <style id="v128Css">
@@ -52974,7 +52974,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         });
         favBtn(m);
       }
-      W.v145menu = { paint: mpaint };
+      W.v145menu = { paint: mpaint, info: INFO };
 
       /* =================================================================== 3. entry / exit signals drawn on the BTC chart */
       class Prim {
@@ -58876,7 +58876,24 @@ document.addEventListener('click', function(e) {
 #pgAlgo .al-fact span{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 #pgAlgo .al-fact b{font-weight:600;line-height:1.4}#pgAlgo .al-fact.bad b{color:var(--up)}
 #pgAlgo .al-fact small{color:var(--muted);font-weight:400}
-#askPanel .ak-clear{width:auto;padding:0 10px;font-size:12px;font-weight:600}
+#askPanel .ak-x.ak-clear{width:auto;height:auto;padding:4px 10px;font-size:12px;font-weight:600;line-height:1.2;border-radius:999px}
+#pgAlgo .al-fxg{margin:12px 0 6px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+#pgAlgo .al-fxg .dim{text-transform:none;letter-spacing:0;font-weight:500}
+#pgAlgo .al-fxq{width:100%;max-width:420px;margin:0 0 8px}
+#pgAlgo .al-fxl{display:flex;flex-direction:column;gap:6px;max-height:460px;overflow:auto;padding-right:4px;margin-bottom:8px}
+#pgAlgo .al-fx{border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:var(--panel2)}
+#pgAlgo .al-fxh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+#pgAlgo .al-fxh .rk{font-style:normal;font-size:10.5px;font-weight:700;color:var(--muted);min-width:20px}
+#pgAlgo .al-fxh .d{font-size:12px;color:var(--muted);flex:1;min-width:200px}
+#pgAlgo .al-i{background:none;border:1px solid var(--line2);color:var(--muted);border-radius:50%;width:22px;height:22px;line-height:18px;font-size:13px;cursor:pointer;padding:0}
+#pgAlgo .al-i[aria-expanded=true]{color:var(--text);border-color:var(--focus)}
+#pgAlgo .al-how{margin:6px 0 2px;padding:7px 10px;border-left:3px solid var(--focus);background:var(--panel);font-size:12.5px;line-height:1.5;color:var(--text)}
+#pgAlgo .al-how em.ok{color:var(--down);font-style:normal;font-weight:700}#pgAlgo .al-how em.bad{color:var(--up);font-style:normal;font-weight:700}
+#pgAlgo .al-fxa{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;align-items:center;font-size:12px}
+#pgAlgo .al-cc.rec{border-color:var(--warn);color:var(--text);background:rgba(227,174,69,.14)}
+#pgAlgo .al-reco{border:1px solid var(--warn);border-radius:10px;padding:8px 12px;margin:4px 0 10px;background:rgba(227,174,69,.07)}
+#pgAlgo .al-rh{font-weight:700;margin:0 0 6px}
+#pgAlgo .al-rr2{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:5px 0;border-top:1px solid var(--line);font-size:12.5px}
 #pgAlgo .al-ev{list-style:none;margin:0;padding:0;font-size:12.5px}
 #pgAlgo .al-ev li{padding:4px 0;border-bottom:1px solid var(--line)}
 #pgAlgo .al-ev li.bad{color:var(--up)}
@@ -58917,7 +58934,7 @@ document.addEventListener('click', function(e) {
   };
   function mkLeg(type, side, mode) { return { type, side, pick: { mode, target: 0.1, strike: 100000, points: 3000 } }; }
 
-  const S = { help: dkUi.get('al_help', '') === '1', sel: null, pnl: null, meta: null, hair: -1, ins: null, insAt: 0, st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: dkUi.get('al_tab', 'strategies'), formOpen: true, at: 0 };
+  const S = { fxq: '', fxOpen: {}, rowOpen: {}, help: dkUi.get('al_help', '') === '1', sel: null, pnl: null, meta: null, hair: -1, ins: null, insAt: 0, st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: dkUi.get('al_tab', 'strategies'), formOpen: true, at: 0 };
 
   async function api(path, opt) {
     const t = tok(); if (!t) { const e = new Error('Sign in first'); e.status = 401; throw e; }
@@ -59070,7 +59087,7 @@ document.addEventListener('click', function(e) {
     else if (c.type === 'vwap') body = '<span>Price</span>' + sel(b + 'state', c.state || 'above', [['above', 'above'], ['below', 'below']]) + '<span>VWAP (last 24h)</span>';
     else if (c.type === 'change') body = '<span>Price change over</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min</span>' + op + inp(b + 'pct', c.pct, { t: 'num', type: 'number', step: '0.1', cls: 's' }) + '<span>%</span>';
     else if (c.type === 'ema') body = '<span>EMA</span>' + inp(b + 'fast', c.fast, { t: 'num', type: 'number', cls: 's' }) + sel(b + 'state', c.state || 'above', [['above', 'is above'], ['below', 'is below']]) + '<span>EMA</span>' + inp(b + 'slow', c.slow, { t: 'num', type: 'number', cls: 's' }) + tf;
-    return '<div class="al-leg"><b>' + (i + 1) + '</b>' + body + '<button type="button" class="al-x" data-al="delcond" data-i="' + i + '" title="Remove condition">×</button></div>';
+    return '<div class="al-leg"><b>' + (i + 1) + '</b>' + body + '<button type="button" class="al-i" data-al="rowinfo" data-i="' + i + '" title="What this indicator tells you">ⓘ</button><button type="button" class="al-x" data-al="delcond" data-i="' + i + '" title="Remove condition">×</button>' + (S.rowOpen[i] ? rowInfoHtml(c) : '') + '</div>';
   }
 
   const dayChip = (d, on) => '<button type="button" class="al-day ' + (on ? 'on' : 'off') + '" aria-pressed="' + on + '" data-al="day" data-d="' + d + '" data-flash="days.' + d + '">' + DAYL[d] + '<i>' + (on ? '✓' : '✕') + '</i></button>';
@@ -59081,8 +59098,70 @@ document.addEventListener('click', function(e) {
     ['Momentum and price', [['rsi_falling', 'RSI falling'], ['rsi', 'RSI level'], ['vwap', 'VWAP'], ['change', 'Price change'], ['spot', 'Spot level']]],
     ['Desk', [['gate', 'Desk gate says GO'], ['premium', 'Premium collected']]],
   ];
+  /* The same ƒx list as the chart menu (same order, same short text, same "how to use" under the ⓘ). Each indicator the server can test is a button;
+     the rest are shown too, marked "chart only", so nothing in the menu is missing here. */
+  const pct0 = v => (v * 100).toFixed(0) + '%';
+  const FXMAP = { spd: [['speed', 'Speed vs IV']], edge: [['edge', 'Edge between']], adx: [['adx_falling', 'ADX below and falling'], ['adx', 'ADX level']], iv: [['atmiv_falling', 'ATM IV falling'], ['atmiv', 'ATM IV level']], rv: [['rv_falling', 'RV falling']], dv: [['dvol_falling', 'DVOL falling'], ['dvol', 'DVOL level']], ton: [['ivclock', 'Tonight IV vs clock']], rsi: [['rsi_falling', 'RSI falling'], ['rsi', 'RSI level']], vwap: [['vwap', 'Price vs VWAP']], risk: [['gate', 'Desk gate says GO']] };
+  const TYPE2FX = { adx: 'adx', adx_falling: 'adx', atmiv: 'iv', atmiv_falling: 'iv', dvol: 'dv', dvol_falling: 'dv', rv_falling: 'rv', rsi: 'rsi', rsi_falling: 'rsi', speed: 'spd', edge: 'edge', ivclock: 'ton', vwap: 'vwap', gate: 'risk' };
+  const EXTRA = [
+    ['ema', 'EMA cross', 'A fast and a slow moving average of price. Fast above slow = price has been rising lately, fast below = falling.'],
+    ['macd', 'MACD', 'Difference of two moving averages with a signal line. Histogram above 0 = momentum up, below 0 = momentum down.'],
+    ['bb', 'Bollinger band', 'A band two standard deviations around the average price. Price inside the band = ordinary movement, outside = stretched.'],
+    ['atr', 'ATR (average true range)', 'The average size of a candle as a percent of price. Low = quiet market, high = big swings.'],
+    ['change', 'Price change over time', 'How much BTC moved over the last N minutes, in percent. A small move supports selling options.'],
+    ['spot', 'Spot level', 'BTC price above or below a level you choose.'],
+    ['premium', 'Premium collected', 'The premium the sold legs would bring in right now, in dollars. Enter only when it is worth the risk.'],
+  ];
+  const fxInfoOf = k => { const I = window.v145menu && window.v145menu.info; return I && I[k] ? I[k][2] : ''; };
+  function fxItems() {
+    const L = (window.v132ind && window.v132ind.list) || [], I = (window.v145menu && window.v145menu.info) || {};
+    return L.map(x => ({ k: x[0], n: x[1], d: x[2], r: (I[x[0]] || [90])[0], how: (I[x[0]] || [0, 0, ''])[2] })).sort((a, b) => a.r - b.r);
+  }
+  /** conditions that performed well recently (from the "What worked" ranking), for this kind of strategy */
+  function recList() {
+    const m = S.ins && S.ins.market; if (!m) return [];
+    if (S.form.instrument === 'future') {
+      const side = S.form.future.side === 'short' ? 'short' : 'long';
+      return m.futures.filter(x => x.score > 1 && x[side]).slice(0, 3).map(x => ({ cond: x[side], label: x.label, why: 'right ' + pct0(x.winRate) + ' of ' + x.n + ' signals over 4 hours, average ' + (x.avgPct >= 0 ? '+' : '') + x.avgPct.toFixed(3) + '%' }));
+    }
+    return m.options.filter(o => o.condition && o.calmerPct > 5).slice(0, 3).map(o => ({ cond: o.condition, label: o.label, why: 'the next 8 hours were ' + o.calmerPct.toFixed(0) + '% calmer than average, ' + pct0(o.calmRate) + ' stayed inside 2% (average ' + pct0(o.baselineCalmRate) + ')' }));
+  }
+  function recoHtml() {
+    if (!S.ins) return '<div class="al-reco"><div class="al-rh">★ Recommended conditions</div><div class="al-note">Working out which indicators performed well on the last four weeks…</div></div>';
+    if (S.ins.error) return '<div class="al-reco"><div class="al-rh">★ Recommended conditions</div><div class="al-note">Not available now: ' + esc(S.ins.error) + '</div></div>';
+    const r = recList();
+    if (!r.length) return '<div class="al-reco"><div class="al-rh">★ Recommended conditions</div><div class="al-note">No indicator stood out on the last four weeks for this kind of strategy, so nothing is pre-selected.</div></div>';
+    return '<div class="al-reco"><div class="al-rh">★ Recommended conditions <span class="dim">(performed well on the last four weeks, not a promise)</span></div>' +
+      r.map(x => '<div class="al-rr2"><div><b>' + esc(x.label) + '</b><br><span class="dim">' + esc(x.why) + '</span></div><button type="button" class="al-btn" data-al="addrec" data-j="' + esc(JSON.stringify(x.cond)) + '">+ Add</button></div>').join('') +
+      '<div class="al-actions" style="margin:6px 0 0"><button type="button" class="al-btn pri" data-al="usereco">Use the recommended conditions</button><span class="dim">New window strategies start with the best two already selected.</span></div></div>';
+  }
+  const recTypes = () => new Set(recList().map(x => x.cond.type));
+  function fxListHtml() {
+    const q = (S.fxq || '').toLowerCase().trim(), rec = recTypes();
+    const match = (n, d, how) => !q || (n + ' ' + d + ' ' + String(how || '').replace(/<[^>]+>/g, '')).toLowerCase().includes(q);
+    const btns = vars => vars.map(v => '<button type="button" class="al-cc' + (rec.has(v[0]) ? ' rec' : '') + '" data-al="addc" data-t="' + v[0] + '">' + (rec.has(v[0]) ? '★ ' : '+ ') + esc(v[1]) + '</button>').join('');
+    let h = '';
+    for (const it of fxItems()) {
+      if (!match(it.n, it.d, it.how)) continue;
+      const vars = FXMAP[it.k];
+      h += '<div class="al-fx"><div class="al-fxh"><em class="rk">' + it.r + '</em><b>' + esc(it.n) + '</b><span class="d">' + esc(it.d) + '</span><button type="button" class="al-i" data-al="fxinfo" data-k="' + esc(it.k) + '" aria-expanded="' + !!S.fxOpen[it.k] + '" title="How to use it">ⓘ</button></div>' +
+        (S.fxOpen[it.k] ? '<div class="al-how"><b>How to use it for the short strangle</b><br>' + it.how + '</div>' : '') +
+        '<div class="al-fxa">' + (vars ? btns(vars) : '<span class="dim">chart only: the server cannot test this one automatically yet, use it on the chart as a manual check</span>') + '</div></div>';
+    }
+    const ex = EXTRA.filter(x => match(x[1], x[2], ''));
+    if (ex.length) h += '<div class="al-fxg">More indicators (not in the chart menu)</div>' + ex.map(x => '<div class="al-fx"><div class="al-fxh"><b>' + esc(x[1]) + '</b><button type="button" class="al-i" data-al="fxinfo" data-k="x_' + x[0] + '" aria-expanded="' + !!S.fxOpen['x_' + x[0]] + '" title="What it is">ⓘ</button></div>' + (S.fxOpen['x_' + x[0]] ? '<div class="al-how">' + esc(x[2]) + '</div>' : '') + '<div class="al-fxa">' + btns([[x[0], x[1]]]) + '</div></div>').join('');
+    return h || '<div class="al-note">No indicator matches that search.</div>';
+  }
   function condPicker() {
-    return '<div class="al-cp">' + CGROUPS.map(g => '<div class="al-cg"><span>' + esc(g[0]) + '</span>' + g[1].map(x => '<button type="button" class="al-cc" data-al="addc" data-t="' + x[0] + '">+ ' + esc(x[1]) + '</button>').join('') + '</div>').join('') + '</div>';
+    const have = !!(window.v132ind && window.v132ind.list);
+    return '<div id="alReco">' + recoHtml() + '</div><div class="al-fxg">ƒx indicators <span class="dim">· same list and order as the chart menu · tap ⓘ for how to use one · each added condition below is editable</span></div>' +
+      (have ? '<input type="search" class="al-fxq" data-fxq placeholder="Search the indicators…" value="' + esc(S.fxq) + '"><div id="alFxList" class="al-fxl">' + fxListHtml() + '</div>' : '<div class="al-note">The indicator list is not loaded yet.</div>');
+  }
+  /** the how-to text under a condition row's ⓘ */
+  function rowInfoHtml(c) {
+    const k = TYPE2FX[c.type], ex = EXTRA.find(x => x[0] === c.type);
+    const how = k ? fxInfoOf(k) : ex ? esc(ex[2]) : '';
+    return '<div class="al-how" style="flex-basis:100%"><b>What it checks</b> ' + esc(condWords(c)) + '.' + (how ? '<br><b>How to use it</b><br>' + how : '') + '</div>';
   }
   const COND_DEF = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 }, adx_falling: { tf: '15m', value: 25, bars: 3 }, atmiv_falling: { minutes: 30, minDrop: 0.3 }, dvol_falling: { minutes: 60, minDrop: 0.5 }, rsi_falling: { tf: '15m', bars: 3, minDrop: 1 }, rv_falling: { minutes: 60 }, ivclock: { op: 'above', points: 1 }, edge: { low: 1, high: 8 } };
   function addCondType(t) {
@@ -59378,7 +59457,7 @@ document.addEventListener('click', function(e) {
       S.st = await api('/state');
       if (S.tab === 'open' || !S.open) S.open = await api('/open-positions').catch(() => S.open);
       if (S.tab === 'ev') S.ev = (await api('/events')).events;
-      if (S.tab === 'ins' && (!S.ins || Date.now() - S.insAt > 300000)) { S.ins = await api('/insights').catch(e => ({ error: e.message })); S.insAt = Date.now(); }
+      if ((S.tab === 'ins' || S.tab === 'build') && (!S.ins || Date.now() - S.insAt > 300000)) { S.ins = await api('/insights').catch(e => ({ error: e.message })); S.insAt = Date.now(); const r = $('alReco'); if (r) r.innerHTML = recoHtml(); const l = $('alFxList'); if (l) l.innerHTML = fxListHtml(); }
       if (!S.sel && S.st) { const o = S.st.runs.find(x => x.status === 'entered'); if (o) S.sel = o.id; }
       if (S.sel) await loadTrack();
       paintLive(); if (!S.formTouched) paintForm();
@@ -59402,7 +59481,11 @@ document.addEventListener('click', function(e) {
     if (t === 'nulltime') return el.value || null;
     return el.value;
   }
-  root.addEventListener('input', e => { const el = e.target; if (!el.dataset || !el.dataset.f || el.dataset.struct) return; S.formTouched = true; setPath(S.form, el.dataset.f, conv(el)); });
+  root.addEventListener('input', e => {
+    const el = e.target;
+    if (el.dataset && el.dataset.fxq !== undefined) { S.fxq = el.value; const l = $('alFxList'); if (l) l.innerHTML = fxListHtml(); return; }
+    if (!el.dataset || !el.dataset.f || el.dataset.struct) return; S.formTouched = true; setPath(S.form, el.dataset.f, conv(el));
+  });
   root.addEventListener('change', e => {
     const el = e.target;
     if (el.dataset && el.dataset.alAdd === 'cond') {
@@ -59414,6 +59497,11 @@ document.addEventListener('click', function(e) {
     S.formTouched = true; setPath(S.form, el.dataset.f, conv(el));
     if (el.dataset.struct) {
       if (el.dataset.f === 'mode' && el.value === 'live' && !(S.st && S.st.live.tradeKey)) { S.form.mode = 'paper'; S.err = 'Live needs a trading key. Save one in Settings first.'; }
+      // a new window strategy starts with the two best-performing conditions already selected
+      if (el.dataset.f === 'entry.kind' && el.value === 'window' && !S.form.entry.conditions.length) {
+        const rl = recList().slice(0, 2); rl.forEach(x => S.form.entry.conditions.push(JSON.parse(JSON.stringify(x.cond))));
+        if (rl.length) S.ok = 'Added the ' + rl.length + ' best-performing condition' + (rl.length > 1 ? 's' : '') + ' by default. Remove any you do not want.';
+      }
       paintForm();
     }
   });
@@ -59433,6 +59521,15 @@ document.addEventListener('click', function(e) {
     if (a === 'runchart') { S.sel = b.dataset.id; S.pnl = null; S.hair = -1; paintLive(); await loadTrack(); const t = $('alTrack'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
     if (a === 'addcond') { addCond(b); return; }
     if (a === 'addc') { addCondType(b.dataset.t); return; }
+    if (a === 'fxinfo') { S.fxOpen[b.dataset.k] = !S.fxOpen[b.dataset.k]; const el = $('alFxList'); if (el) el.innerHTML = fxListHtml(); return; }
+    if (a === 'rowinfo') { S.rowOpen[b.dataset.i] = !S.rowOpen[b.dataset.i]; paintForm(); return; }
+    if (a === 'addrec' || a === 'usereco') {
+      const list = a === 'addrec' ? [JSON.parse(b.dataset.j)] : recList().map(x => x.cond);
+      const have = f.entry.conditions.map(c => JSON.stringify(c)); let n = 0;
+      list.forEach(c => { if (!have.includes(JSON.stringify(c))) { f.entry.conditions.push(JSON.parse(JSON.stringify(c))); n++; } });
+      if (n && f.entry.kind !== 'window') { f.entry.kind = 'window'; S.ok = 'The entry is now a window that waits for your conditions: set its From and Until times.'; }
+      S.formTouched = true; paintForm(); return;
+    }
     if (a === 'valid') {
       const k = b.dataset.k, now = Date.now();
       if (k === 'none') f.validUntil = '';
@@ -61496,6 +61593,8 @@ document.addEventListener('click', function(e) {
     return r;
   }
   const hasAny = p => Object.keys(p).length > 0;
+  /** The exit time to start from: a daytime trade (05:00 to 15:59 IST) closes at 16:00 IST, a night trade (16:00 to 04:59) at 07:00 IST. hhmm is the entry time. */
+  function defaultExitTime(hhmm) { const h = Number(String(hhmm || '').slice(0, 2)); return h >= 5 && h < 16 ? '16:00' : '07:00'; }
   /** The answer to "future or option?": a patch, or null when the text does not say. */
   /** "trade now" or "schedule": a patch, or null */
   function parseWhen(q) {
@@ -61630,6 +61729,14 @@ document.addEventListener('click', function(e) {
     T.when = patch.when || (patch.entryTime || patch.window ? 'later' : 'now');
     await preview();
     let note = T.when === 'later' ? 'Scheduled trade: set the entry time and the days below, then say ok to arm it. It places itself at that time.' : null;
+    try { T.live = (await api('/state')).live; } catch (e) { /* keep what we knew */ }
+    {
+      const x = T.rule.exit, at = T.rule.entry.kind === 'hard' ? T.rule.entry.time : T.rule.entry.kind === 'window' ? T.rule.entry.from : null;
+      const hh = T.when === 'now' || !at ? new Date(Date.now() + 19800000).toISOString().slice(11, 16) : at;
+      if (x.exitTime == null && !('exitTime' in patch)) { x.exitTime = defaultExitTime(hh); note = (note ? note + ' ' : '') + 'Exit time set to ' + x.exitTime + ' IST, the default for a ' + (x.exitTime === '16:00' ? 'daytime' : 'night') + ' trade: change it below.'; }
+      const mg = T.pv && T.pv.margin && T.pv.margin.required;
+      if (T.rule.instrument === 'option' && x.netTargetUsd == null && !patch.netTarget && mg) { x.netTargetUsd = Math.max(1, Math.round(mg * 0.1 * 100) / 100); note = (note ? note + ' ' : '') + 'Net target set to $' + x.netTargetUsd + ' (10% of the margin, the bot\'s own short-strangle target): change or clear it below.'; }
+    }
     const sg = T.pv && T.pv.recommend && T.pv.recommend.suggest;
     if (T.rule.instrument === 'future' && sg && sg.stopUsd) {
       const x = T.rule.exit, filled = [];
@@ -61734,12 +61841,24 @@ document.addEventListener('click', function(e) {
       if (pv.margin) h += '<div class="at-fine">Margin is ' + esc(pv.margin.note) + '.</div>';
       if (r.entry.kind === 'window' && s.when !== 'now') h += condList(pv.conditions);
     }
-    if (builder) h += builderForm(s);
+    if (builder) h += builderForm(s); else h += quickForm(s);
     h += '<div class="at-act">' + (pv && pv.ok ? '<button type="button" class="at-btn pri" data-at="ok">' + (builder ? (s.when === 'now' ? 'OK, place at market' : 'OK, arm it') : 'OK') + '</button>' : '') +
       (builder ? '<button type="button" class="at-btn" data-at="update">Update summary</button><button type="button" class="at-btn" data-at="savedef">Save as my default</button>' : '') +
       '<button type="button" class="at-btn" data-at="cancel">Cancel</button></div>';
     h += '<div class="at-fine">' + (builder ? 'Change anything with the boxes, or type it: "delta 0.08-0.12", "expiry nearest", "stop 3x", "exit 07:00", "days mon tue". Then say ok.' : 'Say <b>ok</b> to open the strategy builder, or type a change such as "delta 0.08-0.12" or "expiry nearest".') + '</div></div>';
     return h;
+  }
+  /** the few things to confirm before ok: when it closes, the net dollars, and Paper or Live */
+  function quickForm(s) {
+    const r = s.rule, o = (v, c, l) => '<option value="' + v + '"' + (v === c ? ' selected' : '') + '>' + l + '</option>';
+    const keyed = !!(T.live && T.live.tradeKey);
+    return '<div class="at-form">' +
+      '<label>Exit time (IST)<input data-atf="xtime" type="time" value="' + esc(r.exit.exitTime || '') + '"></label>' +
+      (r.instrument === 'future'
+        ? '<label>Stop loss $<input data-atf="fstop" type="number" value="' + (r.exit.futStopUsd == null ? '' : r.exit.futStopUsd) + '" placeholder="none"></label><label>Target $<input data-atf="ftgt" type="number" value="' + (r.exit.futTargetUsd == null ? '' : r.exit.futTargetUsd) + '" placeholder="none"></label>'
+        : '<label>Net target $<input data-atf="tgt" type="number" value="' + (r.exit.netTargetUsd == null ? '' : r.exit.netTargetUsd) + '" placeholder="none"></label><label>Net stop $<input data-atf="nstop" type="number" value="' + (r.exit.netStopUsd == null ? '' : r.exit.netStopUsd) + '" placeholder="none"></label>') +
+      '<label>Run on<select data-atf="mode">' + o('paper', r.mode, 'Paper account') + o('live', r.mode, keyed ? 'Live (real orders)' : 'Live (needs a trading key)') + '</select></label></div>' +
+      '<div class="at-act"><button type="button" class="at-btn" data-at="update">Update summary</button></div>';
   }
   function builderForm(s) {
     const r = s.rule, dl = r.legs.find(l => l.pick.mode === 'delta');
@@ -61810,7 +61929,7 @@ document.addEventListener('click', function(e) {
       if (!r.days.length) r.days = [d];
       await preview(); answer(msg('builder', { snap: snap() }));
     }
-    else if (a === 'update') { readForm(); await preview(); answer(msg('builder', { snap: snap() })); }
+    else if (a === 'update') { const nt = readForm(); await preview(); answer(msg(T.stage === 'summary' ? 'summary' : 'builder', { snap: snap(), note: nt })); }
     else if (a === 'savedef') {
       readForm();
       try { await api('/defaults', { method: 'PUT', body: JSON.stringify({ rule: T.rule }) }); answer(msg('saved', { rule: T.rule, lots: T.lots })); }
@@ -61833,8 +61952,12 @@ document.addEventListener('click', function(e) {
     const ft = v('ftgt'); if (ft != null) r.exit.futTargetUsd = ft === '' ? null : Number(ft);
     const tg = v('tgt'); if (tg != null) r.exit.netTargetUsd = tg === '' ? null : Number(tg);
     const ns = v('nstop'); if (ns != null) r.exit.netStopUsd = ns === '' ? null : Number(ns);
-    const md = v('mode'); if (md) r.mode = md;
+    let note = null;
+    const md = v('mode');
+    if (md === 'live' && !(T.live && T.live.tradeKey)) { r.mode = 'paper'; note = 'Live needs a trading key, so it stays on Paper. Save a key in Settings (Stop alarm and hard exit) to unlock Live.'; }
+    else if (md) r.mode = md;
     const rp = v('rep'); if (rp) r.repeat = rp;
+    return note;
   }
 
   const style = D.createElement('style');
@@ -61851,7 +61974,7 @@ document.addEventListener('click', function(e) {
     '#askPanel .at-cl{list-style:none;margin:6px 0 0;padding:0}#askPanel .at-cl li.ok{color:var(--down,#35BB7D)}#askPanel .at-cl li.no{color:var(--warn,#E3AE45)}#askPanel .at-cl span{color:var(--muted,#8fa3b5)}';
   D.head.appendChild(style);
 
-  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, reset, congrats, API, active: () => T.stage };
+  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, reset, defaultExitTime, congrats, API, active: () => T.stage };
 })();
 </script><script id="askWizard">
 /* Ask me: "algo trading" starts a guided build of an Algo strategy. The Algo page opens beside the chat and its form fills in as you answer,
@@ -62054,6 +62177,11 @@ document.addEventListener('click', function(e) {
       return [];
     }
 
+    /** the exit time to start from, by the entry time (or now, for a trade placed now) */
+    function exitDefault(w, nowMs) {
+      const at = w.when === 'later' ? (w.rule.entry.kind === 'hard' ? w.rule.entry.time : w.rule.entry.from) : null;
+      return P.defaultExitTime(at || new Date((nowMs || Date.now()) + 19800000).toISOString().slice(11, 16));
+    }
     const sayDays = d => d.length === 7 ? 'every day' : d.map(x => x[0].toUpperCase() + x.slice(1)).join(', ');
     /** One line of what has been decided so far */
     function summary(w) {
@@ -62122,10 +62250,10 @@ document.addEventListener('click', function(e) {
         case 'days': return extra.concat([C('every day', 'Every day'), C('weekdays', 'Weekdays (Mon to Fri)')]);
         case 'repeat': return [C('once', 'One time only'), C('daily', 'Daily on those days')];
         case 'valid': return [C('none', 'No limit'), C('today', 'End of today'), C('7 days', '7 days'), C('30 days', '30 days')];
-        case 'stops': return w.rule.instrument === 'option' ? [C('2x'), C('3x'), C('none', 'No per-leg stop'), C('default', 'Keep the default')] : extra.concat([C('none', 'No stop')]);
-        case 'exittime': return [C('none', 'No exit time'), C('07:00'), C('17:00'), C('23:00')];
+        case 'stops': return w.rule.instrument === 'option' ? extra.concat([C('2x'), C('3x'), C('none', 'No per-leg stop'), C('default', 'Keep the default')]) : extra.concat([C('none', 'No stop')]);
+        case 'exittime': return extra.concat([C('none', 'No exit time'), C('16:00', '16:00 (day trade)'), C('07:00', '07:00 (night trade)')]);
         case 'lots': return [C('10'), C('50'), C('100')];
-        case 'mode': return extra.length ? [C('paper', 'Paper account'), C('live', 'Live (real orders)')] : [C('paper', 'Paper account')];
+        case 'mode': return [C('paper', 'Paper account'), C('live', extra.length ? 'Live (real orders)' : 'Live (needs a trading key)')];
         case 'review': return [C('save', 'Save'), C('arm', 'Save and arm')].concat(w.when === 'now' ? [C('now', 'Place now at market')] : []).concat([C('cancel', 'Cancel')]);
       }
       return [];
@@ -62135,7 +62263,7 @@ document.addEventListener('click', function(e) {
       if (/^(what|how|why|explain|tell me about|define|does|is)\b/.test(q)) return false;
       return /^(algo|algo trading|algo trade|algo trading panel|algo panel|new algo|new algo strategy|create algo|create algo strategy|build algo|build algo strategy|start algo|start algo trading|open algo|open algo trading|algo form|algo strategy|algo builder|set up algo|setup algo|set up algo trading)$/.test(q) || /\balgo\b.*\b(create|build|new|start|set ?up|form|fill|open)\b/.test(q);
     };
-    return { COND, COND_NAMES, SLOT, TITLES, steps, parseAnswer, applyAnswer, summary, recKind, recTime, recDays, recConditions, recStops, recLots, chipsFor, isStart, times };
+    return { COND, COND_NAMES, SLOT, TITLES, exitDefault, steps, parseAnswer, applyAnswer, summary, recKind, recTime, recDays, recConditions, recStops, recLots, chipsFor, isStart, times };
   }
   // WIZARD-CORE-END
 
@@ -62191,8 +62319,8 @@ document.addEventListener('click', function(e) {
       else if (st === 'days') { const f = await scoreFacts(true); const d = C.recDays({ days: f.days, label: f.label }); rec = d.text; extra = d.chips; }
       else if (st === 'repeat') rec = ['One time suits a trade you want to take once, for example tonight: it switches itself off after the first window. Daily repeats on every green day.'];
       else if (st === 'valid') rec = ['A valid-until time cancels the strategy by itself, so one you forget about stops trading. Choose no limit to keep it until you disarm it.'];
-      else if (st === 'stops') { pv = await previewNow(w); rec = C.recStops(w, pv); const sg = pv && pv.recommend && pv.recommend.suggest; if (w.rule.instrument === 'future' && sg && sg.stopUsd) extra = [{ v: 'stop $' + sg.stopUsd + ' target $' + sg.targetUsd, label: 'Suggested: stop $' + sg.stopUsd + ', target $' + sg.targetUsd }]; }
-      else if (st === 'exittime') rec = ['An exit time closes everything at that IST time. The New York strangle (22:30) has been exiting at 07:00 IST in the desk plans; Asia at 16:00.'];
+      else if (st === 'stops') { pv = await previewNow(w); rec = C.recStops(w, pv); const sg = pv && pv.recommend && pv.recommend.suggest; const mg = pv && pv.margin && pv.margin.required; if (w.rule.instrument === 'option' && mg) { const t = Math.max(1, Math.round(mg * 0.1 * 100) / 100); rec.push('A net target of about $' + t + ' is 10% of the margin, the bot\'s own short-strangle target. A net stop is optional because every sold leg already stops.'); extra = [{ v: 'target $' + t, label: 'Net target $' + t + ' (10% of margin)' }]; } if (w.rule.instrument === 'future' && sg && sg.stopUsd) extra = [{ v: 'stop $' + sg.stopUsd + ' target $' + sg.targetUsd, label: 'Suggested: stop $' + sg.stopUsd + ', target $' + sg.targetUsd }]; }
+      else if (st === 'exittime') { const d = C.exitDefault(w, Date.now()); rec = ['Default ' + d + ' IST: a ' + (d === '16:00' ? 'daytime trade closes at 16:00 IST' : 'night trade closes at 07:00 IST') + '. It is already filled in on the form: tap another time, type one, or say none.']; extra = [{ v: d, label: d + ' IST (default)' }]; }
       else if (st === 'lots') { pv = await previewNow(w); rec = C.recLots(pv); }
       else if (st === 'mode') { const lv = await live(); extra = lv && lv.tradeKey ? [1] : []; rec = [lv && lv.tradeKey ? 'A trading key is saved. Live still needs arming and dry-run off in Settings, and starts in dry-run.' : 'Paper only: Live unlocks when you save a trading key in Settings.']; }
       else if (st === 'review') {
@@ -62219,11 +62347,14 @@ document.addEventListener('click', function(e) {
   }
   const snapshot = () => ({ w: JSON.parse(JSON.stringify(W.w)), step: W.step });
 
-  async function advance(flash, note) {
+  async function advance(flash0, note) {
+    let flash = flash0;
     const C = core(), list = C.steps(W.w);
     let i = list.indexOf(W.step);
     // after the conditions step stays until "done" is said; every other step moves on
     W.step = list[i + 1] || 'review';
+    // the exit time starts from the default for this kind of trade and shows on the form
+    if (W.step === 'exittime' && W.w.rule.exit.exitTime == null) { W.w.rule.exit.exitTime = core().exitDefault(W.w, Date.now()); flash = (flash || []).concat(['exit.exitTime']); }
     fillForm(flash);
     return card(note);
   }
@@ -62253,6 +62384,7 @@ document.addEventListener('click', function(e) {
       return card(a.hint);
     }
     if (st === 'review') return finish(a.act);
+    if (st === 'mode' && a.mode === 'live') { const lv = await live(); if (!(lv && lv.tradeKey)) return card('Live needs a trading key, so it stays on Paper. Save a key in Settings (Stop alarm and hard exit) to unlock Live.'); }
     W.hist.push(snapshot());
     const flash = C.applyAnswer(w, st, a);
     // the conditions step repeats until "done"

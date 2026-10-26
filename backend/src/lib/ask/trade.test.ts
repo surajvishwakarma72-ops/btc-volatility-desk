@@ -12,9 +12,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.resolve(here, '../../../../frontend/index.html'), 'utf8');
 const a = html.indexOf('// ASKTRADE-CORE-START'), b = html.indexOf('// ASKTRADE-CORE-END');
 if (a < 0 || b < 0) throw new Error('ASKTRADE markers not found in frontend/index.html');
-const T = new Function(`${html.slice(a, b)}\nreturn { parseTrade, parsePatch, applyPatch, congrats };`)() as {
+const T = new Function(`${html.slice(a, b)}\nreturn { parseTrade, parsePatch, applyPatch, congrats, defaultExitTime };`)() as {
   parseTrade(q: string, pending?: string | null): { kind: string; lots?: number; patch?: any; which?: string } | null;
   parsePatch(q: string): any;
+  defaultExitTime(hhmm: string): string;
   applyPatch(rule: any, p: any): any;
   congrats(rule: any, lots: number, pv: any, res: any, when: string): { head: string; rows: string[][]; lines: string[] };
 };
@@ -81,6 +82,16 @@ describe('option or future?', () => {
     }
     expect(T.parseTrade('banana', 'choose')).toBeNull();
     expect(T.parseTrade('cancel', 'choose')).toMatchObject({ kind: 'cancel' });
+  });
+});
+
+describe('the exit time to start from', () => {
+  it('a daytime trade closes at 16:00 IST, a night trade at 07:00 IST', () => {
+    for (const t of ['05:00', '10:00', '12:30', '15:59']) expect(T.defaultExitTime(t), t).toBe('16:00');
+    for (const t of ['16:00', '17:30', '22:30', '23:59', '00:10', '03:00', '04:59']) expect(T.defaultExitTime(t), t).toBe('07:00');
+  });
+  it('anything unreadable falls back to the night default', () => {
+    expect(T.defaultExitTime('')).toBe('07:00');
   });
 });
 

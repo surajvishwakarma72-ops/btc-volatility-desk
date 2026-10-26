@@ -8,7 +8,7 @@ import { defaultStrangle, strategySchema } from '../algo/rule.js';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.resolve(here, '../../../../frontend/index.html'), 'utf8');
 const slice = (a: string, b: string) => { const i = html.indexOf(a), j = html.indexOf(b); if (i < 0 || j < 0) throw new Error('markers missing: ' + a); return html.slice(i, j); };
-const P = new Function(`${slice('// ASKTRADE-CORE-START', '// ASKTRADE-CORE-END')}\nreturn { parsePatch, applyPatch, parseChoice };`)();
+const P = new Function(`${slice('// ASKTRADE-CORE-START', '// ASKTRADE-CORE-END')}\nreturn { parsePatch, applyPatch, parseChoice, defaultExitTime };`)();
 const W = new Function('P', `${slice('// WIZARD-CORE-START', '// WIZARD-CORE-END')}\nreturn makeWizardCore(P);`)(P) as any;
 
 const base = () => JSON.parse(JSON.stringify(defaultStrangle()));
@@ -99,6 +99,36 @@ describe('reading answers', () => {
     expect(W.parseAnswer('review', 'save and arm', w).act).toBe('arm');
     expect(W.parseAnswer('review', 'save', w).act).toBe('save');
     expect(W.parseAnswer('review', 'place now', w).act).toBe('now');
+  });
+});
+
+describe('exit time defaults, net dollars and paper or live', () => {
+  const at = (iso: string) => Date.parse(iso);
+  it('a trade placed now starts from 16:00 IST by day and 07:00 IST at night', () => {
+    expect(W.exitDefault(fresh('now'), at('2026-10-26T05:00:00Z'))).toBe('16:00'); // 10:30 IST
+    expect(W.exitDefault(fresh('now'), at('2026-10-26T17:00:00Z'))).toBe('07:00'); // 22:30 IST
+    expect(W.exitDefault(fresh('now'), at('2026-10-26T21:30:00Z'))).toBe('07:00'); // 03:00 IST
+  });
+  it('a scheduled trade follows its entry time, not the clock', () => {
+    const w = fresh('later'); w.rule.entry = { kind: 'hard', time: '10:00' };
+    expect(W.exitDefault(w, at('2026-10-26T17:00:00Z'))).toBe('16:00');
+    w.rule.entry = { kind: 'window', from: '22:30', to: '01:30', conditions: [] };
+    expect(W.exitDefault(w, at('2026-10-26T05:00:00Z'))).toBe('07:00');
+  });
+  it('the exit-time step offers the default first, plus none, 16:00 and 07:00', () => {
+    const c = W.chipsFor('exittime', fresh(), [{ v: '16:00', label: '16:00 IST (default)' }]);
+    expect(c[0].v).toBe('16:00');
+    expect(c.map((x: any) => x.v)).toEqual(['16:00', 'none', '16:00', '07:00']);
+  });
+  it('the stops step offers a net target next to 2x and 3x', () => {
+    const c = W.chipsFor('stops', fresh(), [{ v: 'target $8.6', label: 'Net target $8.6' }]);
+    expect(c.map((x: any) => x.v)).toEqual(['target $8.6', '2x', '3x', 'none', 'default']);
+    expect(W.parseAnswer('stops', 'target $8.6', fresh()).patch.netTarget).toBe(8.6);
+  });
+  it('Live is always offered, with a hint when there is no trading key', () => {
+    expect(W.chipsFor('mode', fresh(), []).map((x: any) => x.v)).toEqual(['paper', 'live']);
+    expect(W.chipsFor('mode', fresh(), []).find((x: any) => x.v === 'live').label).toMatch(/needs a trading key/);
+    expect(W.chipsFor('mode', fresh(), [1]).find((x: any) => x.v === 'live').label).toBe('Live (real orders)');
   });
 });
 
