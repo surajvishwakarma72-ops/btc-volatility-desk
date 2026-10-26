@@ -6,6 +6,7 @@ import { macroStressWorker } from './macro-stress-worker.js';
 import { botEngine } from './bot/bot-engine.js';
 import { paperTerminal } from './paper/paper-terminal.js';
 import { watchService } from './watch/sources.js';
+import { algoEngine } from './algo/algo-runtime.js';
 
 export { alertService } from './alert-service.js';
 export { binanceWorker } from './binance-market-worker.js';
@@ -33,6 +34,7 @@ export class WorkerManager {
     void botEngine.start(); // paper trading bot; no-op unless BOT_ENABLED=true
     paperTerminal.start(); // the user's own paper account: working orders, stops, expiry (idle when nothing is open)
     watchService.start(); // the stop alarm: watches every open position (bot, paper strategies, real Delta) for its stop
+    algoEngine.start(); // the Algo panel: waits for each armed strategy's window and conditions, enters once, manages the exit
   }
 
   stopAll() {
@@ -46,6 +48,7 @@ export class WorkerManager {
     botEngine.stop();
     paperTerminal.stop();
     watchService.stop();
+    algoEngine.stop();
   }
 
   getStatus() {

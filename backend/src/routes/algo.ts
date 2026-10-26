@@ -1,0 +1,181 @@
+import type { FastifyPluginAsync } from 'fastify';
+import { z } from 'zod';
+import { userId } from '../lib/guards.js';
+import { defaultStrangle, exitAtMs, exitSchema, strategySchema, type AlgoStrategy } from '../lib/algo/rule.js';
+import { istDateKey } from '../lib/bot/schedule.js';
+import { algoEngine } from '../services/algo/algo-runtime.js';
+import { conditionsOf } from '../services/algo/algo-engine.js';
+import { clearPending, createRun, deleteStrategy, finishRun, getDefaults, getRunById, getStrategy, listStrategies, recentRuns, saveDefaults, saveStrategy, setArmed } from '../services/algo/algo-store.js';
+import { enterNow, exitAll, liveState, previewEntry } from '../services/algo/algo-service.js';
+import { paperBroker } from '../services/algo/brokers.js';
+import { liveBroker } from '../services/algo/live-entry.js';
+import { fetchOptionPositions, OPTION_SYMBOL } from '../services/watch/live-exit.js';
+import { loadDeltaKey } from '../services/delta-keys.js';
+import { paperFor } from '../services/paper/paper-terminal.js';
+import { recentWatchEvents } from '../services/watch/watch-store.js';
+
+/**
+ * The Algo panel's API. Strategies run on the user's own Paper account unless the strategy is switched to Live, and Live needs
+ * a saved trading key; real orders also need the arm / dry-run / server switches in services/watch (see live-entry.ts).
+ */
+const lotsField = z.number().int().min(1).max(1_000_000);
+const strategyBody = z.object({ id: z.string().uuid().optional(), rule: strategySchema, lots: lotsField });
+
+export const algoRoutes: FastifyPluginAsync = async (fastify) => {
+  const auth = { preHandler: (fastify as any).authenticate };
+  const limited = { ...auth, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } };
+  const bad = (reply: any, error: string, code = 400) => reply.code(code).send({ success: false, error });
+  const need = (e: z.ZodError) => e.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
+
+  fastify.get('/state', auth, async (req) => {
+    const uid = userId(req);
+    const [strategies, runs, live, defaults] = await Promise.all([listStrategies(uid), recentRuns(uid, 40), liveState(uid), getDefaults(uid)]);
+    // open runs get their current net PnL
+    const open = runs.filter((r) => r.status === 'entered' && r.ref);
+    const net = new Map<string, number | null>();
+    await Promise.all(open.map(async (r) => {
+      const s = await (r.mode === 'live' ? liveBroker : paperBroker).status(uid, r.ref!).catch(() => null);
+      net.set(r.id, s?.netPnl ?? null);
+    }));
+    return {
+      success: true, live, defaults, now: Date.now(),
+      strategies: strategies.map((s) => ({ id: s.id, rule: s.rule, lots: s.lots, armed: s.armed, check: algoEngine.checks.get(s.id) ?? null })),
+      runs: runs.map((r) => ({ ...r, liveNetPnl: net.get(r.id) ?? null })),
+      engineError: algoEngine.lastError,
+    };
+  });
+
+  fastify.get('/events', auth, async (req) => ({ success: true, events: (await recentWatchEvents(userId(req), 60)).filter((e) => e.kind.startsWith('algo_')) }));
+
+  fastify.post('/strategies', limited, async (req, reply) => {
+    const b = strategyBody.safeParse(req.body);
+    if (!b.success) return bad(reply, need(b.error));
+    const uid = userId(req);
+    if (b.data.rule.mode === 'live' && !(await liveState(uid)).tradeKey) return bad(reply, 'Live mode needs a trading key. Save one in Settings first, or keep this strategy on Paper.', 409);
+    if (b.data.id && !(await getStrategy(uid, b.data.id))) return bad(reply, 'no such strategy', 404);
+    return { success: true, strategy: await saveStrategy(uid, b.data.id ?? null, b.data.rule, b.data.lots) };
+  });
+
+  fastify.delete('/strategies/:id', limited, async (req, reply) => {
+    const id = z.string().uuid().safeParse((req.params as { id?: string }).id);
+    if (!id.success) return bad(reply, 'bad id');
+    return (await deleteStrategy(userId(req), id.data)) ? { success: true } : bad(reply, 'no such strategy', 404);
+  });
+
+  fastify.post('/strategies/:id/arm', limited, async (req, reply) => {
+    const id = z.string().uuid().safeParse((req.params as { id?: string }).id);
+    const b = z.object({ armed: z.boolean() }).safeParse(req.body);
+    if (!id.success || !b.success) return bad(reply, 'send { "armed": true | false }');
+    const uid = userId(req);
+    const s = await getStrategy(uid, id.data);
+    if (!s) return bad(reply, 'no such strategy', 404);
+    if (b.data.armed && s.rule.mode === 'live' && !(await liveState(uid)).tradeKey) return bad(reply, 'Live mode needs a trading key. Save one in Settings first.', 409);
+    await setArmed(uid, id.data, b.data.armed);
+    return { success: true, armed: b.data.armed };
+  });
+
+  // The summary the user reads before saying ok. Places nothing.
+  fastify.post('/preview', limited, async (req, reply) => {
+    const b = z.object({ rule: strategySchema, lots: lotsField }).safeParse(req.body);
+    if (!b.success) return bad(reply, need(b.error));
+    try {
+      const { plan, ...p } = await previewEntry(userId(req), b.data.rule, b.data.lots);
+      void plan;
+      return { success: true, preview: p };
+    } catch (e) {
+      return bad(reply, `market data unavailable: ${(e as Error).message}`, 502);
+    }
+  });
+
+  // Enter right now, outside the window (the panel's "Enter now"). Live mode still goes through every lock.
+  fastify.post('/enter-now', limited, async (req, reply) => {
+    const b = z.object({ rule: strategySchema, lots: lotsField, strategyId: z.string().uuid().optional() }).safeParse(req.body);
+    if (!b.success) return bad(reply, need(b.error));
+    const uid = userId(req);
+    if (b.data.rule.mode === 'live' && !(await liveState(uid)).tradeKey) return bad(reply, 'Live mode needs a trading key.', 409);
+    try {
+      const r = await enterNow(uid, b.data.rule, b.data.lots, b.data.strategyId ?? null);
+      return r.ok ? { success: true, dry: r.dry, detail: r.detail, run: r.run } : bad(reply, r.reason, 422);
+    } catch (e) {
+      return bad(reply, (e as Error).message, 502);
+    }
+  });
+
+  // Hard-kill every position. Real orders only when a trading key is saved and the locks allow it.
+  fastify.post('/exit-all', limited, async (req, reply) => {
+    try {
+      await clearPending(userId(req));
+      return { success: true, ...(await exitAll(userId(req))) };
+    } catch (e) {
+      return bad(reply, (e as Error).message, 502);
+    }
+  });
+
+  fastify.get('/defaults', auth, async (req) => ({ success: true, defaults: (await getDefaults(userId(req))) ?? defaultStrangle() }));
+  fastify.put('/defaults', limited, async (req, reply) => {
+    const b = strategySchema.safeParse((req.body as { rule?: unknown } | null)?.rule);
+    if (!b.success) return bad(reply, need(b.error));
+    await saveDefaults(userId(req), b.data);
+    return { success: true };
+  });
+
+  // Close one tracked run now (the panel's "Exit now").
+  fastify.post('/runs/:id/exit', limited, async (req, reply) => {
+    const id = z.string().uuid().safeParse((req.params as { id?: string }).id);
+    if (!id.success) return bad(reply, 'bad id');
+    const uid = userId(req);
+    const run = await getRunById(uid, id.data);
+    if (!run) return bad(reply, 'no such run', 404);
+    if (run.status !== 'entered' || !run.ref) return bad(reply, 'that run is not open', 409);
+    const broker = run.mode === 'live' ? liveBroker : paperBroker;
+    const st = await broker.status(uid, run.ref).catch(() => null);
+    const closed = await broker.closeAll(uid, run.ref, 'closed by you');
+    if (!closed.ok) return bad(reply, closed.reason ?? 'could not close', 422);
+    await finishRun(run.id, 'exited', 'closed by you', st?.netPnl ?? null);
+    return { success: true };
+  });
+
+  // What can be adopted: open Paper strategies and, with a key saved, real Delta option contracts.
+  fastify.get('/open-positions', auth, async (req) => {
+    const uid = userId(req);
+    const paper = (await paperFor(uid).strategies(0).catch(() => ({ open: [] as Array<{ id: string; name: string; netPnl: number | null; legs: unknown[] }> }))).open.map((s) => ({ id: s.id, name: s.name, netPnl: s.netPnl, legs: s.legs.length }));
+    let delta: Array<{ symbol: string; size: number; entry: number }> = [];
+    let deltaNote: string | null = null;
+    const key = (await loadDeltaKey(uid, 'trade')) ?? (await loadDeltaKey(uid, 'read'));
+    if (!key) deltaNote = 'Save a Delta key in Settings to see your real option positions here.';
+    else {
+      try { delta = (await fetchOptionPositions(key.key, key.secret)).map((p) => ({ symbol: p.symbol, size: p.size, entry: p.entry })); } catch (e) { deltaNote = (e as Error).message; }
+    }
+    return { success: true, paper, delta, deltaNote };
+  });
+
+  // Attach exit rules to a position that is already open (a Paper strategy, or real Delta option contracts).
+  fastify.post('/adopt', limited, async (req, reply) => {
+    const b = z.discriminatedUnion('source', [
+      z.object({ source: z.literal('paper'), id: z.string().uuid(), exit: exitSchema, name: z.string().trim().max(80).optional() }),
+      z.object({ source: z.literal('delta'), symbols: z.array(z.string().regex(OPTION_SYMBOL)).min(1).max(8), exit: exitSchema, name: z.string().trim().max(80).optional() }),
+    ]).safeParse(req.body);
+    if (!b.success) return bad(reply, need(b.error));
+    const uid = userId(req);
+    const now = Date.now();
+    const rule: AlgoStrategy = { ...defaultStrangle(), name: b.data.name || 'Adopted position', mode: b.data.source === 'paper' ? 'paper' : 'live', exit: b.data.exit, entry: { kind: 'hard', time: '00:00' } };
+    let ref: string;
+    let name = rule.name;
+    if (b.data.source === 'paper') {
+      const wanted = b.data.id;
+      const open = (await paperFor(uid).strategies(0)).open.find((s) => s.id === wanted);
+      if (!open) return bad(reply, 'that strategy is not open on your Paper account', 404);
+      ref = open.id;
+      name = b.data.name || open.name;
+    } else {
+      if (!(await liveState(uid)).tradeKey) return bad(reply, 'Tracking real positions with exits needs a trading key.', 409);
+      ref = JSON.stringify({ symbols: b.data.symbols });
+    }
+    const exitAt = exitAtMs(b.data.exit, { dateKey: istDateKey(now), startMs: now, endMs: now }, now);
+    const run = await createRun({
+      userId: uid, strategyId: null, name, dateKey: `adopt-${now}`, mode: rule.mode, status: 'entered', lots: 0, reason: 'adopted: an existing position now follows these exit rules',
+      plan: { rule: { ...rule, name }, plan: null, why: 'adopted position' }, ref, windowStart: now, enteredAt: now, exitAt,
+    });
+    return { success: true, run, conditionsIgnored: conditionsOf(rule).length };
+  });
+};

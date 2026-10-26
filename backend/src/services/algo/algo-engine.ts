@@ -1,0 +1,204 @@
+import { evalConditions, type ConditionResult, type MarketView } from '../../lib/algo/conditions.js';
+import { describeLeg, planOptionEntry, type PlannedLeg } from '../../lib/algo/plan.js';
+import { entryState, exitAtMs, istDay, windowOn, type AlgoStrategy, type Condition, type EntryWindow } from '../../lib/algo/rule.js';
+import type { Bar } from '../../lib/bot/futures.js';
+import type { ChainOption } from '../../lib/bot/strike-picker.js';
+import { istDateKey } from '../../lib/bot/schedule.js';
+import { createRun, finishRun, getRun, listArmed, openRuns, type RunRow, type StrategyRow } from './algo-store.js';
+
+/**
+ * The Algo engine. Every 5 seconds, for each ARMED strategy it:
+ *   1. waits for the entry window (a hard time, or a window like 22:30-01:30) on a selected day,
+ *   2. checks every condition the user wrote, over and over, and enters ONCE when all pass,
+ *   3. hands the order to a broker (paper account or the locked live path),
+ *   4. watches the open run: net target, net stop, exit time, and a position that was closed by its own stops.
+ * A strategy trades at most once per window (a unique run row per strategy and day), and a failed entry is not retried that day.
+ */
+export interface MarketData {
+  spot: number;
+  chain: ChainOption[];
+  expiries: number[];
+  dvol: number | null;
+  gateGo: boolean | null;
+  gateReasons: string[];
+  bars5m: Bar[];
+}
+
+export interface FuturePlan { side: 'long' | 'short'; lots: number; spot: number }
+export type EntryPlan = { kind: 'option'; legs: PlannedLeg[]; expiries: string[]; spot: number; premium: number } | { kind: 'future'; future: FuturePlan };
+
+export type PlaceResult = { ok: true; ref: string; dry?: boolean; detail: string } | { ok: false; reason: string };
+export interface BrokerStatus { open: boolean; netPnl: number | null; closedReason?: string | null; /** futures: entry, mark and side of the one position */ future?: { entry: number; mark: number; side: 'long' | 'short' } }
+
+export interface Broker {
+  place(userId: string, rule: AlgoStrategy, plan: EntryPlan, name: string): Promise<PlaceResult>;
+  status(userId: string, ref: string): Promise<BrokerStatus | null>;
+  closeAll(userId: string, ref: string, reason: string): Promise<{ ok: boolean; reason?: string }>;
+}
+
+export interface AlgoDeps {
+  now(): number;
+  armed(): Promise<StrategyRow[]>;
+  openRuns(): Promise<RunRow[]>;
+  getRun(strategyId: string, dateKey: string): Promise<RunRow | null>;
+  createRun: typeof createRun;
+  finishRun: typeof finishRun;
+  market(needBars: boolean): Promise<MarketData>;
+  broker(mode: 'paper' | 'live'): Broker;
+}
+
+export interface CheckInfo {
+  at: number;
+  state: 'waiting' | 'entered' | 'before' | 'closed';
+  met: boolean;
+  results: ConditionResult[];
+  planReason: string | null;
+  windowStart: number | null;
+  windowEnd: number | null;
+}
+
+const needsBars = (cs: readonly Condition[]) => cs.some((c) => c.type === 'rsi' || c.type === 'adx' || c.type === 'ema');
+export const conditionsOf = (r: AlgoStrategy): Condition[] => (r.entry.kind === 'window' ? r.entry.conditions : []);
+
+/** Build the concrete plan and the view the conditions look at. */
+export function buildPlan(rule: AlgoStrategy, m: MarketData, lots: number, nowMs: number): { plan: EntryPlan | null; reason: string | null; view: MarketView } {
+  const base: MarketView = { spot: m.spot, dvol: m.dvol, gateGo: m.gateGo, gateReasons: m.gateReasons, premium: null, bars5m: m.bars5m };
+  if (rule.instrument === 'future') return { plan: { kind: 'future', future: { side: rule.future!.side, lots: rule.future!.lots ?? lots, spot: m.spot } }, reason: null, view: base };
+  const p = planOptionEntry(rule, m.chain, m.expiries, m.spot, lots, nowMs);
+  if (!p.ok) return { plan: null, reason: p.reason, view: base };
+  return { plan: { kind: 'option', legs: p.legs, expiries: p.expiries, spot: p.spot, premium: p.premium }, reason: null, view: { ...base, premium: p.premium } };
+}
+
+/** A short readable name for the run: "Short strangle 271026+281026". */
+export function runName(rule: AlgoStrategy, plan: EntryPlan): string {
+  return plan.kind === 'option' ? `${rule.name} ${plan.expiries.join('+')}` : `${rule.name} ${plan.future.side}`;
+}
+
+export function summariseWhy(rule: AlgoStrategy, results: readonly ConditionResult[], window: EntryWindow | null): string {
+  const when = rule.entry.kind === 'hard' ? `hard entry at ${rule.entry.time} IST` : `window ${rule.entry.from}-${rule.entry.to} IST`;
+  const why = results.length ? results.map((r) => `${r.label} (${r.now})`).join('; ') : 'no extra conditions';
+  void window;
+  return `${when}; ${why}`;
+}
+
+export class AlgoEngine {
+  private timer: NodeJS.Timeout | null = null;
+  private busy = false;
+  /** The latest look at each strategy, for the panel. In memory only: it is rebuilt on every tick. */
+  readonly checks = new Map<string, CheckInfo>();
+  lastError: string | null = null;
+
+  constructor(private readonly d: AlgoDeps) {}
+
+  start(everyMs = 5_000) {
+    if (this.timer) return;
+    this.timer = setInterval(() => { void this.tick(); }, everyMs);
+    this.timer.unref?.();
+  }
+  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
+
+  async tick(): Promise<void> {
+    if (this.busy) return;
+    this.busy = true;
+    try {
+      const armed = await this.d.armed();
+      for (const s of armed) {
+        try { await this.entryStep(s); } catch (e) { this.lastError = `${s.rule.name}: ${(e as Error).message}`; }
+      }
+      for (const r of await this.d.openRuns()) {
+        try { await this.exitStep(r); } catch (e) { this.lastError = `${r.name}: ${(e as Error).message}`; }
+      }
+      if (!armed.length) this.lastError = null;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private async entryStep(s: StrategyRow): Promise<void> {
+    const d = this.d, now = d.now(), rule = s.rule;
+    const es = entryState(rule, now);
+    if (es.state !== 'open') {
+      this.checks.set(s.id, { at: now, state: es.state, met: false, results: [], planReason: null, windowStart: es.state === 'before' ? es.window.startMs : null, windowEnd: es.state === 'before' ? es.window.endMs : null });
+      await this.skipEnded(s, now);
+      return;
+    }
+    const w = es.window;
+    if (await d.getRun(s.id, w.dateKey)) {
+      this.checks.set(s.id, { at: now, state: 'entered', met: true, results: [], planReason: null, windowStart: w.startMs, windowEnd: w.endMs });
+      return;
+    }
+    const conds = conditionsOf(rule);
+    const m = await d.market(needsBars(conds));
+    const { plan, reason, view } = buildPlan(rule, m, s.lots, now);
+    const ev = evalConditions(conds, view);
+    this.checks.set(s.id, { at: now, state: 'waiting', met: ev.met && !!plan, results: ev.results, planReason: reason, windowStart: w.startMs, windowEnd: w.endMs });
+    if (!ev.met || !plan) {
+      this.lastWaiting.set(s.id, [...ev.results.filter((r) => !r.ok).map((r) => `${r.label} (${r.now})`), ...(reason ? [reason] : [])].join('; ') || 'waiting');
+      return;
+    }
+
+    const why = summariseWhy(rule, ev.results, w);
+    const name = runName(rule, plan);
+    const placed = await d.broker(rule.mode).place(s.userId, rule, plan, name);
+    const base = { userId: s.userId, strategyId: s.id, name, dateKey: w.dateKey, mode: rule.mode, lots: plan.kind === 'option' ? Math.max(...plan.legs.map((l) => l.lots)) : plan.future.lots, plan: { rule, plan, why }, windowStart: w.startMs, enteredAt: now, exitAt: null as number | null };
+    if (!placed.ok) {
+      await d.createRun({ ...base, status: 'failed', reason: placed.reason, ref: null, enteredAt: null });
+      return;
+    }
+    if (placed.dry) {
+      await d.createRun({ ...base, status: 'dry', reason: placed.detail, ref: placed.ref, enteredAt: null });
+      return;
+    }
+    await d.createRun({ ...base, status: 'entered', reason: why, ref: placed.ref, exitAt: exitAtMs(rule.exit, w, now) });
+  }
+
+  /** A window that ended without an entry is written down once, with what stopped it. */
+  private async skipEnded(s: StrategyRow, now: number): Promise<void> {
+    for (const key of [istDateKey(now), istDateKey(now - 86_400_000)]) {
+      const w = windowOn(s.rule.entry, key);
+      if (now < w.endMs || now - w.endMs > 6 * 3_600_000) continue;
+      if (!s.rule.days.includes(istDay(w.startMs))) continue;
+      if (s.updatedAt > w.endMs) continue; // armed after the window: nothing was missed
+      if (await this.d.getRun(s.id, key)) continue;
+      const prev = this.lastWaiting.get(s.id);
+      await this.d.createRun({
+        userId: s.userId, strategyId: s.id, name: s.rule.name, dateKey: key, mode: s.rule.mode, status: 'skipped', lots: 0,
+        reason: prev ? `window ended without an entry. Last check: ${prev}` : 'window ended without an entry (the engine did not see the window open)',
+        plan: null, ref: null, windowStart: w.startMs, enteredAt: null, exitAt: null,
+      });
+    }
+  }
+  private lastWaiting = new Map<string, string>();
+
+  private async exitStep(r: RunRow): Promise<void> {
+    const d = this.d, now = d.now();
+    const rule = (r.plan as { rule?: AlgoStrategy } | null)?.rule;
+    if (!rule || !r.ref) { await d.finishRun(r.id, 'failed', 'the run lost its rule or reference, close the position yourself', null); return; }
+    const broker = d.broker(r.mode);
+    const st = await broker.status(r.userId, r.ref);
+    if (!st) return; // the account could not be read this time; try again next tick
+    if (!st.open) { await d.finishRun(r.id, 'exited', st.closedReason ?? 'the position is closed', st.netPnl); return; }
+    const x = rule.exit;
+    let why: string | null = null;
+    if (x.netTargetUsd != null && st.netPnl != null && st.netPnl >= x.netTargetUsd) why = `net target reached (${st.netPnl.toFixed(2)} >= ${x.netTargetUsd})`;
+    else if (x.netStopUsd != null && st.netPnl != null && st.netPnl <= -x.netStopUsd) why = `net stop reached (${st.netPnl.toFixed(2)} <= -${x.netStopUsd})`;
+    else if (r.exitAt != null && now >= r.exitAt) why = `exit time ${x.exitTime} IST`;
+    else if (st.future) {
+      const { entry, mark, side } = st.future;
+      const move = ((side === 'long' ? mark - entry : entry - mark) / entry) * 100;
+      if (x.futTargetPct != null && move >= x.futTargetPct) why = `futures target ${x.futTargetPct}% reached`;
+      else if (x.futStopPct != null && move <= -x.futStopPct) why = `futures stop ${x.futStopPct}% reached`;
+    }
+    if (!why) return;
+    const closed = await broker.closeAll(r.userId, r.ref, why);
+    if (closed.ok) await d.finishRun(r.id, 'exited', why, st.netPnl);
+    else this.lastError = `${r.name}: could not close (${closed.reason}); will retry`;
+  }
+}
+
+/** The text for the trade summary and the confirmation message. */
+export function describePlan(plan: EntryPlan): string[] {
+  return plan.kind === 'option' ? plan.legs.map(describeLeg) : [`${plan.future.side === 'long' ? 'Buy' : 'Sell'} ${plan.future.lots} lots BTC perpetual near ${plan.future.spot.toFixed(0)}`];
+}
+
+export { listArmed, openRuns, getRun };

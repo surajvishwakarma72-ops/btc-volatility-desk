@@ -15,6 +15,7 @@ import { botRoutes } from './bot.js';
 import { askRoutes } from './ask.js';
 import { paperRoutes } from './paper.js';
 import { watchRoutes } from './watch.js';
+import { algoRoutes } from './algo.js';
 
 /**
  * Primary API v1 Router Registration
@@ -38,4 +39,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(askRoutes, { prefix: '/ask' });
   await fastify.register(paperRoutes, { prefix: '/paper' });
   await fastify.register(watchRoutes, { prefix: '/watch' });
+  await fastify.register(algoRoutes, { prefix: '/algo' });
 };
