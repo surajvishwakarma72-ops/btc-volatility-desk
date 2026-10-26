@@ -61,7 +61,7 @@ export const algoEngine = new AlgoEngine(realAlgoDeps);
 let sampler: NodeJS.Timeout | null = null;
 export async function sampleOnce(now = Date.now()): Promise<void> {
   const m = await loadMarket(false);
-  const iv = atmIvOf(defaultStrangle(), m, now);
+  const iv = atmIvOf(defaultStrangle({ expiry: { mode: 'current' } }), m, now); // always the current expiry, whatever the default trade expiry is
   await recordSample({ t: now, atmIv: iv, dvol: deribitWorker.currentDvol ?? null, spot: m.spot });
 }
 export const seriesSampler = {

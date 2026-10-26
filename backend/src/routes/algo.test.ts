@@ -15,14 +15,14 @@ vi.mock('../db/index.js', () => ({
   },
 }));
 
-const E1 = Date.now() + 20 * 3_600_000, E2 = E1 + 86_400_000;
+const E1 = Date.now() + 20 * 3_600_000, E2 = E1 + 86_400_000, E3 = E2 + 86_400_000;
 const code = (ms: number) => { const d = new Date(ms); const p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getUTCDate())}${p(d.getUTCMonth() + 1)}${String(d.getUTCFullYear()).slice(2)}`; };
 const opt = (type: 'call' | 'put', strike: number, delta: number, e: number): ChainOption => ({ symbol: `${type === 'call' ? 'C' : 'P'}-BTC-${strike}-${code(e)}`, type, strike, expiryMs: e, delta, bid: 60, ask: 65, mark: 62, iv: 0.5 });
-const chain = [E1, E2].flatMap((e) => [opt('call', 105_000, 0.12, e), opt('put', 95_000, 0.12, e)]);
+const chain = [E1, E2, E3].flatMap((e) => [opt('call', 105_000, 0.12, e), opt('put', 95_000, 0.12, e)]);
 
 vi.mock('../services/algo/algo-runtime.js', () => ({
   algoEngine: { checks: new Map(), errors: new Map([['66666666-6666-6666-6666-666666666666', 'secret strategy name: boom']]) },
-  loadMarket: async () => ({ spot: 100_000, chain, expiries: [E1, E2], dvol: 50, gateGo: true, gateReasons: [], bars5m: [] }),
+  loadMarket: async () => ({ spot: 100_000, chain, expiries: [E1, E2, E3], dvol: 50, gateGo: true, gateReasons: [], bars5m: [] }),
 }));
 vi.mock('../services/algo/insights-service.js', () => ({
   loadInsights: async () => ({ at: 1, bars: 10, from: 1, to: 2, note: 'x', options: [], futures: [{ id: 'ema_9_21', label: 'EMA 9 vs EMA 21', n: 100, winRate: 0.55, avgPct: 0.1, score: 2, now: 1, long: null, short: null }] }),
@@ -136,7 +136,7 @@ describe('algo API', () => {
     const p = r.json().preview;
     expect(p.ok).toBe(true);
     expect(p.legs).toHaveLength(2);
-    expect(p.expiries).toEqual([code(E1)]);
+    expect(p.expiries).toEqual([code(E3)]);
     expect(p.margin).toMatchObject({ required: 120 });
     expect(p.stops).toContain('2x');
     expect(p.plan).toBeUndefined();

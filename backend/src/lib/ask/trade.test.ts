@@ -60,12 +60,12 @@ describe('expiry words', () => {
   });
 });
 
-describe('the default is one two-leg strangle on the current expiry', () => {
-  it('applying nothing keeps 2 legs, delta 0.10, current expiry', () => {
+describe('the default is one two-leg strangle on the next-to-next (2DTE) expiry', () => {
+  it('applying nothing keeps 2 legs, delta 0.10, 2DTE expiry', () => {
     const r = T.applyPatch(base(), {});
     expect(r.legs).toHaveLength(2);
     expect(r.legs.map((l: any) => l.pick)).toEqual([{ mode: 'delta', target: 0.1 }, { mode: 'delta', target: 0.1 }]);
-    expect(r.expiry).toEqual({ mode: 'current' });
+    expect(r.expiry).toEqual({ mode: 'n2n' });
   });
 });
 

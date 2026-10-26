@@ -132,7 +132,7 @@ export const DEFAULT_EXIT: ExitRule = {
   alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true,
 };
 
-/** The saved defaults behind "entry 50": ONE short strangle (2 legs) at the strikes nearest 0.10 delta, current (0DTE) expiry, 2x stops. */
+/** The saved defaults behind "entry 50": ONE short strangle (2 legs) at the strikes nearest 0.10 delta, next-to-next (2DTE) expiry, 2x stops. */
 export function defaultStrangle(over: Partial<AlgoStrategy> = {}): AlgoStrategy {
   return {
     name: 'Short strangle', mode: 'paper', instrument: 'option',
@@ -140,7 +140,7 @@ export function defaultStrangle(over: Partial<AlgoStrategy> = {}): AlgoStrategy 
       { type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1 } },
       { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1 } },
     ],
-    expiry: { mode: 'current' },
+    expiry: { mode: 'n2n' },
     entry: { kind: 'hard', time: '22:30' },
     days: [...DAY_NAMES],
     exit: { ...DEFAULT_EXIT },

@@ -160,7 +160,7 @@ describe('filling the form step by step', () => {
   });
   it('the one-line summary follows the answers', () => {
     const w = fresh('later', 50); run(w, [['entry', 'hard'], ['time', '22:30']]);
-    expect(W.summary(w)).toBe('sell call + sell put · nearest delta 0.1 · 0DTE · 50 lots · at 22:30 IST');
+    expect(W.summary(w)).toBe('sell call + sell put · nearest delta 0.1 · 2DTE · 50 lots · at 22:30 IST');
   });
 });
 

@@ -133,12 +133,12 @@ describe('more conditions', () => {
 });
 
 describe('planOptionEntry', () => {
-  const chain = [...chainFor(E1), ...chainFor(E2)];
-  it('default: ONE strangle, 2 legs, strikes nearest 0.10 delta, current expiry', () => {
+  const chain = [...chainFor(E1), ...chainFor(E2), ...chainFor(E3)];
+  it('default: ONE strangle, 2 legs, strikes nearest 0.10 delta, next-to-next (2DTE) expiry', () => {
     const p = planOptionEntry(defaultStrangle(), chain, [E1, E2, E3], 100_000, 50, NOW);
     expect(p.ok).toBe(true);
     if (!p.ok) return;
-    expect(p.expiries).toEqual(['271026']);
+    expect(p.expiries).toEqual(['291026']);
     expect(p.legs).toHaveLength(2);
     expect(p.legs.every((l) => l.lots === 50 && l.side === 'sell')).toBe(true);
     expect(p.legs.find((l) => l.type === 'call')!.delta).toBe(0.11);
@@ -168,12 +168,12 @@ describe('planOptionEntry', () => {
     if (!p.ok) expect(p.reason).toMatch(/delta/);
   });
   it('aims at the strike nearest the target, not the lowest in a band', () => {
-    const s = defaultStrangle({ legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.13 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.13 } }] });
+    const s = defaultStrangle({ expiry: { mode: 'current' }, legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.13 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.13 } }] });
     const p = planOptionEntry(s, chainFor(E1), [E1], 100_000, 5, NOW);
     expect(p.ok && p.legs.map((l) => l.delta)).toEqual([0.13, 0.13]);
   });
   it('older band rules still pick the lowest delta in the band', () => {
-    const s = defaultStrangle({ legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15 } }] });
+    const s = defaultStrangle({ expiry: { mode: 'current' }, legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15 } }] });
     const p = planOptionEntry(s, chainFor(E1), [E1], 100_000, 5, NOW);
     expect(p.ok && p.legs[0]!.delta).toBe(0.11);
   });

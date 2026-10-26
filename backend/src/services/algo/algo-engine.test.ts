@@ -8,12 +8,12 @@ import type { RunRow, StrategyRow } from './algo-store.js';
 
 const at = (date: string, hhmm: string) => istMidnightMs(date) + (Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3))) * 60_000;
 const MON = '2026-10-26';
-const E1 = Date.UTC(2026, 9, 27, 12), E2 = Date.UTC(2026, 9, 28, 12);
+const E1 = Date.UTC(2026, 9, 27, 12), E2 = Date.UTC(2026, 9, 28, 12), E3 = Date.UTC(2026, 9, 29, 12);
 const opt = (type: 'call' | 'put', strike: number, delta: number, e: number): ChainOption => ({
   symbol: `${type === 'call' ? 'C' : 'P'}-BTC-${strike}-${expiryCodeOf(e)}`, type, strike, expiryMs: e, delta, bid: 60, ask: 65, mark: 62, iv: 0.5,
 });
-const chain = [E1, E2].flatMap((e) => [opt('call', 105_000, 0.12, e), opt('put', 95_000, 0.12, e)]);
-const market = (o: Partial<MarketData> = {}): MarketData => ({ spot: 100_000, chain, expiries: [E1, E2], dvol: 50, gateGo: true, gateReasons: [], bars5m: [], ...o });
+const chain = [E1, E2, E3].flatMap((e) => [opt('call', 105_000, 0.12, e), opt('put', 95_000, 0.12, e)]);
+const market = (o: Partial<MarketData> = {}): MarketData => ({ spot: 100_000, chain, expiries: [E1, E2, E3], dvol: 50, gateGo: true, gateReasons: [], bars5m: [], ...o });
 
 function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['place']; mk?: () => MarketData } = {}) {
   const runs: RunRow[] = [];
@@ -127,7 +127,7 @@ describe('AlgoEngine entry', () => {
     const r = rig(defaultStrangle(), now, { mk: () => market({ chain: [] }) });
     await r.engine.tick();
     expect(r.placed).toHaveLength(0);
-    expect(r.engine.checks.get('s1')!.planReason).toMatch(/call/);
+    expect(r.engine.checks.get('s1')!.planReason).toMatch(/call|expiry|DTE/);
   });
 
   it('a futures strategy enters with the command lots', async () => {

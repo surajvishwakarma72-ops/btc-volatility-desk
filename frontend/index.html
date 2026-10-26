@@ -58879,7 +58879,7 @@ document.addEventListener('click', function(e) {
   const newForm = () => ({
     id: null, name: 'Short strangle', mode: 'paper', instrument: 'option', lots: 50,
     legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }],
-    future: { side: 'long' }, expiry: { mode: 'current', code: '' },
+    future: { side: 'long' }, expiry: { mode: 'n2n', code: '' },
     entry: { kind: 'hard', time: '22:30', from: '22:30', to: '01:30', conditions: [] },
     days: DAYS.slice(), exit: DEFAULT_EXIT(),
   });
@@ -61485,7 +61485,7 @@ document.addEventListener('click', function(e) {
   const FALLBACK = () => ({
     name: 'Short strangle', mode: 'paper', instrument: 'option',
     legs: [leg('call', 'sell', 'delta', 0.1), leg('put', 'sell', 'delta', 0.1)],
-    expiry: { mode: 'current' }, entry: { kind: 'hard', time: '22:30' }, days: DAYN.slice(),
+    expiry: { mode: 'n2n' }, entry: { kind: 'hard', time: '22:30' }, days: DAYN.slice(),
     exit: { legStopMultiple: 2, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true },
   });
   const T = { stage: null, rule: null, lots: 0, pv: null, when: 'now', live: null, held: null };
@@ -62069,7 +62069,7 @@ document.addEventListener('click', function(e) {
     let rec = [], extra = [], chipsHtml = '', pv = null;
     try {
       if (st === 'kind') { const f = await scoreFacts(true), ins = await getIns(); rec = C.recKind({ best: f.best, futTop: ins && ins.futures ? (ins.futures.find(x => x.score > 1) || null) : null }); }
-      else if (st === 'delta' || st === 'expiry') rec = ['0.10 delta and the current (0DTE) expiry are the desk defaults. Closer to 0 delta is safer but pays less.'];
+      else if (st === 'delta' || st === 'expiry') rec = ['0.10 delta and the next-to-next (2DTE) expiry are the defaults here. Closer to 0 delta is safer but pays less.'];
       else if (st === 'when') rec = ['A scheduled trade waits for its time and conditions and enters once per window. "Now" places it at market straight away.'];
       else if (st === 'entry') rec = ['A hard time enters at that minute. A window waits for the conditions you pick and enters the first time they are all true.'];
       else if (st === 'time') { const f = await scoreFacts(true); rec = C.recTime({ best: f.best }); if (f.best && C.SLOT[f.best.key] && w.rule.entry.kind === 'hard') extra = [{ v: C.SLOT[f.best.key], label: C.SLOT[f.best.key] + ' (your best slot)' }]; }
@@ -62102,7 +62102,7 @@ document.addEventListener('click', function(e) {
     let def = null; try { def = (await http('/algo/defaults')).defaults; } catch (e) { def = null; }
     const base = def || { name: 'Short strangle', mode: 'paper', instrument: 'option', legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1 } }], expiry: { mode: 'current' }, entry: { kind: 'hard', time: '22:30' }, days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], exit: { legStopMultiple: 2, futStopUsd: null, futTargetUsd: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true } };
     // an older saved default could still carry the back-to-back expiry or a delta band: this guided path starts from one strangle on the current expiry
-    const rule = JSON.parse(JSON.stringify(base)); if (rule.expiry && (rule.expiry.mode === 'b2b' || rule.expiry.mode === 'nearest')) rule.expiry = { mode: 'current' };
+    const rule = JSON.parse(JSON.stringify(base)); if (rule.expiry && (rule.expiry.mode === 'b2b' || rule.expiry.mode === 'nearest')) rule.expiry = { mode: 'n2n' };
     rule.mode = 'paper';
     W.w = { rule, lots: 50, when: 'later' }; W.hist = []; W.step = 'kind';
     fillForm(['name', 'lots']);
