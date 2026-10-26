@@ -13,7 +13,7 @@ import { liveBroker } from '../services/algo/live-entry.js';
 import { fetchOptionPositions, OPTION_SYMBOL } from '../services/watch/live-exit.js';
 import { loadDeltaKey } from '../services/delta-keys.js';
 import { paperFor } from '../services/paper/paper-terminal.js';
-import { recentWatchEvents } from '../services/watch/watch-store.js';
+import { getWatchConfig, recentWatchEvents } from '../services/watch/watch-store.js';
 
 /**
  * The Algo panel's API. Strategies run on the user's own Paper account unless the strategy is switched to Live, and Live needs
@@ -30,7 +30,7 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.get('/state', auth, async (req) => {
     const uid = userId(req);
-    const [strategies, runs, live, defaults] = await Promise.all([listStrategies(uid), recentRuns(uid, 40), liveState(uid), getDefaults(uid)]);
+    const [strategies, runs, live, defaults, wc] = await Promise.all([listStrategies(uid), recentRuns(uid, 40), liveState(uid), getDefaults(uid), getWatchConfig(uid)]);
     // open runs get their current net PnL
     const open = runs.filter((r) => r.status === 'entered' && r.ref);
     const net = new Map<string, number | null>();
@@ -40,6 +40,8 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
     }));
     return {
       success: true, live, defaults, now: Date.now(),
+      // the stop alarm and hard exit distances that really apply (Settings), so the page can say them truthfully
+      watch: { warnPoints: wc.warnPoints, hardPoints: wc.hardPoints, liveArmed: wc.liveArmed, dryRun: wc.dryRun },
       strategies: strategies.map((s) => ({ id: s.id, rule: s.rule, lots: s.lots, armed: s.armed, check: algoEngine.checks.get(s.id) ?? null })),
       runs: runs.map((r) => ({ ...r, liveNetPnl: net.get(r.id) ?? null })),
       engineError: algoEngine.errors.get(uid) ?? null,

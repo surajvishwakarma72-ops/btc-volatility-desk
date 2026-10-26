@@ -18,7 +18,7 @@ const ok = (r: unknown) => strategySchema.safeParse(r);
 describe('which steps apply', () => {
   it('an option goes through delta and expiry; a schedule adds the entry steps; a window adds conditions', () => {
     const w = fresh();
-    expect(W.steps(w)).toEqual(['kind', 'delta', 'expiry', 'when', 'entry', 'time', 'days', 'stops', 'exittime', 'lots', 'mode', 'review']);
+    expect(W.steps(w)).toEqual(['kind', 'delta', 'expiry', 'when', 'entry', 'time', 'days', 'repeat', 'valid', 'stops', 'exittime', 'lots', 'mode', 'review']);
     w.rule.entry = { kind: 'window', from: '22:30', to: '01:30', conditions: [] };
     expect(W.steps(w)).toContain('conditions');
     expect(W.steps(fresh('now'))).toEqual(['kind', 'delta', 'expiry', 'when', 'stops', 'exittime', 'lots', 'mode', 'review']);
@@ -99,6 +99,35 @@ describe('reading answers', () => {
     expect(W.parseAnswer('review', 'save and arm', w).act).toBe('arm');
     expect(W.parseAnswer('review', 'save', w).act).toBe('save');
     expect(W.parseAnswer('review', 'place now', w).act).toBe('now');
+  });
+});
+
+describe('one time or daily, and valid until', () => {
+  const NOW = Date.parse('2026-10-26T10:00:00Z'); // 15:30 IST on a Monday
+  const w = fresh();
+  it('reads repeat in words', () => {
+    expect(W.parseAnswer('repeat', 'one time only', w).repeat).toBe('once');
+    expect(W.parseAnswer('repeat', 'once', w).repeat).toBe('once');
+    expect(W.parseAnswer('repeat', 'daily on those days', w).repeat).toBe('daily');
+    expect(W.parseAnswer('repeat', 'maybe', w).ok).toBe(false);
+  });
+  it('valid until: no limit, end of today (23:59 IST), N days', () => {
+    expect(W.parseAnswer('valid', 'none', w, NOW).validUntil).toBeNull();
+    const eod = W.parseAnswer('valid', 'end of today', w, NOW).validUntil;
+    expect(new Date(eod + 19800000).toISOString().slice(0, 16)).toBe('2026-10-26T23:59');
+    expect(new Date(W.parseAnswer('valid', '7 days', w, NOW).validUntil + 19800000).toISOString().slice(0, 16)).toBe('2026-11-02T23:59');
+    expect(W.parseAnswer('valid', 'soon', w, NOW).ok).toBe(false);
+  });
+  it('the answers land in the rule, which the server accepts, and the form boxes flash', () => {
+    const x = fresh();
+    const f1 = W.applyAnswer(x, 'repeat', W.parseAnswer('repeat', 'once', x));
+    const f2 = W.applyAnswer(x, 'valid', W.parseAnswer('valid', '30 days', x, NOW));
+    expect(f1).toEqual(['repeat']);
+    expect(f2).toEqual(['validUntil']);
+    expect(x.rule.repeat).toBe('once');
+    expect(x.rule.validUntil).toBeGreaterThan(NOW);
+    expect(ok(x.rule).success).toBe(true);
+    expect(W.summary(x)).toMatch(/one time/);
   });
 });
 

@@ -20,6 +20,7 @@ function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['
   const placed: unknown[] = [];
   const closed: string[] = [];
   const marks: Array<[string, number]> = [];
+  const disarmed: string[] = [];
   const status = { open: true, netPnl: 0 as number | null, closedReason: null as string | null };
   const broker: Broker = {
     place: opts.place ?? (async (_u, _r, plan) => { placed.push(plan); return { ok: true, ref: 'basket-1', detail: 'ok' }; }),
@@ -39,11 +40,12 @@ function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['
       return row;
     },
     finishRun: async (id, s, why, pnl) => { const r = runs.find((x) => x.id === id)!; r.status = s; r.exitReason = why; r.netPnl = pnl; },
+    disarm: async (_u, id) => { disarmed.push(id); },
     mark: async (id, _t, net) => { marks.push([id, net]); },
     market: async () => (opts.mk ? opts.mk() : market()),
     broker: () => broker,
   };
-  return { engine: new AlgoEngine(deps), runs, placed, closed, status, marks };
+  return { engine: new AlgoEngine(deps), runs, placed, closed, status, marks, disarmed };
 }
 
 describe('AlgoEngine entry', () => {
@@ -136,6 +138,58 @@ describe('AlgoEngine entry', () => {
     const r = rig(rule, now);
     await r.engine.tick();
     expect(r.placed[0]).toMatchObject({ kind: 'future', future: { side: 'long', lots: 50 } });
+  });
+});
+
+describe('one time or daily, and valid until', () => {
+  it('a one-time strategy disarms itself after it enters, and a daily one stays armed', async () => {
+    const now = { t: at(MON, '22:30') };
+    const once = rig({ ...defaultStrangle(), repeat: 'once' }, now);
+    await once.engine.tick();
+    expect(once.runs[0]!.status).toBe('entered');
+    expect(once.disarmed).toEqual(['s1']);
+    const daily = rig({ ...defaultStrangle(), repeat: 'daily' }, now);
+    await daily.engine.tick();
+    expect(daily.runs[0]!.status).toBe('entered');
+    expect(daily.disarmed).toEqual([]);
+    const left = rig(defaultStrangle(), now); // repeat left out means daily
+    await left.engine.tick();
+    expect(left.disarmed).toEqual([]);
+  });
+  it('a one-time strategy also disarms when its order is refused, and when its window ends with no entry', async () => {
+    const now = { t: at(MON, '22:30') };
+    const refused = rig({ ...defaultStrangle(), repeat: 'once' }, now, { place: async () => ({ ok: false, reason: 'margin' }) });
+    await refused.engine.tick();
+    expect(refused.runs[0]!.status).toBe('failed');
+    expect(refused.disarmed).toEqual(['s1']);
+    const rule = { ...defaultStrangle({ entry: { kind: 'window', from: '22:30', to: '23:30', conditions: [{ type: 'dvol', op: '<', value: 45 }] } }), repeat: 'once' as const };
+    const t2 = { t: at(MON, '23:00') };
+    const waited = rig(rule, t2);
+    await waited.engine.tick();
+    expect(waited.disarmed).toEqual([]); // still waiting inside the window
+    t2.t = at(MON, '23:40');
+    await waited.engine.tick();
+    expect(waited.runs[0]!.status).toBe('skipped');
+    expect(waited.disarmed).toEqual(['s1']);
+  });
+  it('past its valid-until time a strategy cancels itself and does not enter', async () => {
+    const until = at(MON, '22:00');
+    const now = { t: at(MON, '22:30') };
+    const r = rig({ ...defaultStrangle(), validUntil: until }, now);
+    await r.engine.tick();
+    expect(r.placed).toHaveLength(0);
+    expect(r.runs).toHaveLength(1);
+    expect(r.runs[0]!.status).toBe('skipped');
+    expect(r.runs[0]!.reason).toMatch(/Cancelled/);
+    expect(r.disarmed).toEqual(['s1']);
+    expect(r.engine.checks.get('s1')!.state).toBe('expired');
+  });
+  it('before its valid-until time it trades as usual', async () => {
+    const now = { t: at(MON, '22:30') };
+    const r = rig({ ...defaultStrangle(), validUntil: at(MON, '23:59') }, now);
+    await r.engine.tick();
+    expect(r.placed).toHaveLength(1);
+    expect(r.disarmed).toEqual([]);
   });
 });
 

@@ -46,6 +46,8 @@ export interface AlgoDeps {
   getRun(strategyId: string, dateKey: string): Promise<RunRow | null>;
   createRun: typeof createRun;
   finishRun: typeof finishRun;
+  /** Disarm a strategy (a one-time strategy after its attempt, or one whose valid-until time has passed). */
+  disarm?(userId: string, strategyId: string): Promise<void>;
   /** Record the run's net PnL for the minute chart (optional so tests need not provide it). */
   mark?(runId: string, tMs: number, net: number, spot: number | null): Promise<void>;
   market(needBars: boolean, needHist?: boolean): Promise<MarketData>;
@@ -54,7 +56,7 @@ export interface AlgoDeps {
 
 export interface CheckInfo {
   at: number;
-  state: 'waiting' | 'entered' | 'before' | 'closed';
+  state: 'waiting' | 'entered' | 'before' | 'closed' | 'expired';
   met: boolean;
   results: ConditionResult[];
   planReason: string | null;
@@ -134,6 +136,13 @@ export class AlgoEngine {
 
   private async entryStep(s: StrategyRow): Promise<void> {
     const d = this.d, now = d.now(), rule = s.rule;
+    // the valid-until time: past it the strategy cancels itself
+    if (rule.validUntil != null && now >= rule.validUntil) {
+      await d.createRun({ userId: s.userId, strategyId: s.id, name: rule.name, dateKey: `cancel-${rule.validUntil}`, mode: rule.mode, status: 'skipped', lots: 0, reason: 'Cancelled: its valid-until time passed, so it was disarmed.', plan: null, ref: null, windowStart: rule.validUntil, enteredAt: null, exitAt: null });
+      await d.disarm?.(s.userId, s.id);
+      this.checks.set(s.id, { at: now, state: 'expired', met: false, results: [], planReason: null, windowStart: null, windowEnd: null });
+      return;
+    }
     const es = entryState(rule, now);
     if (es.state !== 'open') {
       this.checks.set(s.id, { at: now, state: es.state, met: false, results: [], planReason: null, windowStart: es.state === 'before' ? es.window.startMs : null, windowEnd: es.state === 'before' ? es.window.endMs : null });
@@ -161,13 +170,21 @@ export class AlgoEngine {
     const base = { userId: s.userId, strategyId: s.id, name, dateKey: w.dateKey, mode: rule.mode, lots: plan.kind === 'option' ? Math.max(...plan.legs.map((l) => l.lots)) : plan.future.lots, plan: { rule, plan, why, conds: ev.results.map((x) => ({ label: x.label, ok: x.ok })) }, windowStart: w.startMs, enteredAt: now, exitAt: null as number | null };
     if (!placed.ok) {
       await d.createRun({ ...base, status: 'failed', reason: placed.reason, ref: null, enteredAt: null });
+      await this.finishOnce(s);
       return;
     }
     if (placed.dry) {
       await d.createRun({ ...base, status: 'dry', reason: placed.detail, ref: placed.ref, enteredAt: null });
+      await this.finishOnce(s);
       return;
     }
     await d.createRun({ ...base, status: 'entered', reason: why, ref: placed.ref, exitAt: exitAtMs(rule.exit, w, now) });
+    await this.finishOnce(s);
+  }
+
+  /** A one-time strategy disarms itself after its one attempt, whatever came of it. */
+  private async finishOnce(s: StrategyRow): Promise<void> {
+    if (s.rule.repeat === 'once') await this.d.disarm?.(s.userId, s.id);
   }
 
   /** A window that ended without an entry is written down once, with what stopped it. */
@@ -184,6 +201,7 @@ export class AlgoEngine {
         reason: prev ? `window ended without an entry. Last check: ${prev}` : 'window ended without an entry (the engine did not see the window open)',
         plan: null, ref: null, windowStart: w.startMs, enteredAt: null, exitAt: null,
       });
+      await this.finishOnce(s);
     }
   }
   private lastWaiting = new Map<string, string>();

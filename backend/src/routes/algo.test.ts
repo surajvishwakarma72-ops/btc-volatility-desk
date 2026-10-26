@@ -73,6 +73,25 @@ describe('algo API', () => {
     await app.close();
   });
 
+  it('the state carries the real alarm and hard-exit distances for the page', async () => {
+    const app = await build();
+    const st = (await app.inject({ method: 'GET', url: '/algo/state', headers: tok(app, U) })).json();
+    expect(st.watch).toMatchObject({ warnPoints: 20, hardPoints: 5, liveArmed: false, dryRun: true });
+    await app.close();
+  });
+
+  it('a strategy keeps its one-time / valid-until settings', async () => {
+    const app = await build();
+    const until = Date.now() + 86_400_000;
+    const Z = '88888888-8888-8888-8888-888888888888';
+    const save = await app.inject({ method: 'POST', url: '/algo/strategies', headers: tok(app, Z), payload: { rule: { ...defaultStrangle(), repeat: 'once', validUntil: until }, lots: 5 } });
+    expect(save.statusCode).toBe(200);
+    expect(save.json().strategy.rule).toMatchObject({ repeat: 'once', validUntil: until });
+    const bad = await app.inject({ method: 'POST', url: '/algo/strategies', headers: tok(app, Z), payload: { rule: { ...defaultStrangle(), repeat: 'weekly' }, lots: 5 } });
+    expect(bad.statusCode).toBe(400);
+    await app.close();
+  });
+
   it('saves, lists, arms and deletes a strategy, per user', async () => {
     const app = await build();
     const save = await app.inject({ method: 'POST', url: '/algo/strategies', headers: tok(app, U), payload: { rule: defaultStrangle(), lots: 50 } });

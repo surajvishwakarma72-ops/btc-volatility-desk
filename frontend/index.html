@@ -58855,6 +58855,28 @@ document.addEventListener('click', function(e) {
 #pgAlgo .al-flash{animation:alFlash 1.8s ease-out 1}
 #pgAlgo .al-empty{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding:18px;border:1px dashed var(--line2);border-radius:12px}
 #pgAlgo .al-empty b{font-size:15px}#pgAlgo .al-empty span{font-size:13px;color:var(--muted);max-width:640px;line-height:1.5}
+#pgAlgo .al-day{display:inline-flex;gap:6px;align-items:center}
+#pgAlgo .al-day i{font-style:normal;font-weight:800}
+#pgAlgo .al-day.on{background:rgba(21,128,61,.16);color:#15803D;border-color:#15803D}
+#pgAlgo .al-day.off{background:rgba(197,48,48,.12);color:#C53030;border-color:#C53030}
+#pgAlgo .al-days.sm{gap:4px}#pgAlgo .al-days.sm .al-day{padding:2px 8px;font-size:11px;cursor:default}
+#pgAlgo .al-legend{text-transform:none;letter-spacing:0;font-weight:600;font-size:11.5px;display:inline-flex;gap:10px;align-items:center}
+#pgAlgo .al-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}#pgAlgo .al-legend i.g{background:#15803D}#pgAlgo .al-legend i.r{background:#C53030}
+#pgAlgo .al-days-q{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px;color:var(--muted);margin:2px 0 6px}
+#pgAlgo .al-cp{display:flex;flex-direction:column;gap:8px;margin:2px 0 10px}
+#pgAlgo .al-cg{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+#pgAlgo .al-cg>span{flex:0 0 120px;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+#pgAlgo .al-cc{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font:600 12px var(--font);cursor:pointer}
+#pgAlgo .al-cc:hover{border-color:var(--focus)}
+#pgAlgo .al-hard{margin:10px 0 4px;padding:9px 12px;border:1px solid #15803D;border-radius:9px;background:rgba(21,128,61,.08);font-size:12.5px;line-height:1.5}
+#pgAlgo .al-hard b:first-child{color:#15803D;margin-right:6px}
+#pgAlgo .al-sc.armed{border-color:#15803D}
+#pgAlgo .al-facts{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px 14px;margin:10px 0 4px}
+#pgAlgo .al-fact{display:flex;flex-direction:column;gap:2px;font-size:12.5px}
+#pgAlgo .al-fact span{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#pgAlgo .al-fact b{font-weight:600;line-height:1.4}#pgAlgo .al-fact.bad b{color:var(--up)}
+#pgAlgo .al-fact small{color:var(--muted);font-weight:400}
+#askPanel .ak-clear{width:auto;padding:0 10px;font-size:12px;font-weight:600}
 #pgAlgo .al-ev{list-style:none;margin:0;padding:0;font-size:12.5px}
 #pgAlgo .al-ev li{padding:4px 0;border-bottom:1px solid var(--line)}
 #pgAlgo .al-ev li.bad{color:var(--up)}
@@ -58881,8 +58903,10 @@ document.addEventListener('click', function(e) {
     legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }],
     future: { side: 'long' }, expiry: { mode: 'n2n', code: '' },
     entry: { kind: 'hard', time: '22:30', from: '22:30', to: '01:30', conditions: [] },
-    days: DAYS.slice(), exit: DEFAULT_EXIT(),
+    days: DAYS.slice(), exit: DEFAULT_EXIT(), repeat: 'daily', validUntil: '',
   });
+  const istLocal = ms => new Date(ms + 19800000).toISOString().slice(0, 16);
+  const istParse = v => { const t = Date.parse(String(v) + ':00Z'); return isFinite(t) ? t - 19800000 : null; };
   const PRESETS = {
     strangle: f => { f.name = 'Short strangle'; f.instrument = 'option'; f.legs = [mkLeg('call', 'sell', 'delta'), mkLeg('put', 'sell', 'delta')]; },
     straddle: f => { f.name = 'Short straddle'; f.instrument = 'option'; f.legs = [mkLeg('call', 'sell', 'atm'), mkLeg('put', 'sell', 'atm')]; },
@@ -58910,13 +58934,13 @@ document.addEventListener('click', function(e) {
   /* ---------- form <-> rule ---------- */
   const num = (v, d) => { const n = Number(v); return isFinite(n) && v !== '' && v != null ? n : d; };
   function toRule(f) {
-    const exit = { legStopMultiple: f.exit.legStopMultiple == null || f.exit.legStopMultiple === '' ? null : num(f.exit.legStopMultiple, 2), futStopUsd: nn(f.exit.futStopUsd), futTargetUsd: nn(f.exit.futTargetUsd), futStopPct: nn(f.exit.futStopPct), futTargetPct: nn(f.exit.futTargetPct), netTargetUsd: nn(f.exit.netTargetUsd), netStopUsd: nn(f.exit.netStopUsd), exitTime: f.exit.exitTime || null, alarmPoints: num(f.exit.alarmPoints, 20), hardPoints: num(f.exit.hardPoints, 5), exitAllOnLegStop: !!f.exit.exitAllOnLegStop };
+    const exit = { legStopMultiple: f.exit.legStopMultiple == null || f.exit.legStopMultiple === '' ? null : num(f.exit.legStopMultiple, 2), futStopUsd: nn(f.exit.futStopUsd), futTargetUsd: nn(f.exit.futTargetUsd), futStopPct: nn(f.exit.futStopPct), futTargetPct: nn(f.exit.futTargetPct), netTargetUsd: nn(f.exit.netTargetUsd), netStopUsd: nn(f.exit.netStopUsd), exitTime: f.exit.exitTime || null, alarmPoints: num(f.exit.alarmPoints, 20), hardPoints: num(f.exit.hardPoints, 5), exitAllOnLegStop: true };
     const rule = {
       name: String(f.name || '').trim() || 'Strategy', mode: f.mode, instrument: f.instrument,
       legs: f.instrument === 'option' ? f.legs.map(l => ({ type: l.type, side: l.side, pick: pickOf(l.pick), ...(l.lots ? { lots: Math.round(num(l.lots, 1)) } : {}) })) : [],
       expiry: f.expiry.mode === 'fixed' ? { mode: 'fixed', code: String(f.expiry.code || '').trim() } : { mode: f.expiry.mode },
       entry: f.entry.kind === 'hard' ? { kind: 'hard', time: f.entry.time } : { kind: 'window', from: f.entry.from, to: f.entry.to, conditions: f.entry.conditions.map(condOf) },
-      days: f.days.slice(), exit,
+      days: f.days.slice(), exit, repeat: f.repeat === 'once' ? 'once' : 'daily', validUntil: f.validUntil ? istParse(f.validUntil) : null,
     };
     if (f.instrument === 'future') rule.future = { side: f.future.side };
     return rule;
@@ -58956,6 +58980,7 @@ document.addEventListener('click', function(e) {
     f.expiry = { mode: r.expiry.mode === 'nearest' || r.expiry.mode === 'b2b' ? 'current' : r.expiry.mode, code: r.expiry.code || '' };
     f.entry = r.entry.kind === 'hard' ? { kind: 'hard', time: r.entry.time, from: '22:30', to: '01:30', conditions: [] } : { kind: 'window', time: '22:30', from: r.entry.from, to: r.entry.to, conditions: r.entry.conditions.map(c => Object.assign({}, c)) };
     f.days = r.days.slice(); f.exit = Object.assign(DEFAULT_EXIT(), r.exit);
+    f.repeat = r.repeat === 'once' ? 'once' : 'daily'; f.validUntil = r.validUntil ? istLocal(r.validUntil) : '';
     return f;
   }
 
@@ -58974,7 +58999,9 @@ document.addEventListener('click', function(e) {
     if (x.netTargetUsd != null) bits.push('net target $' + x.netTargetUsd);
     if (x.netStopUsd != null) bits.push('net stop $' + x.netStopUsd);
     if (x.exitTime) bits.push('exit ' + x.exitTime + ' IST');
-    return legs + ex + ' ' + en + ' on ' + (r.days.length === 7 ? 'every day' : r.days.map(d => DAYL[d]).join(', ')) + (bits.length ? '. Exit: ' + bits.join(', ') : '. No exit rule: only the stop alarm protects it');
+    if (x.legStopMultiple != null && r.instrument === 'option') bits.push('hard exit: when one leg stops, every leg closes');
+    const rp = (r.repeat === 'once' ? ', one time only' : ', repeating on those days') + (r.validUntil ? ', valid until ' + istLocal(r.validUntil).replace('T', ' ') + ' IST (it cancels itself then)' : '');
+    return legs + ex + ' ' + en + ' on ' + (r.days.length === 7 ? 'every day' : r.days.map(d => DAYL[d]).join(', ')) + rp + (bits.length ? '. Exit: ' + bits.join(', ') : '. No exit rule: only the stop alarm protects it');
   }
   function condWords(c) {
     switch (c.type) {
@@ -59046,6 +59073,30 @@ document.addEventListener('click', function(e) {
     return '<div class="al-leg"><b>' + (i + 1) + '</b>' + body + '<button type="button" class="al-x" data-al="delcond" data-i="' + i + '" title="Remove condition">×</button></div>';
   }
 
+  const dayChip = (d, on) => '<button type="button" class="al-day ' + (on ? 'on' : 'off') + '" aria-pressed="' + on + '" data-al="day" data-d="' + d + '" data-flash="days.' + d + '">' + DAYL[d] + '<i>' + (on ? '✓' : '✕') + '</i></button>';
+  /** every condition as a chip you can see and tap, grouped by what it looks at */
+  const CGROUPS = [
+    ['Trend', [['adx_falling', 'ADX below and falling'], ['adx', 'ADX level'], ['ema', 'EMA cross'], ['macd', 'MACD']]],
+    ['Volatility and IV', [['atmiv_falling', 'ATM IV falling'], ['dvol_falling', 'DVOL falling'], ['rv_falling', 'RV falling'], ['ivclock', 'Tonight IV vs clock'], ['edge', 'Edge between'], ['atmiv', 'ATM IV level'], ['dvol', 'DVOL level'], ['speed', 'Speed vs IV'], ['atr', 'ATR'], ['bb', 'Bollinger band']]],
+    ['Momentum and price', [['rsi_falling', 'RSI falling'], ['rsi', 'RSI level'], ['vwap', 'VWAP'], ['change', 'Price change'], ['spot', 'Spot level']]],
+    ['Desk', [['gate', 'Desk gate says GO'], ['premium', 'Premium collected']]],
+  ];
+  function condPicker() {
+    return '<div class="al-cp">' + CGROUPS.map(g => '<div class="al-cg"><span>' + esc(g[0]) + '</span>' + g[1].map(x => '<button type="button" class="al-cc" data-al="addc" data-t="' + x[0] + '">+ ' + esc(x[1]) + '</button>').join('') + '</div>').join('') + '</div>';
+  }
+  const COND_DEF = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 }, adx_falling: { tf: '15m', value: 25, bars: 3 }, atmiv_falling: { minutes: 30, minDrop: 0.3 }, dvol_falling: { minutes: 60, minDrop: 0.5 }, rsi_falling: { tf: '15m', bars: 3, minDrop: 1 }, rv_falling: { minutes: 60 }, ivclock: { op: 'above', points: 1 }, edge: { low: 1, high: 8 } };
+  function addCondType(t) {
+    const fm = S.form;
+    if (fm.entry.kind !== 'window') { fm.entry.kind = 'window'; S.ok = 'The entry is now a window that waits for your conditions: set its From and Until times.'; }
+    fm.entry.conditions.push(Object.assign({ type: t }, JSON.parse(JSON.stringify(COND_DEF[t] || {}))));
+    S.formTouched = true; paintForm();
+  }
+  /** the hard exit, stated plainly with the real distances from Settings */
+  function hardExitHtml() {
+    const w = S.st && S.st.watch, f = S.form;
+    if (f.instrument === 'future') return '<div class="al-hard"><b>Hard exit</b> The stop and target in dollars close the whole position. The full-screen alarm also warns before a stop (distance set in <a href="#" data-al="gosettings">Settings</a>).</div>';
+    return '<div class="al-hard"><b>Hard exit: ON</b> When any sold leg reaches its stop, <b>every leg closes</b>. On Paper that is automatic. On Live it is done by the stop alarm, which needs a trading key and to be armed in <a href="#" data-al="gosettings">Settings</a>. Alarm ' + (w ? w.warnPoints : 20) + ' points before the stop, hard exit ' + (w ? w.hardPoints : 5) + ' points before it.</div>';
+  }
   function formHtml() {
     const f = S.form, live = S.st && S.st.live, liveOk = live && live.tradeKey;
     const opts = f.instrument === 'option';
@@ -59065,20 +59116,21 @@ document.addEventListener('click', function(e) {
     h += '<div class="al-sub">Entry</div><div class="al-grid">' +
       fld('How', sel('entry.kind', f.entry.kind, [['hard', 'Hard time: enter at one time'], ['window', 'Window: wait until the conditions are met']], { struct: 1 })) +
       (f.entry.kind === 'hard' ? fld('At (IST)', inp('entry.time', f.entry.time, { type: 'time' })) : fld('From (IST)', inp('entry.from', f.entry.from, { type: 'time' })) + fld('Until (IST)', inp('entry.to', f.entry.to, { type: 'time' }))) + '</div>';
-    if (f.entry.kind === 'window') {
-      h += '<div class="al-sub">Conditions (all must be true) <select data-al-add="cond"><option value="">+ Add condition…</option>' + [['gate', 'Desk gate says GO'], ['dvol', 'DVOL level'], ['spot', 'Spot level'], ['premium', 'Premium collected'], ['atmiv', 'ATM IV level'], ['speed', 'Speed vs IV'], ['rsi', 'RSI'], ['adx', 'ADX'], ['ema', 'EMA cross'], ['macd', 'MACD'], ['bb', 'Bollinger band'], ['atr', 'ATR (volatility of price)'], ['vwap', 'VWAP'], ['change', 'Price change over time'], ['adx_falling', 'ADX below and falling'], ['atmiv_falling', 'ATM IV falling'], ['dvol_falling', 'DVOL falling'], ['rsi_falling', 'RSI falling'], ['rv_falling', 'Realised vol (RV) falling'], ['ivclock', 'Tonight IV vs clock'], ['edge', 'Edge between']].map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select></div>' +
-        (f.entry.conditions.length ? f.entry.conditions.map(condRow).join('') : '<div class="al-note">No conditions: it enters at the start of the window. Add some to wait for the right moment.</div>');
-    }
-    h += '<div class="al-sub">Days</div><div class="al-days">' + DAYS.map(d => '<button type="button" class="al-day' + (f.days.includes(d) ? ' on' : '') + '" data-al="day" data-d="' + d + '" data-flash="days.' + d + '">' + DAYL[d] + '</button>').join('') + '</div>' +
-      '<div class="al-note">A window that runs past midnight belongs to the day it starts.</div>';
+    h += '<div class="al-sub">Conditions (all must be true before it enters)</div>' + (f.entry.kind === 'hard' ? '<div class="al-note">A hard time enters at that minute and ignores conditions. Pick any condition below and the entry becomes a window that waits for it.</div>' : '') + condPicker() +
+      (f.entry.conditions.length ? f.entry.conditions.map(condRow).join('') : (f.entry.kind === 'window' ? '<div class="al-note">No conditions yet: it enters at the start of the window. Add some above to wait for the right moment.</div>' : ''));
+    h += '<div class="al-sub">When it trades</div><div class="al-grid">' +
+      fld('Repeat', sel('repeat', f.repeat, [['daily', 'Every selected day'], ['once', 'One time only (then it disarms itself)']]), 'One time: it enters in the first window that works, then switches itself off. Daily: it repeats on every green day.') +
+      fld('Valid until (IST), then it cancels itself', '<input data-f="validUntil" data-t="str" type="datetime-local" value="' + esc(f.validUntil || '') + '">', 'After this time the strategy disarms itself and never enters. Empty means no limit.') + '</div>' +
+      '<div class="al-days-q">Quick cancel time: <button type="button" class="al-btn" data-al="valid" data-k="none">No limit</button><button type="button" class="al-btn" data-al="valid" data-k="today">End of today</button><button type="button" class="al-btn" data-al="valid" data-k="7">7 days</button><button type="button" class="al-btn" data-al="valid" data-k="30">30 days</button></div>' +
+      '<div class="al-sub">Days <span class="al-legend"><i class="g"></i>trades <i class="r"></i>does not trade</span></div><div class="al-days">' + DAYS.map(d => dayChip(d, f.days.includes(d))).join('') + '</div>' +
+      '<div class="al-note">A window that runs past midnight belongs to the day it starts. Tap a day to switch it between green (trades) and red (does not trade).</div>';
     h += '<div class="al-sub">Exit and stops</div><div class="al-grid">' +
       (opts ? fld('Stop per sold leg (x entry price)', inp('exit.legStopMultiple', f.exit.legStopMultiple, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' }), '2 = a leg sold at 100 stops at 200. Empty = no per-leg stop.') :
         fld('Stop loss ($ on the position)', inp('exit.futStopUsd', f.exit.futStopUsd, { t: 'nullnum', type: 'number', step: '1', ph: 'none' }), 'Closes the position when it is down this many dollars. One lot is 0.001 BTC.') + fld('Target ($ on the position)', inp('exit.futTargetUsd', f.exit.futTargetUsd, { t: 'nullnum', type: 'number', step: '1', ph: 'none' }), 'Closes the position when it is up this many dollars.')) +
       fld('Net profit target ($)', inp('exit.netTargetUsd', f.exit.netTargetUsd, { t: 'nullnum', type: 'number', ph: 'none' }), 'Close everything when the whole trade is up this much.') +
       fld('Net stop loss ($)', inp('exit.netStopUsd', f.exit.netStopUsd, { t: 'nullnum', type: 'number', ph: 'none' }), 'Close everything when the whole trade is down this much.') +
       fld('Exit at (IST)', '<input data-f="exit.exitTime" data-t="nulltime" type="time" value="' + esc(f.exit.exitTime || '') + '">') + '</div>' +
-      '<label class="al-chk"><input type="checkbox" data-f="exit.exitAllOnLegStop" data-t="bool"' + (f.exit.exitAllOnLegStop ? ' checked' : '') + '> When one leg stops out, close every leg</label>' +
-      '<div class="al-note">The full-screen alarm and the hard exit near the stop (default 20 and 5 points) use your <a href="#" data-al="gosettings">Settings</a> values.</div>';
+      hardExitHtml();
     h += '<div class="al-actions"><button type="button" class="al-btn" data-al="preview">Preview now</button><button type="button" class="al-btn pri" data-al="save">Save</button><button type="button" class="al-btn pri" data-al="savearm">Save and arm</button>' +
       '<button type="button" class="al-btn ' + (S.armEnter ? 'bad' : '') + '" data-al="enter">' + (S.armEnter ? 'Click again to place at market now' : 'Enter now at market') + '</button>' +
       (f.id ? '<button type="button" class="al-btn" data-al="newform">New strategy</button>' : '') + '</div>';
@@ -59111,21 +59163,46 @@ document.addEventListener('click', function(e) {
   function stratHtml() {
     const st = S.st; if (!st) return '';
     if (!st.strategies.length) return '<div class="al-empty"><b>No strategy yet</b><span>Write your entry and exit rules, press Save and arm, and it waits for its window. Or open Ask me and type <b>algo trading</b> to be guided step by step.</span><button type="button" class="al-btn pri" data-al="tab" data-k="build">+ New strategy</button></div>';
-    return '<div class="al-row" style="border:0;padding-top:0"><span class="dim">' + st.strategies.length + (st.strategies.length === 1 ? ' strategy' : ' strategies') + '</span><button type="button" class="al-btn pri" data-al="tab" data-k="build">+ New strategy</button></div>' + st.strategies.map(s => {
-      const c = s.check, r = s.rule;
+    const w = st.watch || { warnPoints: 20, hardPoints: 5 };
+    const head = '<div class="al-row" style="border:0;padding-top:0"><span class="dim">' + st.strategies.length + (st.strategies.length === 1 ? ' strategy' : ' strategies') + '</span><button type="button" class="al-btn pri" data-al="tab" data-k="build">+ New strategy</button></div>';
+    const fact = (k, v, cls) => '<div class="al-fact' + (cls ? ' ' + cls : '') + '"><span>' + esc(k) + '</span><b>' + v + '</b></div>';
+    const fmt = ms => ms == null ? '-' : IST(ms) + ' IST';
+    return head + st.strategies.map(s => {
+      const c = s.check, r = s.rule, now = st.now || Date.now(), expired = r.validUntil != null && now >= r.validUntil;
       let status = '<span class="al-chip">Not armed</span>';
-      if (s.armed) {
+      if (expired) status = '<span class="al-chip bad">Cancelled · valid-until time passed</span>';
+      else if (s.armed) {
         if (!c) status = '<span class="al-chip">Armed · starting…</span>';
         else if (c.state === 'before') status = '<span class="al-chip ok">Armed · next window ' + IST(c.windowStart) + ' IST</span>';
         else if (c.state === 'waiting') status = '<span class="al-chip warn">Waiting for conditions · window ends ' + IST(c.windowEnd) + ' IST</span>';
         else if (c.state === 'entered') status = '<span class="al-chip ok">Entered today</span>';
+        else if (c.state === 'expired') status = '<span class="al-chip bad">Cancelled · valid-until time passed</span>';
         else status = '<span class="al-chip ok">Armed · not a trading day or time</span>';
       }
-      return '<div class="al-card"><div class="al-card-h"><b>' + esc(r.name) + '</b><span class="al-chip ' + (r.mode === 'live' ? 'bad' : '') + '">' + (r.mode === 'live' ? 'LIVE' : 'Paper') + '</span>' + status + '<span class="al-sp"></span>' +
+      const entry = r.entry.kind === 'hard' ? 'At ' + esc(r.entry.time) + ' IST (hard time)' : 'Window ' + esc(r.entry.from) + ' to ' + esc(r.entry.to) + ' IST';
+      const legs = r.instrument === 'future' ? 'BTC perpetual, ' + (r.future && r.future.side === 'short' ? 'sell' : 'buy') + ' ' + s.lots + ' lots' : r.legs.map(l => (l.side === 'sell' ? 'Sell ' : 'Buy ') + (l.lots || s.lots) + ' ' + l.type + (l.pick.mode === 'delta' ? ' near delta ' + (l.pick.target != null ? l.pick.target : l.pick.low) : l.pick.mode === 'strike' ? ' at ' + l.pick.strike : l.pick.mode === 'atm' ? ' at the money' : ' ' + l.pick.points + ' pts out')).join(' + ');
+      const exp = r.instrument === 'future' ? 'no expiry' : ({ current: 'Current (0DTE)', nearest: 'Current (0DTE)', next: 'Next (1DTE)', n2n: 'Next to next (2DTE)', b2b: 'Current + next', fixed: r.expiry.code }[r.expiry.mode]);
+      const x = r.exit, ex = [];
+      if (r.instrument === 'option' && x.legStopMultiple != null) ex.push('stop ' + x.legStopMultiple + 'x per sold leg');
+      if (r.instrument === 'future' && x.futStopUsd != null) ex.push('stop $' + x.futStopUsd);
+      if (r.instrument === 'future' && x.futTargetUsd != null) ex.push('target $' + x.futTargetUsd);
+      if (x.netTargetUsd != null) ex.push('net target $' + x.netTargetUsd);
+      if (x.netStopUsd != null) ex.push('net stop $' + x.netStopUsd);
+      if (x.exitTime) ex.push('exit ' + x.exitTime + ' IST');
+      const hard = r.instrument === 'option' && x.legStopMultiple != null ? '<span class="al-chip ok">Hard exit ON</span> one leg stops, every leg closes. Alarm ' + w.warnPoints + ' pts and hard exit ' + w.hardPoints + ' pts before the stop' : r.instrument === 'future' ? 'the dollar stop and target close the position' : '<span class="al-chip warn">No per-leg stop</span> only the alarm protects it';
+      const conds = r.entry.kind === 'window' ? (s.armed && c && c.results && c.results.length ? condList(c.results) : r.entry.conditions.length ? '<ul class="al-cl">' + r.entry.conditions.map(cd => '<li>' + esc(condWords(cd)) + '</li>').join('') + '</ul>' : '<span class="dim">none: enters at the start of the window</span>') : '<span class="dim">none: a hard time enters at that minute</span>';
+      return '<div class="al-card al-sc' + (s.armed && !expired ? ' armed' : '') + '"><div class="al-card-h"><b>' + esc(r.name) + '</b><span class="al-chip ' + (r.mode === 'live' ? 'bad' : '') + '">' + (r.mode === 'live' ? 'LIVE' : 'Paper') + '</span>' + status + '<span class="al-sp"></span>' +
         '<button type="button" class="al-btn" data-al="toggle" data-id="' + s.id + '" data-on="' + (s.armed ? 0 : 1) + '">' + (s.armed ? 'Disarm' : 'Arm') + '</button>' +
         '<button type="button" class="al-btn" data-al="edit" data-id="' + s.id + '">Edit</button><button type="button" class="al-btn" data-al="del" data-id="' + s.id + '">Delete</button></div>' +
-        '<div class="al-words">' + esc(words(r, s.lots)) + '</div>' +
-        (s.armed && c && c.results && c.results.length ? condList(c.results) : '') + (s.armed && c && c.planReason ? '<div class="al-note">Cannot build the trade yet: ' + esc(c.planReason) + '</div>' : '') + '</div>';
+        '<div class="al-facts">' +
+        fact('Entry', entry) + fact('Repeat', r.repeat === 'once' ? 'One time only, then it disarms itself' : 'Every green day') +
+        fact('Valid until', r.validUntil ? esc(fmt(r.validUntil)) + (expired ? ' (cancelled)' : ' · cancels itself then') : 'No limit', expired ? 'bad' : '') +
+        fact('Next window', s.armed && c && c.windowStart ? esc(fmt(c.windowStart)) + ' to ' + esc(fmt(c.windowEnd)) : s.armed ? 'checking…' : 'not armed') +
+        fact('Trades', '<span class="al-days sm">' + DAYS.map(d => dayChip(d, r.days.includes(d)).replace(' data-al="day"', '').replace(/<button/, '<span').replace('</button>', '</span>')).join('') + '</span>') +
+        fact('What it trades', esc(legs) + '<br><small>' + esc(exp) + ', ' + s.lots + ' lots</small>') +
+        fact('Exit rules', ex.length ? esc(ex.join(' · ')) : 'none') + fact('Hard exit', hard) + '</div>' +
+        '<div class="al-sub">Conditions' + (s.armed && c && c.results && c.results.length ? ' right now' : '') + '</div>' + conds +
+        (s.armed && c && c.planReason ? '<div class="al-note">Cannot build the trade yet: ' + esc(c.planReason) + '</div>' : '') + '</div>';
     }).join('');
   }
   function runsHtml() {
@@ -59355,6 +59432,14 @@ document.addEventListener('click', function(e) {
     if (a === 'help') { S.help = !S.help; dkUi.set('al_help', S.help ? '1' : ''); paintNav(); return; }
     if (a === 'runchart') { S.sel = b.dataset.id; S.pnl = null; S.hair = -1; paintLive(); await loadTrack(); const t = $('alTrack'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
     if (a === 'addcond') { addCond(b); return; }
+    if (a === 'addc') { addCondType(b.dataset.t); return; }
+    if (a === 'valid') {
+      const k = b.dataset.k, now = Date.now();
+      if (k === 'none') f.validUntil = '';
+      else if (k === 'today') f.validUntil = istLocal(Math.floor((now + 19800000) / 86400000) * 86400000 + 86400000 - 19800000 - 60000);
+      else f.validUntil = istLocal(Math.floor((now + 19800000) / 86400000) * 86400000 + (Number(k) + 1) * 86400000 - 19800000 - 60000);
+      S.formTouched = true; paintForm(); return;
+    }
     if (a === 'preview') return run(async () => { S.pv = (await post('/preview', { rule: toRule(f), lots: lotsOf() })).preview; });
     if (a === 'save' || a === 'savearm') return run(async () => {
       const r = await post('/strategies', { id: f.id || undefined, rule: toRule(f), lots: lotsOf() });
@@ -61644,7 +61729,7 @@ document.addEventListener('click', function(e) {
         (pv.premium != null ? '<span>Premium collected</span><b>' + money(pv.premium) + '</b>' : '') +
         (pv.margin && pv.margin.required != null ? '<span>Margin needed</span><b>' + money(pv.margin.required) + '</b>' : '') +
         '<span>Entry</span><b>' + esc(entryText(r, s.when === 'now')) + '</b><span>Exit</span><b>' + esc((r.exit.exitTime ? r.exit.exitTime + ' IST' : 'no exit time') + (r.exit.netTargetUsd != null ? ', target $' + r.exit.netTargetUsd : '') + (r.exit.netStopUsd != null ? ', net stop $' + r.exit.netStopUsd : '')) + '</b>' +
-        '<span>Stoploss</span><b>' + esc(stopText(r)) + '</b><span>Days</span><b>' + esc(daysText(r.days)) + '</b></div>';
+        '<span>Stoploss</span><b>' + esc(stopText(r)) + '</b><span>Days</span><b>' + esc(daysText(r.days)) + '</b>' + (s.when === 'later' ? '<span>Repeat</span><b>' + (r.repeat === 'once' ? 'one time only' : 'every selected day') + '</b>' : '') + '</div>';
       h += recHtml(pv.recommend);
       if (pv.margin) h += '<div class="at-fine">Margin is ' + esc(pv.margin.note) + '.</div>';
       if (r.entry.kind === 'window' && s.when !== 'now') h += condList(pv.conditions);
@@ -61669,6 +61754,7 @@ document.addEventListener('click', function(e) {
       (r.instrument === 'option' ? '<label>Stop (x)<input data-atf="stop" type="number" step="0.1" value="' + (r.exit.legStopMultiple == null ? '' : r.exit.legStopMultiple) + '" placeholder="none"></label>' : '<label>Stop loss $<input data-atf="fstop" type="number" value="' + (r.exit.futStopUsd == null ? '' : r.exit.futStopUsd) + '" placeholder="none"></label><label>Target $<input data-atf="ftgt" type="number" value="' + (r.exit.futTargetUsd == null ? '' : r.exit.futTargetUsd) + '" placeholder="none"></label>') +
       '<label>Net target $<input data-atf="tgt" type="number" value="' + (r.exit.netTargetUsd == null ? '' : r.exit.netTargetUsd) + '" placeholder="none"></label><label>Net stop $<input data-atf="nstop" type="number" value="' + (r.exit.netStopUsd == null ? '' : r.exit.netStopUsd) + '" placeholder="none"></label>' +
       '<label>Mode<select data-atf="mode">' + o('paper', r.mode, 'Paper') + o('live', r.mode, 'Live (needs trading key)') + '</select></label>' +
+      '<label>Repeat<select data-atf="rep">' + o('daily', r.repeat || 'daily', 'Every selected day') + o('once', r.repeat || 'daily', 'One time only') + '</select></label>' +
       '<div class="at-days">' + DAYN.map(d => '<button type="button" class="at-day' + (r.days.includes(d) ? ' on' : '') + '" data-at="day" data-d="' + d + '">' + d[0].toUpperCase() + d.slice(1) + '</button>').join('') + '</div></div>';
   }
   function render(m) {
@@ -61748,6 +61834,7 @@ document.addEventListener('click', function(e) {
     const tg = v('tgt'); if (tg != null) r.exit.netTargetUsd = tg === '' ? null : Number(tg);
     const ns = v('nstop'); if (ns != null) r.exit.netStopUsd = ns === '' ? null : Number(ns);
     const md = v('mode'); if (md) r.mode = md;
+    const rp = v('rep'); if (rp) r.repeat = rp;
   }
 
   const style = D.createElement('style');
@@ -61764,7 +61851,7 @@ document.addEventListener('click', function(e) {
     '#askPanel .at-cl{list-style:none;margin:6px 0 0;padding:0}#askPanel .at-cl li.ok{color:var(--down,#35BB7D)}#askPanel .at-cl li.no{color:var(--warn,#E3AE45)}#askPanel .at-cl span{color:var(--muted,#8fa3b5)}';
   D.head.appendChild(style);
 
-  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, congrats, API, active: () => T.stage };
+  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, reset, congrats, API, active: () => T.stage };
 })();
 </script><script id="askWizard">
 /* Ask me: "algo trading" starts a guided build of an Algo strategy. The Algo page opens beside the chat and its form fills in as you answer,
@@ -61796,13 +61883,13 @@ document.addEventListener('click', function(e) {
     const SLOT = { ASIA_SHORT: '10:00', NY_SHORT: '22:30', EVE_LONG: '17:30', PRE_LONG: '05:00' };
     const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
     const TITLES = { kind: 'Options or futures, and which structure?', delta: 'Which delta should the strikes be nearest to?', expiry: 'Which expiry?', when: 'Trade now, or schedule it?',
-      entry: 'How should it enter?', time: 'At what time (IST)?', conditions: 'Which conditions must be true before it enters?', days: 'On which days?',
+      entry: 'How should it enter?', time: 'At what time (IST)?', conditions: 'Which conditions must be true before it enters?', days: 'On which days?', repeat: 'One time only, or repeat on those days?', valid: 'Until when is it valid (it cancels itself after)?',
       stops: 'Stop loss and target?', exittime: 'Close everything at what time (IST)?', lots: 'How many lots?', mode: 'Paper or Live?', review: 'Review: save, arm, or place it?' };
 
     const clone = o => JSON.parse(JSON.stringify(o));
     function steps(w) {
       const opt = w.rule.instrument === 'option', win = w.rule.entry.kind === 'window';
-      return ['kind'].concat(opt ? ['delta', 'expiry'] : []).concat(['when']).concat(w.when === 'later' ? ['entry', 'time'].concat(win ? ['conditions'] : []).concat(['days']) : []).concat(['stops', 'exittime', 'lots', 'mode', 'review']);
+      return ['kind'].concat(opt ? ['delta', 'expiry'] : []).concat(['when']).concat(w.when === 'later' ? ['entry', 'time'].concat(win ? ['conditions'] : []).concat(['days', 'repeat', 'valid']) : []).concat(['stops', 'exittime', 'lots', 'mode', 'review']);
     }
     const hhmm = (h, m, ap) => { h = Number(h); m = Number(m || 0); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return h > 23 || m > 59 ? null : String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); };
     function times(q) {
@@ -61814,7 +61901,8 @@ document.addEventListener('click', function(e) {
     const DAYRE = /^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*[ ,]*)+$/;
 
     /** Read one answer for one step. {ok:true, ...} or {ok:false, hint} */
-    function parseAnswer(step, text, w) {
+    function parseAnswer(step, text, w, nowMs) {
+      const now = nowMs || Date.now();
       const q = String(text || '').toLowerCase().replace(/[.!]+$/g, '').trim();
       const bad = hint => ({ ok: false, hint });
       let m;
@@ -61878,6 +61966,20 @@ document.addEventListener('click', function(e) {
         if (p.days && p.days.length) return { ok: true, days: p.days };
         return bad('Say every day, weekdays, or days like mon tue fri.');
       }
+      if (step === 'repeat') {
+        if (/\b(once|one ?time|single|just one)\b/.test(q)) return { ok: true, repeat: 'once' };
+        if (/\b(daily|every|each|repeat|all)\b/.test(q)) return { ok: true, repeat: 'daily' };
+        return bad('Say one time only, or daily.');
+      }
+      if (step === 'valid') {
+        const eod = n => Math.floor((now + 19800000) / 86400000) * 86400000 + (n + 1) * 86400000 - 19800000 - 60000;
+        if (/^(no ?limit|none|never|skip|no|forever)$/.test(q)) return { ok: true, validUntil: null };
+        if (/\btoday\b|\btonight\b/.test(q)) return { ok: true, validUntil: eod(0) };
+        if ((m = /(\d{1,3})\s*days?/.exec(q))) return { ok: true, validUntil: eod(Number(m[1])) };
+        if (/\bweek\b/.test(q)) return { ok: true, validUntil: eod(7) };
+        if (/\bmonth\b/.test(q)) return { ok: true, validUntil: eod(30) };
+        return bad('Say no limit, end of today, 7 days, or 30 days.');
+      }
       if (step === 'stops') {
         if (/^(default|ok|okay|keep|same|yes|skip)$/.test(q)) return { ok: true, patch: {} };
         if (/^(none|no stop|no)$/.test(q)) return { ok: true, patch: w.rule.instrument === 'option' ? { stopMultiple: null } : { stopUsd: 0 }, none: true };
@@ -61939,6 +62041,8 @@ document.addEventListener('click', function(e) {
         return ['entry.conditions.' + (i >= 0 ? i : list.length - 1) + '.*'];
       }
       if (step === 'days') { w.rule.days = a.days; return a.days.map(d => 'days.' + d); }
+      if (step === 'repeat') { w.rule.repeat = a.repeat; return ['repeat']; }
+      if (step === 'valid') { w.rule.validUntil = a.validUntil; return ['validUntil']; }
       if (step === 'stops') {
         if (a.none && r.instrument === 'future') { w.rule.exit.futStopUsd = null; w.rule.exit.futTargetUsd = null; return ['exit.futStopUsd', 'exit.futTargetUsd']; }
         w.rule = applyPatch(r, a.patch);
@@ -61962,6 +62066,7 @@ document.addEventListener('click', function(e) {
       }
       bits.push(w.lots + ' lots');
       bits.push(w.when === 'now' ? 'now' : r.entry.kind === 'hard' ? 'at ' + r.entry.time + ' IST' : r.entry.from + '-' + r.entry.to + ' IST' + (r.entry.conditions.length ? ' with ' + r.entry.conditions.length + ' condition(s)' : '') + ', ' + sayDays(r.days));
+      if (w.when === 'later' && r.repeat === 'once') bits.push('one time only');
       return bits.join(' · ');
     }
 
@@ -62015,6 +62120,8 @@ document.addEventListener('click', function(e) {
         case 'time': return w.rule.entry.kind === 'window' ? extra.concat([C('22:30 to 01:30'), C('10:00 to 13:00'), C('17:30 to 20:30')]) : extra.concat([C('22:30'), C('10:00'), C('17:30'), C('05:00')]);
         case 'conditions': return ['adx_falling', 'atmiv_falling', 'dvol_falling', 'rsi_falling', 'rv_falling', 'ivclock', 'edge', 'gate'].map(id => C(id, COND_NAMES[id])).concat([C('done', 'Done adding')]);
         case 'days': return extra.concat([C('every day', 'Every day'), C('weekdays', 'Weekdays (Mon to Fri)')]);
+        case 'repeat': return [C('once', 'One time only'), C('daily', 'Daily on those days')];
+        case 'valid': return [C('none', 'No limit'), C('today', 'End of today'), C('7 days', '7 days'), C('30 days', '30 days')];
         case 'stops': return w.rule.instrument === 'option' ? [C('2x'), C('3x'), C('none', 'No per-leg stop'), C('default', 'Keep the default')] : extra.concat([C('none', 'No stop')]);
         case 'exittime': return [C('none', 'No exit time'), C('07:00'), C('17:00'), C('23:00')];
         case 'lots': return [C('10'), C('50'), C('100')];
@@ -62082,6 +62189,8 @@ document.addEventListener('click', function(e) {
         if (w.rule.entry.conditions.length) rec.push('Already added: ' + w.rule.entry.conditions.map(c => (window.algoPage ? window.algoPage.words({ name: '', mode: 'paper', instrument: 'option', legs: [], expiry: { mode: 'current' }, entry: { kind: 'window', from: '00:00', to: '00:00', conditions: [c] }, days: ['mon'], exit: {} }, 1).replace(/^.*when /, '').replace(/ on Mon.*$/, '') : c.type)).join('; ') + '.');
       }
       else if (st === 'days') { const f = await scoreFacts(true); const d = C.recDays({ days: f.days, label: f.label }); rec = d.text; extra = d.chips; }
+      else if (st === 'repeat') rec = ['One time suits a trade you want to take once, for example tonight: it switches itself off after the first window. Daily repeats on every green day.'];
+      else if (st === 'valid') rec = ['A valid-until time cancels the strategy by itself, so one you forget about stops trading. Choose no limit to keep it until you disarm it.'];
       else if (st === 'stops') { pv = await previewNow(w); rec = C.recStops(w, pv); const sg = pv && pv.recommend && pv.recommend.suggest; if (w.rule.instrument === 'future' && sg && sg.stopUsd) extra = [{ v: 'stop $' + sg.stopUsd + ' target $' + sg.targetUsd, label: 'Suggested: stop $' + sg.stopUsd + ', target $' + sg.targetUsd }]; }
       else if (st === 'exittime') rec = ['An exit time closes everything at that IST time. The New York strangle (22:30) has been exiting at 07:00 IST in the desk plans; Asia at 16:00.'];
       else if (st === 'lots') { pv = await previewNow(w); rec = C.recLots(pv); }
@@ -62252,7 +62361,7 @@ document.addEventListener('click', function(e) {
     const keepVal = (D.getElementById('akIn') || {}).value || '';
     const hadFocus = D.activeElement && (D.activeElement.id === 'akIn' || D.activeElement.id === 'akPw');
     panel.classList.toggle('big', S.big);
-    panel.innerHTML = '<header class="ak-head"><b>Ask me</b><span class="ak-sub">pictures from your own data, no outside AI</span><button type="button" class="ak-x" data-ak="big" aria-label="Make wider or narrower" title="Wider / narrower">⤢</button><button type="button" class="ak-x" data-ak="close" aria-label="Close">×</button></header>' + body;
+    panel.innerHTML = '<header class="ak-head"><b>Ask me</b><span class="ak-sub">pictures from your own data, no outside AI</span><button type="button" class="ak-x ak-clear" data-ak="clear" title="Clear the whole chat" aria-label="Clear chat">Clear chat</button><button type="button" class="ak-x" data-ak="big" aria-label="Make wider or narrower" title="Wider / narrower">⤢</button><button type="button" class="ak-x" data-ak="close" aria-label="Close">×</button></header>' + body;
     const inp = D.getElementById('akIn'); if (inp) { inp.value = keepVal; if (hadFocus || S.msgs.length === 0) try { inp.focus(); } catch (e) { } }
     const pw = D.getElementById('akPw'); if (pw && hadFocus) try { pw.focus(); } catch (e) { }
     const box = D.getElementById('akMsgs'); if (box) box.scrollTop = box.scrollHeight;
@@ -62317,6 +62426,7 @@ document.addEventListener('click', function(e) {
     else if (a === 'send') { const i = D.getElementById('akIn'); const v = i ? i.value : ''; if (i) i.value = ''; ask(v); }
     else if (a === 'login') login();
     else if (a === 'big') { S.big = !S.big; render(); }
+    else if (a === 'clear') { S.msgs = []; S.busy = false; try { if (window.askWizard) window.askWizard.end(); if (window.askTrade && window.askTrade.reset) window.askTrade.reset(); } catch (e) { } render(); }
   });
   panel.addEventListener('input', e => { if (e.target && e.target.id === 'akIn') { S.sugI = -1; paintSug(); } });
   panel.addEventListener('keydown', e => {

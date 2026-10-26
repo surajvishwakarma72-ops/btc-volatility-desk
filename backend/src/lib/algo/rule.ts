@@ -112,6 +112,10 @@ export const strategySchema = z.object({
   entry: entrySchema,
   days: z.array(z.enum(DAY_NAMES)).min(1).max(7),
   exit: exitSchema,
+  /** once: enter one time (the first window that works) and then disarm itself. daily (or left out): every selected day. */
+  repeat: z.enum(['once', 'daily']).optional(),
+  /** The strategy cancels itself (disarms) when this instant passes. Epoch ms; null or left out means no limit. */
+  validUntil: z.number().int().positive().nullable().optional(),
 }).superRefine((s, ctx) => {
   if (s.instrument === 'option' && s.legs.length === 0) ctx.addIssue({ code: 'custom', path: ['legs'], message: 'an option strategy needs at least one leg' });
   if (s.instrument === 'future' && !s.future) ctx.addIssue({ code: 'custom', path: ['future'], message: 'a futures strategy needs a long or short side' });

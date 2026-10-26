@@ -3,7 +3,7 @@ import { evaluateGate } from '../bot/gate.js';
 import type { Bar } from '../../lib/bot/futures.js';
 import { deribitWorker } from '../deribit-flow-worker.js';
 import { AlgoEngine, type AlgoDeps, type MarketData } from './algo-engine.js';
-import { createRun, finishRun, getRun, listArmed, openRuns, recordMark } from './algo-store.js';
+import { createRun, finishRun, getRun, listArmed, openRuns, recordMark, setArmed } from './algo-store.js';
 import { clockIv, type Sample } from '../../lib/algo/series-math.js';
 import { backfillDvol, loadSeries, recordSample } from './series.js';
 import { atmIvOf } from './algo-engine.js';
@@ -47,6 +47,7 @@ export const realAlgoDeps: AlgoDeps = {
   getRun,
   createRun,
   finishRun,
+  disarm: async (uid, id) => { await setArmed(uid, id, false); },
   mark: recordMark,
   market: loadMarket,
   broker: (mode) => (mode === 'live' ? liveBroker : paperBroker),
