@@ -58834,7 +58834,8 @@ document.addEventListener('click', function(e) {
 
   async function api(path, opt) {
     const t = tok(); if (!t) { const e = new Error('Sign in first'); e.status = 401; throw e; }
-    const o = Object.assign({ headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' }, opt || {});
+    const o = Object.assign({ headers: { Accept: 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' }, opt || {});
+    if (o.body !== undefined) o.headers['Content-Type'] = 'application/json';
     const r = await fetch('/api/v1/algo' + path, o);
     if (r.status === 401) { try { localStorage.removeItem('desk_jwt'); } catch (e) { } const e = new Error('Session expired, sign in again'); e.status = 401; throw e; }
     const j = await r.json().catch(() => null);

@@ -32,6 +32,14 @@ export async function buildServer(): Promise<FastifyInstance> {
     trustProxy: true,
   });
 
+  // A DELETE (or any call) that names a JSON content type but sends no body is treated as an empty body, not a 400
+  // ("Body cannot be empty when content-type is set to application/json"). A body that is present must still be valid JSON.
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (_req, body, done) => {
+    const text = typeof body === 'string' ? body : String(body ?? '');
+    if (text.trim() === '') return done(null, undefined);
+    try { done(null, JSON.parse(text)); } catch (e) { (e as { statusCode?: number }).statusCode = 400; done(e as Error, undefined); }
+  });
+
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
