@@ -58388,6 +58388,67 @@ document.addEventListener('click', function(e) {
   window.pnlChart = { minuteChart, equityChart, indexAt, placeAt, minuteReadout, equityReadout, tradeTiles, allTiles, ticks };
 })();
 </script>
+<style id="dkCss">
+.dk-tabs{display:flex;gap:6px;align-items:center;overflow-x:auto;padding:2px 0 8px;margin:0 0 6px;border-bottom:1px solid var(--line);scrollbar-width:none}
+.dk-tabs::-webkit-scrollbar{display:none}
+.dk-tab{flex:0 0 auto;background:var(--panel2);color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:7px 15px;font:600 13px var(--font);cursor:pointer;white-space:nowrap;display:inline-flex;gap:7px;align-items:center}
+.dk-tab:hover{color:var(--text);border-color:var(--focus)}
+.dk-tab.on{color:var(--text);background:var(--panel);border-color:var(--focus);box-shadow:0 1px 0 var(--focus)}
+.dk-tab .n{font-size:11px;font-weight:700;background:var(--focus);color:#fff;border-radius:999px;padding:1px 7px}
+.dk-sp{flex:1}
+.dk-help{flex:0 0 auto;background:none;border:1px dashed var(--line2);color:var(--muted);border-radius:999px;padding:5px 12px;font:600 12px var(--font);cursor:pointer}
+.dk-help.on{color:var(--text);border-style:solid}
+.dk-pane{display:none}.dk-pane.on{display:block}
+.dk-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin:0 0 10px}
+.dk-kpi{display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:var(--panel);box-shadow:var(--shadow)}
+.dk-kpi span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.dk-kpi b{font:800 24px/1.1 var(--font);font-variant-numeric:tabular-nums}
+.dk-kpi b.pos{color:var(--down)}.dk-kpi b.neg{color:var(--up)}.dk-kpi b.dim{color:var(--faint)}
+.dk-kpi small{font-size:11.5px;color:var(--muted)}
+.dk-bars{width:100%;max-width:190px;height:44px;color:var(--text);margin-top:2px}
+.dk-quick{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:0 0 10px}
+.dk-big{text-align:left;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;font:inherit;display:flex;flex-direction:column;gap:4px;box-shadow:var(--shadow)}
+.dk-big:hover{border-color:var(--focus)}
+.dk-big b{font-size:16px}.dk-big span{font-size:12.5px;color:var(--muted)}
+.dk-tl{display:flex;gap:8px;overflow-x:auto;padding:4px 2px 8px;align-items:stretch}
+.dk-slot{flex:0 0 150px;border:1px solid var(--line2);border-top-width:4px;border-radius:12px;padding:8px 10px;background:var(--panel);display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+.dk-slot[data-bt-run]{cursor:pointer}.dk-slot[data-bt-run]:hover{border-color:var(--focus)}
+.dk-slot .t{font:800 20px/1.1 var(--font);font-variant-numeric:tabular-nums}
+.dk-slot .ic{font-size:20px;line-height:1}
+.dk-slot .n{font-size:12.5px;font-weight:600}
+.dk-slot .st{font-size:11.5px;color:var(--muted)}
+.dk-slot .p{font:700 15px var(--font);font-variant-numeric:tabular-nums}
+.dk-slot .p.pos{color:var(--down)}.dk-slot .p.neg{color:var(--up)}
+.dk-slot.s-upcoming{border-top-color:var(--line2)}.dk-slot.s-waiting{border-top-color:var(--warn)}.dk-slot.s-open{border-top-color:var(--focus);background:var(--panel2)}
+.dk-slot.s-win{border-top-color:#15803D}.dk-slot.s-loss{border-top-color:#C53030}.dk-slot.s-dropped,.dk-slot.s-missed{border-top-color:var(--faint);opacity:.75}
+.dk-now{flex:0 0 auto;align-self:stretch;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;padding:0 6px;border-left:3px solid var(--up);color:var(--up);font-size:11px}
+.dk-now b{letter-spacing:.1em}.dk-now span{font-weight:700}
+#pgBot .bt:not(.help) .sub{display:none}
+#pgPaper .pp:not(.help) .pp-help{display:none}
+#pgAlgo .al:not(.help) .al-help{display:none}
+</style><script id="dkUi">
+/* Shared pieces for the Bot, Paper and Algo pages: a tab bar, a help switch that hides the long explanations, small KPI tiles. */
+(function dkUiModule() {
+  'use strict';
+  const esc = x => String(x == null ? '' : x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  window.dkUi = {
+    get(k, d) { try { return localStorage.getItem('dk_' + k) || d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem('dk_' + k, v); } catch (e) { } },
+    /** items: [{k, label, n}]; attr: the data attribute the page listens for, like data-dk="tab" */
+    tabs(items, active, attr, extra) {
+      return '<div class="dk-tabs" role="tablist">' + items.map(i => '<button type="button" role="tab" aria-selected="' + (i.k === active) + '" class="dk-tab' + (i.k === active ? ' on' : '') + '" ' + attr + ' data-k="' + esc(i.k) + '">' + esc(i.label) + (i.n ? '<span class="n">' + esc(i.n) + '</span>' : '') + '</button>').join('') + '<span class="dk-sp"></span>' + (extra || '') + '</div>';
+    },
+    help(on, attr) { return '<button type="button" class="dk-help' + (on ? ' on' : '') + '" ' + attr + ' title="Show or hide the explanations">' + (on ? 'Hide help' : 'Help') + '</button>'; },
+    kpi(label, value, tone, sub) { return '<div class="dk-kpi"><span>' + esc(label) + '</span><b class="' + (tone || '') + '">' + esc(value) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</div>'; },
+    /** small bars, one per value, green up and red down, around a zero line */
+    bars(vals, labels) {
+      const W = 150, H = 44, n = vals.length, bw = W / n, hi = Math.max(0.01, ...vals.map(Math.abs)), mid = H / 2;
+      return '<svg class="dk-bars" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="PnL of the last days">' + '<line x1="0" x2="' + W + '" y1="' + mid + '" y2="' + mid + '" stroke="currentColor" opacity=".3"/>' +
+        vals.map((v, i) => { const h = Math.max(v === 0 ? 0 : 2, Math.abs(v) / hi * (mid - 2)); return '<rect x="' + (i * bw + 3) + '" y="' + (v >= 0 ? mid - h : mid) + '" width="' + (bw - 6) + '" height="' + h + '" rx="2" fill="' + (v >= 0 ? '#15803D' : '#C53030') + '"><title>' + esc((labels && labels[i] ? labels[i] + ': ' : '') + (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2)) + '</title></rect>'; }).join('') + '</svg>';
+    },
+  };
+})();
+</script>
 <style id="scoreCss">
 #pgScore .sc{max-width:1200px;margin:0 auto;padding:4px 2px 28px;color:var(--text)}
 #pgScore .sc-top{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;margin:4px 0 10px}
@@ -58792,6 +58853,8 @@ document.addEventListener('click', function(e) {
 #pgAlgo tr.al-rr{cursor:pointer}#pgAlgo tr.al-rr:hover td{background:var(--panel2)}#pgAlgo tr.al-rr.sel td{background:var(--panel2);box-shadow:inset 0 1px 0 var(--focus),inset 0 -1px 0 var(--focus)}
 @keyframes alFlash{0%{box-shadow:0 0 0 3px var(--focus,#58A6D6);background:rgba(88,166,214,.25)}100%{box-shadow:0 0 0 0 transparent}}
 #pgAlgo .al-flash{animation:alFlash 1.8s ease-out 1}
+#pgAlgo .al-empty{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding:18px;border:1px dashed var(--line2);border-radius:12px}
+#pgAlgo .al-empty b{font-size:15px}#pgAlgo .al-empty span{font-size:13px;color:var(--muted);max-width:640px;line-height:1.5}
 #pgAlgo .al-ev{list-style:none;margin:0;padding:0;font-size:12.5px}
 #pgAlgo .al-ev li{padding:4px 0;border-bottom:1px solid var(--line)}
 #pgAlgo .al-ev li.bad{color:var(--up)}
@@ -58830,7 +58893,7 @@ document.addEventListener('click', function(e) {
   };
   function mkLeg(type, side, mode) { return { type, side, pick: { mode, target: 0.1, strike: 100000, points: 3000 } }; }
 
-  const S = { sel: null, pnl: null, meta: null, hair: -1, ins: null, insAt: 0, st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: 'runs', formOpen: true, at: 0 };
+  const S = { help: dkUi.get('al_help', '') === '1', sel: null, pnl: null, meta: null, hair: -1, ins: null, insAt: 0, st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: dkUi.get('al_tab', 'strategies'), formOpen: true, at: 0 };
 
   async function api(path, opt) {
     const t = tok(); if (!t) { const e = new Error('Sign in first'); e.status = 401; throw e; }
@@ -59047,8 +59110,8 @@ document.addEventListener('click', function(e) {
   }
   function stratHtml() {
     const st = S.st; if (!st) return '';
-    if (!st.strategies.length) return '<div class="al-note">No strategies yet. Write one above, press Save and arm, and it waits for its window.</div>';
-    return st.strategies.map(s => {
+    if (!st.strategies.length) return '<div class="al-empty"><b>No strategy yet</b><span>Write your entry and exit rules, press Save and arm, and it waits for its window. Or open Ask me and type <b>algo trading</b> to be guided step by step.</span><button type="button" class="al-btn pri" data-al="tab" data-k="build">+ New strategy</button></div>';
+    return '<div class="al-row" style="border:0;padding-top:0"><span class="dim">' + st.strategies.length + (st.strategies.length === 1 ? ' strategy' : ' strategies') + '</span><button type="button" class="al-btn pri" data-al="tab" data-k="build">+ New strategy</button></div>' + st.strategies.map(s => {
       const c = s.check, r = s.rule;
       let status = '<span class="al-chip">Not armed</span>';
       if (s.armed) {
@@ -59158,6 +59221,7 @@ document.addEventListener('click', function(e) {
     if (!c) return;
     const fm = S.form; fm.entry.kind = 'window'; fm.entry.conditions.push(JSON.parse(JSON.stringify(c)));
     if (b.dataset.k === 'f') { fm.instrument = 'future'; fm.legs = []; fm.future = { side: b.dataset.s }; }
+    S.tab = 'build'; dkUi.set('al_tab', 'build');
     S.formTouched = true; S.formOpen = true; S.ok = 'Added to the rule writer as an entry condition (the entry became a window: set its times). Press Save and arm when it looks right.';
     skeleton(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { }
   }
@@ -59167,7 +59231,7 @@ document.addEventListener('click', function(e) {
     S.form = fromRule(rule, lots, null); S.formTouched = true; S.formOpen = true; S.pv = null; S.err = null;
     const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb && !active()) nb.click();
     if (!S.built) S.built = false;
-    S.built = true; skeleton();
+    S.built = true; S.tab = 'build'; dkUi.set('al_tab', 'build'); skeleton();
     let first = null;
     (flash || []).forEach(p => {
       const list = p.slice(-1) === '*' ? Array.from(root.querySelectorAll('[data-f^="' + p.slice(0, -1) + '"]')) : [root.querySelector('[data-f="' + p + '"]') || root.querySelector('[data-flash="' + p + '"]')];
@@ -59177,20 +59241,55 @@ document.addEventListener('click', function(e) {
   }
 
   /* ---------- page skeleton ---------- */
+  const TABS = () => {
+    const st = S.st, armed = st ? st.strategies.filter(x => x.armed).length : 0, open = st ? st.runs.filter(r => r.status === 'entered').length : 0;
+    return [{ k: 'strategies', label: 'My strategies', n: armed ? armed + ' armed' : '' }, { k: 'build', label: 'Build / edit' }, { k: 'runs', label: 'Runs & PnL', n: open ? open + ' open' : '' }, { k: 'open', label: 'Track an open position' }, { k: 'ins', label: 'What worked' }, { k: 'ev', label: 'Order log' }];
+  };
+  const PANE = { strategies: 'alPaneList', build: 'alPaneForm', runs: 'alPaneRuns', open: 'alPaneOther', ins: 'alPaneOther', ev: 'alPaneOther' };
+  function paintNav() {
+    const el = $('alNav'); if (el) el.innerHTML = dkUi.tabs(TABS(), S.tab, 'data-al="tab"', dkUi.help(S.help, 'data-al="help"'));
+    const on = PANE[S.tab] || 'alPaneList';
+    D.querySelectorAll('#alRoot .dk-pane').forEach(p => p.classList.toggle('on', p.id === on));
+    const r = $('alRoot').firstElementChild; if (r) r.classList.toggle('help', S.help);
+  }
+  /** show a tab, load what it needs */
+  function setTab(k) {
+    S.tab = k; dkUi.set('al_tab', k);
+    if (k === 'open') S.open = null; if (k === 'ev') S.ev = null; if (k === 'ins') S.ins = null;
+    paintLive(); refresh(); try { window.scrollTo({ top: 0 }); } catch (e) { }
+  }
+  /** the strip of numbers above the tabs: what is armed, what is open, how it is going */
+  function heroHtml() {
+    const st = S.st; if (!st) return '';
+    const dayOf = ms => new Date(ms + 19800000).toISOString().slice(0, 10), todayKey = dayOf(Date.now());
+    const armed = st.strategies.filter(x => x.armed).length, open = st.runs.filter(r => r.status === 'entered'), openNet = open.reduce((a, r) => a + (r.liveNetPnl || 0), 0);
+    const fin = st.runs.filter(r => r.status === 'exited' && r.netPnl != null && r.exitedAt);
+    const today = fin.filter(r => dayOf(r.exitedAt) === todayKey).reduce((a, r) => a + r.netPnl, 0) + openNet;
+    const wins = fin.filter(r => r.netPnl > 0).length;
+    const days = [], labels = [];
+    for (let i = 6; i >= 0; i--) { const k = dayOf(Date.now() - i * 86400000); labels.push(k.slice(5)); days.push(fin.filter(r => dayOf(r.exitedAt) === k).reduce((a, r) => a + r.netPnl, 0)); }
+    return '<div class="dk-kpis">' +
+      dkUi.kpi('Armed', armed + ' of ' + st.strategies.length, armed ? 'pos' : 'dim', armed ? 'waiting for their windows' : 'none is armed') +
+      dkUi.kpi('Open now', String(open.length), open.length ? '' : 'dim', open.length ? 'net ' + usd(openNet) : 'no position') +
+      dkUi.kpi('Today', usd(today), sgn(today), 'closed plus open') +
+      dkUi.kpi('Win rate', fin.length ? Math.round(wins / fin.length * 100) + '%' : '-', fin.length ? (wins / fin.length >= 0.5 ? 'pos' : 'neg') : 'dim', fin.length + ' finished runs') +
+      '<div class="dk-kpi"><span>Last 7 days</span>' + dkUi.bars(days, labels) + '<small>net PnL per day</small></div></div>';
+  }
   function skeleton() {
-    root.innerHTML = '<div class="al"><div class="al-top"><h2>Algo trading</h2><span class="al-sub2">Write your own entry and exit rules. Nothing is fixed. Paper first; real orders only with a trading key.</span></div>' +
-      '<div id="alTop"></div>' +
-      '<section class="al-sec"><h3 data-al="toggleform" style="cursor:pointer">Rule writer <span class="dim">' + (S.formOpen ? '▾' : '▸') + '</span></h3><div id="alForm"' + (S.formOpen ? '' : ' hidden') + '></div></section>' +
-      '<section class="al-sec"><h3>Your strategies</h3><div id="alList"></div></section>' +
-      '<section class="al-sec"><h3>PnL tracker</h3><div id="alTrack"></div></section>' +
-      '<section class="al-sec"><div class="al-tabs"><button type="button" data-al="tab" data-k="runs" class="' + (S.tab === 'runs' ? 'on' : '') + '">Runs and open trades</button><button type="button" data-al="tab" data-k="open" class="' + (S.tab === 'open' ? 'on' : '') + '">Track a position that is already open</button><button type="button" data-al="tab" data-k="ins" class="' + (S.tab === 'ins' ? 'on' : '') + '">What worked (learning)</button><button type="button" data-al="tab" data-k="ev" class="' + (S.tab === 'ev' ? 'on' : '') + '">Live order log</button></div><div id="alTab"></div></section></div>';
+    root.innerHTML = '<div class="al' + (S.help ? ' help' : '') + '"><div class="al-top"><h2>Algo trading</h2><span class="al-sub2 al-help">Write your own entry and exit rules. Nothing is fixed. Paper first; real orders only with a trading key.</span></div>' +
+      '<div id="alTop"></div><div id="alHero"></div><div id="alNav"></div>' +
+      '<section class="al-sec dk-pane" id="alPaneList"><div id="alList"></div></section>' +
+      '<section class="al-sec dk-pane" id="alPaneForm"><div id="alForm"></div></section>' +
+      '<section class="al-sec dk-pane" id="alPaneRuns"><div id="alTrack"></div><div id="alRuns"></div></section>' +
+      '<section class="al-sec dk-pane" id="alPaneOther"><div id="alTab"></div></section></div>';
     paintForm(); paintLive();
   }
   function paintForm() { const el = $('alForm'); if (el) el.innerHTML = formHtml(); }
   function paintLive() {
-    const a = $('alTop'), b = $('alList'), c = $('alTab');
-    if (a) a.innerHTML = topHtml(); if (b) b.innerHTML = stratHtml();
-    if (c) c.innerHTML = S.tab === 'runs' ? runsHtml() : S.tab === 'open' ? openHtml() : S.tab === 'ins' ? insHtml() : evHtml();
+    const a = $('alTop'), b = $('alList'), c = $('alTab'), h = $('alHero'), r = $('alRuns');
+    if (a) a.innerHTML = topHtml(); if (h) h.innerHTML = heroHtml(); if (b) b.innerHTML = stratHtml(); if (r) r.innerHTML = runsHtml();
+    if (c) c.innerHTML = S.tab === 'open' ? openHtml() : S.tab === 'ins' ? insHtml() : S.tab === 'ev' ? evHtml() : '';
+    paintNav();
     paintTrack();
   }
 
@@ -59252,21 +59351,22 @@ document.addEventListener('click', function(e) {
     if (a === 'delcond') { f.entry.conditions.splice(Number(b.dataset.i), 1); S.formTouched = true; paintForm(); return; }
     if (a === 'day') { const d = b.dataset.d; f.days = f.days.includes(d) ? f.days.filter(x => x !== d) : f.days.concat(d); S.formTouched = true; paintForm(); return; }
     if (a === 'newform') { S.form = newForm(); S.pv = null; S.formTouched = false; paintForm(); return; }
-    if (a === 'tab') { S.tab = b.dataset.k; D.querySelectorAll('.al-tabs button').forEach(x => x.classList.toggle('on', x.dataset.k === S.tab)); if (S.tab === 'open') S.open = null; if (S.tab === 'ev') S.ev = null; if (S.tab === 'ins') S.ins = null; paintLive(); refresh(); return; }
+    if (a === 'tab') { setTab(b.dataset.k); return; }
+    if (a === 'help') { S.help = !S.help; dkUi.set('al_help', S.help ? '1' : ''); paintNav(); return; }
     if (a === 'runchart') { S.sel = b.dataset.id; S.pnl = null; S.hair = -1; paintLive(); await loadTrack(); const t = $('alTrack'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
     if (a === 'addcond') { addCond(b); return; }
     if (a === 'preview') return run(async () => { S.pv = (await post('/preview', { rule: toRule(f), lots: lotsOf() })).preview; });
     if (a === 'save' || a === 'savearm') return run(async () => {
       const r = await post('/strategies', { id: f.id || undefined, rule: toRule(f), lots: lotsOf() });
       if (a === 'savearm') await post('/strategies/' + r.strategy.id + '/arm', { armed: true });
-      S.form = newForm(); S.formTouched = false; S.pv = null;
+      S.form = newForm(); S.formTouched = false; S.pv = null; S.tab = 'strategies'; dkUi.set('al_tab', 'strategies');
     }, a === 'savearm' ? 'Saved and armed. It now waits for its window.' : 'Saved. Press Arm on the card to start it (editing always disarms).');
     if (a === 'enter') {
       if (!S.armEnter) { S.armEnter = true; paintForm(); setTimeout(() => { if (S.armEnter) { S.armEnter = false; paintForm(); } }, 6000); return; }
-      return run(async () => { const r = await post('/enter-now', { rule: toRule(f), lots: lotsOf() }); S.ok = r.dry ? 'Dry-run: ' + r.detail : 'Placed: ' + (r.detail || 'ok'); });
+      return run(async () => { const r = await post('/enter-now', { rule: toRule(f), lots: lotsOf() }); S.ok = r.dry ? 'Dry-run: ' + r.detail : 'Placed: ' + (r.detail || 'ok'); S.tab = 'runs'; dkUi.set('al_tab', 'runs'); });
     }
     if (a === 'toggle') return run(() => post('/strategies/' + b.dataset.id + '/arm', { armed: b.dataset.on === '1' }));
-    if (a === 'edit') { const s = S.st.strategies.find(x => x.id === b.dataset.id); if (s) { S.form = fromRule(s.rule, s.lots, s.id); S.formTouched = true; S.formOpen = true; S.pv = null; skeleton(); window.scrollTo({ top: 0, behavior: 'smooth' }); } return; }
+    if (a === 'edit') { const s = S.st.strategies.find(x => x.id === b.dataset.id); if (s) { S.form = fromRule(s.rule, s.lots, s.id); S.formTouched = true; S.formOpen = true; S.pv = null; S.tab = 'build'; dkUi.set('al_tab', 'build'); skeleton(); window.scrollTo({ top: 0, behavior: 'smooth' }); } return; }
     if (a === 'del') return run(() => api('/strategies/' + b.dataset.id, { method: 'DELETE' }));
     if (a === 'runexit') return run(() => post('/runs/' + b.dataset.id + '/exit'), 'Closed.');
     if (a === 'exitall') {
@@ -59345,7 +59445,7 @@ document.addEventListener('click', function(e) {
       '<div class="nx-note">Futures strategies have no fixed start: they trade when a sweep or signal appears inside their window. All times are IST.</div>';
   }
 
-  const S = { view: 'live', live: null, today: null, open: {}, pa: { scope: '', eq: null, sel: null, d: null, hairT: -1, hairE: -1, metaT: null, metaE: null, busy: false, at: 0, err: null }, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
+  const S = { tab: dkUi.get('bt_tab', 'live'), help: dkUi.get('bt_help', '') === '1', view: 'live', live: null, today: null, open: {}, pa: { scope: '', eq: null, sel: null, d: null, hairT: -1, hairE: -1, metaT: null, metaE: null, busy: false, at: 0, err: null }, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
     sel: { strat: null, split: 'byWeekday', timeline: null, askOut: null }, busy: false, killArm: 0 };
 
   async function api(path, opt) {
@@ -59527,7 +59627,7 @@ document.addEventListener('click', function(e) {
     const el = $('paCard'); if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { } }
   }
   /* ---------- Today timeline, trades table, folded extras ---------- */
-  const fold = (key, title, inner) => inner ? '<details class="bt-fold" data-bt-fold="' + key + '"' + (S.open[key] ? ' open' : '') + '><summary>' + esc(title) + '</summary>' + inner + '</details>' : '';
+  const fold = (key, title, inner) => inner ? '<details class="bt-fold" data-bt-fold="' + key + '"' + ' open' + '><summary>' + esc(title) + '</summary>' + inner + '</details>' : '';
   const SLOT_STATE = { upcoming: ['Upcoming', 'dim'], waiting: ['Waiting for entry', 'warn'], open: ['Open', 'ok'], closed: ['Closed', ''], dropped: ['No trade', 'bad'], missed: ['Missed', 'bad'] };
   const EXIT_TEXT = { tp: 'take profit', stop: 'stop loss', time: 'time exit', kill: 'kill switch', manual: 'manual' };
   const exitText = r => r ? (EXIT_TEXT[r] || r) : '';
@@ -59575,6 +59675,28 @@ document.addEventListener('click', function(e) {
     await Promise.all(due.map(async p => { try { const d = await api('/runs/' + p.id + '/pnl'); S.spark[p.id] = { net: d.net, at: Date.now() }; } catch (e) { S.spark[p.id] = { net: [], at: Date.now() }; } }));
     S.sparkBusy = false; S.sig = ''; draw();
   }
+  /** Today's plan as a picture: one card per scheduled slot in time order, a NOW marker where the clock is, the state as an icon and colour. */
+  function dayStrip() {
+    const T = S.today; if (!T || !T.slots || !T.slots.length) return '';
+    const now = T.now || Date.now(), slots = T.slots.slice().sort((a, b) => a.entryAtMs - b.entryAtMs);
+    const ICON = { upcoming: '⏰', waiting: '⏳', open: '▶', dropped: '–', missed: '–' };
+    const marker = '<div class="dk-now"><b>NOW</b><span>' + esc(IST(now).slice(6)) + '</span></div>';
+    let placed = false, cells = '', done = 0, doneN = 0, openNet = 0;
+    for (const sl of slots) {
+      if (!placed && sl.entryAtMs > now) { cells += marker; placed = true; }
+      const net = sl.state === 'open' ? (sl.live ? sl.live.netPnl : null) : sl.run ? sl.run.netPnl : null;
+      if (sl.state === 'closed' && net != null) { done += net; doneN++; }
+      if (sl.state === 'open' && net != null) openNet += net;
+      const tone = sl.state === 'closed' ? (net > 0 ? 'win' : 'loss') : sl.state;
+      const icon = sl.state === 'closed' ? (net > 0 ? '✓' : '✗') : (ICON[sl.state] || '·');
+      const label = (SLOT_STATE[sl.state] || [sl.state])[0];
+      const click = sl.run && sl.run.id ? ' data-bt-run="' + esc(sl.run.id) + '" title="Click to open this trade minute by minute"' : '';
+      cells += '<div class="dk-slot s-' + tone + '"' + click + '><div class="t">' + esc(IST(sl.entryAtMs).slice(6)) + '</div><div class="ic">' + icon + '</div><div class="n">' + esc(shortName(sl.id)) + '</div><div class="st">' + esc(label) + '</div><div class="p ' + sgn(net) + '">' + (net == null ? '&nbsp;' : usd(net)) + '</div></div>';
+    }
+    if (!placed) cells += marker;
+    return '<div class="bt-card"><h3>Today\'s plan</h3><div class="dk-tl">' + cells + '</div>' +
+      '<div class="bt-row"><span class="bt-chip">Closed today <b class="' + sgn(done) + '">' + (doneN ? usd(done) : '-') + '</b></span><span class="bt-chip">Open now <b class="' + sgn(openNet) + '">' + usd(openNet) + '</b></span><span class="bt-chip dim">Times are IST. Details of every slot are under Today & trades.</span></div></div>';
+  }
   function todayCard() {
     const T = S.today; if (!T) return '';
     const now = T.now || Date.now();
@@ -59613,23 +59735,24 @@ document.addEventListener('click', function(e) {
     const st = S.status; let h = '';
     if (S.liveErr) h += `<div class="bt-card"><div class="bt-note warn">${esc(S.liveErr)}</div></div>`;
     if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded until it is switched on; then every trade it takes appears here.</div></div>`;
-    h += todayCard();
+    if (S.tab === 'live') h += dayStrip();
+    if (S.tab === 'trades') h += todayCard();
 
-    h += paCard();
-    h += tradesCard();
+    if (S.tab === 'pnl') h += paCard();
+    if (S.tab === 'trades') h += tradesCard();
 
-    h += fold('ask', 'Ask the bot: what was happening at a given minute?', `<div class="bt-card"><h3>Ask: what was happening at a given minute?</h3><div class="bt-row"><input id="btAskT" placeholder="HH:MM (IST)" size="8"><input id="btAskD" placeholder="YYYY-MM-DD (today)" size="14"><button type="button" class="bt-btn" data-bt="ask">Look up</button></div>${S.sel.askOut ? `<pre class="bt-pre">${esc(S.sel.askOut)}</pre>` : '<div class="bt-note">Shows every position, the market context and every decision the bot recorded at that minute.</div>'}</div>`);
-    h += fold('events', 'Recent events', `<div class="bt-card"><h3>Recent events</h3>${S.events.length ? `<pre class="bt-pre">${S.events.slice(0, 40).map(e => `${IST(new Date(e.at).getTime())}  ${String(e.severity).toUpperCase().padEnd(5)} ${e.type}: ${e.message}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No events yet.</div>'}</div>`);
-    h += fold('top', 'Top performer', S.top && S.top.live ? topCard(S.top.live, 'live paper trades') : '');
-    h += fold('drops', 'Why the bot did not trade, day by day', dropsCard());
-    h += fold('learn', 'Auto-learn: champion versus challenger', learnCard());
-    h += fold('stats', 'Scoreboard and break-downs by weekday, month, entry IV, gate and exit reason', S.live ? renderAnalytics(S.live.analytics, null, 'live paper') : '');
+    if (S.tab === 'why') h += fold('ask', 'Ask the bot: what was happening at a given minute?', `<div class="bt-card"><h3>Ask: what was happening at a given minute?</h3><div class="bt-row"><input id="btAskT" placeholder="HH:MM (IST)" size="8"><input id="btAskD" placeholder="YYYY-MM-DD (today)" size="14"><button type="button" class="bt-btn" data-bt="ask">Look up</button></div>${S.sel.askOut ? `<pre class="bt-pre">${esc(S.sel.askOut)}</pre>` : '<div class="bt-note">Shows every position, the market context and every decision the bot recorded at that minute.</div>'}</div>`);
+    if (S.tab === 'why') h += fold('events', 'Recent events', `<div class="bt-card"><h3>Recent events</h3>${S.events.length ? `<pre class="bt-pre">${S.events.slice(0, 40).map(e => `${IST(new Date(e.at).getTime())}  ${String(e.severity).toUpperCase().padEnd(5)} ${e.type}: ${e.message}`).map(esc).join('\n')}</pre>` : '<div class="bt-note">No events yet.</div>'}</div>`);
+    if (S.tab === 'stats') h += fold('top', 'Top performer', S.top && S.top.live ? topCard(S.top.live, 'live paper trades') : '');
+    if (S.tab === 'why') h += fold('drops', 'Why the bot did not trade, day by day', dropsCard());
+    if (S.tab === 'why') h += fold('learn', 'Auto-learn: champion versus challenger', learnCard());
+    if (S.tab === 'stats') h += fold('stats', 'Scoreboard and break-downs by weekday, month, entry IV, gate and exit reason', S.live ? renderAnalytics(S.live.analytics, null, 'live paper') : '');
     return h;
   }
 
   /* ---------- drawing, loading, events ---------- */
   function draw() {
-    const tabs = `<div class="bt"><div class="bt-top"><h2>Bot</h2>`;
+    const tabs = `<div class="bt${S.help ? ' help' : ''}"><div class="bt-top"><h2>Bot</h2>`;
     const st = S.status; let chips = '';
     if (st) {
       chips = `<span class="bt-chip ${st.engine === 'running' ? 'ok' : 'bad'}">Engine <b>${esc(st.enabled ? st.engine : 'off')}</b></span><span class="bt-chip">Mode <b>${esc(st.mode)}</b></span>` +
@@ -59639,7 +59762,9 @@ document.addEventListener('click', function(e) {
     const act = st && st.enabled && tok() && isAdmin() ? `<span class="bt-sp"></span>${st.paused ? '<button type="button" class="bt-btn" data-bt="resume">Resume</button>' : '<button type="button" class="bt-btn" data-bt="pause">Pause entries</button>'}${st.killSwitch ? '<button type="button" class="bt-btn" data-bt="killreset">Reset kill switch</button>' : `<button type="button" class="bt-btn danger" data-bt="kill">${S.killArm > Date.now() ? 'Click again: close everything' : 'Kill switch'}</button>`}` : '';
     const body = liveView();
     const keep = { y: window.scrollY }; const ae = D.activeElement && D.activeElement.id; const av = ae && $(ae) ? $(ae).value : null;
-    root.innerHTML = tabs + chips + act + '</div>' + (tok() ? pnlStrip() : '') + '<div class="bt-next" id="btNext"></div>' + body + '</div>';
+    const liveN = (S.positions || []).filter(p => p.book !== 'gated').length;
+    const tabBar = tok() ? dkUi.tabs([{ k: 'live', label: 'Live now', n: liveN || '' }, { k: 'trades', label: 'Today & trades' }, { k: 'pnl', label: 'PnL analysis' }, { k: 'stats', label: 'Performance' }, { k: 'why', label: 'Why · Learn · Log' }], S.tab, 'data-dk="tab"', dkUi.help(S.help, 'data-dk="help"')) : '';
+    root.innerHTML = tabs + chips + act + '</div>' + tabBar + (tok() && S.tab === 'live' ? pnlStrip() + '<div class="bt-next" id="btNext"></div>' : '') + body + '</div>';
     renderNext();
     try { applyHair(); } catch (e) { console.warn('hairline', e); }
     if (ae && av != null && $(ae)) { $(ae).value = av; try { $(ae).focus(); } catch (e) { } }
@@ -59734,6 +59859,11 @@ document.addEventListener('click', function(e) {
   const hairEv = e => { const svg = e.target && e.target.closest && e.target.closest('.pcSvg'); if (svg) hairFromEvent(svg, e); };
   root.addEventListener('pointermove', hairEv);
   root.addEventListener('pointerdown', hairEv);
+  root.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-dk]'); if (!b) return;
+    if (b.dataset.dk === 'tab') { S.tab = b.dataset.k; dkUi.set('bt_tab', S.tab); S.sig = ''; draw(); try { window.scrollTo({ top: 0 }); } catch (x) { } }
+    else if (b.dataset.dk === 'help') { S.help = !S.help; dkUi.set('bt_help', S.help ? '1' : ''); draw(); }
+  });
   root.addEventListener('click', e => { const svg = e.target && e.target.closest && e.target.closest('.pcSvg'); if (svg && svg.dataset.pc === 'pcE' && S.pa.eq && S.pa.hairE >= 0) { const p = S.pa.eq.equity[S.pa.hairE]; if (p) pickTrade(p.id); } });
   root.addEventListener('keydown', e => {
     const svg = e.target && e.target.classList && e.target.classList.contains('pcSvg') ? e.target : null; if (!svg) return;
@@ -60226,16 +60356,18 @@ document.addEventListener('click', function(e) {
 
   /* ---------- skeleton ---------- */
   function build() {
-    root.innerHTML = '<div class="pp"><div class="pp-top"><h2>Paper Trade</h2><span id="ppHead" class="pp-sp"></span><span id="ppBtns"></span></div>' +
-      '<div class="pp-note" style="margin:-4px 0 10px">Fake money, real Delta order books. Three steps: pick strikes on the chain, check the margin, execute. Every strategy gets a stop on each sold leg, and if any leg hits its stop the whole strategy is closed. Separate from the bot; it cannot place a real order.</div>' +
-      '<div id="ppLogin"></div><div id="ppPnl"></div>' +
+    if (!S.tab) S.tab = dkUi.get('pp_tab', 'over');
+    S.help = dkUi.get('pp_help', '') === '1';
+    root.innerHTML = '<div class="pp' + (S.help ? ' help' : '') + '"><div class="pp-top"><h2>Paper Trade</h2><span id="ppHead" class="pp-sp"></span><span id="ppBtns"></span></div>' +
+      '<div class="pp-note pp-help" style="margin:-4px 0 10px">Fake money, real Delta order books. Three steps: pick strikes on the chain, check the margin, execute. Every strategy gets a stop on each sold leg, and if any leg hits its stop the whole strategy is closed. Separate from the bot; it cannot place a real order.</div>' +
+      '<div id="ppLogin"></div><div id="ppNav"></div><div class="dk-pane" data-pane="over"><div id="ppPnl"></div><div class="dk-quick"><button type="button" class="dk-big" data-pp-tab="opt"><b>New options trade</b><span>Pick strikes on the chain, check the margin, execute</span></button><button type="button" class="dk-big" data-pp-tab="fut"><b>New futures trade</b><span>BTC perpetual, long or short, with a stop and a target</span></button></div><div class="pp-card"><h3>Your open strategies</h3><div id="ppStratMsg"></div><div id="ppStrats"></div></div></div><div class="dk-pane" data-pane="opt">' +
       '<div class="pp-card"><h3><span class="pp-step">1</span> Pick strikes on the option chain</h3>' +
       '<div class="pp-bar"><label>Expiry <select id="ppExp" class="pp-in" style="width:auto"></select></label><label>Lots per new leg <input type="number" id="ppBase" class="pp-in" style="width:90px" min="1" step="1" value="100"></label><span class="pp-note" id="ppBoardAt"></span></div>' +
       '<div class="pp-scroll board" id="ppBoard"></div>' +
       '<div class="pp-note" style="margin-top:6px">Click an <b>ask</b> to <b>buy</b> that strike or a <b>bid</b> (or its <b>Sell margin</b>) to <b>sell</b> it. Pick as many strikes as you like, click again to remove, click the other side to flip. Chosen legs are outlined: green = buy, red = sell. <b>Sell margin</b> is the extra margin selling the lots above would need on your account.</div></div>' +
       '<div class="pp-card"><h3><span class="pp-step">2</span> Your strategy</h3><div id="ppBuilder"></div></div>' +
       '<div class="pp-card"><h3><span class="pp-step">3</span> Execute</h3><div id="ppExec"></div></div>' +
-      '<div class="pp-card"><h3>Futures · BTC perpetual (BTCUSD)</h3><div id="ppFutQ" class="pp-perp"></div><div class="pp-futgrid"><div class="pp-tk">' +
+      '</div><div class="dk-pane" data-pane="fut"><div class="pp-card"><h3>Futures · BTC perpetual (BTCUSD)</h3><div id="ppFutQ" class="pp-perp"></div><div class="pp-futgrid"><div class="pp-tk">' +
       '<span class="pp-seg side" id="ppFSide"><button type="button" data-pp-fside="buy" class="on buy">Buy / Long</button><button type="button" data-pp-fside="sell">Sell / Short</button></span>' +
       '<span class="pp-seg" id="ppFType"><button type="button" data-pp-ftype="market" class="on">Market</button><button type="button" data-pp-ftype="limit">Limit</button></span>' +
       '<label>Size in lots (1 lot = 0.001 BTC) <span class="dim" id="ppFSize"></span><input type="number" id="ppFLots" min="1" step="1" value="100"></label>' +
@@ -60245,9 +60377,9 @@ document.addEventListener('click', function(e) {
       '<div class="row2"><label>Take profit price<input type="number" id="ppFTp" step="any" placeholder="optional"></label><label>Stop loss price<input type="number" id="ppFSl" step="any" placeholder="optional"></label></div>' +
       '<div id="ppFPrev" class="pp-prev"></div><button type="button" class="pp-go buy" id="ppFGo" data-pp-act="fgo">Buy</button><div id="ppFMsg"></div></div>' +
       '<div id="ppFutPos"></div></div></div>' +
-      '<div class="pp-card"><h3>Your open strategies</h3><div id="ppStratMsg"></div><div id="ppStrats"></div></div>' +
-      '<div class="pp-card"><details id="ppClosedD"><summary>Closed strategies</summary><div id="ppClosed" class="pp-scroll"></div></details></div>' +
-      '<div class="pp-card"><details id="ppAcctD"><summary>Account details, other positions and net greeks</summary><div id="ppAcct"></div></details></div></div>';
+      '</div><div class="dk-pane" data-pane="hist">' +
+      '<div class="pp-card"><details id="ppClosedD" open><summary>Closed strategies</summary><div id="ppClosed" class="pp-scroll"></div></details></div>' +
+      '<div class="pp-card"><details id="ppAcctD"><summary>Account details, other positions and net greeks</summary><div id="ppAcct"></div></details></div></div></div>';
     S.built = true; wire();
   }
 
@@ -60351,7 +60483,7 @@ document.addEventListener('click', function(e) {
     try {
       const j = await api('/strategy', { method: 'POST', body: sbBody() });
       S.sb.msg = { k: 'ok', t: 'Executed: ' + j.orders.length + ' legs filled together. Net premium ' + usd(j.netPremium) + ', fees ' + usd(j.fees) + '. It is listed under Your open strategies below.' };
-      S.sb.legs = []; S.sb.preview = null; S.smsg = null;
+      S.sb.legs = []; S.sb.preview = null; S.smsg = null; setTab('over');
     } catch (e) { S.sb.msg = { k: 'bad', t: 'Not executed: ' + e.message }; }
     S.sb.busy = false; renderBuilder(); await refresh();
   }
@@ -60502,7 +60634,7 @@ document.addEventListener('click', function(e) {
     if (D.activeElement && D.activeElement.tagName === 'INPUT' && el.contains(D.activeElement)) return;
     $('ppStratMsg').innerHTML = S.smsg ? '<div class="pp-msg ' + S.smsg.k + '" style="margin:0 0 8px">' + esc(S.smsg.t) + '</div>' : '';
     const open = S.strat.open;
-    el.innerHTML = open.length ? open.map(stratCard).join('') : '<div class="pp-note">Nothing open. Execute a strategy above and it will appear here with its net PnL, the PnL of each leg and its stops.</div>';
+    el.innerHTML = open.length ? open.map(stratCard).join('') : '<div class="pp-note">Nothing open. Place a trade from New options trade and it will appear here with its net PnL, the PnL of each leg and its stops.</div>';
   }
   function renderClosed() {
     const c = S.strat.closed, sig = JSON.stringify(c.map(s => [s.id, s.netPnl])); if (sig === S.closedSig) return; S.closedSig = sig;
@@ -60627,8 +60759,16 @@ document.addEventListener('click', function(e) {
   }
 
   /* ---------- data ---------- */
+  function ppNav() {
+    const el = $('ppNav'); if (!el) return;
+    const n = S.strat && S.strat.open ? S.strat.open.length : 0;
+    el.innerHTML = tok() ? dkUi.tabs([{ k: 'over', label: 'Overview', n: n || '' }, { k: 'opt', label: 'Options trade' }, { k: 'fut', label: 'Futures trade' }, { k: 'hist', label: 'History & account' }], S.tab, 'data-pp-tab', dkUi.help(S.help, 'data-pp-help')) : '';
+    root.querySelectorAll('.dk-pane').forEach(p => p.classList.toggle('on', !tok() || p.dataset.pane === S.tab));
+  }
+  function setTab(k) { S.tab = k; dkUi.set('pp_tab', k); ppNav(); try { window.scrollTo({ top: 0 }); } catch (e) { } if (k === 'opt') { try { renderBoard(); updateLegQuotes(); } catch (e) { } } }
   function drawAll() {
     if (!S.built) build();
+    ppNav();
     renderLogin(); renderHead(); renderPnl(); renderBoard(); renderStrats(); renderFut(); renderClosed(); renderAcct(); updateLegQuotes();
     if (!$('ppSbSum')) renderBuilder();
   }
@@ -60649,6 +60789,11 @@ document.addEventListener('click', function(e) {
 
   /* ---------- events ---------- */
   function wire() {
+    root.addEventListener('click', e => {
+      const t = e.target.closest && e.target.closest('[data-pp-tab],[data-pp-help]'); if (!t) return;
+      if (t.dataset.ppHelp !== undefined && t.hasAttribute('data-pp-help')) { S.help = !S.help; dkUi.set('pp_help', S.help ? '1' : ''); root.querySelector('.pp').classList.toggle('help', S.help); ppNav(); return; }
+      if (t.dataset.ppTab) setTab(t.dataset.ppTab);
+    });
     root.addEventListener('click', async e => {
       const t = e.target.closest('[data-pp-q],[data-pp-act],[data-pp-close],[data-pp-mode],[data-pp-sbdel],[data-pp-edit],[data-pp-editx],[data-pp-save],[data-pp-closeall],[data-pp-fside],[data-pp-ftype],[data-pp-flots],[data-pp-cancel]'); if (!t) return; const d = t.dataset;
       if (d.ppFside) { S.fut.side = d.ppFside; renderFut(); futSchedule(); return; }
