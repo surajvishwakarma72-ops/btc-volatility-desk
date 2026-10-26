@@ -41674,6 +41674,57 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
           await dkApi('/auth/invites/' + encodeURIComponent(b.dataset.id), 'DELETE'); DK.at = 0; await dkLoad(true); redraw();
         }
       });
+      /* Stop alarm and hard exit settings */
+      const AL = { cfg: null, trade: null, events: null, snap: null, at: 0, msg: null, busy: false };
+      async function alLoad(force) {
+        if (!dkTok() || (!force && Date.now() - AL.at < 20000)) return; AL.at = Date.now();
+        const [c, t, e, w] = await Promise.all([dkApi('/watch/settings'), dkApi('/watch/trade-key'), dkApi('/watch/events'), dkApi('/watch')]);
+        if (c.ok) AL.cfg = c.j; if (t.ok) AL.trade = t.j; if (e.ok) AL.events = e.j.events; if (w.ok) AL.snap = w.j.snapshot;
+        try { setHtml = ''; render(); } catch (x) { }
+      }
+      const alIst = ms => new Date(ms + 19800000).toISOString().slice(5, 16).replace('T', ' ');
+      function dkAlarmCard() {
+        if (!dkTok()) return ''; alLoad(false); const c = AL.cfg;
+        if (!c) return '<section class="v18c v18" id="alCard"><div class="v18h"><h3>Stop alarm and hard exit</h3></div><p class="s">Loading…</p></section>';
+        const sn = AL.snap, groups = sn ? sn.groups.length : 0, alarms = sn ? sn.alarms.length : 0, probs = sn && sn.problems ? sn.problems : [];
+        const tr = AL.trade || {}, S1 = c.settings;
+        let live;
+        if (!tr.connected) live = '<p class="s">The hard exit on your real Delta positions needs its own trading key (below). Without one the desk only warns you on screen.</p>';
+        else if (!c.liveArmed) live = '<p>Trading key saved. The hard exit is <b>off</b>. To arm it, type <b>ARM</b>: <input id="alArm" class="v18in" style="width:90px" autocomplete="off"> <button type="button" class="v18btn pri" data-al="arm">Arm</button></p>';
+        else if (c.dryRun) live = '<p><b>ARMED, in dry-run.</b> At ' + S1.hardPoints + ' points or fewer it only writes what it WOULD send (see the list below), nothing reaches Delta. ' + (c.serverLiveSwitch ? 'To let it send real closing orders, type <b>GO LIVE</b>: <input id="alLive" class="v18in" style="width:110px" autocomplete="off"> <button type="button" class="v18btn pri" data-al="golive">Send real orders</button>' : '<span class="neg">Real orders are switched off on the server (LIVE_TRADING_ENABLED), so dry-run is all it can do until the owner turns that on.</span>') + ' <button type="button" class="v18btn" data-al="disarm">Disarm</button></p>';
+        else live = '<p class="neg"><b>LIVE: armed with real orders.</b> At ' + S1.hardPoints + ' points or fewer before a stop, the desk buys back or sells out every option position in that expiry with reduce-only immediate-or-cancel limit orders. <button type="button" class="v18btn" data-al="dry">Back to dry-run</button> <button type="button" class="v18btn" data-al="disarm">Disarm</button></p>';
+        const ev = (AL.events || []).slice(0, 8).map(x => '<div class="s" style="padding:3px 0;border-top:1px solid var(--line,#eee)"><b>' + esc(alIst(x.at)) + ' IST</b> ' + (x.dryRun ? '<span class="dim">[dry-run]</span> ' : '<span class="neg">[LIVE]</span> ') + esc(x.detail) + '</div>').join('');
+        return `<section class="v18c v18" id="alCard"><div class="v18h"><h3>Stop alarm and hard exit</h3><span class="r">${groups ? groups + ' position' + (groups === 1 ? '' : 's') + ' watched' + (alarms ? ' · ' + alarms + ' in alarm' : '') : 'nothing open'}</span></div>
+    <p>The desk watches every open position from the server (so also with the screen off): the paper bot, your paper strategies, and your real Delta positions. When any sold leg has <b>${S1.warnPoints} points or fewer</b> before its stop, a full-screen flashing alarm with sound stays on until it is back. A call sold at 100 with a stop at 200 alarms from 180. At <b>${S1.hardPoints} points</b> the paper bot and paper strategies close every leg by themselves.</p>
+    ${probs.length ? '<p class="neg">' + probs.map(esc).join(' · ') + '</p>' : ''}
+    <div class="v18btns" style="flex-wrap:wrap;gap:8px;align-items:end">
+      <label class="v18f">Alarm at (points before the stop)<input id="alWarn" type="number" min="1" max="500" step="1" value="${esc(S1.warnPoints)}"></label>
+      <label class="v18f">Hard exit at (points)<input id="alHard" type="number" min="0" max="200" step="1" value="${esc(S1.hardPoints)}"></label>
+      <label class="v18f">Stop for real positions (x entry)<input id="alMult" type="number" min="1.1" max="10" step="0.1" value="${esc(S1.stopMultiple)}"></label>
+      <label class="v18f" style="flex-direction:row;gap:6px;align-items:center"><input id="alReal" type="checkbox" ${c.watchReal ? 'checked' : ''}> Watch my real Delta positions</label>
+    </div>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-al="save">Save</button><button type="button" class="v18btn" data-al="test">Test the alarm (screen and sound)</button></div>
+    <p class="s">Real Delta positions have no stop stored on the exchange, so the desk assumes your rule: stop = entry price x the multiple above (2x). Points are option price points.</p>
+    <h4 style="margin:12px 0 4px">Automatic hard exit on real Delta positions (optional, off by default)</h4>
+    <p class="s">Needs a <b>separate</b> API key with <b>Trade</b> permission, whitelisted for this server's address like your read key. <b>This key can place orders.</b> Only create it if you want the desk to close positions for you. The desk only ever sends reduce-only closing orders for BTC options, never opens or adds. It starts in dry-run. Delta cannot confirm trade permission without a real order, so check the dry-run list below before going live.</p>
+    ${tr.connected ? '<p>✓ Trading key saved (…' + esc(tr.keyLast4) + '). <button type="button" class="v18btn" data-al="removekey">Remove trading key</button></p>' : '<label class="v18f">Trading API key<input id="alKey" type="text" autocomplete="off" spellcheck="false" autocapitalize="off"></label><label class="v18f">Trading API secret<input id="alSecret" type="password" autocomplete="new-password" spellcheck="false" autocapitalize="off"></label><div class="v18btns"><button type="button" class="v18btn" data-al="savekey">' + (AL.busy ? 'Checking with Delta…' : 'Save trading key') + '</button></div>'}
+    ${live}
+    ${AL.msg ? '<p class="' + (AL.msg.k === 'ok' ? 'pos' : 'neg') + '">' + esc(AL.msg.t) + '</p>' : ''}
+    ${ev ? '<h4 style="margin:12px 0 4px">What the hard exit did or would have done</h4>' + ev : ''}</section>`;
+      }
+      D.addEventListener('click', async e => {
+        const b = e.target.closest && e.target.closest('[data-al]'); if (!b) return; const a = b.dataset.al, val = id => ((D.getElementById(id) || {}).value || '').trim();
+        const redraw = () => { try { setHtml = ''; render(); } catch (x) { } };
+        const done = (r, ok) => { AL.msg = r.ok ? { k: 'ok', t: ok } : { k: 'bad', t: r.j.error || ('Failed (HTTP ' + r.status + ')') }; if (r.ok) AL.cfg = Object.assign(AL.cfg || {}, r.j); AL.at = 0; };
+        if (a === 'test') { if (window.deskAlarm) window.deskAlarm.test(); return; }
+        if (a === 'save') { const r = await dkApi('/watch/settings', 'PUT', { warnPoints: Number(val('alWarn')), hardPoints: Number(val('alHard')), stopMultiple: Number(val('alMult')), watchReal: !!(D.getElementById('alReal') || {}).checked }); done(r, 'Saved.'); await alLoad(true); }
+        else if (a === 'savekey') { if (AL.busy) return; const apiKey = val('alKey'), apiSecret = val('alSecret'); if (apiKey.length < 8 || apiSecret.length < 8) { AL.msg = { k: 'bad', t: 'Paste both the trading key and its secret.' }; redraw(); return; } AL.busy = true; redraw(); const r = await dkApi('/watch/trade-key', 'PUT', { apiKey, apiSecret }); AL.busy = false; AL.msg = r.ok ? { k: 'ok', t: r.j.note || 'Saved.' } : { k: 'bad', t: r.j.error || 'Could not save' }; AL.at = 0; await alLoad(true); }
+        else if (a === 'removekey') { if (!window.confirm('Remove the trading key? The hard exit on real positions will be disarmed.')) return; const r = await dkApi('/watch/trade-key', 'DELETE'); AL.msg = r.ok ? { k: 'ok', t: 'Trading key removed and the hard exit disarmed.' } : { k: 'bad', t: 'Could not remove it' }; AL.at = 0; await alLoad(true); }
+        else if (a === 'arm') { const r = await dkApi('/watch/live', 'PUT', { armed: true, confirm: val('alArm') }); done(r, 'Armed in dry-run: it will only write what it would send.'); await alLoad(true); }
+        else if (a === 'golive') { const r = await dkApi('/watch/live', 'PUT', { dryRun: false, confirm: val('alLive') }); done(r, 'LIVE. The hard exit can now send real closing orders.'); await alLoad(true); }
+        else if (a === 'dry') { const r = await dkApi('/watch/live', 'PUT', { dryRun: true }); done(r, 'Back in dry-run.'); await alLoad(true); }
+        else if (a === 'disarm') { const r = await dkApi('/watch/live', 'PUT', { armed: false }); done(r, 'Disarmed. Dry-run is back on.'); await alLoad(true); }
+      });
       function keyCard() {
         const A = W.v100 && W.v100.api; if (!A) return ''; const on = A.on(), k = (() => { try { return A.key() || {}; } catch (e) { return {}; } })(), S = strangleNow();
         if (!on) return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Sign in</h3></div>
@@ -41683,7 +41734,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         const pos = A.err ? '' : S ? `<span class="pos">✓ Open position: ${esc(day(settle(S.exp)))} strangle · ${S.legs.map(l => (l.type === 'P' ? 'put ' : 'call ') + Math.round(l.K)).join(' / ')}</span>` : A.at ? 'No short strangle open on Delta right now. It is picked up within 30 s of your first fill.' : '';
         return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Connect Delta (read-only)</h3><span class="r">key ${esc(String(k.key || '').slice(0, 4))}…</span></div>
     <p>${st}</p>${pos ? `<p>${pos}</p>` : ''}${A.err && /whitelist/i.test(A.err) ? wlBox(A) : A.err ? `<p>Tried: ${esc((A.tries || []).join(' · ') || '—')}</p><p>Delta often blocks signed requests sent straight from a browser page (and from a file opened on the phone). The desk then uses its relay on Vercel, <b>api/delta-proxy.js</b>. Add that file and <b>vercel.json</b> to the GitHub repo once, let Vercel deploy, then press Check now.</p>` : A.at ? `<p class="s">Route: ${esc(A.route === 'proxy' ? 'via the Vercel relay' : 'direct to Delta')}</p>` : ''}
-    <div class="v18btns"><button type="button" class="v18btn" data-v100="check">Check now</button><button type="button" class="v18btn" data-v100="off">Log out</button></div></section>${dkForm()}${dkInvites()}`;
+    <div class="v18btns"><button type="button" class="v18btn" data-v100="check">Check now</button><button type="button" class="v18btn" data-v100="off">Log out</button></div></section>${dkForm()}${dkAlarmCard()}${dkInvites()}`;
       }
       function onSet(e) {
         const b = e.target.closest('[data-v18]'); if (!b) return; const a = b.dataset.v18, stamp = new Date().toISOString().slice(0, 10);
@@ -59072,6 +59123,147 @@ document.addEventListener('click', function(e) {
   W.deskAuth = { open, logout, user, admin, token, clearPersonal };
 })();
 </script>
+<script data-block="desk-alarm">
+/* Stop alarm: a full-screen, flashing, sounding alert on every page when a position's sold leg is close to its stop (default 20 points: a call
+   sold at 100 with a stop at 200 alarms from 180) and it stays until the leg is clearly back. The server does the watching, so it also protects
+   with the screen off; this window only shows what the server found. Hard exit (default 5 points) is done by the server, not here. */
+(function deskAlarm() {
+  'use strict';
+  const D = document, W = window;
+  const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const S = { snap: null, live: null, muted: false, min: false, shown: false, backUntil: 0, testUntil: 0, ctx: null, soundOk: false, titleBase: D.title, tick: 0 };
+  try { S.muted = sessionStorage.getItem('al_mute') === '1'; } catch (e) { }
+  const SRC = { bot: 'Paper bot', paper: 'Your paper strategy', delta: 'Your real Delta position' };
+  const LV = { warn: ['STOP-LOSS CLOSE', 'warn'], hard: ['HARD EXIT ZONE', 'hard'], breach: ['STOP REACHED', 'breach'] };
+  const RANK = { safe: 0, warn: 1, hard: 2, breach: 3 };
+
+  const css = D.createElement('style');
+  css.textContent = [
+    '#alOv{position:fixed;inset:0;z-index:100001;display:flex;align-items:center;justify-content:center;padding:14px;color:#fff;font-family:var(--font,system-ui);overflow:auto}',
+    '#alOv[hidden],#alBar[hidden]{display:none}',
+    '#alOv .alBg{position:fixed;inset:0;z-index:-1;animation:alFlash 0.9s steps(2,jump-none) infinite}',
+    '#alOv.warn .alBg{background:#B45309}#alOv.hard .alBg{background:#B91C1C}#alOv.breach .alBg{background:#7F1D1D}#alOv.back .alBg{background:#15803D;animation:none}',
+    '@keyframes alFlash{0%{filter:brightness(1)}50%{filter:brightness(1.55)}}',
+    '#alOv .alBox{width:min(760px,100%);max-height:100%;overflow:auto}',
+    '#alOv h1{margin:0 0 4px;font-size:clamp(30px,7vw,60px);line-height:1;letter-spacing:.02em;text-transform:uppercase}',
+    '#alOv .alSub{font-size:clamp(14px,2.6vw,19px);margin:0 0 14px;opacity:.95}',
+    '#alOv .alGrp{background:rgba(0,0,0,.38);border:2px solid rgba(255,255,255,.55);border-radius:14px;padding:12px 14px;margin:0 0 12px}',
+    '#alOv .alGh{display:flex;flex-wrap:wrap;gap:6px 12px;justify-content:space-between;align-items:baseline;margin:0 0 8px}',
+    '#alOv .alGh b{font-size:18px}',
+    '#alOv .alChip{font:700 11px var(--font,system-ui);border:1px solid rgba(255,255,255,.7);border-radius:999px;padding:2px 9px;text-transform:uppercase;letter-spacing:.05em}',
+    '#alOv .alLeg{padding:7px 0;border-top:1px solid rgba(255,255,255,.25)}',
+    '#alOv .alLeg:first-of-type{border-top:0}',
+    '#alOv .alLt{display:flex;flex-wrap:wrap;justify-content:space-between;gap:4px 12px;font-size:15px}',
+    '#alOv .alPts{font-size:clamp(20px,4vw,30px);font-weight:800;font-variant-numeric:tabular-nums}',
+    '#alOv .alBar{height:12px;border-radius:7px;background:rgba(255,255,255,.25);overflow:hidden;margin:5px 0}',
+    '#alOv .alBar i{display:block;height:100%;background:#fff}',
+    '#alOv .alNote{font-size:13.5px;line-height:1.45;opacity:.95;margin:8px 0 0}',
+    '#alOv .alBtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}',
+    '#alOv button{font:800 14px var(--font,system-ui);padding:10px 16px;border-radius:10px;border:2px solid #fff;background:transparent;color:#fff;cursor:pointer}',
+    '#alOv button:hover{background:rgba(255,255,255,.18)}',
+    '#alBar{position:fixed;left:0;right:0;top:0;z-index:100001;background:#B91C1C;color:#fff;font:800 14px var(--font,system-ui);padding:9px 14px;cursor:pointer;display:flex;gap:10px;align-items:center;animation:alFlash 0.9s steps(2,jump-none) infinite}',
+  ].join('\n');
+  D.head.appendChild(css);
+  const ov = D.createElement('div'); ov.id = 'alOv'; ov.hidden = true; ov.setAttribute('role', 'alertdialog'); ov.setAttribute('aria-live', 'assertive'); D.body.appendChild(ov);
+  const bar = D.createElement('div'); bar.id = 'alBar'; bar.hidden = true; D.body.appendChild(bar);
+
+  /** sound: the browser only allows it after one tap or key press on the page, so the first one unlocks it */
+  function unlock() {
+    try {
+      if (!S.ctx) { const C = W.AudioContext || W.webkitAudioContext; if (C) S.ctx = new C(); }
+      if (S.ctx && S.ctx.state === 'suspended') S.ctx.resume();
+      S.soundOk = !!S.ctx && S.ctx.state === 'running';
+    } catch (e) { }
+  }
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => D.addEventListener(ev, unlock, { passive: true }));
+  function beep(level) {
+    if (!S.ctx || S.ctx.state !== 'running' || S.muted) return;
+    const hi = level === 'warn' ? 740 : 980, lo = level === 'warn' ? 560 : 700, t0 = S.ctx.currentTime;
+    [[hi, 0], [lo, 0.22], [hi, 0.44]].forEach(([f, d]) => {
+      const o = S.ctx.createOscillator(), g = S.ctx.createGain();
+      o.type = 'square'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.22, t0 + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.18);
+      o.connect(g); g.connect(S.ctx.destination); o.start(t0 + d); o.stop(t0 + d + 0.2);
+    });
+  }
+
+  function alarms() {
+    if (S.testUntil > Date.now()) return [{ id: 'test', source: 'delta', label: 'TEST: this is only a test of the alarm', level: 'hard', since: Date.now(), legs: [{ symbol: 'C-BTC-82000-TEST', side: 'sold', entry: 100, mark: 183, stop: 200, pointsLeft: 17, level: 'warn', lots: 100 }, { symbol: 'P-BTC-78000-TEST', side: 'sold', entry: 100, mark: 130, stop: 200, pointsLeft: 70, level: 'safe', lots: 100 }] }];
+    return (S.snap && S.snap.alarms) || [];
+  }
+  const worstLevel = list => list.reduce((w, g) => (RANK[g.level] > RANK[w] ? g.level : w), 'safe');
+
+  function what(g) {
+    const hp = S.snap && S.snap.settings ? S.snap.settings.hardPoints : 5, L = S.live || {};
+    if (g.source === 'bot') return 'The paper bot closes both legs by itself when ' + hp + ' points or fewer are left before the stop.';
+    if (g.source === 'paper') return 'Your paper strategy closes every leg by itself when ' + hp + ' points or fewer are left before the stop.';
+    if (L.armed && !L.dryRun && L.serverSwitch) return 'LIVE EXIT IS ARMED: at ' + hp + ' points or fewer the desk sends reduce-only closing orders to Delta for every leg in this expiry. You can close it yourself now.';
+    if (L.armed) return 'Hard exit is in DRY-RUN, so nothing will be sent. Close this position on Delta yourself.';
+    return 'The live hard exit is off. Close this position on Delta yourself.';
+  }
+  function legHtml(l) {
+    const span = l.side === 'sold' ? l.stop - l.entry : l.entry - l.stop;
+    const done = l.mark == null || !(span > 0) ? 0 : Math.max(0, Math.min(1, (l.side === 'sold' ? l.mark - l.entry : l.entry - l.mark) / span));
+    const pts = l.pointsLeft == null ? '-' : (l.pointsLeft <= 0 ? 'STOP HIT' : l.pointsLeft.toFixed(1) + ' pts left');
+    return '<div class="alLeg"><div class="alLt"><span><b>' + esc(l.side === 'sold' ? 'Sold ' : 'Bought ') + esc(l.symbol) + '</b> · entry ' + Number(l.entry).toFixed(1) + ' · now <b>' + (l.mark == null ? '-' : Number(l.mark).toFixed(1)) + '</b> · stop ' + Number(l.stop).toFixed(1) + '</span><span class="alPts">' + esc(pts) + '</span></div><div class="alBar"><i style="width:' + (done * 100).toFixed(0) + '%"></i></div></div>';
+  }
+  function paint() {
+    const list = alarms(), back = S.backUntil > Date.now();
+    if (!list.length && !back) { if (S.shown) { S.shown = false; ov.hidden = true; bar.hidden = true; D.title = S.titleBase; } return; }
+    S.shown = true;
+    const lvl = list.length ? worstLevel(list) : 'safe';
+    const head = list.length ? LV[lvl][0] : 'BACK TO SAFE';
+    const worstLeg = list.flatMap(g => g.legs).filter(l => l.pointsLeft != null).sort((a, b) => a.pointsLeft - b.pointsLeft)[0];
+    const sub = list.length ? (worstLeg ? esc(worstLeg.symbol) + ': only ' + (worstLeg.pointsLeft <= 0 ? '0' : worstLeg.pointsLeft.toFixed(1)) + ' points left before the stop. Close the position.' : 'Check your positions.') : 'The legs are clear of their stops again.';
+    if (S.min && list.length) {
+      ov.hidden = true; bar.hidden = false;
+      bar.innerHTML = '<span>🚨</span><span style="flex:1">' + esc(head) + ': ' + (worstLeg ? esc(worstLeg.symbol) + ', ' + (worstLeg.pointsLeft <= 0 ? 'stop hit' : worstLeg.pointsLeft.toFixed(1) + ' points left') : '') + '</span><span>tap to open</span>';
+    } else {
+      bar.hidden = true; ov.hidden = false; ov.className = list.length ? LV[lvl][1] : 'back';
+      ov.innerHTML = '<div class="alBg"></div><div class="alBox"><h1>' + (list.length ? '🚨 ' : '✓ ') + esc(head) + '</h1><p class="alSub">' + sub + '</p>' +
+        list.map(g => '<div class="alGrp"><div class="alGh"><b>' + esc(g.label) + '</b><span class="alChip">' + esc(SRC[g.source] || g.source) + (g.since ? ' · since ' + new Date(g.since + 19800000).toISOString().slice(11, 16) + ' IST' : '') + '</span></div>' + g.legs.map(legHtml).join('') + '<p class="alNote">' + esc(what(g)) + '</p></div>').join('') +
+        '<div class="alBtns">' + (list.length ? '<button type="button" data-al-act="mute">' + (S.muted ? '🔇 Sound is off, tap to turn on' : '🔊 Mute the sound') + '</button><button type="button" data-al-act="min">Minimise (stays flashing at the top)</button>' : '') + (S.testUntil > Date.now() ? '<button type="button" data-al-act="endtest">End the test</button>' : '') + '</div>' +
+        (list.length && !S.soundOk && !S.muted ? '<p class="alNote">Tap anywhere on this screen once to switch the alarm sound on. The browser blocks sound until you do.</p>' : '') + '</div>';
+    }
+    if (list.length) { S.tick++; D.title = (S.tick % 2 ? '🚨 ' : '⚠️ ') + head + ' ' + (worstLeg && worstLeg.pointsLeft > 0 ? worstLeg.pointsLeft.toFixed(0) + ' pts' : ''); } else D.title = S.titleBase;
+  }
+
+  async function poll() {
+    const t = tok(); if (!t) { S.snap = null; paint(); return; }
+    try {
+      const r = await fetch('/api/v1/watch', { headers: { Authorization: 'Bearer ' + t }, cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json(); if (!j || !j.success) return;
+      const had = alarms().length > 0;
+      S.snap = j.snapshot; S.live = j.live;
+      const has = alarms().length > 0;
+      if (had && !has) S.backUntil = Date.now() + 4000;
+      if (!had && has) { S.min = false; unlock(); try { if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 600]); } catch (e) { } beep(worstLevel(alarms())); }
+      paint();
+    } catch (e) { }
+  }
+  setInterval(() => { if (!D.hidden || S.shown) poll(); }, 3500);
+  setInterval(() => { if (S.shown && alarms().length) { paint(); beep(worstLevel(alarms())); } else if (S.shown) paint(); }, 1800);
+  D.addEventListener('visibilitychange', () => { if (!D.hidden) poll(); });
+  setTimeout(poll, 2500);
+
+  D.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('[data-al-act]');
+    if (b) {
+      const a = b.dataset.alAct;
+      if (a === 'mute') { S.muted = !S.muted; try { sessionStorage.setItem('al_mute', S.muted ? '1' : '0'); } catch (x) { } unlock(); paint(); }
+      else if (a === 'min') { S.min = true; paint(); }
+      else if (a === 'endtest') { S.testUntil = 0; S.backUntil = 0; paint(); }
+      return;
+    }
+    if (e.target.closest && e.target.closest('#alBar')) { S.min = false; paint(); }
+  });
+
+  /** a test of the screen and the sound, without any position */
+  function test() { S.testUntil = Date.now() + 12000; S.min = false; unlock(); beep('hard'); paint(); setTimeout(() => { if (S.testUntil && S.testUntil <= Date.now() + 100) { S.testUntil = 0; S.backUntil = 0; paint(); } }, 12200); }
+  W.deskAlarm = { test, poll, state: () => S };
+})();
+</script>
 <script data-block="paper-page">
 /* Paper Trade page: one panel in three steps. 1 pick strikes on the option chain, 2 check the strategy and its margin, 3 execute.
    Executed strategies are listed underneath with net PnL, each leg's PnL and stop, and one button to close everything.
@@ -59740,6 +59932,7 @@ document.addEventListener('click', function(e) {
     { id: 'howto_bot', guide: 'bot', p: [/how (does|do) (the )?bot/, /what (does|is) (the )?bot/, /bot (work|trade|rules|timeline|schedule|strateg)/, /when (does|do) (the )?bot (trade|enter|exit)/, /bot timeline/], w: { bot: 1.8, engine: 1 } },
     { id: 'howto_margin', guide: 'margin', p: [/margin/, /portfolio margin/, /leverage/], w: { margin: 2.5, leverage: 1.5 } },
     { id: 'howto_stops', guide: 'stops', p: [/stop ?loss/, /(2x|2 x|double) stop/, /how (do|does).*stop/, /(set|edit|change) (a |the |my )?stop/], w: { stop: 1.4, stoploss: 2.5, stops: 1.4 } },
+    { id: 'howto_alarm', guide: 'alarm', p: [/(stop|sl).{0,12}(alarm|alert)/, /(alarm|alert).{0,12}(stop|sl|position|leg)/, /hard exit/, /full ?screen (alarm|alert)/, /(close|exit).{0,20}(automatically|auto|by itself)/, /points? (left|remaining).{0,15}(stop|sl)/, /stop ?loss.{0,15}(alarm|warn)/], w: { alarm: 4, alert: 1.5, flash: 1.5, hardexit: 3 } },
     { id: 'howto_futures', guide: 'futures', p: [/future(s)? (trade|trading|paper)/, /(btc|bitcoin) future/, /perpetual/, /\bperp\b/], w: { futures: 2, future: 1.5, perpetual: 2, perp: 2 } },
   ];
 
@@ -59771,6 +59964,7 @@ document.addEventListener('click', function(e) {
       if (it.id === 'weekday' && slots.day != null) s += 2;
       if (it.id === 'iv_enough' && slots.iv != null) s += 2;
       if (it.id === 'howto_stops' && /(why|was|hit|stopped)/.test(n) && /(trade|run|last)/.test(n)) s -= 4; // that is for the server: why was the last trade stopped
+      if (it.id === 'howto_stops' && /(alarm|alert|hard exit|warn)/.test(n)) s -= 7; // that is the alarm guide, not the stop-loss guide
       if (it.id === 'trade_now' && /\bwhy\b/.test(n) && !/\bshould\b/.test(n)) s -= 4; // "why no trade today" is a question about the bot's log, for the server
       if (!best || s > best.score) best = { id: it.id, score: s, guide: it.guide };
     }
@@ -59790,6 +59984,7 @@ document.addEventListener('click', function(e) {
     'How do I set up my Delta API key?', 'How do I whitelist the IP?', 'Why is my API key not accepted?', 'How do I connect my Delta account?',
     'How do I invite a friend?', 'How do friends create an account?', 'How do I paper trade?', 'How do I use the strategy builder?', 'How do I place a strangle?',
     'How do I read the entry gauge?', 'What does the dial mean?', 'How does the bot work?', 'When does the bot trade?', 'What is the bot timeline?',
+    'How does the stop alarm work?', 'What is the hard exit?', 'How do I set up the full-screen alarm?',
     'How is margin calculated?', 'What is portfolio margin?', 'How does the stop loss work?', 'How do I set a stop?', 'How do I trade BTC futures on paper?',
     'Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now',
     'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'What is the GO/WAIT gate?', 'What is VoV?', 'What is the speed beacon?',
@@ -59877,6 +60072,13 @@ document.addEventListener('click', function(e) {
       { title: 'Edit per leg', text: 'In step 2 choose Auto, Custom (a price) or No stop. Later, "Edit stops" on the open strategy card.' },
       { title: 'It runs on the server', text: 'Checked every 5 seconds even with your screen off. When a leg reaches its stop, all legs close at the live book and the reason is recorded.' },
     ], fix: [], follow: ['How do I paper trade?', 'Is premium selling worth it?'] },
+    alarm: { title: 'The stop alarm and the hard exit', icon: 'stop', intro: 'The server watches every open position, also with your screen off. A full-screen flashing alarm with sound stays on until the leg is back.', steps: [
+      { title: 'What is watched', text: 'The paper bot, every strategy on your Paper page, and your real Delta positions (needs your read-only key in Settings).', tip: 'Real positions have no stop on the exchange, so the desk uses your rule: stop = entry price x 2 (changeable).' },
+      { title: 'The alarm: 20 points before the stop', text: 'A call sold at 100 with a stop at 200 alarms from 180, a put sold at 100 with a stop at 200 the same. Both legs are shown with how many points are left.', tip: 'The screen, the sound and the flashing tab title stay on until the leg is clearly back. You can mute the sound or minimise it to a flashing bar, but not lose it.' },
+      { title: 'The hard exit: 5 points before the stop', text: 'The paper bot and your paper strategies close EVERY leg by themselves at 5 points before the stop, so you are out before the stop is hit.', tip: 'Change both numbers in Settings, Stop alarm and hard exit. Use Test the alarm to see and hear it.' },
+      { title: 'Real Delta positions: you close them, unless you arm the live exit', text: 'By default a real position only gets the alarm. The optional live exit needs a SEPARATE API key with Trade permission, which you save in Settings, then you arm it by typing ARM. It starts in dry-run and only writes what it would send.', tip: 'To let it send real orders you must also type GO LIVE, and the server owner must have enabled live trading. It only ever sends reduce-only closing orders, in the same expiry, for both legs.' },
+      { title: 'Check it before you rely on it', text: 'Read the list called What the hard exit did or would have done, in Settings. Delta cannot confirm that a key may trade without a real order, so the dry-run list is your check.' },
+    ], fix: [['No sound', 'Browsers allow sound only after you tap the page once. Tap anywhere, then use Test the alarm.'], ['Alarm for a position you did not expect', 'Real positions use stop = entry x the multiple in Settings. Change it there if your stop is different.']], follow: ['How do I set up my Delta API key?', 'How does the stop loss work?', 'How does the bot work?'] },
     futures: { title: 'Paper trade BTC futures', icon: 'bolt', intro: 'The BTC perpetual on your own paper account.', steps: [
       { title: 'Open the Paper page → Futures card', text: 'Choose Buy / Long or Sell / Short, Market or Limit.' },
       { title: 'Set the size', text: '1 lot is 0.001 BTC. The card shows the position value and the estimated margin.' },

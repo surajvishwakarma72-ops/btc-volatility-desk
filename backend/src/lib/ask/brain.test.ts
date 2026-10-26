@@ -57,6 +57,7 @@ describe('Ask brain: understanding the question', () => {
     ['how do i invite a friend', 'howto_invite'], ['how do friends create an account', 'howto_invite'], ['how do i paper trade', 'howto_paper'], ['how do i use the strategy builder', 'howto_paper'],
     ['how do i read the entry gauge', 'howto_gauge'], ['what does the dial mean', 'howto_gauge'], ['how does the bot work', 'howto_bot'], ['what is the bot timeline', 'howto_bot'],
     ['how is margin calculated', 'howto_margin'], ['how does the stop loss work', 'howto_stops'], ['how do i trade btc futures on paper', 'howto_futures'],
+    ['how does the stop alarm work', 'howto_alarm'], ['what is the hard exit', 'howto_alarm'], ['i want a full screen alarm when the stop is near', 'howto_alarm'], ['will it close the position automatically', 'howto_alarm'],
   ];
   for (const [q, id] of cases) it(`"${q}" is ${id}`, () => expect(B.understand(q).id).toBe(id));
 

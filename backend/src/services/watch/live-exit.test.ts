@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildClosingOrders, LiveExit, OPTION_SYMBOL, type LiveExitDeps, type OptionPosition } from './live-exit.js';
 import type { Book } from '../bot/delta-public.js';
+import { WatchService, type WatchSources } from './watch.js';
+import type { WatchLeg } from '../../lib/watch/classify.js';
 
 const EXP = '261027';
 const C = `C-BTC-82000-${EXP}`, P = `P-BTC-78000-${EXP}`, WING = `C-BTC-86000-${EXP}`, OTHER = 'C-BTC-90000-261103';
@@ -72,7 +74,7 @@ function harness(over: Partial<{ live: boolean; key: boolean; positions: Array<O
   };
   return { d, log, posts, advance: (ms: number) => { t += ms; } };
 }
-const group = { id: EXP, label: 'Delta · 27 Oct expiry', legs: [{ symbol: C, side: 'sold' as const, lots: 100, entry: 100, mark: 196, stop: 200, pointsLeft: 4, level: 'hard' as const }, { symbol: P, side: 'sold' as const, lots: 100, entry: 120, mark: 130, stop: 240, pointsLeft: 110, level: 'safe' as const }] };
+const group = { group: EXP, label: 'Delta · 27 Oct expiry', legs: [{ symbol: C, side: 'sold' as const, lots: 100, entry: 100, mark: 196, stop: 200, pointsLeft: 4, level: 'hard' as const }, { symbol: P, side: 'sold' as const, lots: 100, entry: 120, mark: 130, stop: 240, pointsLeft: 110, level: 'safe' as const }] };
 
 describe('live exit: the locks', () => {
   it('sends nothing and says why when it is not armed', async () => {
@@ -142,6 +144,19 @@ describe('live exit: real orders (armed, key saved, dry-run off, server switch o
     const h = harness({ positions: [[]] });
     expect(await new LiveExit(h.d).run('u', group, live)).toBe('flat');
     expect(h.posts).toHaveLength(0);
+    expect(h.log.pop()).toMatchObject({ kind: 'hard_exit_flat' }); // reported as "nothing found", not as a finished exit
+  });
+  it('refuses a group key that is not an expiry code instead of quietly doing nothing', async () => {
+    const h = harness();
+    expect(await new LiveExit(h.d).run('u', { ...group, group: 'delta|261027' }, live)).toBe('failed');
+    expect(h.posts).toHaveLength(0);
+    expect(h.log.pop()!.detail).toMatch(/not an expiry code.*close the position on Delta yourself/);
+  });
+  it('says plainly when the expiry in the alarm has no open position (and never calls that a finished exit)', async () => {
+    const h = harness({ positions: [[pos(OTHER, -50, 4)]] });
+    expect(await new LiveExit(h.d).run('u', group, live)).toBe('flat');
+    expect(h.log.some((l) => l.kind === 'hard_exit_done')).toBe(false);
+    expect(h.log.some((l) => l.kind === 'hard_exit_flat')).toBe(true);
   });
   it('stops and says so when Delta cannot be read, and never sends a blind order', async () => {
     const h = harness({ failPositions: true });
@@ -163,5 +178,41 @@ describe('live exit: real orders (armed, key saved, dry-run off, server switch o
     expect(await x.run('u', group, live)).toBe('incomplete'); // third round
     h.advance(50_000);
     expect(await x.run('u', group, live)).toBe('cooldown'); // no fourth round inside 15 minutes
+  });
+});
+
+describe('the whole chain: watch service finds the stop, live exit closes the position', () => {
+  it('a real Delta strangle at 4 points from its stop is closed in full: the group handed over carries the expiry, and both orders go out', async () => {
+    const h = harness({ positions: [[pos(C, -100, 1), pos(P, -100, 2)], []] });
+    const exit = new LiveExit(h.d);
+    const leg = (symbol: string, mark: number, stop: number, entry: number): WatchLeg => ({ source: 'delta', group: EXP, groupLabel: 'Delta · 26 Oct expiry', symbol, side: 'sold', entry, mark, stop, lots: 100 });
+    const results: string[] = [];
+    const src: WatchSources = {
+      users: async () => ['u'], isOwner: () => true,
+      config: async () => ({ warnPoints: 20, hardPoints: 5, stopMultiple: 2, watchReal: true, liveArmed: true, dryRun: false }),
+      bot: async () => [], paper: async () => [],
+      real: async () => [leg(C, 196, 200, 100), leg(P, 130, 240, 120)],
+      hardExit: async (uid, g, cfg) => { results.push(await exit.run(uid, g, { liveArmed: cfg.liveArmed, dryRun: cfg.dryRun })); },
+    };
+    await new WatchService(src, () => 1_000_000).tick();
+    expect(results).toEqual(['done']);
+    expect(h.posts.map((p) => p.product_id)).toEqual([1, 2]);
+    for (const p of h.posts) expect(p).toMatchObject({ side: 'buy', size: 100, reduce_only: true, time_in_force: 'ioc' });
+  });
+  it('and with dry-run on, the same chain writes the would-be orders and sends nothing', async () => {
+    const h = harness({ positions: [[pos(C, -100, 1), pos(P, -100, 2)]] });
+    const exit = new LiveExit(h.d);
+    const results: string[] = [];
+    const src: WatchSources = {
+      users: async () => ['u'], isOwner: () => true,
+      config: async () => ({ warnPoints: 20, hardPoints: 5, stopMultiple: 2, watchReal: true, liveArmed: true, dryRun: true }),
+      bot: async () => [], paper: async () => [],
+      real: async () => [{ source: 'delta', group: EXP, groupLabel: 'x', symbol: C, side: 'sold', entry: 100, mark: 196, stop: 200, lots: 100 }],
+      hardExit: async (uid, g, cfg) => { results.push(await exit.run(uid, g, { liveArmed: cfg.liveArmed, dryRun: cfg.dryRun })); },
+    };
+    await new WatchService(src, () => 1_000_000).tick();
+    expect(results).toEqual(['dry']);
+    expect(h.posts).toHaveLength(0);
+    expect(h.log.filter((l) => l.kind === 'hard_exit_dry')).toHaveLength(2);
   });
 });

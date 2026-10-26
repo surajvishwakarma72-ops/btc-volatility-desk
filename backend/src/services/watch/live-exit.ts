@@ -20,6 +20,8 @@ export interface OptionPosition { productId: number; symbol: string; size: numbe
 
 export const OPTION_SYMBOL = /^[CP]-BTC-\d+-\d{6}$/;
 export const expiryOf = (symbol: string): string => symbol.split('-')[3] ?? '';
+/** DDMMYY, the expiry part of a Delta option symbol. */
+export const OPTION_EXPIRY = /^\d{6}$/;
 
 export interface ClosingOrder {
   symbol: string;
@@ -90,8 +92,9 @@ export class LiveExit {
 
   constructor(private readonly d: LiveExitDeps) {}
 
-  async run(userId: string, group: Pick<WatchGroup, 'id' | 'label' | 'legs'>, cfg: { liveArmed: boolean; dryRun: boolean }): Promise<ExitResult> {
-    const d = this.d, gk = `${userId}|${group.id}`, now = d.now();
+  async run(userId: string, group: Pick<WatchGroup, 'group' | 'label' | 'legs'>, cfg: { liveArmed: boolean; dryRun: boolean }): Promise<ExitResult> {
+    const d = this.d, expiry = group.group, gk = `${userId}|${expiry}`, now = d.now();
+    if (!OPTION_EXPIRY.test(expiry)) { await d.log(userId, 'hard_exit_failed', `${group.label}: the position group "${expiry}" is not an expiry code, so nothing was sent. This is a bug: close the position on Delta yourself.`, { dryRun: cfg.dryRun }); return 'failed'; }
     const trigger = group.legs.filter((l) => l.level === 'hard' || l.level === 'breach').map((l) => `${l.symbol} at ${l.mark} (stop ${l.stop}, ${l.pointsLeft == null ? '?' : l.pointsLeft.toFixed(1)} points left)`).join('; ');
 
     // the locks: armed, a trading key, and for a real order also dry-run off and the server switch on
@@ -117,13 +120,14 @@ export class LiveExit {
       const { key, secret } = creds!;
       for (let attempt = 0; attempt < 3; attempt++) {
         const positions = await d.positions(key, secret);
-        if (!positions.some((p) => expiryOf(p.symbol) === group.id)) {
-          await d.log(userId, 'hard_exit_done', `${group.label}: no open option positions left in this expiry.`, { dryRun: dry });
+        if (!positions.some((p) => expiryOf(p.symbol) === expiry)) {
+          // nothing open in this expiry any more: say so plainly (it is not recorded as a completed exit when this round did not do it)
+          await d.log(userId, attempt === 0 ? 'hard_exit_flat' : 'hard_exit_done', attempt === 0 ? `${group.label}: no open option position found in expiry ${expiry} any more (already closed?). Nothing was sent.` : `${group.label}: no open option positions left in this expiry.`, { dryRun: dry });
           return attempt === 0 ? 'flat' : 'done';
         }
         const books = new Map<string, Book>();
-        for (const p of positions.filter((x) => expiryOf(x.symbol) === group.id)) books.set(p.symbol, await d.book(p.symbol));
-        const { orders, problems } = buildClosingOrders(positions, books, d.tickOf, group.id, attempt);
+        for (const p of positions.filter((x) => expiryOf(x.symbol) === expiry)) books.set(p.symbol, await d.book(p.symbol));
+        const { orders, problems } = buildClosingOrders(positions, books, d.tickOf, expiry, attempt);
         for (const pr of problems) await d.log(userId, 'hard_exit_failed', pr, { dryRun: dry });
         if (!orders.length) return 'failed';
         if (dry) {
@@ -137,7 +141,7 @@ export class LiveExit {
         }
         await d.sleep(1_500);
         const after = await d.positions(key, secret);
-        if (!after.some((p) => expiryOf(p.symbol) === group.id)) {
+        if (!after.some((p) => expiryOf(p.symbol) === expiry)) {
           await d.log(userId, 'hard_exit_done', `${group.label}: every option position in this expiry is closed.`, { dryRun: false });
           return 'done';
         }

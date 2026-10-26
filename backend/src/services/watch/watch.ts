@@ -17,7 +17,10 @@ export interface AlarmLeg {
 }
 
 export interface WatchGroup {
+  /** Unique across sources ("delta|261027"). Do not use it as an expiry: it is `group` that holds the source's own key. */
   id: string;
+  /** The source's own key for the group: the run id for the bot, the strategy id for paper, the EXPIRY CODE (like 261027) for real Delta positions. */
+  group: string;
   source: WatchLeg['source'];
   label: string;
   level: Level;
@@ -120,7 +123,7 @@ export class WatchService {
       const level = worst(g.list.map((x) => x.level));
       if (isAlarm(level)) { if (!this.since.has(gk)) this.since.set(gk, t); } else this.since.delete(gk);
       groups.push({
-        id: gk.slice(uid.length + 1), source: g.head.source, label: g.head.groupLabel, level, since: this.since.get(gk) ?? null,
+        id: gk.slice(uid.length + 1), group: g.head.group, source: g.head.source, label: g.head.groupLabel, level, since: this.since.get(gk) ?? null,
         legs: g.list.map((x) => ({ symbol: x.symbol, side: x.side, lots: x.lots, entry: x.entry, mark: x.mark, stop: x.stop, pointsLeft: x.pointsLeft, level: x.level })),
       });
     }
