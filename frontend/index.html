@@ -59778,12 +59778,12 @@ document.addEventListener('click', function(e) {
 
   /* ---------- PnL analysis: a trade minute by minute, and all trades, each with a hairline ---------- */
   const PC = () => window.pnlChart;
-  const shortName = k => (STRAT[k] || k).replace(/ \d\d:\d\d$/, '');
+  const shortName = k => k === 'algo' ? 'Algo (Live & Paper)' : (STRAT[k] || k).replace(/ \d\d:\d\d$/, '');
   /** the strategy whose curve is shown: the one chosen, else the live one, else the one traded last */
   function scopeOf() {
     if (S.pa.scope) return S.pa.scope;
     const live = (S.positions || []).find(p => p.id && p.book !== 'gated'); if (live) return live.strategy;
-    const last = (S.runs || []).find(r => r.status === 'closed' || r.status === 'open'); return last ? last.strategy : 'ASIA_SHORT';
+    const last = (S.runs || []).find(r => r.status === 'closed' || r.status === 'open'); return last ? last.strategy : 'algo';
   }
   const strategyOf = id => { const p = (S.positions || []).find(x => x.id === id); if (p) return p.strategy; const r = (S.runs || []).find(x => x.id === id); return r ? r.strategy : null; };
   function paCard() {
@@ -59792,9 +59792,10 @@ document.addEventListener('click', function(e) {
     const closed = eq && eq.equity ? eq.equity.slice().reverse().slice(0, 60) : [];
     const opt = [];
     for (const p of opens) opt.push('<option value="' + esc(p.id) + '"' + (P.sel === p.id ? ' selected' : '') + '>OPEN now · ' + esc(shortName(p.strategy)) + '</option>');
+    if (scopeOf() === 'algo' && eq && eq.open) for (const o of eq.open) opt.push('<option value="' + esc(o.id) + '"' + (P.sel === o.id ? ' selected' : '') + '>OPEN now · ' + esc(o.name) + ' (' + esc(o.mode) + ')</option>');
     for (const c of closed) opt.push('<option value="' + esc(c.id) + '"' + (P.sel === c.id ? ' selected' : '') + '>' + esc(c.dateKey) + ' · ' + esc(shortName(c.strategy)) + ' · ' + usd(c.net) + '</option>');
     let h = '<div class="bt-card pc" id="paCard"><h3>PnL analysis</h3><div class="sub">Every minute of a trade is recorded. Move your mouse or finger across a graph, or press the arrow keys when it is focused: the hairline reads that exact minute and the numbers appear under it.</div>' +
-      '<div class="bt-row"><label class="pcSel">Trade <select data-pa="pick">' + (opt.length ? opt.join('') : '<option>No trades yet</option>') + '</select></label><label class="pcSel">Strategy curve <select data-pa="scope">' + Object.keys(STRAT).map(k => '<option value="' + k + '"' + (scopeOf() === k ? ' selected' : '') + '>' + esc(shortName(k)) + '</option>').join('') + '</select></label></div>';
+      '<div class="bt-row"><label class="pcSel">Trade <select data-pa="pick">' + (opt.length ? opt.join('') : '<option>No trades yet</option>') + '</select></label><label class="pcSel">Strategy curve <select data-pa="scope">' + ['algo'].concat(Object.keys(STRAT)).map(k => '<option value="' + k + '"' + (scopeOf() === k ? ' selected' : '') + '>' + esc(shortName(k)) + '</option>').join('') + '</select></label></div>';
     if (P.err && !d && !eq) return h + '<div class="bt-note warn">' + esc(P.err) + '</div></div>';
     if (d && PC()) {
       const r = d.run, ch = PC().minuteChart(d, 'pcT'); P.metaT = ch.meta;
@@ -59827,7 +59828,7 @@ document.addEventListener('click', function(e) {
     if (!tok() || S.pa.busy) return; S.pa.busy = true;
     try {
       S.pa.eq = await api('/pnl/trades?scope=' + encodeURIComponent(scopeOf()));
-      if (!S.pa.sel) { const open = (S.positions || []).find(p => p.id && p.book !== 'gated'); S.pa.sel = open ? open.id : (S.pa.eq.equity.length ? S.pa.eq.equity[S.pa.eq.equity.length - 1].id : null); }
+      if (!S.pa.sel) { const open = scopeOf() === 'algo' ? (S.pa.eq.open || [])[0] : (S.positions || []).find(p => p.id && p.book !== 'gated'); S.pa.sel = open ? open.id : (S.pa.eq.equity.length ? S.pa.eq.equity[S.pa.eq.equity.length - 1].id : null); }
       if (S.pa.sel) S.pa.d = await api('/runs/' + S.pa.sel + '/pnl');
       S.pa.err = null;
     } catch (e) { S.pa.err = e.message; }

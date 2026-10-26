@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { pool } from '../db/index.js';
 import { DAY, istDateKey, istMidnightMs } from '../lib/bot/schedule.js';
-import { requireAdmin } from '../lib/guards.js';
+import { requireAdmin, userId } from '../lib/guards.js';
 import { analyzeSeries, analyzeTrades, type SeriesPoint, type TradeRec } from '../lib/bot/pnl-analysis.js';
 import { buildTimeline, type SlotRun } from '../lib/bot/timeline.js';
 import { buildAnalytics, type RunRecord } from '../lib/bot/analytics.js';
@@ -10,6 +10,7 @@ import { pickTop } from '../lib/bot/top.js';
 import { STRATEGY_NAMES } from '../lib/ask/parse.js';
 import { botEngine } from '../services/bot/bot-engine.js';
 import { ensureBotSchema, getConfig, getParams, setConfig } from '../services/bot/bot-store.js';
+import { ensureAlgoSchema, getMarks, getRunById } from '../services/algo/algo-store.js';
 import { LEARNED_STRATEGIES, autoLearnOn, rollbackLast, runLearning } from '../services/bot/learner.js';
 
 /**
@@ -199,7 +200,24 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
       pool.query('SELECT symbol, side, role, entry_price, exit_price, lots FROM bot_legs WHERE run_id=$1 ORDER BY id', [id]),
       pool.query('SELECT at, type, severity, message FROM bot_events WHERE run_id=$1 ORDER BY at LIMIT 60', [id]),
     ]);
-    if (!run.rowCount) return reply.code(404).send({ success: false, error: 'run not found' });
+    if (!run.rowCount) {
+      // not a bot run: it may be one of the algo runs (Paper or Live), whose minutes are recorded in algo_run_marks
+      const a = await getRunById(userId(req), id);
+      if (!a) return reply.code(404).send({ success: false, error: 'run not found' });
+      const m = await getMarks(a.id);
+      const pts: SeriesPoint[] = m.t.map((t, i) => ({ t, net: m.net[i]!, gross: m.net[i]!, spot: m.spot[i] ?? null, pct: null }));
+      const rule = (a.plan as { rule?: { exit?: { netTargetUsd?: number | null; futTargetUsd?: number | null } } } | null)?.rule;
+      const closed = a.status !== 'entered';
+      return {
+        success: true,
+        run: {
+          id: a.id, strategy: a.name, book: a.mode, status: closed ? 'closed' : 'open', dateKey: a.dateKey, entryMs: a.enteredAt, exitMs: a.exitedAt, plannedExitMs: a.exitAt,
+          margin: null, feesEntry: null, feesExit: null, net: a.netPnl, gross: a.netPnl, exitReason: a.exitReason, exitDetail: null,
+        },
+        t: pts.map((p) => p.t), net: pts.map((p) => p.net), gross: pts.map((p) => p.gross), spot: pts.map((p) => p.spot), pct: pts.map(() => null),
+        legs: [], tp: rule?.exit?.netTargetUsd ?? rule?.exit?.futTargetUsd ?? null, stops: [], events: [], stats: analyzeSeries(pts),
+      };
+    }
     const r = run.rows[0] as any;
     const rows = marks.rows as any[];
     const points: SeriesPoint[] = rows.map((m) => ({ t: Number(m.minute_ms), net: Number(m.net_pnl), gross: Number(m.gross_pnl), spot: m.spot == null ? null : Number(m.spot), pct: m.pct_margin == null ? null : Number(m.pct_margin) }));
@@ -236,6 +254,22 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     await ensureBotSchema();
     const { scope, limit } = q<{ scope?: string; limit?: string }>(req);
     const lim = Math.min(Math.max(Number(limit) || 400, 1), 2000);
+    if (scope === 'algo') {
+      // the algo runs (Paper and Live) of the signed-in user; the open ones are listed beside the closed curve
+      await ensureAlgoSchema();
+      const a = await pool.query(
+        `SELECT id, name, mode, status, date_key, entered_at, exited_at, net_pnl, exit_reason FROM algo_runs
+          WHERE user_id = $1 AND entered_at IS NOT NULL AND status IN ('entered','exited') ORDER BY entered_at DESC LIMIT $2`,
+        [userId(req), lim],
+      );
+      const rowsA = a.rows as any[];
+      const trades: TradeRec[] = rowsA.filter((x) => x.status === 'exited' && x.net_pnl != null && x.exited_at).map((x) => ({
+        id: x.id, strategy: `${x.name} (${x.mode})`, book: x.mode, dateKey: String(x.date_key), entryMs: new Date(x.entered_at).getTime(), exitMs: new Date(x.exited_at).getTime(),
+        net: Number(x.net_pnl), gross: Number(x.net_pnl), fees: 0, margin: null, reason: x.exit_reason ?? null,
+      }));
+      const open = rowsA.filter((x) => x.status === 'entered').map((x) => ({ id: x.id, name: x.name, mode: x.mode, entryMs: new Date(x.entered_at).getTime() }));
+      return { success: true, ...analyzeTrades(trades), open };
+    }
     const r = await pool.query(
       `SELECT id, strategy, book, date_key, entry_at, exit_at, margin_usd, gross_pnl, net_pnl, fees_entry, fees_exit, exit_reason FROM bot_runs
         WHERE status = 'closed' AND net_pnl IS NOT NULL AND book <> 'gated' AND exit_at IS NOT NULL AND entry_at IS NOT NULL
