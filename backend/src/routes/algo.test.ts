@@ -21,7 +21,7 @@ const opt = (type: 'call' | 'put', strike: number, delta: number, e: number): Ch
 const chain = [E1, E2].flatMap((e) => [opt('call', 105_000, 0.12, e), opt('put', 95_000, 0.12, e)]);
 
 vi.mock('../services/algo/algo-runtime.js', () => ({
-  algoEngine: { checks: new Map(), lastError: null },
+  algoEngine: { checks: new Map(), errors: new Map([['66666666-6666-6666-6666-666666666666', 'secret strategy name: boom']]) },
   loadMarket: async () => ({ spot: 100_000, chain, expiries: [E1, E2], dvol: 50, gateGo: true, gateReasons: [], bars5m: [] }),
 }));
 vi.mock('../services/paper/paper-terminal.js', () => ({
@@ -87,6 +87,16 @@ describe('algo API', () => {
     expect((await app.inject({ method: 'POST', url: `/algo/strategies/${id}/arm`, headers: tok(app, V), payload: { armed: true } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: `/algo/strategies/${id}`, headers: tok(app, V) })).statusCode).toBe(404);
     expect((await app.inject({ method: 'DELETE', url: `/algo/strategies/${id}`, headers: tok(app, U) })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('never shows another user an engine error that names their strategy', async () => {
+    const app = await build();
+    const other = (await app.inject({ method: 'GET', url: '/algo/state', headers: tok(app, U) })).json();
+    expect(other.engineError).toBeNull();
+    expect(JSON.stringify(other)).not.toContain('secret strategy name');
+    const own = (await app.inject({ method: 'GET', url: '/algo/state', headers: tok(app, '66666666-6666-6666-6666-666666666666') })).json();
+    expect(own.engineError).toContain('boom');
     await app.close();
   });
 

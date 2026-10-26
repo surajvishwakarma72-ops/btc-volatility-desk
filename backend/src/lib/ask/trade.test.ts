@@ -1,0 +1,123 @@
+import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { defaultStrangle, strategySchema } from '../algo/rule.js';
+
+/**
+ * Ask me's trading commands live in frontend/index.html; their pure core sits between ASKTRADE-CORE markers.
+ * These tests run that exact code and check every rule it writes against the server's own schema.
+ */
+const here = path.dirname(fileURLToPath(import.meta.url));
+const html = fs.readFileSync(path.resolve(here, '../../../../frontend/index.html'), 'utf8');
+const a = html.indexOf('// ASKTRADE-CORE-START'), b = html.indexOf('// ASKTRADE-CORE-END');
+if (a < 0 || b < 0) throw new Error('ASKTRADE markers not found in frontend/index.html');
+const T = new Function(`${html.slice(a, b)}\nreturn { parseTrade, parsePatch, applyPatch, congrats };`)() as {
+  parseTrade(q: string, pending?: string | null): { kind: string; lots?: number; patch?: any } | null;
+  parsePatch(q: string): any;
+  applyPatch(rule: any, p: any): any;
+  congrats(rule: any, lots: number, pv: any, res: any, when: string): { head: string; rows: string[][]; lines: string[] };
+};
+const base = () => JSON.parse(JSON.stringify(defaultStrangle()));
+const valid = (r: unknown) => strategySchema.safeParse(r).success;
+
+describe('trade commands', () => {
+  it('"entry 50" means 50 lots', () => {
+    for (const q of ['entry 50', 'Entry 50', 'enter 50 lots', 'sell 50', 'please entry 50.']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'entry', lots: 50 });
+    expect(T.parseTrade('entry 5 delta 0.08-0.12 expiry nearest stop 3x')).toMatchObject({ kind: 'entry', lots: 5, patch: { deltaLow: 0.08, deltaHigh: 0.12, expiry: { mode: 'nearest' }, stopMultiple: 3 } });
+  });
+  it('"exit" is a kill, but only as a command on its own', () => {
+    for (const q of ['exit', 'Exit all', 'kill all', 'hard exit', 'close all positions', 'square off']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'exit' });
+    expect(T.parseTrade('why was the last trade an exit')).toBeNull();
+    expect(T.parseTrade('what is the exit rule for the NY short')).toBeNull();
+  });
+  it('ok and cancel only count while something is waiting', () => {
+    expect(T.parseTrade('ok', null)).toBeNull();
+    expect(T.parseTrade('ok', 'summary')).toMatchObject({ kind: 'ok' });
+    expect(T.parseTrade('ok return', 'builder')).toMatchObject({ kind: 'ok' });
+    expect(T.parseTrade('cancel', 'builder')).toMatchObject({ kind: 'cancel' });
+    expect(T.parseTrade('no', null)).toBeNull();
+  });
+  it('a change while a card is waiting is a patch; a normal question is not', () => {
+    expect(T.parseTrade('delta 0.08-0.12', 'summary')).toMatchObject({ kind: 'patch', patch: { deltaLow: 0.08, deltaHigh: 0.12 } });
+    expect(T.parseTrade('how does the bot work', 'summary')).toBeNull();
+    expect(T.parseTrade('exit 07:00', 'builder')).toMatchObject({ kind: 'patch', patch: { exitTime: '07:00' } });
+  });
+  it('saves defaults with "set default"', () => {
+    expect(T.parseTrade('set default delta 0.10-0.15, expiry b2b, stop 2x, entry 22:30, exit 07:00, days mon tue wed'))
+      .toMatchObject({ kind: 'default', patch: { deltaLow: 0.1, deltaHigh: 0.15, expiry: { mode: 'b2b' }, stopMultiple: 2, entryTime: '22:30', exitTime: '07:00', days: ['mon', 'tue', 'wed'] } });
+    expect(T.parseTrade('show my default')).toMatchObject({ kind: 'showdefault' });
+  });
+});
+
+describe('patches', () => {
+  it('times, windows and days', () => {
+    expect(T.parsePatch('entry at 10:30 pm')).toMatchObject({ entryTime: '22:30' });
+    expect(T.parsePatch('between 10:30pm and 1:30am')).toMatchObject({ window: { from: '22:30', to: '01:30' } });
+    expect(T.parsePatch('days monday to friday')).toMatchObject({ days: ['mon', 'tue', 'wed', 'thu', 'fri'] });
+    expect(T.parsePatch('only friday')).toMatchObject({ days: ['fri'] });
+    expect(T.parsePatch('weekdays')).toMatchObject({ days: ['mon', 'tue', 'wed', 'thu', 'fri'] });
+    expect(T.parsePatch('every day').days).toHaveLength(7);
+    expect(T.parsePatch('friday to monday').days).toEqual(['fri', 'sat', 'sun', 'mon']);
+  });
+  it('stops, targets, mode and structure', () => {
+    expect(T.parsePatch('no stop')).toMatchObject({ stopMultiple: null });
+    expect(T.parsePatch('stoploss 2.5x')).toMatchObject({ stopMultiple: 2.5 });
+    expect(T.parsePatch('net target $40 net stop 60')).toMatchObject({ netTarget: 40, netStop: 60 });
+    expect(T.parsePatch('mode live')).toMatchObject({ mode: 'live' });
+    expect(T.parsePatch('straddle')).toMatchObject({ legs: 'straddle' });
+    expect(T.parsePatch('futures short')).toMatchObject({ legs: 'future', side: 'short' });
+  });
+  it('mentions nothing, changes nothing', () => {
+    expect(T.parsePatch('hello there')).toEqual({});
+  });
+  it('every rule it writes passes the server schema', () => {
+    const phrases = ['', 'delta 0.05-0.08', 'expiry nearest', 'expiry next', 'b2b', 'expiry 261027', 'stop 3x', 'no stop', 'straddle', 'call only', 'put only', 'futures long', 'futures short',
+      'between 22:30 and 01:30', 'entry 10:00', 'exit 07:00', 'days mon tue', 'mode live', 'net target 30 net stop 50', 'straddle stop 3x exit 05:00 days friday'];
+    for (const ph of phrases) {
+      const r = T.applyPatch(base(), T.parsePatch(ph));
+      const res = strategySchema.safeParse(r);
+      expect(res.success, `${ph}: ${res.success ? '' : JSON.stringify(res.error.issues)}`).toBe(true);
+    }
+  });
+  it('applyPatch does not touch the original', () => {
+    const r = base();
+    T.applyPatch(r, T.parsePatch('delta 0.05-0.08 stop 4x days fri'));
+    expect(valid(r)).toBe(true);
+    expect(r.exit.legStopMultiple).toBe(2);
+    expect(r.days).toHaveLength(7);
+  });
+  it('a delta change reaches both legs, and a straddle drops the delta', () => {
+    const r = T.applyPatch(base(), T.parsePatch('delta 0.08-0.12'));
+    expect(r.legs.map((l: any) => [l.pick.low, l.pick.high])).toEqual([[0.08, 0.12], [0.08, 0.12]]);
+    const s = T.applyPatch(base(), T.parsePatch('straddle'));
+    expect(s.legs.map((l: any) => l.pick.mode)).toEqual(['atm', 'atm']);
+  });
+  it('a window keeps its conditions when only the times change', () => {
+    const r = base();
+    r.entry = { kind: 'window', from: '10:00', to: '11:00', conditions: [{ type: 'gate' }] };
+    const n = T.applyPatch(r, T.parsePatch('between 22:30 and 01:30'));
+    expect(n.entry.conditions).toEqual([{ type: 'gate' }]);
+    expect(valid(n)).toBe(true);
+  });
+});
+
+describe('the reply after an order', () => {
+  it('says congratulations, with expiry, entry, exit, stoploss and why', () => {
+    const r = base();
+    r.exit.exitTime = '07:00';
+    const c = T.congrats(r, 50, { expiries: ['271026', '281026'], lines: ['Sell 50 x 105000 Call'] }, { detail: '4 legs' }, 'now');
+    expect(c.head).toMatch(/^Congratulations, order placed with stoploss/);
+    const m = Object.fromEntries(c.rows.map(([k, v]) => [k, v]));
+    expect(m['Expiry']).toBe('271026 + 281026');
+    expect(m['Exit']).toContain('07:00');
+    expect(m['Stoploss']).toContain('2x');
+    expect(m['Why enter']).toBeTruthy();
+    expect(c.lines).toHaveLength(1);
+  });
+  it('a dry run is never called a placed order', () => {
+    const c = T.congrats(base(), 5, { expiries: ['271026'], lines: [] }, { dry: true, detail: 'DRY RUN' }, 'now');
+    expect(c.head).toMatch(/Dry run/);
+    expect(c.head).not.toMatch(/Congratulations/);
+  });
+});

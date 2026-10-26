@@ -19824,6 +19824,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         <button type="button" data-page="pgEvents">Events</button>
         <button type="button" data-page="pgBot">Bot</button>
         <button type="button" data-page="pgPaper">Paper</button>
+        <button type="button" data-page="pgAlgo">Algo</button>
         <button type="button" data-page="pgSettings">Settings</button>
       </nav>
       <div class="top-actions">
@@ -20472,6 +20473,10 @@ The floating P&L pill still shows the live P&L on top of everything. */
         <div id="ppRoot"></div>
       </section>
 
+          <section class="page" id="pgAlgo" aria-label="Algo trading: write entry and exit rules for options and futures">
+        <div id="alRoot"></div>
+      </section>
+
     </main>
 
     <!-- ───────── phone tab bar ───────── -->
@@ -20485,6 +20490,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
       <button type="button" data-page="pgEvents" class="ms-ev">Events &amp; calendar</button>
       <button type="button" data-page="pgBot">Bot · paper trading</button>
       <button type="button" data-page="pgPaper">Paper Trade · your own account</button>
+      <button type="button" data-page="pgAlgo">Algo trading · your own rules</button>
       <button type="button" data-page="pgSettings">Settings &amp; backups</button>
       <button type="button" id="moreTheme">Switch theme</button>
     </div>
@@ -31628,8 +31634,8 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
       document.body.classList.add('v80');
 
       /* ---------- pages ---------- */
-      const PAGES = ['pgDesk', 'pgFlow', 'pgEvents', 'pgSettings', 'pgBot', 'pgPaper'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
-      let page = (LS('v80_page') === 'pgBot' || LS('v80_page') === 'pgPaper') ? LS('v80_page') : 'pgDesk';   /* the Bot page survives a refresh; v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
+      const PAGES = ['pgDesk', 'pgFlow', 'pgEvents', 'pgSettings', 'pgBot', 'pgPaper', 'pgAlgo'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
+      let page = (LS('v80_page') === 'pgBot' || LS('v80_page') === 'pgPaper' || LS('v80_page') === 'pgAlgo') ? LS('v80_page') : 'pgDesk';   /* the Bot page survives a refresh; v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
       function slotMoves(p) {
         // the engine's IV panes (#charts) + hero live on the Desk in row mode and on the Vol page in stack mode
         const charts = $('charts'), evp = $('evPanel');
@@ -31644,7 +31650,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
       function show(p) {
         if (!PAGES.includes(p)) return; page = p; LS('v80_page', p);
         for (const id of PAGES) { const el = $(id); if (el) el.classList.toggle('on', id === p); }
-        document.querySelectorAll('#nav button,#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === p || (b.id === 'moreTab' && (p === 'pgBot' || p === 'pgPaper' || p === 'pgStudy' || p === 'pgSettings' || p === 'pgEvidence' || (p === 'pgEvents' && !document.body.classList.contains('reg-off'))))));
+        document.querySelectorAll('#nav button,#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === p || (b.id === 'moreTab' && (p === 'pgBot' || p === 'pgPaper' || p === 'pgAlgo' || p === 'pgStudy' || p === 'pgSettings' || p === 'pgEvidence' || (p === 'pgEvents' && !document.body.classList.contains('reg-off'))))));
         $('moreSheet') && ($('moreSheet').hidden = true);
         slotMoves(p);
         document.body.dataset.page = p;
@@ -58376,6 +58382,424 @@ document.addEventListener('click', function(e) {
   window.pnlChart = { minuteChart, equityChart, indexAt, placeAt, minuteReadout, equityReadout, tradeTiles, allTiles, ticks };
 })();
 </script>
+<style id="algoCss">
+#pgAlgo .al{max-width:1360px;margin:0 auto;padding:4px 2px 28px;color:var(--text)}
+#pgAlgo .al-top{display:flex;flex-wrap:wrap;gap:4px 14px;align-items:baseline;margin:4px 0 10px}
+#pgAlgo .al-top h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
+#pgAlgo .al-sub2{font-size:12px;color:var(--muted)}
+#pgAlgo .al-sec{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:0 0 10px;box-shadow:var(--shadow)}
+#pgAlgo .al-sec h3{margin:0 0 8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+#pgAlgo .al-sub{margin:12px 0 6px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+#pgAlgo .dim{color:var(--faint)}
+#pgAlgo .pos{color:var(--down)}
+#pgAlgo .neg{color:var(--up)}
+#pgAlgo .al-chips{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:0 0 10px}
+#pgAlgo .al-sp{flex:1}
+#pgAlgo .al-chip{display:inline-flex;align-items:center;padding:3px 9px;border:1px solid var(--line2);border-radius:999px;font-size:12px;color:var(--muted);background:var(--panel)}
+#pgAlgo .al-chip.ok{color:var(--down);border-color:var(--down)}
+#pgAlgo .al-chip.warn{color:var(--warn);border-color:var(--warn)}
+#pgAlgo .al-chip.bad{color:var(--up);border-color:var(--up)}
+#pgAlgo button.al-btn{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:5px 11px;font:600 12px var(--font);cursor:pointer}
+#pgAlgo button.al-btn:hover{border-color:var(--focus)}
+#pgAlgo button.al-btn.pri{border-color:var(--focus)}
+#pgAlgo button.al-btn.bad{border-color:var(--up);color:var(--up)}
+#pgAlgo .al-presets{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 10px;font-size:12px;color:var(--muted)}
+#pgAlgo .al-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 12px;margin:6px 0}
+#pgAlgo .al-fld{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+#pgAlgo .al-fld i{font-style:normal;border:1px solid var(--line2);border-radius:50%;padding:0 5px;cursor:help}
+#pgAlgo input,#pgAlgo select{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:6px;padding:5px 7px;font:13px var(--font);min-width:0}
+#pgAlgo input[type=checkbox]{width:auto}
+#pgAlgo input.s{width:74px}#pgAlgo input.m{width:110px}
+#pgAlgo .al-leg select,#pgAlgo .al-leg input{width:auto;flex:0 0 auto}#pgAlgo .al-leg input.s{width:74px}#pgAlgo .al-leg input.m{width:110px}
+#pgAlgo .al-leg{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:0 0 6px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);font-size:12.5px}
+#pgAlgo .al-x{margin-left:auto;background:none;border:1px solid var(--line2);color:var(--muted);border-radius:6px;cursor:pointer;padding:1px 8px;font-size:14px}
+#pgAlgo .al-days{display:flex;flex-wrap:wrap;gap:6px}
+#pgAlgo .al-day{background:var(--panel2);color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:5px 13px;font:600 12px var(--font);cursor:pointer}
+#pgAlgo .al-day.on{color:var(--text);border-color:var(--focus);background:var(--panel)}
+#pgAlgo .al-chk{display:flex;gap:8px;align-items:center;font-size:12.5px;margin:8px 0}
+#pgAlgo .al-note{font-size:12px;color:var(--muted);line-height:1.5;margin:6px 0}
+#pgAlgo .al-err{margin:8px 0;padding:7px 10px;border:1px solid var(--up);border-radius:8px;color:var(--up);font-size:12.5px}
+#pgAlgo .al-okm{margin:8px 0;padding:7px 10px;border:1px solid var(--down);border-radius:8px;color:var(--down);font-size:12.5px}
+#pgAlgo .al-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+#pgAlgo .al-pv{margin:10px 0 0;padding:8px 12px;border:1px solid var(--line2);border-radius:8px;background:var(--panel2)}
+#pgAlgo .al-pv h4{margin:0 0 6px;font-size:13px}
+#pgAlgo .al-pv ul{margin:0 0 8px;padding-left:18px;font-size:13px}
+#pgAlgo .al-kv{display:grid;grid-template-columns:auto 1fr auto 1fr;gap:4px 14px;font-size:12.5px}
+#pgAlgo .al-kv span{color:var(--muted)}
+#pgAlgo .al-cl{list-style:none;margin:6px 0 0;padding:0;font-size:12.5px}
+#pgAlgo .al-cl li.ok{color:var(--down)}
+#pgAlgo .al-cl li.no{color:var(--warn)}
+#pgAlgo .al-card{border:1px solid var(--line);border-radius:9px;padding:8px 10px;margin:0 0 8px;background:var(--panel2)}
+#pgAlgo .al-card-h{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
+#pgAlgo .al-words{font-size:12.5px;color:var(--muted);margin:6px 0 0;line-height:1.5}
+#pgAlgo .al-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+#pgAlgo .al-tabs button{background:var(--panel2);color:var(--muted);border:1px solid var(--line2);border-radius:7px;padding:5px 11px;font:600 12px var(--font);cursor:pointer}
+#pgAlgo .al-tabs button.on{color:var(--text);border-color:var(--focus)}
+#pgAlgo .al-scroll{overflow:auto}
+#pgAlgo table.al-t{border-collapse:collapse;width:100%;font-size:12.5px;font-variant-numeric:tabular-nums}
+#pgAlgo .al-t th{text-align:left;color:var(--muted);font-weight:600;padding:4px 7px;border-bottom:1px solid var(--line2);white-space:nowrap}
+#pgAlgo .al-t td{padding:4px 7px;border-bottom:1px solid var(--line);vertical-align:top}
+#pgAlgo .al-t td.w{max-width:420px;color:var(--muted)}
+#pgAlgo .al-row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+#pgAlgo .al-ev{list-style:none;margin:0;padding:0;font-size:12.5px}
+#pgAlgo .al-ev li{padding:4px 0;border-bottom:1px solid var(--line)}
+#pgAlgo .al-ev li.bad{color:var(--up)}
+@media (max-width:760px){#pgAlgo .al-grid{grid-template-columns:1fr 1fr}#pgAlgo .al-kv{grid-template-columns:auto 1fr}}
+</style><script id="algoPage">
+/* Algo trading panel: write entry and exit rules for options and futures, watch them wait for their window and conditions,
+   and track the positions they open. Paper by default; Live unlocks only with a saved trading key (the server enforces every lock).
+   Data: /api/v1/algo/*. */
+(function algoPage() {
+  'use strict';
+  const D = document, $ = id => D.getElementById(id);
+  const root = $('alRoot'); if (!root) return;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { return localStorage.getItem('desk_jwt'); } };
+  const usd = (v, d = 2) => v == null || !isFinite(v) ? '-' : (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(d);
+  const sgn = v => v == null || !isFinite(v) ? 'dim' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'dim';
+  const IST = ms => ms == null ? '-' : new Date(ms + 19800000).toISOString().slice(5, 16).replace('T', ' ');
+  const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const DAYL = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+
+  const DEFAULT_EXIT = () => ({ legStopMultiple: 2, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true });
+  const newForm = () => ({
+    id: null, name: 'Short strangle', mode: 'paper', instrument: 'option', lots: 50,
+    legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15, strike: 100000, points: 3000 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15, strike: 100000, points: 3000 } }],
+    future: { side: 'long' }, expiry: { mode: 'b2b', code: '' },
+    entry: { kind: 'hard', time: '22:30', from: '22:30', to: '01:30', conditions: [] },
+    days: DAYS.slice(), exit: DEFAULT_EXIT(),
+  });
+  const PRESETS = {
+    strangle: f => { f.name = 'Short strangle'; f.instrument = 'option'; f.legs = [mkLeg('call', 'sell', 'delta'), mkLeg('put', 'sell', 'delta')]; },
+    straddle: f => { f.name = 'Short straddle'; f.instrument = 'option'; f.legs = [mkLeg('call', 'sell', 'atm'), mkLeg('put', 'sell', 'atm')]; },
+    long: f => { f.name = 'Long straddle'; f.instrument = 'option'; f.legs = [mkLeg('call', 'buy', 'atm'), mkLeg('put', 'buy', 'atm')]; f.exit.legStopMultiple = null; },
+    call: f => { f.name = 'Short call'; f.instrument = 'option'; f.legs = [mkLeg('call', 'sell', 'delta')]; },
+    put: f => { f.name = 'Short put'; f.instrument = 'option'; f.legs = [mkLeg('put', 'sell', 'delta')]; },
+    future: f => { f.name = 'BTC perpetual'; f.instrument = 'future'; f.legs = []; f.exit.legStopMultiple = null; f.exit.futStopPct = 1; f.exit.futTargetPct = 2; },
+  };
+  function mkLeg(type, side, mode) { return { type, side, pick: { mode, low: 0.1, high: 0.15, strike: 100000, points: 3000 } }; }
+
+  const S = { st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: 'runs', formOpen: true, at: 0 };
+
+  async function api(path, opt) {
+    const t = tok(); if (!t) { const e = new Error('Sign in first'); e.status = 401; throw e; }
+    const o = Object.assign({ headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' }, opt || {});
+    const r = await fetch('/api/v1/algo' + path, o);
+    if (r.status === 401) { try { localStorage.removeItem('desk_jwt'); } catch (e) { } const e = new Error('Session expired, sign in again'); e.status = 401; throw e; }
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.success === false) throw new Error((j && j.error) || 'HTTP ' + r.status);
+    return j;
+  }
+  const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b || {}) });
+
+  /* ---------- form <-> rule ---------- */
+  const num = (v, d) => { const n = Number(v); return isFinite(n) && v !== '' && v != null ? n : d; };
+  function toRule(f) {
+    const exit = { legStopMultiple: f.exit.legStopMultiple == null || f.exit.legStopMultiple === '' ? null : num(f.exit.legStopMultiple, 2), futStopPct: nn(f.exit.futStopPct), futTargetPct: nn(f.exit.futTargetPct), netTargetUsd: nn(f.exit.netTargetUsd), netStopUsd: nn(f.exit.netStopUsd), exitTime: f.exit.exitTime || null, alarmPoints: num(f.exit.alarmPoints, 20), hardPoints: num(f.exit.hardPoints, 5), exitAllOnLegStop: !!f.exit.exitAllOnLegStop };
+    const rule = {
+      name: String(f.name || '').trim() || 'Strategy', mode: f.mode, instrument: f.instrument,
+      legs: f.instrument === 'option' ? f.legs.map(l => ({ type: l.type, side: l.side, pick: pickOf(l.pick), ...(l.lots ? { lots: Math.round(num(l.lots, 1)) } : {}) })) : [],
+      expiry: f.expiry.mode === 'fixed' ? { mode: 'fixed', code: String(f.expiry.code || '').trim() } : { mode: f.expiry.mode },
+      entry: f.entry.kind === 'hard' ? { kind: 'hard', time: f.entry.time } : { kind: 'window', from: f.entry.from, to: f.entry.to, conditions: f.entry.conditions.map(condOf) },
+      days: f.days.slice(), exit,
+    };
+    if (f.instrument === 'future') rule.future = { side: f.future.side };
+    return rule;
+  }
+  function nn(v) { return v == null || v === '' ? null : num(v, null); }
+  function pickOf(p) {
+    if (p.mode === 'delta') return { mode: 'delta', low: num(p.low, 0.1), high: num(p.high, 0.15) };
+    if (p.mode === 'strike') return { mode: 'strike', strike: num(p.strike, 0) };
+    if (p.mode === 'offset') return { mode: 'offset', points: num(p.points, 0) };
+    return { mode: 'atm' };
+  }
+  function condOf(c) {
+    const o = { type: c.type };
+    if (c.type === 'dvol' || c.type === 'spot') { o.op = c.op || '<'; o.value = num(c.value, 0); }
+    else if (c.type === 'premium') o.value = num(c.value, 0);
+    else if (c.type === 'rsi' || c.type === 'adx') { o.tf = c.tf || '15m'; o.op = c.op || '<'; o.value = num(c.value, 50); }
+    else if (c.type === 'ema') { o.tf = c.tf || '15m'; o.fast = Math.round(num(c.fast, 9)); o.slow = Math.round(num(c.slow, 21)); o.state = c.state || 'above'; }
+    return o;
+  }
+  function fromRule(r, lots, id) {
+    const f = newForm(); f.id = id || null; f.name = r.name; f.mode = r.mode; f.instrument = r.instrument; f.lots = lots;
+    f.legs = (r.legs || []).map(l => ({ type: l.type, side: l.side, lots: l.lots || '', pick: Object.assign({ mode: 'delta', low: 0.1, high: 0.15, strike: 100000, points: 3000 }, l.pick) }));
+    f.future = r.future || { side: 'long' };
+    f.expiry = { mode: r.expiry.mode, code: r.expiry.code || '' };
+    f.entry = r.entry.kind === 'hard' ? { kind: 'hard', time: r.entry.time, from: '22:30', to: '01:30', conditions: [] } : { kind: 'window', time: '22:30', from: r.entry.from, to: r.entry.to, conditions: r.entry.conditions.map(c => Object.assign({}, c)) };
+    f.days = r.days.slice(); f.exit = Object.assign(DEFAULT_EXIT(), r.exit);
+    return f;
+  }
+
+  /* ---------- the rule in plain words ---------- */
+  function words(r, lots) {
+    const pk = p => p.mode === 'delta' ? 'delta ' + p.low + '-' + p.high + ' (lowest)' : p.mode === 'strike' ? 'strike ' + p.strike : p.mode === 'offset' ? p.points + ' points from spot' : 'at the money';
+    const legs = r.instrument === 'future' ? (r.future.side === 'long' ? 'Buy' : 'Sell') + ' ' + lots + ' lots BTC perpetual' : r.legs.map(l => (l.side === 'sell' ? 'Sell ' : 'Buy ') + (l.lots || lots) + ' ' + (l.type === 'call' ? 'call' : 'put') + ' ' + pk(l.pick)).join(' + ');
+    const ex = r.instrument === 'future' ? '' : ', expiry ' + ({ nearest: 'nearest', next: 'next', b2b: 'back-to-back (nearest + next)', fixed: r.expiry.code }[r.expiry.mode]);
+    const en = r.entry.kind === 'hard' ? 'at ' + r.entry.time + ' IST' : 'between ' + r.entry.from + ' and ' + r.entry.to + ' IST' + (r.entry.conditions.length ? ' when ' + r.entry.conditions.map(condWords).join(' and ') : '');
+    const x = r.exit, bits = [];
+    if (x.legStopMultiple != null && r.instrument === 'option') bits.push('stop ' + x.legStopMultiple + 'x per sold leg');
+    if (x.futStopPct != null && r.instrument === 'future') bits.push('stop ' + x.futStopPct + '%');
+    if (x.futTargetPct != null && r.instrument === 'future') bits.push('target ' + x.futTargetPct + '%');
+    if (x.netTargetUsd != null) bits.push('net target $' + x.netTargetUsd);
+    if (x.netStopUsd != null) bits.push('net stop $' + x.netStopUsd);
+    if (x.exitTime) bits.push('exit ' + x.exitTime + ' IST');
+    return legs + ex + ' ' + en + ' on ' + (r.days.length === 7 ? 'every day' : r.days.map(d => DAYL[d]).join(', ')) + (bits.length ? '. Exit: ' + bits.join(', ') : '. No exit rule: only the stop alarm protects it');
+  }
+  function condWords(c) {
+    switch (c.type) {
+      case 'gate': return 'the desk gate says GO';
+      case 'dvol': return 'DVOL ' + c.op + ' ' + c.value;
+      case 'spot': return 'spot ' + c.op + ' ' + c.value;
+      case 'premium': return 'premium collected is at least $' + c.value;
+      case 'rsi': return 'RSI(' + c.tf + ') ' + c.op + ' ' + c.value;
+      case 'adx': return 'ADX(' + c.tf + ') ' + c.op + ' ' + c.value;
+      case 'ema': return 'EMA' + c.fast + ' is ' + c.state + ' EMA' + c.slow + ' (' + c.tf + ')';
+    } return c.type;
+  }
+
+  /* ---------- form HTML ---------- */
+  const opt = (v, cur, label) => '<option value="' + esc(v) + '"' + (String(v) === String(cur) ? ' selected' : '') + '>' + esc(label == null ? v : label) + '</option>';
+  const inp = (path, val, o) => { o = o || {}; return '<input data-f="' + path + '" data-t="' + (o.t || 'str') + '" type="' + (o.type || 'text') + '" value="' + esc(val == null ? '' : val) + '"' + (o.step ? ' step="' + o.step + '"' : '') + (o.ph ? ' placeholder="' + esc(o.ph) + '"' : '') + ' class="' + (o.cls || '') + '">'; };
+  const sel = (path, cur, list, o) => '<select data-f="' + path + '" data-t="' + ((o && o.t) || 'str') + '"' + ((o && o.struct) ? ' data-struct="1"' : '') + '>' + list.map(x => opt(x[0], cur, x[1])).join('') + '</select>';
+  const fld = (label, html, tip) => '<label class="al-fld"><span>' + esc(label) + (tip ? ' <i title="' + esc(tip) + '">?</i>' : '') + '</span>' + html + '</label>';
+
+  function legRow(l, i) {
+    const p = '"legs.' + i;
+    return '<div class="al-leg"><b>Leg ' + (i + 1) + '</b>' +
+      sel('legs.' + i + '.side', l.side, [['sell', 'Sell'], ['buy', 'Buy']]) + sel('legs.' + i + '.type', l.type, [['call', 'Call'], ['put', 'Put']]) +
+      sel('legs.' + i + '.pick.mode', l.pick.mode, [['delta', 'by delta'], ['strike', 'fixed strike'], ['offset', 'points from spot'], ['atm', 'at the money']], { struct: 1 }) +
+      (l.pick.mode === 'delta' ? inp('legs.' + i + '.pick.low', l.pick.low, { t: 'num', type: 'number', step: '0.01', cls: 's' }) + '<span>to</span>' + inp('legs.' + i + '.pick.high', l.pick.high, { t: 'num', type: 'number', step: '0.01', cls: 's' }) + '<span class="dim">lowest delta in the band</span>' : '') +
+      (l.pick.mode === 'strike' ? inp('legs.' + i + '.pick.strike', l.pick.strike, { t: 'num', type: 'number', cls: 'm' }) : '') +
+      (l.pick.mode === 'offset' ? inp('legs.' + i + '.pick.points', l.pick.points, { t: 'num', type: 'number', cls: 'm' }) : '') +
+      '<span class="dim">lots</span>' + inp('legs.' + i + '.lots', l.lots, { t: 'num', type: 'number', cls: 's', ph: 'same' }) +
+      '<button type="button" class="al-x" data-al="delleg" data-i="' + i + '" title="Remove leg">×</button></div>';
+  }
+  function condRow(c, i) {
+    const b = 'entry.conditions.' + i + '.';
+    const op = sel(b + 'op', c.op || '<', [['<', 'below'], ['>', 'above']]);
+    const tf = sel(b + 'tf', c.tf || '15m', [['5m', '5 min'], ['15m', '15 min'], ['1h', '1 hour']]);
+    let body = '';
+    if (c.type === 'gate') body = '<span class="dim">The desk GO/WAIT gate is GO (DVOL under its limit and macro calm)</span>';
+    else if (c.type === 'dvol') body = '<span>DVOL</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
+    else if (c.type === 'spot') body = '<span>Spot</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 'm' });
+    else if (c.type === 'premium') body = '<span>Premium collected at least $</span>' + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
+    else if (c.type === 'rsi' || c.type === 'adx') body = '<span>' + c.type.toUpperCase() + '</span>' + tf + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
+    else if (c.type === 'ema') body = '<span>EMA</span>' + inp(b + 'fast', c.fast, { t: 'num', type: 'number', cls: 's' }) + sel(b + 'state', c.state || 'above', [['above', 'is above'], ['below', 'is below']]) + '<span>EMA</span>' + inp(b + 'slow', c.slow, { t: 'num', type: 'number', cls: 's' }) + tf;
+    return '<div class="al-leg"><b>' + (i + 1) + '</b>' + body + '<button type="button" class="al-x" data-al="delcond" data-i="' + i + '" title="Remove condition">×</button></div>';
+  }
+
+  function formHtml() {
+    const f = S.form, live = S.st && S.st.live, liveOk = live && live.tradeKey;
+    const opts = f.instrument === 'option';
+    let h = '<div class="al-presets">Start from: ' + ['strangle', 'straddle', 'long', 'call', 'put', 'future'].map(k => '<button type="button" class="al-btn" data-al="preset" data-k="' + k + '">' + { strangle: 'Short strangle', straddle: 'Short straddle', long: 'Long straddle', call: 'Short call', put: 'Short put', future: 'BTC futures' }[k] + '</button>').join('') + '</div>';
+    h += '<div class="al-grid">' +
+      fld('Name', inp('name', f.name)) +
+      fld('Lots per leg', inp('lots', f.lots, { t: 'num', type: 'number' }), 'One lot is 0.001 BTC. Ask me "entry 50" uses 50.') +
+      fld('Runs on', sel('mode', f.mode, [['paper', 'Paper account'], ['live', liveOk ? 'Live (real Delta orders)' : 'Live (locked: no trading key)']], { struct: 1 })) +
+      fld('Instrument', sel('instrument', f.instrument, [['option', 'Options'], ['future', 'BTC futures']], { struct: 1 })) + '</div>';
+    if (opts) {
+      h += '<div class="al-sub">Legs <button type="button" class="al-btn" data-al="addleg">+ Add leg</button></div>' + f.legs.map(legRow).join('');
+      h += '<div class="al-grid">' + fld('Expiry', sel('expiry.mode', f.expiry.mode, [['b2b', 'Back-to-back (nearest + next)'], ['nearest', 'Nearest'], ['next', 'Next (second nearest)'], ['fixed', 'Fixed code']], { struct: 1 }), 'Back-to-back trades the whole structure in the nearest AND the next expiry (double the lots in total).') +
+        (f.expiry.mode === 'fixed' ? fld('Expiry code', inp('expiry.code', f.expiry.code, { ph: '261027' }), 'DDMMYY') : '') + '</div>';
+    } else {
+      h += '<div class="al-grid">' + fld('Side', sel('future.side', f.future.side, [['long', 'Buy (long)'], ['short', 'Sell (short)']])) + '</div>';
+    }
+    h += '<div class="al-sub">Entry</div><div class="al-grid">' +
+      fld('How', sel('entry.kind', f.entry.kind, [['hard', 'Hard time: enter at one time'], ['window', 'Window: wait until the conditions are met']], { struct: 1 })) +
+      (f.entry.kind === 'hard' ? fld('At (IST)', inp('entry.time', f.entry.time, { type: 'time' })) : fld('From (IST)', inp('entry.from', f.entry.from, { type: 'time' })) + fld('Until (IST)', inp('entry.to', f.entry.to, { type: 'time' }))) + '</div>';
+    if (f.entry.kind === 'window') {
+      h += '<div class="al-sub">Conditions (all must be true) <select data-al-add="cond"><option value="">+ Add condition…</option>' + [['gate', 'Desk gate says GO'], ['dvol', 'DVOL level'], ['spot', 'Spot level'], ['premium', 'Premium collected'], ['rsi', 'RSI'], ['adx', 'ADX'], ['ema', 'EMA cross']].map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select></div>' +
+        (f.entry.conditions.length ? f.entry.conditions.map(condRow).join('') : '<div class="al-note">No conditions: it enters at the start of the window. Add some to wait for the right moment.</div>');
+    }
+    h += '<div class="al-sub">Days</div><div class="al-days">' + DAYS.map(d => '<button type="button" class="al-day' + (f.days.includes(d) ? ' on' : '') + '" data-al="day" data-d="' + d + '">' + DAYL[d] + '</button>').join('') + '</div>' +
+      '<div class="al-note">A window that runs past midnight belongs to the day it starts.</div>';
+    h += '<div class="al-sub">Exit and stops</div><div class="al-grid">' +
+      (opts ? fld('Stop per sold leg (x entry price)', inp('exit.legStopMultiple', f.exit.legStopMultiple, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' }), '2 = a leg sold at 100 stops at 200. Empty = no per-leg stop.') :
+        fld('Stop (% from entry)', inp('exit.futStopPct', f.exit.futStopPct, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' })) + fld('Target (% from entry)', inp('exit.futTargetPct', f.exit.futTargetPct, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' }))) +
+      fld('Net profit target ($)', inp('exit.netTargetUsd', f.exit.netTargetUsd, { t: 'nullnum', type: 'number', ph: 'none' }), 'Close everything when the whole trade is up this much.') +
+      fld('Net stop loss ($)', inp('exit.netStopUsd', f.exit.netStopUsd, { t: 'nullnum', type: 'number', ph: 'none' }), 'Close everything when the whole trade is down this much.') +
+      fld('Exit at (IST)', '<input data-f="exit.exitTime" data-t="nulltime" type="time" value="' + esc(f.exit.exitTime || '') + '">') + '</div>' +
+      '<label class="al-chk"><input type="checkbox" data-f="exit.exitAllOnLegStop" data-t="bool"' + (f.exit.exitAllOnLegStop ? ' checked' : '') + '> When one leg stops out, close every leg</label>' +
+      '<div class="al-note">The full-screen alarm and the hard exit near the stop (default 20 and 5 points) use your <a href="#" data-al="gosettings">Settings</a> values.</div>';
+    h += '<div class="al-actions"><button type="button" class="al-btn" data-al="preview">Preview now</button><button type="button" class="al-btn pri" data-al="save">Save</button><button type="button" class="al-btn pri" data-al="savearm">Save and arm</button>' +
+      '<button type="button" class="al-btn ' + (S.armEnter ? 'bad' : '') + '" data-al="enter">' + (S.armEnter ? 'Click again to place at market now' : 'Enter now at market') + '</button>' +
+      (f.id ? '<button type="button" class="al-btn" data-al="newform">New strategy</button>' : '') + '</div>';
+    if (S.err) h += '<div class="al-err">' + esc(S.err) + '</div>';
+    if (S.ok) h += '<div class="al-okm">' + esc(S.ok) + '</div>';
+    h += '<div id="alPv">' + pvHtml() + '</div>';
+    return h;
+  }
+
+  function pvHtml() {
+    const p = S.pv; if (!p) return '';
+    if (!p.ok) return '<div class="al-err">Cannot build the trade now: ' + esc(p.reason || 'unknown') + '</div>' + (p.conditions && p.conditions.length ? condList(p.conditions) : '');
+    return '<div class="al-pv"><h4>Trade summary (nothing is placed yet)</h4><ul>' + p.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' +
+      '<div class="al-kv"><span>Spot</span><b>' + Number(p.spot).toFixed(0) + '</b>' + (p.premium != null ? '<span>Premium collected</span><b>' + usd(p.premium) + '</b>' : '') +
+      (p.expiries && p.expiries.length ? '<span>Expiry</span><b>' + esc(p.expiries.join(' + ')) + '</b>' : '') +
+      (p.margin && p.margin.required != null ? '<span>Margin needed</span><b>' + usd(p.margin.required) + '</b><span>Available after</span><b>' + usd(p.margin.availableAfter) + '</b>' : '') + '</div>' +
+      '<div class="al-note">' + esc(p.stops) + (p.margin ? '. Margin: ' + esc(p.margin.note) : '') + '</div>' + (p.conditions && p.conditions.length ? '<div class="al-sub">Conditions right now</div>' + condList(p.conditions) : '') + '</div>';
+  }
+  const condList = list => '<ul class="al-cl">' + list.map(c => '<li class="' + (c.ok ? 'ok' : 'no') + '">' + (c.ok ? '✓ ' : '✗ ') + esc(c.label) + ' <span class="dim">· ' + esc(c.now) + '</span></li>').join('') + '</ul>';
+
+  /* ---------- the live panels ---------- */
+  function topHtml() {
+    const st = S.st; if (!st) return '<div class="al-note">Loading…</div>';
+    const l = st.live;
+    const livetxt = !l.tradeKey ? '<span class="al-chip warn">Live locked · save a trading key in Settings to unlock real orders</span>' :
+      '<span class="al-chip ok">Trading key ····' + esc(l.keyLast4 || '') + '</span><span class="al-chip ' + (l.armed ? 'ok' : 'warn') + '">' + (l.armed ? 'Armed' : 'Not armed') + '</span><span class="al-chip ' + (l.dryRun ? 'warn' : 'bad') + '">' + (l.dryRun ? 'Dry-run: nothing is sent' : 'REAL orders') + '</span>' + (!l.serverEnabled ? '<span class="al-chip warn">Server live switch is off</span>' : '');
+    return '<div class="al-chips"><span class="al-chip ok">Paper account ready</span>' + livetxt + '<span class="al-sp"></span><button type="button" class="al-btn ' + (S.armExit ? 'bad' : '') + '" data-al="exitall">' + (S.armExit ? 'Click again: close EVERYTHING' : 'Exit all positions') + '</button></div>' +
+      (st.engineError ? '<div class="al-err">Engine: ' + esc(st.engineError) + '</div>' : '');
+  }
+  function stratHtml() {
+    const st = S.st; if (!st) return '';
+    if (!st.strategies.length) return '<div class="al-note">No strategies yet. Write one above, press Save and arm, and it waits for its window.</div>';
+    return st.strategies.map(s => {
+      const c = s.check, r = s.rule;
+      let status = '<span class="al-chip">Not armed</span>';
+      if (s.armed) {
+        if (!c) status = '<span class="al-chip">Armed · starting…</span>';
+        else if (c.state === 'before') status = '<span class="al-chip ok">Armed · next window ' + IST(c.windowStart) + ' IST</span>';
+        else if (c.state === 'waiting') status = '<span class="al-chip warn">Waiting for conditions · window ends ' + IST(c.windowEnd) + ' IST</span>';
+        else if (c.state === 'entered') status = '<span class="al-chip ok">Entered today</span>';
+        else status = '<span class="al-chip ok">Armed · not a trading day or time</span>';
+      }
+      return '<div class="al-card"><div class="al-card-h"><b>' + esc(r.name) + '</b><span class="al-chip ' + (r.mode === 'live' ? 'bad' : '') + '">' + (r.mode === 'live' ? 'LIVE' : 'Paper') + '</span>' + status + '<span class="al-sp"></span>' +
+        '<button type="button" class="al-btn" data-al="toggle" data-id="' + s.id + '" data-on="' + (s.armed ? 0 : 1) + '">' + (s.armed ? 'Disarm' : 'Arm') + '</button>' +
+        '<button type="button" class="al-btn" data-al="edit" data-id="' + s.id + '">Edit</button><button type="button" class="al-btn" data-al="del" data-id="' + s.id + '">Delete</button></div>' +
+        '<div class="al-words">' + esc(words(r, s.lots)) + '</div>' +
+        (s.armed && c && c.results && c.results.length ? condList(c.results) : '') + (s.armed && c && c.planReason ? '<div class="al-note">Cannot build the trade yet: ' + esc(c.planReason) + '</div>' : '') + '</div>';
+    }).join('');
+  }
+  function runsHtml() {
+    const st = S.st; if (!st) return '';
+    if (!st.runs.length) return '<div class="al-note">No runs yet.</div>';
+    const badge = r => ({ entered: 'ok', exited: '', skipped: 'warn', failed: 'bad', dry: 'warn' }[r] || '');
+    return '<div class="al-scroll"><table class="al-t"><thead><tr><th>Started (IST)</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Lots</th><th>Net PnL</th><th>Why / result</th><th></th></tr></thead><tbody>' + st.runs.map(r => {
+      const pnl = r.status === 'entered' ? r.liveNetPnl : r.netPnl;
+      return '<tr><td>' + IST(r.enteredAt || r.windowStart) + '</td><td>' + esc(r.name) + '</td><td>' + (r.mode === 'live' ? 'Live' : 'Paper') + '</td><td><span class="al-chip ' + badge(r.status) + '">' + esc(r.status) + '</span></td><td>' + (r.lots || '') + '</td><td class="' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '</td><td class="w">' + esc((r.status === 'entered' ? (r.plan && r.plan.why) || r.reason : r.exitReason || r.reason || '')) + '</td>' +
+        '<td>' + (r.status === 'entered' ? '<button type="button" class="al-btn" data-al="runexit" data-id="' + r.id + '">Exit now</button>' : '') + '</td></tr>';
+    }).join('') + '</tbody></table></div>';
+  }
+  function openHtml() {
+    const o = S.open; if (!o) return '<div class="al-note">Loading…</div>';
+    let h = '';
+    if (o.paper.length) h += o.paper.map(p => '<div class="al-row"><span>Paper · ' + esc(p.name) + ' · ' + p.legs + ' legs · <b class="' + sgn(p.netPnl) + '">' + usd(p.netPnl) + '</b></span><button type="button" class="al-btn" data-al="adoptp" data-id="' + p.id + '">Track with the exit rules above</button></div>').join('');
+    const groups = {}; (o.delta || []).forEach(d => { const e = d.symbol.split('-')[3]; (groups[e] = groups[e] || []).push(d); });
+    h += Object.keys(groups).map(e => '<div class="al-row"><span>Delta · expiry ' + esc(e) + ' · ' + groups[e].map(d => esc(d.symbol.replace('-BTC-', ' ').replace(/-\d{6}$/, '')) + ' ' + d.size).join(', ') + '</span><button type="button" class="al-btn" data-al="adoptd" data-e="' + e + '">Track with the exit rules above</button></div>').join('');
+    if (!h) h = '<div class="al-note">No open positions to track.</div>';
+    if (o.deltaNote) h += '<div class="al-note">' + esc(o.deltaNote) + '</div>';
+    return h;
+  }
+  function evHtml() {
+    const e = S.ev; if (!e) return '<div class="al-note">Loading…</div>';
+    if (!e.length) return '<div class="al-note">No live entry or exit events yet.</div>';
+    return '<ul class="al-ev">' + e.map(x => '<li class="' + (x.kind.indexOf('failed') >= 0 ? 'bad' : '') + '"><span class="dim">' + IST(x.at) + '</span> ' + (x.dryRun ? '<span class="al-chip warn">dry</span> ' : '') + esc(x.detail) + '</li>').join('') + '</ul>';
+  }
+
+  /* ---------- page skeleton ---------- */
+  function skeleton() {
+    root.innerHTML = '<div class="al"><div class="al-top"><h2>Algo trading</h2><span class="al-sub2">Write your own entry and exit rules. Nothing is fixed. Paper first; real orders only with a trading key.</span></div>' +
+      '<div id="alTop"></div>' +
+      '<section class="al-sec"><h3 data-al="toggleform" style="cursor:pointer">Rule writer <span class="dim">' + (S.formOpen ? '▾' : '▸') + '</span></h3><div id="alForm"' + (S.formOpen ? '' : ' hidden') + '></div></section>' +
+      '<section class="al-sec"><h3>Your strategies</h3><div id="alList"></div></section>' +
+      '<section class="al-sec"><div class="al-tabs"><button type="button" data-al="tab" data-k="runs" class="' + (S.tab === 'runs' ? 'on' : '') + '">Runs and open trades</button><button type="button" data-al="tab" data-k="open" class="' + (S.tab === 'open' ? 'on' : '') + '">Track a position that is already open</button><button type="button" data-al="tab" data-k="ev" class="' + (S.tab === 'ev' ? 'on' : '') + '">Live order log</button></div><div id="alTab"></div></section></div>';
+    paintForm(); paintLive();
+  }
+  function paintForm() { const el = $('alForm'); if (el) el.innerHTML = formHtml(); }
+  function paintLive() {
+    const a = $('alTop'), b = $('alList'), c = $('alTab');
+    if (a) a.innerHTML = topHtml(); if (b) b.innerHTML = stratHtml();
+    if (c) c.innerHTML = S.tab === 'runs' ? runsHtml() : S.tab === 'open' ? openHtml() : evHtml();
+  }
+
+  /* ---------- data ---------- */
+  async function refresh() {
+    if (!tok()) { root.innerHTML = '<div class="al"><div class="al-note">Sign in (Settings) to use the Algo panel.</div></div>'; S.built = false; return; }
+    if (!S.built) { skeleton(); S.built = true; }
+    try {
+      S.st = await api('/state');
+      if (S.tab === 'open' || !S.open) S.open = await api('/open-positions').catch(() => S.open);
+      if (S.tab === 'ev') S.ev = (await api('/events')).events;
+      paintLive(); if (!S.formTouched) paintForm();
+    } catch (e) { const a = $('alTop'); if (a) a.innerHTML = '<div class="al-err">' + esc(e.message) + '</div>'; }
+  }
+
+  async function run(fn, okMsg) {
+    if (S.busy) return; S.busy = true; S.err = null; S.ok = null;
+    try { await fn(); if (okMsg) S.ok = okMsg; } catch (e) { S.err = e.message; }
+    S.busy = false; S.armEnter = false; S.armExit = false; paintForm(); await refresh();
+  }
+  const lotsOf = () => Math.max(1, Math.round(num(S.form.lots, 1)));
+
+  /* ---------- events ---------- */
+  function setPath(o, path, v) { const k = path.split('.'); let t = o; for (let i = 0; i < k.length - 1; i++) t = t[k[i]]; t[k[k.length - 1]] = v; }
+  function conv(el) {
+    const t = el.dataset.t;
+    if (t === 'bool') return el.checked;
+    if (t === 'num') return el.value === '' ? '' : Number(el.value);
+    if (t === 'nullnum') return el.value === '' ? null : Number(el.value);
+    if (t === 'nulltime') return el.value || null;
+    return el.value;
+  }
+  root.addEventListener('input', e => { const el = e.target; if (!el.dataset || !el.dataset.f || el.dataset.struct) return; S.formTouched = true; setPath(S.form, el.dataset.f, conv(el)); });
+  root.addEventListener('change', e => {
+    const el = e.target;
+    if (el.dataset && el.dataset.alAdd === 'cond') {
+      const t = el.value; if (!t) return;
+      const base = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' } }[t];
+      S.form.entry.conditions.push(Object.assign({ type: t }, base)); S.formTouched = true; paintForm(); return;
+    }
+    if (!el.dataset || !el.dataset.f) return;
+    S.formTouched = true; setPath(S.form, el.dataset.f, conv(el));
+    if (el.dataset.struct) {
+      if (el.dataset.f === 'mode' && el.value === 'live' && !(S.st && S.st.live.tradeKey)) { S.form.mode = 'paper'; S.err = 'Live needs a trading key. Save one in Settings first.'; }
+      paintForm();
+    }
+  });
+  root.addEventListener('click', async e => {
+    const b = e.target.closest('[data-al]'); if (!b) return;
+    const a = b.dataset.al, f = S.form;
+    if (a === 'gosettings') { e.preventDefault(); const nb = D.querySelector('#nav button[data-page="pgSettings"]'); if (nb) nb.click(); return; }
+    if (a === 'toggleform') { S.formOpen = !S.formOpen; const el = $('alForm'); if (el) el.hidden = !S.formOpen; return; }
+    if (a === 'preset') { PRESETS[b.dataset.k](f); S.formTouched = true; S.pv = null; paintForm(); return; }
+    if (a === 'addleg') { f.legs.push(mkLeg('call', 'sell', 'delta')); S.formTouched = true; paintForm(); return; }
+    if (a === 'delleg') { f.legs.splice(Number(b.dataset.i), 1); S.formTouched = true; paintForm(); return; }
+    if (a === 'delcond') { f.entry.conditions.splice(Number(b.dataset.i), 1); S.formTouched = true; paintForm(); return; }
+    if (a === 'day') { const d = b.dataset.d; f.days = f.days.includes(d) ? f.days.filter(x => x !== d) : f.days.concat(d); S.formTouched = true; paintForm(); return; }
+    if (a === 'newform') { S.form = newForm(); S.pv = null; S.formTouched = false; paintForm(); return; }
+    if (a === 'tab') { S.tab = b.dataset.k; D.querySelectorAll('.al-tabs button').forEach(x => x.classList.toggle('on', x.dataset.k === S.tab)); if (S.tab === 'open') S.open = null; if (S.tab === 'ev') S.ev = null; paintLive(); refresh(); return; }
+    if (a === 'preview') return run(async () => { S.pv = (await post('/preview', { rule: toRule(f), lots: lotsOf() })).preview; });
+    if (a === 'save' || a === 'savearm') return run(async () => {
+      const r = await post('/strategies', { id: f.id || undefined, rule: toRule(f), lots: lotsOf() });
+      if (a === 'savearm') await post('/strategies/' + r.strategy.id + '/arm', { armed: true });
+      S.form = newForm(); S.formTouched = false; S.pv = null;
+    }, a === 'savearm' ? 'Saved and armed. It now waits for its window.' : 'Saved. Press Arm on the card to start it (editing always disarms).');
+    if (a === 'enter') {
+      if (!S.armEnter) { S.armEnter = true; paintForm(); setTimeout(() => { if (S.armEnter) { S.armEnter = false; paintForm(); } }, 6000); return; }
+      return run(async () => { const r = await post('/enter-now', { rule: toRule(f), lots: lotsOf() }); S.ok = r.dry ? 'Dry-run: ' + r.detail : 'Placed: ' + (r.detail || 'ok'); });
+    }
+    if (a === 'toggle') return run(() => post('/strategies/' + b.dataset.id + '/arm', { armed: b.dataset.on === '1' }));
+    if (a === 'edit') { const s = S.st.strategies.find(x => x.id === b.dataset.id); if (s) { S.form = fromRule(s.rule, s.lots, s.id); S.formTouched = true; S.formOpen = true; S.pv = null; skeleton(); window.scrollTo({ top: 0, behavior: 'smooth' }); } return; }
+    if (a === 'del') return run(() => api('/strategies/' + b.dataset.id, { method: 'DELETE' }));
+    if (a === 'runexit') return run(() => post('/runs/' + b.dataset.id + '/exit'), 'Closed.');
+    if (a === 'exitall') {
+      if (!S.armExit) { S.armExit = true; paintLive(); setTimeout(() => { if (S.armExit) { S.armExit = false; paintLive(); } }, 6000); return; }
+      return run(async () => { const r = await post('/exit-all'); S.ok = 'Closed ' + r.paperClosed + ' paper strategies and ' + r.paperPositions + ' loose positions.' + (r.live ? ' Real positions: ' + r.live.message : ''); });
+    }
+    if (a === 'adoptp') return run(() => post('/adopt', { source: 'paper', id: b.dataset.id, exit: toRule(f).exit }), 'Now tracked with the exit rules from the rule writer.');
+    if (a === 'adoptd') { const syms = ((S.open && S.open.delta) || []).filter(d => d.symbol.split('-')[3] === b.dataset.e).map(d => d.symbol); return run(() => post('/adopt', { source: 'delta', symbols: syms, exit: toRule(f).exit }), 'Now tracked with the exit rules from the rule writer.'); }
+  });
+
+  let timer = null;
+  function active() { const p = $('pgAlgo'); return p && p.classList.contains('on'); }
+  function tick() { if (active() && !D.hidden) refresh(); }
+  new MutationObserver(() => { if (active() && Date.now() - S.at > 1500) { S.at = Date.now(); refresh(); } }).observe($('pgAlgo'), { attributes: true, attributeFilter: ['class'] });
+  timer = setInterval(tick, 5000);
+  window.algoPage = { refresh, toRule, words };
+  if (active()) refresh();
+})();
+</script>
 <script id="botPage">
 /* Bot page: live paper-trading monitor. Records only the trades the bot really took. Read-only except pause/resume/kill.
    Live data comes from the authenticated /api/v1/bot/* routes. */
@@ -60273,6 +60697,316 @@ document.addEventListener('click', function(e) {
   }
   window.askBrain = { understand, answer, suggest, render, collect, PHRASES, GUIDES };
 })();
+</script><script id="askTrade">
+/* Ask me trading powers. "entry 50" builds a trade from your saved defaults and shows a summary; "ok" opens the strategy
+   builder; a second "ok" places it at market with the stops and answers "Congratulations, order placed with stoploss ...".
+   "exit" closes everything. Paper unless the strategy is Live, and Live needs a saved trading key (the server enforces every lock).
+   Nothing is sent to Delta by this file: it only calls /api/v1/algo/*. */
+(function askTrade() {
+  'use strict';
+  const D = document;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // ASKTRADE-CORE-START
+  const DAYN = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+  const DAYFULL = { mon: 'monday', tue: 'tuesday', wed: 'wednesday', thu: 'thursday', fri: 'friday', sat: 'saturday', sun: 'sunday' };
+  const hhmm = (h, m, ap) => { h = Number(h); m = Number(m || 0); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return h > 23 || m > 59 ? null : String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); };
+  const TIME = '(\\d{1,2})(?:[:.](\\d{2}))?\\s*(am|pm)?';
+  const tm = s => { const m = new RegExp('^' + TIME + '$').exec(String(s).trim()); return m ? hhmm(m[1], m[2], m[3]) : null; };
+
+  /** Everything a sentence can change about a rule. Returns only what was mentioned. */
+  function parsePatch(raw) {
+    const q = ' ' + String(raw || '').toLowerCase().replace(/[,;]+/g, ' , ').replace(/\s+/g, ' ') + ' ';
+    const p = {}; let m;
+    if ((m = /delta\s*(?:of|from|between)?\s*(0?\.\d+)\s*(?:-|to|and)\s*(0?\.\d+)/.exec(q))) { const a = Number(m[1]), b = Number(m[2]); p.deltaLow = Math.min(a, b); p.deltaHigh = Math.max(a, b); }
+    if (/\b(b2b|back[- ]?to[- ]?back)\b/.test(q)) p.expiry = { mode: 'b2b' };
+    else if ((m = /expiry\s*(?:code\s*)?(\d{6})\b/.exec(q))) p.expiry = { mode: 'fixed', code: m[1] };
+    else if (/\b(nearest|nearby|current)\s*(?:expiry|expiries)?\b/.test(q) && /expir/.test(q)) p.expiry = { mode: 'nearest' };
+    else if (/\bnext\s+(?:day\s+)?expir/.test(q) || /\bexpiry\s+next\b/.test(q)) p.expiry = { mode: 'next' };
+    if (/\bno\s+(?:stop|sl|stoploss)\b/.test(q)) p.stopMultiple = null;
+    else if ((m = /(?:stop\s*loss|stoploss|stop|sl)\s*(?:at|of|=)?\s*(\d+(?:\.\d+)?)\s*x\b/.exec(q)) || (m = /\b(\d+(?:\.\d+)?)\s*x\s*(?:stop\s*loss|stoploss|stop|sl)\b/.exec(q))) p.stopMultiple = Number(m[1]);
+    else if (/\b(?:double|2 ?times)\b.*\bstop/.test(q) || /\bstop.*\b(?:double|2 ?times)\b/.test(q)) p.stopMultiple = 2;
+    if ((m = new RegExp('between\\s+' + TIME + '\\s+(?:and|to|-)\\s+' + TIME).exec(q)) || (m = new RegExp('\\b(?:window|from)\\s+' + TIME + '\\s+(?:and|to|-|until)\\s+' + TIME).exec(q))) {
+      const a = hhmm(m[1], m[2], m[3] || m[6]), b = hhmm(m[4], m[5], m[6]); if (a && b) p.window = { from: a, to: b };
+    } else if ((m = new RegExp('\\b(?:entry|enter|entering|start|at)\\s+(?:time\\s+)?(?:at\\s+)?' + TIME).exec(q)) && !/\bexit\s*(?:time\s*)?(?:at\s*)?$/.test(q.slice(0, m.index))) { const t = hhmm(m[1], m[2], m[3]); if (t) p.entryTime = t; }
+    if ((m = new RegExp('\\b(?:exit|close|square ?off)\\s+(?:time\\s+)?(?:at\\s+)?' + TIME).exec(q))) { const t = hhmm(m[1], m[2], m[3]); if (t) p.exitTime = t; }
+    if (/\bno exit time\b/.test(q)) p.exitTime = null;
+    const dayRe = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\b/g;
+    if (/\bweekdays?\b/.test(q)) p.days = ['mon', 'tue', 'wed', 'thu', 'fri'];
+    else if (/\b(every ?day|all days|daily|7 days)\b/.test(q)) p.days = DAYN.slice();
+    else if ((/\b(days?|only|on|every)\b/.test(q) || /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\s+(?:to|through|till)\s+(mon|tue|wed|thu|fri|sat|sun)/.test(q)) && (m = q.match(dayRe))) {
+      const first = m[0].slice(0, 3), range = /\b(mon|tue|wed|thu|fri|sat|sun)[a-z]*\s+(?:to|-|through|till)\s+(mon|tue|wed|thu|fri|sat|sun)[a-z]*/.exec(q);
+      if (range) { const a = DAYN.indexOf(range[1]), b = DAYN.indexOf(range[2]); p.days = []; for (let i = a; ; i = (i + 1) % 7) { p.days.push(DAYN[i]); if (i === b) break; } }
+      else p.days = [...new Set(m.map(x => x.slice(0, 3)))].filter(d => DAYN.includes(d)).length ? [...new Set(m.map(x => x.slice(0, 3)))].filter(d => DAYN.includes(d)) : [first];
+    }
+    if ((m = /\bmode\s+(paper|live)\b|\b(?:go|run|switch to|trade)\s+(paper|live)\b/.exec(q))) p.mode = m[1] || m[2];
+    if (/\bstraddle\b/.test(q)) p.legs = 'straddle'; else if (/\bstrangle\b/.test(q)) p.legs = 'strangle';
+    else if (/\b(call only|only call|just call|short call)\b/.test(q)) p.legs = 'call'; else if (/\b(put only|only put|just put|short put)\b/.test(q)) p.legs = 'put';
+    if (/\b(futures?|perp|perpetual|btcusd)\b/.test(q)) { p.legs = 'future'; p.side = /\b(short|sell)\b/.test(q) ? 'short' : 'long'; }
+    if ((m = /\b(?:net\s+)?(?:target|profit target|take profit)\s*(?:of|at|=)?\s*\$?\s*(\d+(?:\.\d+)?)/.exec(q))) p.netTarget = Number(m[1]);
+    if ((m = /\b(?:net stop|net loss|max loss|loss limit)\s*(?:of|at|=)?\s*\$?\s*(\d+(?:\.\d+)?)/.exec(q))) p.netStop = Number(m[1]);
+    return p;
+  }
+
+  const leg = (type, side, mode, lo, hi) => ({ type, side, pick: mode === 'delta' ? { mode, low: lo, high: hi } : { mode } });
+  /** A new rule from a patch; the original is not changed. */
+  function applyPatch(rule, p) {
+    const r = JSON.parse(JSON.stringify(rule));
+    const lo = p.deltaLow != null ? p.deltaLow : (r.legs.find(l => l.pick.mode === 'delta') || { pick: { low: 0.1 } }).pick.low;
+    const hi = p.deltaHigh != null ? p.deltaHigh : (r.legs.find(l => l.pick.mode === 'delta') || { pick: { high: 0.15 } }).pick.high;
+    if (p.legs === 'strangle') { r.instrument = 'option'; r.legs = [leg('call', 'sell', 'delta', lo, hi), leg('put', 'sell', 'delta', lo, hi)]; r.name = 'Short strangle'; delete r.future; }
+    else if (p.legs === 'straddle') { r.instrument = 'option'; r.legs = [leg('call', 'sell', 'atm'), leg('put', 'sell', 'atm')]; r.name = 'Short straddle'; delete r.future; }
+    else if (p.legs === 'call' || p.legs === 'put') { r.instrument = 'option'; r.legs = [leg(p.legs, 'sell', 'delta', lo, hi)]; r.name = 'Short ' + p.legs; delete r.future; }
+    else if (p.legs === 'future') { r.instrument = 'future'; r.legs = []; r.future = { side: p.side || 'long' }; r.name = 'BTC perpetual ' + (p.side || 'long'); if (r.exit.futStopPct == null) r.exit.futStopPct = 1; }
+    else if (p.deltaLow != null || p.deltaHigh != null) r.legs.forEach(l => { if (l.pick.mode === 'delta') { l.pick.low = lo; l.pick.high = hi; } });
+    if (p.expiry) r.expiry = p.expiry;
+    if ('stopMultiple' in p) r.exit.legStopMultiple = p.stopMultiple;
+    if (p.window) r.entry = { kind: 'window', from: p.window.from, to: p.window.to, conditions: r.entry.kind === 'window' ? r.entry.conditions : [] };
+    else if (p.entryTime) r.entry = { kind: 'hard', time: p.entryTime };
+    if ('exitTime' in p) r.exit.exitTime = p.exitTime;
+    if (p.days) r.days = p.days;
+    if (p.mode) r.mode = p.mode;
+    if (p.netTarget != null) r.exit.netTargetUsd = p.netTarget;
+    if (p.netStop != null) r.exit.netStopUsd = p.netStop;
+    return r;
+  }
+  const hasAny = p => Object.keys(p).length > 0;
+
+  /** What a message means for the trading flow. `pending` is true while a summary, builder or exit card is waiting. */
+  function parseTrade(raw, pending) {
+    const s = String(raw || '').trim(), q = s.toLowerCase().replace(/[.!]+$/g, '').trim();
+    if (!q) return null;
+    if (pending && /^(ok|okay|yes|y|confirm|go|go ahead|do it|execute|place it|place order|yes do it|ok return)$/.test(q)) return { kind: 'ok' };
+    if (pending && /^(cancel|no|n|abort|never ?mind|stop|dont|don't)$/.test(q)) return { kind: 'cancel' };
+    let m;
+    if (/^(?:please )?(?:exit|exit all|close all|kill all|kill|hard exit|hard kill|square ?off|square off all|exit everything|close everything|exit all positions|close all positions|kill all positions)(?: now)?$/.test(q)) return { kind: 'exit' };
+    if ((m = /^(?:please )?(?:entry|enter|entre|sell|short|go short|open)\s+(\d{1,6})(?:\s*lots?)?\b(.*)$/.exec(q))) {
+      const lots = Number(m[1]); if (lots >= 1) return { kind: 'entry', lots, patch: parsePatch(m[2]) };
+    }
+    if ((m = /^(?:set|save|change|update|make)\s+(?:my\s+)?(?:default|defaults|standard)\b\s*(?:entry|exit|rules?|settings?|conditions?)?\s*(?:to|as|=|:)?\s*(.*)$/.exec(q))) return { kind: 'default', patch: parsePatch(m[1]) };
+    if (/^(?:show|what(?:'s| is| are)?)\s+(?:my\s+)?(?:default|defaults)\b/.test(q) || /^my defaults?$/.test(q)) return { kind: 'showdefault' };
+    if (pending && pending !== 'exit') { const p = parsePatch(q); if (hasAny(p)) return { kind: 'patch', patch: p }; }
+    return null;
+  }
+
+  const money = v => v == null || !isFinite(v) ? '-' : (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
+  const daysText = d => d.length === 7 ? 'every day' : d.map(x => x[0].toUpperCase() + x.slice(1)).join(', ');
+  const expiryText = (r, pv) => pv && pv.expiries && pv.expiries.length ? pv.expiries.join(' + ') : ({ nearest: 'nearest', next: 'next', b2b: 'nearest + next (back-to-back)', fixed: r.expiry.code }[r.expiry.mode]);
+  const entryText = (r, now) => now ? 'now, at market' : r.entry.kind === 'hard' ? r.entry.time + ' IST' : r.entry.from + ' to ' + r.entry.to + ' IST, when ' + (r.entry.conditions.length ? 'the conditions are met' : 'the window opens');
+  const stopText = r => r.instrument === 'future' ? (r.exit.futStopPct != null ? r.exit.futStopPct + '% stop' : 'no stop') + (r.exit.futTargetPct != null ? ', ' + r.exit.futTargetPct + '% target' : '') : r.exit.legStopMultiple != null ? r.exit.legStopMultiple + 'x each sold leg' + (r.exit.exitAllOnLegStop ? ', everything closes if one leg stops' : '') : 'no per-leg stop';
+  /** The reply once the order is in. */
+  function congrats(rule, lots, pv, res, when) {
+    const dry = res && res.dry;
+    const head = dry ? 'Dry run only: nothing was sent to Delta.' : (when === 'now' ? 'Congratulations, order placed with stoploss.' : 'Congratulations, strategy armed with stoploss.');
+    const rows = [
+      ['Strategy', rule.name + ' · ' + lots + ' lots' + (rule.mode === 'live' ? ' · LIVE' : ' · Paper')],
+      ['Expiry', rule.instrument === 'future' ? 'perpetual (no expiry)' : expiryText(rule, pv)],
+      ['Entry', entryText(rule, when === 'now') + (when === 'now' ? '' : ' on ' + daysText(rule.days))],
+      ['Exit', (rule.exit.exitTime ? rule.exit.exitTime + ' IST' : 'no exit time') + (rule.exit.netTargetUsd != null ? ', net target $' + rule.exit.netTargetUsd : '') + (rule.exit.netStopUsd != null ? ', net stop $' + rule.exit.netStopUsd : '')],
+      ['Stoploss', stopText(rule)],
+      ['Why enter', when === 'now' ? 'you asked for it now in Ask me (entry ' + lots + '), with your saved rules for strikes, expiry and stops' : (rule.entry.kind === 'hard' ? 'hard entry at ' + rule.entry.time + ' IST' : 'window ' + rule.entry.from + '-' + rule.entry.to + ' IST until: ' + (rule.entry.conditions.length ? rule.entry.conditions.length + ' condition(s) are all true' : 'no conditions'))],
+    ];
+    if (res && res.detail) rows.push(['Result', res.detail]);
+    return { head, rows, lines: pv ? pv.lines : [] };
+  }
+  // ASKTRADE-CORE-END
+
+  /* ---------- the flow ---------- */
+  const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { return localStorage.getItem('desk_jwt'); } };
+  async function api(path, opt) {
+    const t = tok(); if (!t) throw new Error('Sign in first');
+    const r = await fetch('/api/v1/algo' + path, Object.assign({ headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' }, opt || {}));
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.success === false) throw new Error((j && j.error) || 'HTTP ' + r.status);
+    return j;
+  }
+  const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b || {}) });
+  const FALLBACK = () => ({
+    name: 'Short strangle', mode: 'paper', instrument: 'option',
+    legs: [leg('call', 'sell', 'delta', 0.1, 0.15), leg('put', 'sell', 'delta', 0.1, 0.15)],
+    expiry: { mode: 'b2b' }, entry: { kind: 'hard', time: '22:30' }, days: DAYN.slice(),
+    exit: { legStopMultiple: 2, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true },
+  });
+  const T = { stage: null, rule: null, lots: 0, pv: null, when: 'now', live: null };
+  const API = { push: null };
+  const reset = () => { T.stage = null; T.rule = null; T.pv = null; T.when = 'now'; };
+
+  async function loadDefaults() { try { return (await api('/defaults')).defaults || FALLBACK(); } catch (e) { return FALLBACK(); } }
+  async function preview() {
+    try { T.pv = (await post('/preview', { rule: T.rule, lots: T.lots })).preview; }
+    catch (e) { T.pv = { ok: false, reason: e.message, lines: [], conditions: [] }; }
+  }
+  const msg = (kind, o) => Object.assign({ kind }, o);
+
+  async function handle(q) {
+    const cmd = parseTrade(q, T.stage);
+    if (!cmd) return null;
+    if (cmd.kind === 'cancel') { reset(); return msg('text', { text: 'Cancelled. Nothing was placed.' }); }
+    if (cmd.kind === 'entry') {
+      T.rule = applyPatch(await loadDefaults(), cmd.patch); T.lots = cmd.lots; T.when = 'now';
+      await preview(); T.stage = 'summary';
+      return msg('summary', { snap: snap() });
+    }
+    if (cmd.kind === 'patch') {
+      T.rule = applyPatch(T.rule, cmd.patch); await preview();
+      return msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap(), note: 'Updated.' });
+    }
+    if (cmd.kind === 'ok') {
+      if (T.stage === 'summary') { T.stage = 'builder'; return msg('builder', { snap: snap() }); }
+      if (T.stage === 'builder') return place();
+      if (T.stage === 'exit') return killAll();
+    }
+    if (cmd.kind === 'exit') {
+      let open = null; try { open = await api('/open-positions'); } catch (e) { open = null; }
+      T.stage = 'exit'; return msg('exit', { open });
+    }
+    if (cmd.kind === 'default') {
+      if (!hasAny(cmd.patch)) return msg('text', { text: 'Tell me what to save, for example: set default delta 0.10-0.15, expiry b2b, stop 2x, entry 22:30, exit 07:00, days mon tue wed thu fri.' });
+      const base = await loadDefaults(); const next = applyPatch(base, cmd.patch);
+      try { await api('/defaults', { method: 'PUT', body: JSON.stringify({ rule: next }) }); } catch (e) { return msg('text', { text: 'Could not save: ' + e.message }); }
+      return msg('saved', { rule: next, lots: T.lots || 1 });
+    }
+    if (cmd.kind === 'showdefault') return msg('saved', { rule: await loadDefaults(), lots: 1, shown: true });
+    return null;
+  }
+  const snap = () => ({ rule: JSON.parse(JSON.stringify(T.rule)), lots: T.lots, pv: T.pv, when: T.when, stage: T.stage, live: null });
+
+  async function place() {
+    const rule = T.rule, lots = T.lots, pv = T.pv, when = T.when;
+    if (!pv || !pv.ok) return msg('text', { text: 'I cannot place this: ' + ((pv && pv.reason) || 'the trade could not be built right now') + '. Change the settings or try again.' });
+    try {
+      let res;
+      if (when === 'now') res = await post('/enter-now', { rule, lots });
+      else { const sv = await post('/strategies', { rule, lots }); await post('/strategies/' + sv.strategy.id + '/arm', { armed: true }); res = { detail: 'It is armed on the Algo page and waits for its time.' }; }
+      const c = congrats(rule, lots, pv, res, when);
+      reset(); return msg('done', { c });
+    } catch (e) { return msg('text', { text: 'The order was NOT placed: ' + e.message }); }
+  }
+  async function killAll() {
+    try {
+      const r = await post('/exit-all'); reset();
+      return msg('killed', { r });
+    } catch (e) { return msg('text', { text: 'Exit failed: ' + e.message + '. Check Delta and the Paper page.' }); }
+  }
+
+  /* ---------- drawing ---------- */
+  const words = r => (window.algoPage && window.algoPage.words) ? window.algoPage.words(r, 1) : r.name;
+  function condList(list) { return list && list.length ? '<ul class="at-cl">' + list.map(c => '<li class="' + (c.ok ? 'ok' : 'no') + '">' + (c.ok ? '✓ ' : '✗ ') + esc(c.label) + ' <span>· ' + esc(c.now) + '</span></li>').join('') + '</ul>' : ''; }
+  function summaryCard(m, builder) {
+    const s = m.snap, r = s.rule, pv = s.pv;
+    let h = '<div class="at-card"><div class="at-h">' + (builder ? 'Strategy builder' : 'Trade summary') + '<span class="at-badge ' + (r.mode === 'live' ? 'live' : '') + '">' + (r.mode === 'live' ? 'LIVE' : 'Paper') + '</span></div>';
+    if (m.note) h += '<div class="at-note">' + esc(m.note) + '</div>';
+    if (!pv || !pv.ok) h += '<div class="at-err">I cannot build this trade now: ' + esc((pv && pv.reason) || 'unknown') + '</div>';
+    else {
+      h += '<div class="at-sub">' + esc(r.name) + ' · ' + s.lots + ' lots</div><ul class="at-ul">' + pv.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' +
+        '<div class="at-kv"><span>Expiry</span><b>' + esc(expiryText(r, pv)) + '</b><span>Spot</span><b>' + Number(pv.spot).toFixed(0) + '</b>' +
+        (pv.premium != null ? '<span>Premium collected</span><b>' + money(pv.premium) + '</b>' : '') +
+        (pv.margin && pv.margin.required != null ? '<span>Margin needed</span><b>' + money(pv.margin.required) + '</b>' : '') +
+        '<span>Entry</span><b>' + esc(entryText(r, s.when === 'now')) + '</b><span>Exit</span><b>' + esc((r.exit.exitTime ? r.exit.exitTime + ' IST' : 'no exit time') + (r.exit.netTargetUsd != null ? ', target $' + r.exit.netTargetUsd : '') + (r.exit.netStopUsd != null ? ', net stop $' + r.exit.netStopUsd : '')) + '</b>' +
+        '<span>Stoploss</span><b>' + esc(stopText(r)) + '</b><span>Days</span><b>' + esc(daysText(r.days)) + '</b></div>';
+      if (pv.margin) h += '<div class="at-fine">Margin is ' + esc(pv.margin.note) + '.</div>';
+      if (r.entry.kind === 'window' && s.when !== 'now') h += condList(pv.conditions);
+    }
+    if (builder) h += builderForm(s);
+    h += '<div class="at-act">' + (pv && pv.ok ? '<button type="button" class="at-btn pri" data-at="ok">' + (builder ? (s.when === 'now' ? 'OK, place at market' : 'OK, arm it') : 'OK') + '</button>' : '') +
+      (builder ? '<button type="button" class="at-btn" data-at="update">Update summary</button><button type="button" class="at-btn" data-at="savedef">Save as my default</button>' : '') +
+      '<button type="button" class="at-btn" data-at="cancel">Cancel</button></div>';
+    h += '<div class="at-fine">' + (builder ? 'Change anything with the boxes, or type it: "delta 0.08-0.12", "expiry nearest", "stop 3x", "exit 07:00", "days mon tue". Then say ok.' : 'Say <b>ok</b> to open the strategy builder, or type a change such as "delta 0.08-0.12" or "expiry nearest".') + '</div></div>';
+    return h;
+  }
+  function builderForm(s) {
+    const r = s.rule, dl = r.legs.find(l => l.pick.mode === 'delta');
+    const o = (v, c, l) => '<option value="' + v + '"' + (v === c ? ' selected' : '') + '>' + l + '</option>';
+    return '<div class="at-form">' +
+      '<label>Lots<input data-atf="lots" type="number" min="1" value="' + s.lots + '"></label>' +
+      (dl ? '<label>Delta from<input data-atf="dlo" type="number" step="0.01" value="' + dl.pick.low + '"></label><label>to<input data-atf="dhi" type="number" step="0.01" value="' + dl.pick.high + '"></label>' : '') +
+      (r.instrument === 'option' ? '<label>Expiry<select data-atf="exp">' + o('b2b', r.expiry.mode, 'Back-to-back') + o('nearest', r.expiry.mode, 'Nearest') + o('next', r.expiry.mode, 'Next') + '</select></label>' : '') +
+      '<label>Run<select data-atf="when">' + o('now', s.when, 'Now, at market') + o('later', s.when, 'At the entry time below') + '</select></label>' +
+      '<label>Entry time<input data-atf="etime" type="time" value="' + esc(r.entry.kind === 'hard' ? r.entry.time : r.entry.from) + '"></label>' +
+      '<label>Exit time<input data-atf="xtime" type="time" value="' + esc(r.exit.exitTime || '') + '"></label>' +
+      (r.instrument === 'option' ? '<label>Stop (x)<input data-atf="stop" type="number" step="0.1" value="' + (r.exit.legStopMultiple == null ? '' : r.exit.legStopMultiple) + '" placeholder="none"></label>' : '') +
+      '<label>Net target $<input data-atf="tgt" type="number" value="' + (r.exit.netTargetUsd == null ? '' : r.exit.netTargetUsd) + '" placeholder="none"></label><label>Net stop $<input data-atf="nstop" type="number" value="' + (r.exit.netStopUsd == null ? '' : r.exit.netStopUsd) + '" placeholder="none"></label>' +
+      '<label>Mode<select data-atf="mode">' + o('paper', r.mode, 'Paper') + o('live', r.mode, 'Live (needs trading key)') + '</select></label>' +
+      '<div class="at-days">' + DAYN.map(d => '<button type="button" class="at-day' + (r.days.includes(d) ? ' on' : '') + '" data-at="day" data-d="' + d + '">' + d[0].toUpperCase() + d.slice(1) + '</button>').join('') + '</div></div>';
+  }
+  function render(m) {
+    if (!m) return '';
+    if (m.kind === 'text') return '<div class="at-card"><div>' + esc(m.text) + '</div></div>';
+    if (m.kind === 'summary') return summaryCard(m, false);
+    if (m.kind === 'builder') return summaryCard(m, true);
+    if (m.kind === 'done') {
+      const c = m.c;
+      return '<div class="at-card done"><div class="at-h ok">' + esc(c.head) + '</div><div class="at-kv">' + c.rows.map(r => '<span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b>').join('') + '</div>' +
+        (c.lines && c.lines.length ? '<ul class="at-ul">' + c.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') + '<div class="at-fine">Track it on the Algo page. The stop alarm watches it too.</div></div>';
+    }
+    if (m.kind === 'saved') {
+      return '<div class="at-card"><div class="at-h">' + (m.shown ? 'Your saved default' : 'Saved as your default') + '</div><div class="at-sub">' + esc(words(m.rule)) + '</div><div class="at-fine">"entry 50" now uses this. Type "set default ..." to change it.</div></div>';
+    }
+    if (m.kind === 'exit') {
+      const o = m.open, p = o && o.paper ? o.paper : [], d = o && o.delta ? o.delta : [];
+      return '<div class="at-card"><div class="at-h bad">Exit everything?</div>' +
+        '<ul class="at-ul">' + (p.length ? p.map(x => '<li>Paper · ' + esc(x.name) + '</li>').join('') : '<li>No open paper strategies</li>') + (d.length ? d.map(x => '<li>Delta · ' + esc(x.symbol) + ' ' + x.size + '</li>').join('') : '') + '</ul>' +
+        '<div class="at-fine">This closes every open paper strategy and position. Real Delta positions are closed only if a trading key is saved, live trading is armed and dry-run is off; otherwise they are listed in the order log and left alone.</div>' +
+        '<div class="at-act"><button type="button" class="at-btn bad" data-at="ok">Yes, kill all positions</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div></div>';
+    }
+    if (m.kind === 'killed') {
+      const r = m.r;
+      return '<div class="at-card done"><div class="at-h ok">All positions killed</div><div class="at-kv"><span>Paper strategies closed</span><b>' + r.paperClosed + '</b><span>Loose paper positions closed</span><b>' + r.paperPositions + '</b>' + (r.live ? '<span>Real Delta</span><b>' + esc(r.live.message) + '</b>' : '') + '</div></div>';
+    }
+    return '';
+  }
+
+  /* ---------- clicks and the builder boxes ---------- */
+  async function answer(m) { if (API.push) API.push(m); }
+  D.addEventListener('click', async e => {
+    const b = e.target.closest && e.target.closest('#askPanel [data-at]'); if (!b) return;
+    const a = b.dataset.at;
+    if (a === 'ok') { const m = await handle('ok'); if (m) answer(m); }
+    else if (a === 'cancel') { reset(); answer(msg('text', { text: 'Cancelled. Nothing was placed.' })); }
+    else if (a === 'day') {
+      const d = b.dataset.d, r = T.rule; if (!r) return;
+      r.days = r.days.includes(d) ? r.days.filter(x => x !== d) : r.days.concat(d);
+      if (!r.days.length) r.days = [d];
+      await preview(); answer(msg('builder', { snap: snap() }));
+    }
+    else if (a === 'update') { readForm(); await preview(); answer(msg('builder', { snap: snap() })); }
+    else if (a === 'savedef') {
+      readForm();
+      try { await api('/defaults', { method: 'PUT', body: JSON.stringify({ rule: T.rule }) }); answer(msg('saved', { rule: T.rule, lots: T.lots })); }
+      catch (err) { answer(msg('text', { text: 'Could not save: ' + err.message })); }
+    }
+  });
+  function readForm() {
+    const last = k => { const all = D.querySelectorAll('#askPanel [data-atf="' + k + '"]'); return all.length ? all[all.length - 1] : null; };
+    const v = k => { const el = last(k); return el ? el.value : null; };
+    const r = T.rule; if (!r) return;
+    const lots = Math.round(Number(v('lots'))); if (lots >= 1) T.lots = lots;
+    const dlo = v('dlo'), dhi = v('dhi');
+    if (dlo != null && dhi != null && dlo !== '' && dhi !== '') r.legs.forEach(l => { if (l.pick.mode === 'delta') { l.pick.low = Math.min(Number(dlo), Number(dhi)); l.pick.high = Math.max(Number(dlo), Number(dhi)); } });
+    const ex = v('exp'); if (ex) r.expiry = { mode: ex };
+    const wh = v('when'); if (wh) T.when = wh;
+    const et = v('etime'); if (et) { if (r.entry.kind === 'hard') r.entry.time = et; else r.entry.from = et; }
+    const xt = v('xtime'); r.exit.exitTime = xt || null;
+    const st = v('stop'); if (st != null) r.exit.legStopMultiple = st === '' ? null : Number(st);
+    const tg = v('tgt'); if (tg != null) r.exit.netTargetUsd = tg === '' ? null : Number(tg);
+    const ns = v('nstop'); if (ns != null) r.exit.netStopUsd = ns === '' ? null : Number(ns);
+    const md = v('mode'); if (md) r.mode = md;
+  }
+
+  const style = D.createElement('style');
+  style.textContent = '#askPanel .at-card{background:var(--panel2,#1a2330);border:1px solid var(--line2,#2c394a);border-radius:10px;padding:10px 12px;margin:2px 0;font-size:13px;line-height:1.45}' +
+    '#askPanel .at-card.done{border-color:var(--down,#35BB7D)}#askPanel .at-h{font-weight:700;font-size:14px;display:flex;gap:8px;align-items:center;margin:0 0 6px}#askPanel .at-h.ok{color:var(--down,#35BB7D)}#askPanel .at-h.bad{color:var(--up,#EF5A5E)}' +
+    '#askPanel .at-badge{font-size:11px;padding:1px 8px;border:1px solid var(--line2,#2c394a);border-radius:999px;color:var(--muted,#8fa3b5)}#askPanel .at-badge.live{color:var(--up,#EF5A5E);border-color:var(--up,#EF5A5E)}' +
+    '#askPanel .at-sub{font-weight:600;margin:4px 0}#askPanel .at-ul{margin:4px 0 8px;padding-left:18px}#askPanel .at-kv{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:6px 0}#askPanel .at-kv span{color:var(--muted,#8fa3b5)}' +
+    '#askPanel .at-fine,#askPanel .at-note{font-size:12px;color:var(--muted,#8fa3b5);margin:6px 0 0}#askPanel .at-err{color:var(--up,#EF5A5E);margin:6px 0}' +
+    '#askPanel .at-act{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}#askPanel .at-btn{background:var(--panel,#121a24);color:var(--text,#e6edf5);border:1px solid var(--line2,#2c394a);border-radius:7px;padding:6px 12px;font:600 12px inherit;cursor:pointer}#askPanel .at-btn.pri{border-color:var(--down,#35BB7D)}#askPanel .at-btn.bad{border-color:var(--up,#EF5A5E);color:var(--up,#EF5A5E)}' +
+    '#askPanel .at-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px 8px;margin:8px 0}#askPanel .at-form label{display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--muted,#8fa3b5)}#askPanel .at-form input,#askPanel .at-form select{background:var(--panel,#121a24);color:var(--text,#e6edf5);border:1px solid var(--line2,#2c394a);border-radius:6px;padding:4px 6px;font:13px inherit;min-width:0}' +
+    '#askPanel .at-days{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px}#askPanel .at-day{background:var(--panel,#121a24);color:var(--muted,#8fa3b5);border:1px solid var(--line2,#2c394a);border-radius:999px;padding:3px 10px;font:600 11.5px inherit;cursor:pointer}#askPanel .at-day.on{color:var(--text,#e6edf5);border-color:var(--focus,#58A6D6)}' +
+    '#askPanel .at-cl{list-style:none;margin:6px 0 0;padding:0}#askPanel .at-cl li.ok{color:var(--down,#35BB7D)}#askPanel .at-cl li.no{color:var(--warn,#E3AE45)}#askPanel .at-cl span{color:var(--muted,#8fa3b5)}';
+  D.head.appendChild(style);
+
+  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, congrats, API, active: () => T.stage };
+})();
 </script><script id="askWidget">
 /* Ask me: a floating chat that answers from the desk's own data (database, live feeds).
    It calls POST /api/v1/ask, which is rule-based and read-only: no AI model, no outside service. */
@@ -60282,7 +61016,7 @@ document.addEventListener('click', function(e) {
   if (D.getElementById('askFab')) return;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { try { return localStorage.getItem('desk_jwt'); } catch (x) { return null; } } };
-  const S = { open: false, big: false, sug: [], sugI: -1, msgs: [], busy: false, suggestions: ['Should I trade tonight?', 'What is the top performer?', 'What is the most important indicator?', 'How did Monday do in the backtest?', 'Is IV enough to trade?', 'Is premium selling worth it?', 'How do I set up my Delta API key?', 'How does the bot work?', 'Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
+  const S = { open: false, big: false, sug: [], sugI: -1, msgs: [], busy: false, suggestions: ['Entry 50', 'Exit', 'Should I trade tonight?', 'What is the top performer?', 'What is the most important indicator?', 'How did Monday do in the backtest?', 'Is IV enough to trade?', 'Is premium selling worth it?', 'How do I set up my Delta API key?', 'How does the bot work?', 'Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
 
   const fab = D.createElement('button');
   fab.id = 'askFab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Ask me about the desk data'); fab.setAttribute('aria-expanded', 'false');
@@ -60316,7 +61050,7 @@ document.addEventListener('click', function(e) {
         (S.msgs.length ? '' : '<div class="ak-bot"><div>Ask me about anything in your terminal. I can read every table in your database (try "what data do you have?" or "summarise bot runs"), your positions and PnL, why a trade stopped, what happened at a given minute, and the live market. I can also explain any concept on the terminal, such as Risk-ADX, N2N, the entry gauge or the GO/WAIT gate, from your own docs. I answer only from what is recorded and I do not predict prices.</div>' + chips(S.suggestions) + '</div>') +
         S.msgs.map(m => m.role === 'user'
           ? '<div class="ak-user">' + esc(m.text) + '</div>'
-          : '<div class="ak-bot">' + (m.visual ? window.askBrain.render(m.visual) : text(m.text) + table(m.table)) + (m.sources && m.sources.length ? '<div class="ak-src">From: ' + esc(m.sources.join(', ')) + '</div>' : '') + (m.suggestions && m.suggestions.length ? chips(m.suggestions) : '') + '</div>').join('') +
+          : '<div class="ak-bot">' + (m.trade ? window.askTrade.render(m.trade) : m.visual ? window.askBrain.render(m.visual) : text(m.text) + table(m.table)) + (m.sources && m.sources.length ? '<div class="ak-src">From: ' + esc(m.sources.join(', ')) + '</div>' : '') + (m.suggestions && m.suggestions.length ? chips(m.suggestions) : '') + '</div>').join('') +
         (S.busy ? '<div class="ak-bot ak-typing">Looking that up…</div>' : '') + '</div>' +
         '<div class="ak-sugW"><div id="akSug" class="ak-sug" hidden></div></div><div class="ak-row"><input id="akIn" type="text" maxlength="300" placeholder="Ask anything: should I trade tonight? top performer? Monday backtest…" autocomplete="off"><button type="button" class="ak-send" data-ak="send">Ask</button></div>';
     }
@@ -60343,6 +61077,10 @@ document.addEventListener('click', function(e) {
     q = String(q || '').trim(); if (!q || S.busy) return;
     const t = tok(); if (!t) { render(); return; }
     S.msgs.push({ role: 'user', text: q }); S.busy = true; render();
+    try {
+      const tr = window.askTrade ? await window.askTrade.handle(q) : null;
+      if (tr) { S.msgs.push({ role: 'bot', trade: tr }); S.busy = false; S.big = true; render(); return; }
+    } catch (e) { S.msgs.push({ role: 'bot', text: 'That trade command failed: ' + e.message }); S.busy = false; render(); return; }
     try {
       const u = window.askBrain.understand(q);
       if (u.id) {
@@ -60374,6 +61112,7 @@ document.addEventListener('click', function(e) {
     render();
   }
 
+  if (window.askTrade) window.askTrade.API.push = m => { S.msgs.push({ role: 'bot', trade: m }); S.busy = false; S.big = true; render(); };
   fab.addEventListener('click', () => { S.open = !S.open; render(); });
   panel.addEventListener('click', e => {
     const t = e.target.closest('[data-ak],[data-ak-q]'); if (!t) return;

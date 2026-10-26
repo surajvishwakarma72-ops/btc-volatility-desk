@@ -41,7 +41,7 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
       success: true, live, defaults, now: Date.now(),
       strategies: strategies.map((s) => ({ id: s.id, rule: s.rule, lots: s.lots, armed: s.armed, check: algoEngine.checks.get(s.id) ?? null })),
       runs: runs.map((r) => ({ ...r, liveNetPnl: net.get(r.id) ?? null })),
-      engineError: algoEngine.lastError,
+      engineError: algoEngine.errors.get(uid) ?? null,
     };
   });
 

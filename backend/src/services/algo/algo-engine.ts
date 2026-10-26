@@ -86,7 +86,8 @@ export class AlgoEngine {
   private busy = false;
   /** The latest look at each strategy, for the panel. In memory only: it is rebuilt on every tick. */
   readonly checks = new Map<string, CheckInfo>();
-  lastError: string | null = null;
+  /** The latest problem per user. One shared field would show one user's strategy names to another. */
+  readonly errors = new Map<string, string>();
 
   constructor(private readonly d: AlgoDeps) {}
 
@@ -103,12 +104,11 @@ export class AlgoEngine {
     try {
       const armed = await this.d.armed();
       for (const s of armed) {
-        try { await this.entryStep(s); } catch (e) { this.lastError = `${s.rule.name}: ${(e as Error).message}`; }
+        try { await this.entryStep(s); this.errors.delete(s.userId); } catch (e) { this.errors.set(s.userId, `${s.rule.name}: ${(e as Error).message}`); }
       }
       for (const r of await this.d.openRuns()) {
-        try { await this.exitStep(r); } catch (e) { this.lastError = `${r.name}: ${(e as Error).message}`; }
+        try { await this.exitStep(r); } catch (e) { this.errors.set(r.userId, `${r.name}: ${(e as Error).message}`); }
       }
-      if (!armed.length) this.lastError = null;
     } finally {
       this.busy = false;
     }
@@ -192,7 +192,7 @@ export class AlgoEngine {
     if (!why) return;
     const closed = await broker.closeAll(r.userId, r.ref, why);
     if (closed.ok) await d.finishRun(r.id, 'exited', why, st.netPnl);
-    else this.lastError = `${r.name}: could not close (${closed.reason}); will retry`;
+    else this.errors.set(r.userId, `${r.name}: could not close (${closed.reason}); will retry`);
   }
 }
 
