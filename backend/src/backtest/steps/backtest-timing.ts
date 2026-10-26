@@ -34,7 +34,9 @@ for (let k = 4; k <= 92; k += 2) HOLD_BARS.push(k);
 const LOTS = 100, CV = 0.001, YEAR_MS = 365 * 86_400_000, DAYMS = 86_400_000;
 const TP_FRAC = Number(process.env.TP_FRAC ?? 0.10);
 const STOP_MULT = Number(process.env.STOP_MULT ?? 2);
-const FEE_RATE = 0.0003, FEE_CAP = 0.1;
+const FEE_SCALE = Number(process.env.FEE_SCALE ?? 1);
+const FEE_RATE = 0.0001 * FEE_SCALE, FEE_CAP = 0.035 * FEE_SCALE; // Delta India options: taker 0.01% of notional, capped at 3.5% of premium (DEFAULT_OPTION_FEES)
+const TAG = process.env.TAG ?? '';
 
 interface Row { s: string; k: number; t: string; t0: number; o: number[]; h: number[]; l: number[]; c: number[] }
 const at = (a: number[], i: number): number | null => { const v = a[i]; return v == null || !Number.isFinite(v) ? null : v; };
@@ -199,7 +201,7 @@ if (process.argv[1] && process.argv[1].endsWith('backtest-timing.ts')) {
   for (const sp of spreads) {
     const t0 = Date.now();
     const t = simulate(sp);
-    saveTensor(t, path.join(OUT, `timing_${Math.round(sp * 100)}.bin`));
+    saveTensor(t, path.join(OUT, `timing${TAG}_${Math.round(sp * 100)}.bin`));
     console.log(`spread ${sp}: ${t.expiries.length} expiries in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   }
 }

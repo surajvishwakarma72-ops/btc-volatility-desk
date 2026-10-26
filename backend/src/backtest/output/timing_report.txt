@@ -1,0 +1,163 @@
+Expiries 1007 (2024-01-22 .. 2026-10-24), train = first 604, test = last 403. Return = net profit / portfolio margin per trade. TP 10% of margin, stop 2x per leg, exit all.
+
+Landscape @2% half-spread: 104/25920 combinations (entry x delta x hold) have a positive mean over the full history (0.4%). Best full-history mean 0.53%.
+Average over every combination: -3.64% of margin per trade.
+
+=== Top 15 by TRAIN mean (spread 2%), shown with their TEST result ===
+01:15 -> 15:15 (14h)  d0.10  n=265  mean   1.00%  win  62%  stop  32%  tp  38%  worst  -27%  PF 1.23   | TEST n=203 mean -0.08% win 56% stop 40% worst -28%
+00:15 -> 15:15 (15h)  d0.10  n=244  mean   0.96%  win  61%  stop  34%  tp  43%  worst  -31%  PF 1.21   | TEST n=191 mean -0.39% win 54% stop 41% worst -37%
+01:15 -> 14:15 (13h)  d0.10  n=265  mean   0.96%  win  63%  stop  31%  tp  32%  worst  -27%  PF 1.22   | TEST n=203 mean -0.28% win 54% stop 37% worst -28%
+01:15 -> 00:15 (23h)  d0.10  n=265  mean   0.95%  win  59%  stop  41%  tp  55%  worst  -27%  PF 1.19   | TEST n=203 mean -0.57% win 49% stop 49% worst -28%
+01:15 -> 23:45 (22.5h)  d0.10  n=265  mean   0.93%  win  59%  stop  41%  tp  55%  worst  -27%  PF 1.18   | TEST n=203 mean -0.55% win 48% stop 49% worst -28%
+01:15 -> 22:15 (21h)  d0.10  n=265  mean   0.93%  win  60%  stop  40%  tp  54%  worst  -27%  PF 1.18   | TEST n=203 mean -0.41% win 48% stop 48% worst -28%
+00:15 -> 14:15 (14h)  d0.10  n=244  mean   0.93%  win  63%  stop  33%  tp  40%  worst  -31%  PF 1.21   | TEST n=191 mean -0.61% win 53% stop 39% worst -37%
+01:15 -> 21:15 (20h)  d0.10  n=265  mean   0.93%  win  59%  stop  40%  tp  54%  worst  -27%  PF 1.18   | TEST n=203 mean -0.42% win 50% stop 47% worst -28%
+00:15 -> 14:45 (14.5h)  d0.10  n=244  mean   0.93%  win  62%  stop  34%  tp  41%  worst  -31%  PF 1.20   | TEST n=191 mean -0.41% win 55% stop 41% worst -37%
+01:15 -> 20:15 (19h)  d0.10  n=265  mean   0.92%  win  59%  stop  39%  tp  52%  worst  -27%  PF 1.19   | TEST n=203 mean -0.52% win 51% stop 45% worst -28%
+01:15 -> 21:45 (20.5h)  d0.10  n=265  mean   0.92%  win  59%  stop  40%  tp  54%  worst  -27%  PF 1.18   | TEST n=203 mean -0.44% win 49% stop 48% worst -28%
+00:15 -> 15:45 (15.5h)  d0.10  n=244  mean   0.92%  win  59%  stop  34%  tp  44%  worst  -31%  PF 1.20   | TEST n=191 mean -0.38% win 54% stop 42% worst -37%
+01:15 -> 19:45 (18.5h)  d0.10  n=265  mean   0.91%  win  60%  stop  38%  tp  51%  worst  -27%  PF 1.19   | TEST n=203 mean -0.49% win 50% stop 45% worst -28%
+01:15 -> 14:45 (13.5h)  d0.10  n=265  mean   0.91%  win  63%  stop  32%  tp  36%  worst  -27%  PF 1.21   | TEST n=203 mean -0.02% win 56% stop 38% worst -28%
+01:15 -> 20:45 (19.5h)  d0.10  n=265  mean   0.91%  win  60%  stop  40%  tp  52%  worst  -27%  PF 1.18   | TEST n=203 mean -0.47% win 50% stop 47% worst -28%
+Average TEST mean of those 15: -0.40% (train avg 0.93%)
+
+=== Top 12 by FULL-history mean (spread 2%) ===
+01:15 -> 15:15 (14h)  d0.10  n=468  mean   0.53%  win  60%  stop  36%  tp  33%  worst  -28%  PF 1.12
+01:15 -> 14:45 (13.5h)  d0.10  n=468  mean   0.51%  win  60%  stop  35%  tp  30%  worst  -28%  PF 1.12
+01:15 -> 16:15 (15h)  d0.10  n=468  mean   0.46%  win  58%  stop  37%  tp  35%  worst  -28%  PF 1.10
+01:15 -> 15:45 (14.5h)  d0.10  n=468  mean   0.46%  win  59%  stop  36%  tp  34%  worst  -28%  PF 1.10
+01:15 -> 16:45 (15.5h)  d0.10  n=468  mean   0.44%  win  58%  stop  38%  tp  36%  worst  -28%  PF 1.10
+01:15 -> 14:15 (13h)  d0.10  n=468  mean   0.42%  win  59%  stop  34%  tp  27%  worst  -28%  PF 1.10
+01:15 -> 17:15 (16h)  d0.10  n=468  mean   0.37%  win  57%  stop  38%  tp  37%  worst  -28%  PF 1.08
+00:15 -> 15:15 (15h)  d0.10  n=435  mean   0.37%  win  58%  stop  37%  tp  39%  worst  -37%  PF 1.08
+01:15 -> 17:45 (16.5h)  d0.10  n=468  mean   0.36%  win  57%  stop  39%  tp  39%  worst  -28%  PF 1.08
+01:15 -> 18:45 (17.5h)  d0.10  n=468  mean   0.36%  win  57%  stop  40%  tp  40%  worst  -28%  PF 1.07
+01:15 -> 18:15 (17h)  d0.10  n=468  mean   0.36%  win  56%  stop  40%  tp  40%  worst  -28%  PF 1.07
+00:15 -> 15:45 (15.5h)  d0.10  n=435  mean   0.35%  win  57%  stop  38%  tp  39%  worst  -37%  PF 1.07
+
+=== Your window 22:30-07:00 IST: 9450 combos, 78 positive. Best 8 by full mean; TEST alongside ===
+01:15 -> 15:15 (14h)  d0.10  n=468  mean   0.53%  win  60%  stop  36%  tp  33%  worst  -28%  PF 1.12   | TEST n=203 mean -0.08% win 56% stop 40% worst -28%
+01:15 -> 14:45 (13.5h)  d0.10  n=468  mean   0.51%  win  60%  stop  35%  tp  30%  worst  -28%  PF 1.12   | TEST n=203 mean -0.02% win 56% stop 38% worst -28%
+01:15 -> 16:15 (15h)  d0.10  n=468  mean   0.46%  win  58%  stop  37%  tp  35%  worst  -28%  PF 1.10   | TEST n=203 mean -0.04% win 55% stop 40% worst -28%
+01:15 -> 15:45 (14.5h)  d0.10  n=468  mean   0.46%  win  59%  stop  36%  tp  34%  worst  -28%  PF 1.10   | TEST n=203 mean -0.08% win 55% stop 40% worst -28%
+01:15 -> 16:45 (15.5h)  d0.10  n=468  mean   0.44%  win  58%  stop  38%  tp  36%  worst  -28%  PF 1.10   | TEST n=203 mean -0.14% win 54% stop 41% worst -28%
+01:15 -> 14:15 (13h)  d0.10  n=468  mean   0.42%  win  59%  stop  34%  tp  27%  worst  -28%  PF 1.10   | TEST n=203 mean -0.28% win 54% stop 37% worst -28%
+01:15 -> 17:15 (16h)  d0.10  n=468  mean   0.37%  win  57%  stop  38%  tp  37%  worst  -28%  PF 1.08   | TEST n=203 mean -0.18% win 54% stop 42% worst -28%
+00:15 -> 15:15 (15h)  d0.10  n=435  mean   0.37%  win  58%  stop  37%  tp  39%  worst  -37%  PF 1.08   | TEST n=191 mean -0.39% win 54% stop 41% worst -37%
+window average over all its combos: -2.76%
+
+=== Your window 10:00-16:00 IST: 6750 combos, 0 positive. Best 8 by full mean; TEST alongside ===
+12:30 -> 15:00 (2.5h)  d0.10  n=684  mean  -0.93%  win  50%  stop   8%  tp   1%  worst  -37%  PF 0.63   | TEST n=277 mean -0.26% win 54% stop 9% worst -37%
+13:15 -> 14:45 (1.5h)  d0.10  n=688  mean  -0.94%  win  46%  stop   5%  tp   1%  worst  -22%  PF 0.57   | TEST n=283 mean -0.15% win 55% stop 6% worst -20%
+13:00 -> 15:00 (2h)  d0.10  n=681  mean  -0.96%  win  48%  stop   7%  tp   1%  worst  -47%  PF 0.61   | TEST n=279 mean -0.33% win 54% stop 9% worst -22%
+13:00 -> 16:00 (3h)  d0.10  n=681  mean  -0.99%  win  53%  stop  11%  tp   2%  worst  -47%  PF 0.66   | TEST n=279 mean -0.61% win 52% stop 13% worst -34%
+13:15 -> 15:45 (2.5h)  d0.10  n=688  mean  -0.99%  win  49%  stop   8%  tp   1%  worst  -25%  PF 0.62   | TEST n=283 mean -0.38% win 57% stop 11% worst -19%
+13:00 -> 15:30 (2.5h)  d0.10  n=681  mean  -0.99%  win  49%  stop   9%  tp   2%  worst  -47%  PF 0.63   | TEST n=279 mean -0.48% win 53% stop 11% worst -22%
+13:15 -> 14:45 (1.5h)  d0.11  n=776  mean  -0.99%  win  46%  stop   5%  tp   1%  worst  -27%  PF 0.57   | TEST n=317 mean -0.15% win 56% stop 6% worst -23%
+13:00 -> 14:30 (1.5h)  d0.10  n=681  mean  -1.00%  win  45%  stop   5%  tp   1%  worst  -47%  PF 0.55   | TEST n=279 mean -0.52% win 51% stop 8% worst -22%
+window average over all its combos: -3.48%
+
+=== Your window Asia late 04:00-08:00 IST: 4590 combos, 0 positive. Best 8 by full mean; TEST alongside ===
+04:15 -> 16:45 (12.5h)  d0.10  n=606  mean  -0.66%  win  57%  stop  34%  tp  25%  worst  -39%  PF 0.87   | TEST n=252 mean -0.69% win 54% stop 36% worst -39%
+04:15 -> 15:45 (11.5h)  d0.10  n=606  mean  -0.69%  win  57%  stop  33%  tp  21%  worst  -39%  PF 0.86   | TEST n=252 mean -0.58% win 56% stop 35% worst -39%
+04:15 -> 16:15 (12h)  d0.10  n=606  mean  -0.69%  win  57%  stop  34%  tp  23%  worst  -39%  PF 0.86   | TEST n=252 mean -0.67% win 57% stop 36% worst -39%
+04:15 -> 18:45 (14.5h)  d0.10  n=606  mean  -0.70%  win  54%  stop  38%  tp  29%  worst  -39%  PF 0.87   | TEST n=252 mean -0.99% win 51% stop 39% worst -39%
+04:15 -> 18:15 (14h)  d0.10  n=606  mean  -0.71%  win  56%  stop  37%  tp  28%  worst  -39%  PF 0.86   | TEST n=252 mean -0.86% win 54% stop 38% worst -39%
+04:15 -> 23:45 (19.5h)  d0.10  n=606  mean  -0.72%  win  52%  stop  46%  tp  42%  worst  -39%  PF 0.87   | TEST n=252 mean -1.13% win 49% stop 48% worst -39%
+04:15 -> 00:15 (20h)  d0.10  n=606  mean  -0.73%  win  52%  stop  47%  tp  42%  worst  -39%  PF 0.87   | TEST n=252 mean -1.21% win 49% stop 48% worst -39%
+04:15 -> 02:45 (22.5h)  d0.10  n=606  mean  -0.73%  win  51%  stop  48%  tp  44%  worst  -39%  PF 0.87   | TEST n=252 mean -1.13% win 48% stop 49% worst -39%
+window average over all its combos: -3.26%
+
+=== Your window New York late 00:30-04:30 IST: 4590 combos, 53 positive. Best 8 by full mean; TEST alongside ===
+01:15 -> 15:15 (14h)  d0.10  n=468  mean   0.53%  win  60%  stop  36%  tp  33%  worst  -28%  PF 1.12   | TEST n=203 mean -0.08% win 56% stop 40% worst -28%
+01:15 -> 14:45 (13.5h)  d0.10  n=468  mean   0.51%  win  60%  stop  35%  tp  30%  worst  -28%  PF 1.12   | TEST n=203 mean -0.02% win 56% stop 38% worst -28%
+01:15 -> 16:15 (15h)  d0.10  n=468  mean   0.46%  win  58%  stop  37%  tp  35%  worst  -28%  PF 1.10   | TEST n=203 mean -0.04% win 55% stop 40% worst -28%
+01:15 -> 15:45 (14.5h)  d0.10  n=468  mean   0.46%  win  59%  stop  36%  tp  34%  worst  -28%  PF 1.10   | TEST n=203 mean -0.08% win 55% stop 40% worst -28%
+01:15 -> 16:45 (15.5h)  d0.10  n=468  mean   0.44%  win  58%  stop  38%  tp  36%  worst  -28%  PF 1.10   | TEST n=203 mean -0.14% win 54% stop 41% worst -28%
+01:15 -> 14:15 (13h)  d0.10  n=468  mean   0.42%  win  59%  stop  34%  tp  27%  worst  -28%  PF 1.10   | TEST n=203 mean -0.28% win 54% stop 37% worst -28%
+01:15 -> 17:15 (16h)  d0.10  n=468  mean   0.37%  win  57%  stop  38%  tp  37%  worst  -28%  PF 1.08   | TEST n=203 mean -0.18% win 54% stop 42% worst -28%
+01:15 -> 17:45 (16.5h)  d0.10  n=468  mean   0.36%  win  57%  stop  39%  tp  39%  worst  -28%  PF 1.08   | TEST n=203 mean -0.32% win 53% stop 43% worst -28%
+window average over all its combos: -2.58%
+
+=== Mean return by ENTRY hour (IST), all deltas and holds, spread 2% / 0% ===
+00:00   -2.31%  (0% spread: -0.67%)
+01:00   -2.14%  (0% spread: -0.53%)
+02:00   -2.46%  (0% spread: -0.73%)
+03:00   -3.02%  (0% spread: -1.35%)
+04:00   -2.92%  (0% spread: -1.30%)
+05:00   -3.49%  (0% spread: -1.95%)
+06:00   -3.45%  (0% spread: -1.92%)
+07:00   -3.21%  (0% spread: -1.59%)
+08:00   -2.89%  (0% spread: -1.21%)
+09:00   -2.50%  (0% spread: -0.94%)
+10:00   -2.67%  (0% spread: -1.01%)
+11:00   -2.53%  (0% spread: -0.94%)
+12:00   -2.33%  (0% spread: -0.71%)
+13:00   -2.49%  (0% spread: -0.84%)
+14:00   -5.04%  (0% spread: -3.47%)
+15:00   -5.38%  (0% spread: -3.86%)
+16:00   -5.90%  (0% spread: -4.27%)
+17:00   -9.45%  (0% spread: -7.99%)
+18:00   -6.43%  (0% spread: -4.69%)
+19:00   -5.83%  (0% spread: -4.13%)
+20:00   -3.93%  (0% spread: -2.29%)
+21:00   -2.28%  (0% spread: -0.66%)
+22:00   -2.34%  (0% spread: -0.56%)
+23:00   -2.38%  (0% spread: -0.62%)
+
+=== Champion (best on train): 01:15 -> 15:15 (14h)  d0.10  n=468  mean   0.53%  win  60%  stop  36%  tp  33%  worst  -28%  PF 1.12 ===
+  spread 0%: n=468 mean 1.75% win 63% stop 34% worst -27%
+  spread 2%: n=468 mean 0.53% win 60% stop 36% worst -28%
+  spread 4%: n=468 mean -0.56% win 55% stop 37% worst -29%
+  by weekday of entry (IST):
+   Sun n=19 mean -0.69% win 63% stop 26% worst -20%
+   Mon n=19 mean -4.33% win 37% stop 58% worst -27%
+   Tue n=62 mean 0.15% win 56% stop 40% worst -19%
+   Wed n=136 mean 0.21% win 60% stop 29% worst -26%
+   Thu n=61 mean -2.61% win 46% stop 49% worst -28%
+   Fri n=77 mean -0.34% win 49% stop 51% worst -23%
+   Sat n=94 mean 5.22% win 82% stop 18% worst -20%
+  by month:
+   2024-01 n=12 sum -11.3% win 58% stop 42%
+   2024-02 n=27 sum 74.8% win 78% stop 19%
+   2024-03 n=8 sum -0.1% win 63% stop 25%
+   2024-04 n=11 sum 25.3% win 73% stop 36%
+   2024-05 n=16 sum -1.8% win 63% stop 31%
+   2024-06 n=16 sum 54.8% win 69% stop 25%
+   2024-07 n=13 sum -35.6% win 54% stop 46%
+   2024-08 n=13 sum 23.4% win 62% stop 38%
+   2024-09 n=14 sum 3.5% win 57% stop 29%
+   2024-10 n=18 sum 32.5% win 56% stop 33%
+   2024-11 n=7 sum 9.0% win 57% stop 43%
+   2024-12 n=9 sum 66.9% win 89% stop 0%
+   2025-01 n=12 sum -25.9% win 50% stop 42%
+   2025-02 n=7 sum -45.4% win 29% stop 71%
+   2025-03 n=12 sum 38.7% win 67% stop 25%
+   2025-04 n=14 sum 34.1% win 71% stop 29%
+   2025-05 n=15 sum -70.0% win 33% stop 60%
+   2025-06 n=11 sum 58.5% win 82% stop 18%
+   2025-07 n=14 sum -14.8% win 50% stop 43%
+   2025-08 n=9 sum 44.9% win 89% stop 11%
+   2025-09 n=13 sum 20.2% win 54% stop 23%
+   2025-10 n=14 sum 3.2% win 57% stop 36%
+   2025-11 n=11 sum 56.5% win 82% stop 18%
+   2025-12 n=15 sum 106.3% win 87% stop 7%
+   2026-01 n=11 sum 12.6% win 73% stop 27%
+   2026-02 n=17 sum 6.4% win 59% stop 41%
+   2026-03 n=12 sum -65.0% win 25% stop 67%
+   2026-04 n=14 sum -7.3% win 57% stop 43%
+   2026-05 n=19 sum -10.0% win 53% stop 47%
+   2026-06 n=15 sum 16.1% win 67% stop 33%
+   2026-07 n=20 sum -60.2% win 40% stop 55%
+   2026-08 n=20 sum -15.5% win 55% stop 40%
+   2026-09 n=19 sum -10.8% win 53% stop 42%
+   2026-10 n=10 sum -66.3% win 20% stop 70%
+
+=== Per weekday of entry (IST): best on train (n>=25 in train), then its TEST result, spread 2% ===
+Sun: 01:30 -> 18:00 (16.5h)  d0.12  n= 42  mean   0.12%  win  55%  stop  10%  tp  19%  worst  -21%  PF 1.03   | TEST n=24 mean -7.93% win 25% stop 46% worst -31%  | test @0% -5.48% @4% -9.27%
+Mon: 09:15 -> 18:45 (9.5h)  d0.11  n= 38  mean   2.73%  win  76%  stop  21%  tp  37%  worst  -34%  PF 1.81   | TEST n=40 mean 2.88% win 73% stop 28% worst -26%  | test @0% 4.12% @4% 0.84%
+Tue: 22:00 -> 14:30 (16.5h)  d0.15  n= 82  mean   2.96%  win  77%  stop  22%  tp  71%  worst  -40%  PF 1.59   | TEST n=58 mean -2.99% win 52% stop 41% worst -33%  | test @0% -0.02% @4% -5.53%
+Wed: 02:00 -> 14:00 (12h)  d0.11  n= 80  mean   2.16%  win  73%  stop  18%  tp  33%  worst  -34%  PF 1.67   | TEST n=57 mean -1.17% win 54% stop 28% worst -33%  | test @0% 0.65% @4% -2.16%
+Thu: 21:45 -> 04:45 (7h)  d0.10  n= 25  mean   2.38%  win  76%  stop  20%  tp  24%  worst  -19%  PF 1.89   | TEST n=23 mean 0.73% win 61% stop 30% worst -12%  | test @0% 1.62% @4% -1.23%
+Fri: 23:30 -> 14:30 (15h)  d0.14  n= 76  mean   2.56%  win  71%  stop  29%  tp  67%  worst  -31%  PF 1.52   | TEST n=55 mean 4.63% win 80% stop 20% worst -36%  | test @0% 5.81% @4% 3.19%
+Sat: 01:15 -> 22:15 (21h)  d0.10  n= 50  mean   7.18%  win  82%  stop  18%  tp  78%  worst  -16%  PF 5.45   | TEST n=44 mean 3.49% win 73% stop 23% worst -20%  | test @0% 4.48% @4% 3.02%
