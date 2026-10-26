@@ -58904,7 +58904,7 @@ document.addEventListener('click', function(e) {
 #askPanel .at-t th{text-align:right;color:var(--muted,#8fa3b5);font-weight:600;padding:3px 6px;border-bottom:1px solid var(--line2,#2c394a);position:sticky;top:0;background:var(--panel2,#1a2330)}
 #askPanel .at-t td{text-align:right;padding:3px 6px;border-bottom:1px solid var(--line,#22303f);white-space:nowrap}
 #askPanel .at-t th:first-child,#askPanel .at-t td:first-child{text-align:left}
-#askPanel .at-t tr[data-at=pickstrike]{cursor:pointer}#askPanel .at-t tr[data-at=pickstrike]:hover td{background:rgba(88,166,214,.12)}#askPanel .at-t tr.sel td{background:rgba(21,128,61,.2);font-weight:700}
+#askPanel .at-leg{border:1px solid var(--line,#8884);border-radius:10px;padding:7px 9px;margin:6px 0}#askPanel .at-legh{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}#askPanel .at-lbl{font:700 9.5px var(--font);letter-spacing:.05em;text-transform:uppercase;color:var(--muted,#667085);margin:6px 0 2px}#askPanel .at-bar{display:flex;height:9px;border-radius:5px;overflow:hidden;background:rgba(128,128,128,.25)}#askPanel .at-bar span{display:block;height:100%}#askPanel .at-cap{display:flex;justify-content:space-between;gap:6px;font:600 10.5px var(--font);margin-top:2px}#askPanel .at-chips{display:flex;flex-wrap:wrap;gap:5px;margin:3px 0 6px}#askPanel .at-pkh{font:800 11px var(--font);margin-top:4px}#askPanel .at-t tr[data-at=pickstrike]{cursor:pointer}#askPanel .at-t tr[data-at=pickstrike]:hover td{background:rgba(88,166,214,.12)}#askPanel .at-t tr.sel td{background:rgba(21,128,61,.2);font-weight:700}
 #askPanel .at-pks{display:grid;grid-template-columns:1fr 1fr;gap:8px}#askPanel .at-pkh{font-size:11px;font-weight:700;color:var(--muted,#8fa3b5);margin:2px 0}
 @media (max-width:520px){#askPanel .at-pks{grid-template-columns:1fr}}
 #askPanel .at-days{display:flex;flex-wrap:wrap;gap:5px;margin:6px 0}
@@ -61786,6 +61786,7 @@ document.addEventListener('click', function(e) {
   }
   async function build(patch) {
     T.rule = applyPatch(await loadDefaults(), patch); T.held = null;
+    { const ps = await pickerStrikes(T.rule); if (ps && !(patch && patch.strikes)) T.rule.legs.forEach(l => { const k = ps[l.type]; if (k) l.pick = { mode: 'strike', strike: k }; }); }
     T.when = patch.when || (patch.entryTime || patch.window ? 'later' : 'now');
     await preview(); await loadChain(); await loadIns();
     let note = T.when === 'later' ? 'Scheduled trade: set the time, days, repeat, valid-until and the entry conditions below, then say ok. It places itself when its time and conditions are met.' : null;
@@ -61897,27 +61898,47 @@ document.addEventListener('click', function(e) {
   const sec = (key, title, html, defOpen) => '<details class="at-sec" data-sec="' + key + '"' + ((T.open[key] != null ? T.open[key] : defOpen) ? ' open' : '') + '><summary>' + title + '</summary>' + html + '</details>';
   const g2 = v => v == null || !isFinite(v) ? '-' : Number(v).toPrecision(2);
 
-  /** each leg with its gamma and IV set against the at-the-money strike of the same expiry */
-  function legsTable(pv) {
-    return '<div class="at-scroll"><table class="at-t"><thead><tr><th>Leg</th><th>Δ</th><th>Gamma vs ATM</th><th>IV vs ATM</th><th>Price</th><th>θ / day</th></tr></thead><tbody>' + pv.legs.map(l =>
-      '<tr><td>' + (l.side === 'sell' ? 'Sell ' : 'Buy ') + l.lots + ' × ' + l.strike + (l.type === 'call' ? ' C' : ' P') + ' <small>' + esc(l.expiryCode) + '</small></td><td>' + l.delta.toFixed(2) + '</td>' +
-      '<td>' + g2(l.gamma) + (l.gammaPctOfAtm == null ? '' : ' <small>(' + Math.round(l.gammaPctOfAtm) + '% of ATM)</small>') + '</td>' +
-      '<td>' + (l.iv == null ? '-' : l.iv.toFixed(1)) + (l.ivVsAtm == null ? '' : ' <small>(' + (l.ivVsAtm >= 0 ? '+' : '') + l.ivVsAtm.toFixed(1) + ')</small>') + '</td>' +
-      '<td>' + Number(l.price).toFixed(1) + '</td><td>' + (l.thetaPerDayUsd == null ? '-' : money(l.thetaPerDayUsd)) + '</td></tr>').join('') + '</tbody></table></div>' +
-      '<div class="at-fine">Gamma is how fast a leg\'s delta changes: a small share of the ATM gamma is a gentler leg. IV vs ATM is the skew you are selling (a positive number means this strike is richer than the middle).</div>';
+  /** the Strike picker's own numbers for a strike (delta 0.10 to 0.15 band), or null when its panel has no such strike */
+  function pk(type, strike) {
+    try {
+      const V = window.v165 && window.v165.data && window.v165.data(); if (!V) return null;
+      const L = type === 'call' ? V.C : V.P; if (!L) return null;
+      return (L.list || []).concat(L.best ? [L.best] : []).find(c => c.K === strike) || null;
+    } catch (e) { return null; }
   }
-  /** the strike picker: the real chain of the chosen expiry, tap a strike to use it, or ask for a delta */
+  /** each sold leg the way the Strike picker shows it: delta, then how the premium splits (gamma vs IV) and what drives a bad night */
+  function legsTable(pv) {
+    const bar = (parts) => '<div class="at-bar">' + parts.map(x => '<span style="width:' + x[0].toFixed(0) + '%;background:' + x[1] + '"></span>').join('') + '</div>';
+    const cap = (parts) => '<div class="at-cap">' + parts.map(x => '<span style="color:' + x[1] + '">■ ' + x[2] + ' ' + x[0].toFixed(0) + '%</span>').join('') + '</div>';
+    return pv.legs.map(l => {
+      const c = l.side === 'sell' ? pk(l.type, l.strike) : null;
+      const head = '<div class="at-leg"><div class="at-legh"><b style="color:' + (l.type === 'call' ? '#15803D' : '#C53030') + '">' + (l.side === 'sell' ? 'Sell ' : 'Buy ') + l.lots + ' × ' + l.strike + (l.type === 'call' ? ' CALL' : ' PUT') + '</b><span>Δ ' + l.delta.toFixed(2) + ' · ' + money(l.lots * 0.001 * l.price) + ' <small>(' + Number(l.price).toFixed(1) + ' per BTC)</small></span></div>';
+      if (!c) return head + '<div class="at-fine">Not in the Strike picker band (delta 0.10 to 0.15), so there is no gamma and IV split for it.</div></div>';
+      const g = c.Prv == null ? null : Math.max(0, Math.min(100, c.Prv / c.mark * 100)), richer = c.rich != null && c.rich > 0;
+      const sh = Math.abs(c.dPart) + Math.abs(c.gPart) + Math.abs(c.vPart) || 1, sp = v => Math.abs(v) / sh * 100;
+      let h = head;
+      if (g != null) h += '<div class="at-lbl">Premium is made of</div>' + bar([[g, '#B7791F'], [richer ? 100 - g : 0, '#15803D']]) + cap([[g, '#B7791F', 'gamma'], richer ? [100 - g, '#15803D', 'IV'] : [0, '#C53030', 'IV below realised vol, so']]);
+      h += '<div class="at-lbl">Bad night (BTC 0.9% against, IV +3): what drives the loss</div>' + bar([[sp(c.dPart), '#C05621'], [sp(c.gPart), '#B7791F'], [sp(c.vPart), '#2B6CB0']]) + cap([[sp(c.dPart), '#C05621', 'delta'], [sp(c.gPart), '#B7791F', 'gamma'], [sp(c.vPart), '#2B6CB0', 'IV']]);
+      return h + '</div>';
+    }).join('');
+  }
+  /** the Strike picker's picks as a rule: the call and the put it chose, or null when its panel has not loaded or shows another expiry */
+  async function pickerStrikes(r) {
+    try {
+      if (!window.v165 || r.instrument !== 'option') return null;
+      const want = { current: 'cur', nearest: 'cur', next: 'nxt', n2n: 'n2n' }[r.expiry.mode];
+      let V = window.v165.data(); if (!V || Date.now() - V.at > 60000) { await window.v165.load(); V = window.v165.data(); }
+      if (!V || V.slot !== want || !V.C || !V.P || !V.C.best || !V.P.best) return null;
+      return { call: V.C.best.K, put: V.P.best.K };
+    } catch (e) { return null; }
+  }
+  /** the Strike picker (delta 0.10 to 0.15): its pick is already used; the other strikes of its band are one tap away */
   function pickerHtml(s) {
-    const c = s.chain, pv = s.pv;
-    if (!c) return '<div class="at-fine">Loading the option chain…</div>';
-    if (c.error) return '<div class="at-err">' + esc(c.error) + '</div>';
+    const pv = s.pv, V = window.v165 && window.v165.data && window.v165.data();
+    if (!V) return '<div class="at-fine">The Strike picker (the chip at the top) has not loaded yet. Say <b>update</b> in a moment.</div>';
     const on = {}; ((pv && pv.legs) || []).forEach(l => { on[l.type + l.strike] = true; });
-    const dl = (s.rule.legs.find(l => l.pick.mode === 'delta') || { pick: {} }).pick;
-    const rows = type => c.rows.filter(r => r[type]).map(r => { const x = r[type]; return '<tr class="' + (on[type + r.strike] ? 'sel' : '') + '" data-at="pickstrike" data-type="' + type + '" data-strike="' + r.strike + '" tabindex="0"><td>' + r.strike + '</td><td>' + x.delta.toFixed(2) + '</td><td>' + g2(x.gamma) + '</td><td>' + (x.iv == null ? '-' : x.iv.toFixed(1)) + '</td><td>' + (x.bid ? x.bid.toFixed(1) : '-') + '</td></tr>'; }).join('');
-    const tbl = (type, title) => '<div class="at-pk"><div class="at-pkh">' + title + '</div><div class="at-scroll"><table class="at-t"><thead><tr><th>Strike</th><th>Δ</th><th>Γ</th><th>IV</th><th>Bid</th></tr></thead><tbody>' + rows(type) + '</tbody></table></div></div>';
-    return '<div class="at-fine">Expiry ' + esc(c.expiry) + ' · BTC ' + Number(c.spot).toFixed(0) + (c.atm && c.atm.iv != null ? ' · ATM IV ' + c.atm.iv.toFixed(1) : '') + '. Tap a strike to use it for that side.</div>' +
-      '<div class="at-form"><label>Or by delta: nearest to<input data-atf="dtg2" type="number" step="0.01" value="' + (dl.target != null ? dl.target : 0.1) + '"></label></div><div class="at-act"><button type="button" class="at-btn" data-at="applydelta">Pick by delta</button></div>' +
-      '<div class="at-pks">' + tbl('call', 'Calls') + tbl('put', 'Puts') + '</div>';
+    const side = (L, type, title) => '<div class="at-pkh">' + title + '</div><div class="at-chips">' + ((L && L.list) || []).map(c => '<button type="button" class="at-cc' + (on[type + c.K] ? ' rec' : '') + '" data-at="pickstrike" data-type="' + type + '" data-strike="' + c.K + '">' + c.K + ' · Δ' + c.delta.toFixed(2) + '</button>').join('') + '</div>';
+    return '<div class="at-fine">Strike picker, delta 0.10 to 0.15, expiry ' + esc(V.k) + '. Its pick is selected; tap another strike of the band to change a side.</div>' + side(V.C, 'call', 'Calls') + side(V.P, 'put', 'Puts');
   }
   /** the ƒx indicators, same list and order as the chart, with a how-to under each ⓘ; tap one to add it as an entry condition */
   function fxAskHtml(s) {

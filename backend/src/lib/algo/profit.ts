@@ -2,16 +2,22 @@
  * Estimated profit until the exit, from time decay alone, plus the greek comparisons the summary shows for each leg.
  * Pure arithmetic over numbers the Delta chain already gives (theta per day, gamma, IV); no forecast of BTC or IV.
  */
+import { bs } from '../../backtest/lib/pricing.js';
+
 export interface GreekLeg {
   side: 'buy' | 'sell';
   lots: number;
   theta?: number | null;
   gamma?: number | null;
   iv?: number | null;
+  strike?: number | null;
+  type?: 'call' | 'put';
+  expiryMs?: number | null;
 }
 
 /** One lot is 0.001 BTC and Delta quotes option prices and theta per 1 BTC. */
 const LOT = 0.001;
+const YEAR_MS = 365 * 86_400_000;
 
 /** What the position earns each day from time decay if BTC and IV stay where they are (negative when you are long and paying it). */
 export function thetaPerDayUsd(legs: readonly GreekLeg[]): number | null {
@@ -33,15 +39,32 @@ export interface ProfitEstimate {
   note: string;
 }
 
-export function estimateProfit(legs: readonly GreekLeg[], hoursToExit: number | null, premium: number | null): ProfitEstimate | null {
+/**
+ * What time alone earns between now and the exit: each leg re-priced at the exit with BTC and IV unchanged (Black-Scholes),
+ * which follows the real shape of decay. Null when a leg lacks what it needs.
+ */
+export function decayToExitUsd(legs: readonly GreekLeg[], spot: number, hoursToExit: number, nowMs: number): number | null {
+  let total = 0;
+  for (const l of legs) {
+    if (l.iv == null || l.strike == null || !l.type || l.expiryMs == null || !(l.iv > 0)) return null;
+    const T0 = Math.max((l.expiryMs - nowMs) / YEAR_MS, 1e-6), T1 = Math.max((l.expiryMs - nowMs - hoursToExit * 3_600_000) / YEAR_MS, 1e-6);
+    const cp = l.type === 'call' ? 'c' : 'p';
+    total += (l.side === 'sell' ? 1 : -1) * (bs(spot, l.strike, T0, l.iv, cp) - bs(spot, l.strike, T1, l.iv, cp)) * l.lots * LOT;
+  }
+  return total;
+}
+
+export function estimateProfit(legs: readonly GreekLeg[], hoursToExit: number | null, premium: number | null, repriced?: number | null): ProfitEstimate | null {
   const perDay = thetaPerDayUsd(legs);
   if (perDay == null || hoursToExit == null || !(hoursToExit > 0)) return null;
+  // decay can never earn more than the premium collected
+  const raw = repriced != null && Number.isFinite(repriced) ? repriced : perDay * (hoursToExit / 24);
   return {
     perDayUsd: perDay,
-    toExitUsd: perDay * (hoursToExit / 24),
+    toExitUsd: premium != null && premium > 0 ? Math.min(raw, premium) : raw,
     maxUsd: premium != null && premium > 0 ? premium : null,
     hoursToExit,
-    note: 'Time decay only, before fees, if BTC and IV stay where they are. Decay speeds up near expiry, so a long hold earns a little more than this, and a big move can wipe it out.',
+    note: 'Time decay only, before fees, if BTC and IV stay where they are, and never more than the premium collected. A big move can wipe it out.',
   };
 }
 

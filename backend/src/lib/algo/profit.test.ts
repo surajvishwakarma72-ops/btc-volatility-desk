@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compareToAtm, estimateProfit, lotsForCapital, thetaPerDayUsd } from './profit.js';
+import { compareToAtm, decayToExitUsd, estimateProfit, lotsForCapital, thetaPerDayUsd } from './profit.js';
 
 const sold = (theta: number, lots = 100) => ({ side: 'sell' as const, lots, theta, gamma: 0.00004, iv: 45 });
 const bought = (theta: number, lots = 100) => ({ side: 'buy' as const, lots, theta, gamma: 0.0001, iv: 44 });
@@ -34,6 +34,24 @@ describe('estimated profit until the exit', () => {
   });
   it('no premium means no stated maximum', () => {
     expect(estimateProfit([sold(-30)], 24, null)!.maxUsd).toBeNull();
+  });
+});
+
+describe('the estimate never beats the premium collected', () => {
+  it('caps a straight-line decay that would exceed the premium', () => {
+    const e = estimateProfit([sold(-30), sold(-30)], 120, 8)!;
+    expect(e.toExitUsd).toBe(8);
+  });
+  it('re-prices the legs at the exit: a 2 day sold strangle earns well under its premium in a day', () => {
+    const now = Date.UTC(2026, 9, 26, 9), ex = now + 2 * 86_400_000;
+    const legs = [
+      { side: 'sell' as const, lots: 200, theta: -60, iv: 40, strike: 75000, type: 'call' as const, expiryMs: ex },
+      { side: 'sell' as const, lots: 200, theta: -60, iv: 40, strike: 66000, type: 'put' as const, expiryMs: ex },
+    ];
+    const d = decayToExitUsd(legs, 70000, 24, now)!;
+    expect(d).toBeGreaterThan(0);
+    const total = decayToExitUsd(legs, 70000, 48, now)!;
+    expect(total).toBeGreaterThan(d);
   });
 });
 

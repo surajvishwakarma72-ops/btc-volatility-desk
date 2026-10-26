@@ -12,7 +12,7 @@ import { killAllLive, liveBroker } from './live-entry.js';
 import { loadMarket } from './algo-runtime.js';
 import { loadInsights } from './insights-service.js';
 import { speedVsIv } from '../../lib/algo/conditions.js';
-import { compareToAtm, estimateProfit, thetaPerDayUsd, type ProfitEstimate } from '../../lib/algo/profit.js';
+import { compareToAtm, decayToExitUsd, estimateProfit, thetaPerDayUsd, type ProfitEstimate } from '../../lib/algo/profit.js';
 import { entryState, exitAtMs, windowOn, type EntryWindow } from '../../lib/algo/rule.js';
 import { deltaSignedGet } from '../../routes/delta.js';
 import { loadDeltaKey } from '../delta-keys.js';
@@ -175,7 +175,8 @@ export async function previewEntry(userId: string, rule: AlgoStrategy, lots: num
     const exitMs = exitAtMs(rule.exit, window, startMs);
     const stopAt = Math.min(...plan.legs.map((l) => l.expiryMs ?? Infinity));
     const endMs = exitMs != null ? Math.min(exitMs, stopAt) : stopAt;
-    profit = Number.isFinite(endMs) ? estimateProfit(plan.legs, (endMs - startMs) / 3_600_000, plan.premium) : null;
+    const hrs = (endMs - startMs) / 3_600_000;
+    profit = Number.isFinite(endMs) ? estimateProfit(plan.legs, hrs, plan.premium, decayToExitUsd(plan.legs, m.spot, hrs, startMs)) : null;
   }
   const wallet = rule.mode === 'live' ? await fetchWallet(userId).catch(() => null) : null;
   return {
