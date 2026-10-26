@@ -58102,6 +58102,24 @@ document.addEventListener('click', function(e) {
 #pgBot .pc .pcT th{text-align:right;color:var(--muted);font-weight:600;padding:3px 7px;border-bottom:1px solid var(--line2)}
 #pgBot .pc .pcT td{text-align:right;padding:3px 7px;border-bottom:1px solid var(--line)}
 #pgBot .pc .pcT th:first-child,#pgBot .pc .pcT td:first-child{text-align:left}
+#pgBot .lv-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px;margin:0 0 10px}
+#pgBot .lv-grid .lv{margin:0}
+#pgBot .lv{cursor:pointer;border-width:1px}
+#pgBot .lv:hover{border-color:var(--focus,#9CC9EE)}
+#pgBot .lv-h{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+#pgBot .lv-h b{font-size:15px}
+#pgBot .lv-chip{display:inline-flex;align-items:center;gap:6px;font:700 11px var(--font);color:var(--down);border:1px solid var(--down);border-radius:999px;padding:2px 9px}
+#pgBot .lv-chip i,#pgBot .lv-none i{width:8px;height:8px;border-radius:50%;background:var(--down);display:inline-block;box-shadow:0 0 0 3px rgba(53,187,125,.25);animation:lvp 1.8s infinite}
+@keyframes lvp{50%{box-shadow:0 0 0 6px rgba(53,187,125,0)}}
+#pgBot .lv-big{font:800 34px/1.1 var(--font);margin:6px 0 2px;font-variant-numeric:tabular-nums}
+#pgBot .lv-big small{display:block;font:600 11.5px var(--font);color:var(--muted);margin-top:2px}
+#pgBot .lv-sp{width:100%;height:74px;display:block;color:var(--text);margin:4px 0}
+#pgBot .lv-spn{display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--muted);border:1px dashed var(--line2);border-radius:8px}
+#pgBot .lv-legs{font-size:12px;color:var(--muted);margin:2px 0 6px}
+#pgBot .lv-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:6px 10px}
+#pgBot .lv-meta div{display:flex;flex-direction:column;gap:1px;font-size:13px}
+#pgBot .lv-meta span,#pgBot .lv-meta small{font-size:10.5px;color:var(--muted)}
+#pgBot .lv-none{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:13px}
 #pgBot details.bt-fold{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 10px}
 #pgBot .bt-today th:nth-child(n+2):nth-child(-n+4),#pgBot .bt-today td:nth-child(n+2):nth-child(-n+4){text-align:left}
 #pgBot details.bt-fold>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
@@ -58253,7 +58271,7 @@ document.addEventListener('click', function(e) {
     const legs = (d.legs || []).map(l => '<tr><td>' + esc(l.symbol.replace(/-BTC/, '')) + ' <span class="dim">' + esc(l.side) + '</span></td><td>' + (l.mark[i] == null ? '-' : Number(l.mark[i]).toFixed(1)) + '</td><td class="' + sg(l.pnl[i]) + '">' + usd(l.pnl[i]) + '</td><td>' + (l.iv[i] == null ? '-' : Number(l.iv[i]).toFixed(1)) + '</td><td>' + (l.delta[i] == null ? '-' : Number(l.delta[i]).toFixed(2)) + '</td></tr>').join('');
     return '<div class="pcRead"><div class="pcTiles">' +
       tile('Time (IST)', dt(t), '', 'T+' + Math.floor(el / 60) + 'h ' + String(el % 60).padStart(2, '0') + 'm') +
-      tile('Net PnL', usd(net), sg(net), margin ? (net / margin * 100).toFixed(1) + '% of margin' : '') +
+      tile('PnL', usd(net), sg(net), margin ? (net / margin * 100).toFixed(1) + '% of margin' : '') +
       tile('Gross PnL', usd(d.gross[i]), sg(d.gross[i]), 'fees ' + usd(d.gross[i] - net)) +
       tile('This minute', prev == null ? '-' : (net - prev >= 0 ? '+' : '') + (net - prev).toFixed(2), prev == null ? '' : sg(net - prev), 'vs the minute before') +
       tile('Best so far', usd(hi), 'pos', hi > net ? 'now ' + usd(hi - net) + ' below it' : 'at its best now') +
@@ -58275,7 +58293,7 @@ document.addEventListener('click', function(e) {
     const r = d.run || {}, s = d.stats || {}, m = r.margin, net = r.status === 'closed' ? r.net : (d.net.length ? d.net[d.net.length - 1] : null);
     const fees = (r.feesEntry || 0) + (r.feesExit || 0);
     return '<div class="pcTiles">' +
-      tile(r.status === 'closed' ? 'Net PnL' : 'Net PnL now', usd(net), sg(net), m && net != null ? (net / m * 100).toFixed(1) + '% of margin' : '') +
+      tile(r.status === 'closed' ? 'PnL after fees' : 'PnL now, after fees', usd(net), sg(net), m && net != null ? (net / m * 100).toFixed(1) + '% of margin' : '') +
       tile('Gross PnL', usd(r.status === 'closed' ? r.gross : (d.gross.length ? d.gross[d.gross.length - 1] : null)), '', 'fees ' + usd(fees)) +
       tile('Best moment', s.peak ? usd(s.peak.net) : '-', 'pos', s.peak ? 'after ' + s.peak.atMin + ' min' : '') +
       tile('Worst moment', s.trough ? usd(s.trough.net) : '-', s.trough && s.trough.net < 0 ? 'neg' : '', s.trough ? 'after ' + s.trough.atMin + ' min' : '') +
@@ -58292,7 +58310,7 @@ document.addEventListener('click', function(e) {
     if (!s || !s.trades) return '<div class="bt-note">No closed trades yet.</div>';
     const pct = v => v == null ? '-' : (v * 100).toFixed(0) + '%', x = (v, d) => v == null ? '-' : v.toFixed(d == null ? 2 : d);
     return '<div class="pcTiles">' +
-      tile('Closed trades', s.trades, '', s.wins + ' won · ' + s.losses + ' lost') + tile('Net PnL', usd(s.netTotal), sg(s.netTotal), 'fees ' + usd(s.feesTotal, 0) + ' already taken out') +
+      tile('Closed trades', s.trades, '', s.wins + ' won · ' + s.losses + ' lost') + tile('PnL of this strategy', usd(s.netTotal), sg(s.netTotal), 'fees ' + usd(s.feesTotal, 0) + ' already taken out') +
       tile('Win rate', pct(s.winRate), '') + tile('Average win', usd(s.avgWin), 'pos') + tile('Average loss', usd(s.avgLoss), 'neg') +
       tile('Win / loss size', x(s.payoff), s.payoff != null && s.payoff >= 1 ? 'pos' : '', 'average win ÷ average loss') +
       tile('Profit factor', s.profitFactor == null ? 'no loss yet' : x(s.profitFactor), s.profitFactor != null && s.profitFactor >= 1 ? 'pos' : 'neg', 'profit ÷ loss') +
@@ -58366,7 +58384,7 @@ document.addEventListener('click', function(e) {
       '<div class="nx-note">Futures strategies have no fixed start: they trade when a sweep or signal appears inside their window. All times are IST.</div>';
   }
 
-  const S = { view: 'live', live: null, today: null, open: {}, pa: { scope: 'all', eq: null, sel: null, d: null, hairT: -1, hairE: -1, metaT: null, metaE: null, busy: false, at: 0, err: null }, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
+  const S = { view: 'live', live: null, today: null, open: {}, pa: { scope: '', eq: null, sel: null, d: null, hairT: -1, hairE: -1, metaT: null, metaE: null, busy: false, at: 0, err: null }, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
     sel: { strat: null, split: 'byWeekday', timeline: null, askOut: null }, busy: false, killArm: 0 };
 
   async function api(path, opt) {
@@ -58486,24 +58504,31 @@ document.addEventListener('click', function(e) {
   /* ---------- PnL analysis: a trade minute by minute, and all trades, each with a hairline ---------- */
   const PC = () => window.pnlChart;
   const shortName = k => (STRAT[k] || k).replace(/ \d\d:\d\d$/, '');
+  /** the strategy whose curve is shown: the one chosen, else the live one, else the one traded last */
+  function scopeOf() {
+    if (S.pa.scope) return S.pa.scope;
+    const live = (S.positions || []).find(p => p.id && p.book !== 'gated'); if (live) return live.strategy;
+    const last = (S.runs || []).find(r => r.status === 'closed' || r.status === 'open'); return last ? last.strategy : 'ASIA_SHORT';
+  }
+  const strategyOf = id => { const p = (S.positions || []).find(x => x.id === id); if (p) return p.strategy; const r = (S.runs || []).find(x => x.id === id); return r ? r.strategy : null; };
   function paCard() {
     const P = S.pa, d = P.d, eq = P.eq;
-    const opens = (S.positions || []).filter(p => p.id && p.book !== 'gated');
+    const opens = (S.positions || []).filter(p => p.id && p.book !== 'gated' && p.strategy === scopeOf());
     const closed = eq && eq.equity ? eq.equity.slice().reverse().slice(0, 60) : [];
     const opt = [];
     for (const p of opens) opt.push('<option value="' + esc(p.id) + '"' + (P.sel === p.id ? ' selected' : '') + '>OPEN now · ' + esc(shortName(p.strategy)) + '</option>');
     for (const c of closed) opt.push('<option value="' + esc(c.id) + '"' + (P.sel === c.id ? ' selected' : '') + '>' + esc(c.dateKey) + ' · ' + esc(shortName(c.strategy)) + ' · ' + usd(c.net) + '</option>');
     let h = '<div class="bt-card pc" id="paCard"><h3>PnL analysis</h3><div class="sub">Every minute of a trade is recorded. Move your mouse or finger across a graph, or press the arrow keys when it is focused: the hairline reads that exact minute and the numbers appear under it.</div>' +
-      '<div class="bt-row"><label class="pcSel">Trade <select data-pa="pick">' + (opt.length ? opt.join('') : '<option>No trades yet</option>') + '</select></label><label class="pcSel">Curve of <select data-pa="scope">' + [['all', 'all trades'], ['options', 'options trades'], ['futures', 'futures trades']].map(x => '<option value="' + x[0] + '"' + (P.scope === x[0] ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></label></div>';
+      '<div class="bt-row"><label class="pcSel">Trade <select data-pa="pick">' + (opt.length ? opt.join('') : '<option>No trades yet</option>') + '</select></label><label class="pcSel">Strategy curve <select data-pa="scope">' + Object.keys(STRAT).map(k => '<option value="' + k + '"' + (scopeOf() === k ? ' selected' : '') + '>' + esc(shortName(k)) + '</option>').join('') + '</select></label></div>';
     if (P.err && !d && !eq) return h + '<div class="bt-note warn">' + esc(P.err) + '</div></div>';
     if (d && PC()) {
       const r = d.run, ch = PC().minuteChart(d, 'pcT'); P.metaT = ch.meta;
-      h += '<div class="pcHd">Selected trade: <b>' + esc(shortName(r.strategy)) + '</b> · ' + esc(r.dateKey) + ' · ' + (r.status === 'closed' ? 'closed' : 'open now') + ' · net PnL by minute</div>' + ch.html + '<div id="pcReadT"></div>' + PC().tradeTiles(d);
+      h += '<div class="pcHd">This trade: <b>' + esc(shortName(r.strategy)) + '</b> · ' + esc(r.dateKey) + ' · ' + (r.status === 'closed' ? 'closed' : 'open now') + ' · PnL by minute, after fees</div>' + ch.html + '<div id="pcReadT"></div>' + PC().tradeTiles(d);
     } else h += '<div class="bt-note">' + (P.busy ? 'Loading the trade…' : 'Pick a trade above to see it minute by minute.') + '</div>';
     if (eq && PC() && eq.equity.length) {
       const ec = PC().equityChart(eq, 'pcE'); P.metaE = ec.meta;
-      h += '<div class="pcHd" style="margin-top:14px">All trades together: running total and drawdown (click a point to open that trade)</div>' + ec.html + '<div id="pcReadE"></div>' + PC().allTiles(eq.stats);
-    } else if (eq) h += '<div class="pcHd" style="margin-top:14px">All trades together</div><div class="bt-note">No closed trades in this selection yet.</div>';
+      h += '<div class="pcHd" style="margin-top:14px">' + esc(shortName(scopeOf())) + ': this strategy\'s own trades, running total and drawdown (click a point to open that trade)</div>' + ec.html + '<div id="pcReadE"></div>' + PC().allTiles(eq.stats);
+    } else if (eq) h += '<div class="pcHd" style="margin-top:14px">' + esc(shortName(scopeOf())) + '</div><div class="bt-note">This strategy has no closed trades yet.</div>';
     return h + '</div>';
   }
   /** put a hairline on point i of a chart and show that point's numbers under it */
@@ -58526,7 +58551,7 @@ document.addEventListener('click', function(e) {
   async function loadPnlAnalysis() {
     if (!tok() || S.pa.busy) return; S.pa.busy = true;
     try {
-      S.pa.eq = await api('/pnl/trades?scope=' + encodeURIComponent(S.pa.scope));
+      S.pa.eq = await api('/pnl/trades?scope=' + encodeURIComponent(scopeOf()));
       if (!S.pa.sel) { const open = (S.positions || []).find(p => p.id && p.book !== 'gated'); S.pa.sel = open ? open.id : (S.pa.eq.equity.length ? S.pa.eq.equity[S.pa.eq.equity.length - 1].id : null); }
       if (S.pa.sel) S.pa.d = await api('/runs/' + S.pa.sel + '/pnl');
       S.pa.err = null;
@@ -58534,6 +58559,7 @@ document.addEventListener('click', function(e) {
     S.pa.busy = false; S.pa.at = Date.now(); S.sig = ''; draw();
   }
   async function pickTrade(id) {
+    const st = strategyOf(id); if (st && st !== scopeOf()) { S.pa.scope = st; S.pa.hairE = -1; S.pa.eq = null; S.pa.busy = false; S.pa.sel = id; loadPnlAnalysis(); return; }
     S.pa.sel = id; S.pa.hairT = -1;
     try { S.pa.d = await api('/runs/' + id + '/pnl'); S.pa.err = null; } catch (e) { S.pa.err = e.message; }
     S.sig = ''; draw();
@@ -58544,21 +58570,50 @@ document.addEventListener('click', function(e) {
   const SLOT_STATE = { upcoming: ['Upcoming', 'dim'], waiting: ['Waiting for entry', 'warn'], open: ['Open', 'ok'], closed: ['Closed', ''], dropped: ['No trade', 'bad'], missed: ['Missed', 'bad'] };
   const EXIT_TEXT = { tp: 'take profit', stop: 'stop loss', time: 'time exit', kill: 'kill switch', manual: 'manual' };
   const exitText = r => r ? (EXIT_TEXT[r] || r) : '';
-  /** Options and futures PnL at the very top: what is open now, what closed today, and the longer totals. */
-  function pnlStrip() {
-    const P = S.pnl; if (!P) return '';
-    const box = (title, x, note) => {
-      const now = x.today + (x.openPnl || 0), win = x.trades ? Math.round(x.wins / x.trades * 100) + '%' : '-';
-      return '<div class="bt-card pnl-box"><div class="pnl-h"><span class="pnl-t">' + title + '</span><span class="dim">' + note + '</span></div>' +
-        '<div class="pnl-big ' + sgn(now) + '">' + usd(now) + '<span class="dim"> today</span></div>' +
-        '<div class="pnl-row"><div><span class="dim">Open now (' + x.openCount + ')</span><b ' + cls(x.openPnl) + '>' + (x.openCount && !x.openKnown ? 'waiting for price' : usd(x.openPnl)) + '</b></div>' +
-        '<div><span class="dim">Closed today (' + x.todayTrades + ')</span><b ' + cls(x.today) + '>' + usd(x.today) + '</b></div>' +
-        '<div><span class="dim">Last 7 days</span><b ' + cls(x.week) + '>' + usd(x.week) + '</b></div>' +
-        '<div><span class="dim">All closed (' + x.trades + ', win ' + win + ')</span><b ' + cls(x.total) + '>' + usd(x.total) + '</b></div></div></div>';
-    };
-    return '<div class="pnl-grid">' + box('Options PnL', P.options, 'strangles, straddles, calendar') + box('Futures PnL', P.futures, 'BTC perpetual sweeps and signals') + '</div>';
+  /** Every live strategy gets its own card with its own PnL. Nothing is added together. */
+  const spark = id => (S.spark && S.spark[id]) || null;
+  function sparkSvg(id, tp) {
+    const d = spark(id); if (!d || d.net.length < 2) return '<div class="lv-sp lv-spn">graph appears after the first recorded minutes</div>';
+    const W = 300, H = 74, P = 6, n = d.net.length; let lo = Math.min(0, ...d.net), hi = Math.max(0, ...d.net); if (tp != null) hi = Math.max(hi, tp); const pad = (hi - lo) * .12 || 1; lo -= pad; hi += pad;
+    const X = i => P + i / (n - 1) * (W - 2 * P), Y = v => P + (1 - (v - lo) / (hi - lo)) * (H - 2 * P), z = Y(0), last = d.net[n - 1], c = last >= 0 ? '#15803D' : '#C53030';
+    const pts = d.net.map((v, i) => X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ');
+    return '<svg class="lv-sp" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="PnL since entry"><line x1="' + P + '" x2="' + (W - P) + '" y1="' + z.toFixed(1) + '" y2="' + z.toFixed(1) + '" stroke="currentColor" opacity=".3" stroke-dasharray="4 3"/>' +
+      (tp != null ? '<line x1="' + P + '" x2="' + (W - P) + '" y1="' + Y(tp).toFixed(1) + '" y2="' + Y(tp).toFixed(1) + '" stroke="#15803D" opacity=".6" stroke-dasharray="5 4"/>' : '') +
+      '<path d="M' + X(0).toFixed(1) + ',' + z.toFixed(1) + ' L' + pts.split(' ').join(' L') + ' L' + X(n - 1).toFixed(1) + ',' + z.toFixed(1) + ' Z" fill="' + c + '" opacity=".16"/><polyline points="' + pts + '" fill="none" stroke="' + c + '" stroke-width="2.2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><circle cx="' + X(n - 1).toFixed(1) + '" cy="' + Y(last).toFixed(1) + '" r="3.5" fill="' + c + '"/></svg>';
   }
-
+  const hmm = m => m == null ? '-' : Math.floor(Math.abs(m) / 60) + 'h ' + String(Math.abs(m) % 60).padStart(2, '0') + 'm';
+  function liveCard(p) {
+    const pnl = p.pnl ? p.pnl.netPnl : null, fut = p.exit && p.exit.kind === 'futures';
+    const run = (S.runs || []).find(r => r.id === p.id), entryMs = run && run.entry_at ? new Date(run.entry_at).getTime() : null;
+    const tpT = !fut && p.exit && p.exit.tpPctOfMargin != null ? p.exit.tpPctOfMargin * p.marginUsd : null;
+    const stops = fut ? [] : (p.legs || []).filter(l => l.side === 'short' && l.role === 'body' && p.exit && p.exit.stopMultiple).map(l => l.entryPrice * p.exit.stopMultiple - l.mark);
+    const legs = (p.legs || []).map(l => (l.side === 'short' || l.side === 'short' ? 'Sell ' : l.side === 'long' && l.type === 'future' ? 'Long ' : 'Buy ') + (l.strike ? Math.round(l.strike).toLocaleString('en-US') + (l.type === 'call' ? 'C' : 'P') : (l.type === 'future' ? l.lots + ' lots @ ' + Math.round(l.entryPrice) : l.symbol))).join(' · ');
+    const meta = [];
+    meta.push(['Margin', usd(p.marginUsd, 0)]);
+    if (tpT != null && pnl != null) meta.push(['To take profit', usd(tpT - pnl), 'target ' + usd(tpT, 0)]);
+    if (stops.length) meta.push(['Nearest stop', usd(Math.min(...stops)), 'per BTC price']);
+    if (fut && p.exit) meta.push(['To target', usd(Math.abs(p.exit.target - p.spot), 0), 'of price'], ['To stop', usd(Math.abs(p.spot - p.exit.stop), 0), 'of price']);
+    if (p.minutesToTimeExit != null) meta.push(['Time exit in', hmm(p.minutesToTimeExit)]);
+    return '<div class="bt-card lv" data-bt-run="' + esc(p.id) + '" title="Click to open this trade minute by minute">' +
+      '<div class="lv-h"><b>' + esc(shortName(p.strategy)) + '</b><span class="lv-chip"><i></i>LIVE' + (entryMs ? ' · since ' + IST(entryMs).slice(6) + ' IST · ' + hmm(Math.round((Date.now() - entryMs) / 60000)) : '') + '</span></div>' +
+      '<div class="lv-big ' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '<small>' + (p.pnl && p.pnl.pctOfMargin != null ? (p.pnl.pctOfMargin >= 0 ? '+' : '') + (p.pnl.pctOfMargin * 100).toFixed(1) + '% of margin · after fees' : 'waiting for a price') + '</small></div>' +
+      sparkSvg(p.id, tpT) + '<div class="lv-legs">' + esc(legs) + '</div>' +
+      '<div class="lv-meta">' + meta.map(m => '<div><span>' + esc(m[0]) + '</span><b>' + esc(m[1]) + '</b>' + (m[2] ? '<small>' + esc(m[2]) + '</small>' : '') + '</div>').join('') + '</div></div>';
+  }
+  function pnlStrip() {
+    if (!tok()) return '';
+    const live = (S.positions || []).filter(p => p.book !== 'gated');
+    if (!live.length) return '<div class="bt-card lv-none"><i></i>No strategy is live right now. When one enters, it appears here with its own PnL.</div>';
+    return '<div class="lv-grid">' + live.map(liveCard).join('') + '</div>';
+  }
+  /** the little graph on each live card: the minute series of that trade, fetched once a minute */
+  async function loadSparks() {
+    const live = (S.positions || []).filter(p => p.id && p.book !== 'gated'); S.spark = S.spark || {};
+    const due = live.filter(p => !S.spark[p.id] || Date.now() - S.spark[p.id].at > 60000);
+    if (!due.length || S.sparkBusy) return; S.sparkBusy = true;
+    await Promise.all(due.map(async p => { try { const d = await api('/runs/' + p.id + '/pnl'); S.spark[p.id] = { net: d.net, at: Date.now() }; } catch (e) { S.spark[p.id] = { net: [], at: Date.now() }; } }));
+    S.sparkBusy = false; S.sig = ''; draw();
+  }
   function todayCard() {
     const T = S.today; if (!T) return '';
     const now = T.now || Date.now();
@@ -58577,14 +58632,14 @@ document.addEventListener('click', function(e) {
       return '<tr' + click + '><td>' + esc(IST(sl.entryAtMs).slice(6)) + ' IST' + day + '</td><td>' + esc(STRAT[sl.id] || sl.id) + '</td><td><span class="bt-chip ' + c + '"><b>' + lbl + '</b></span></td><td class="bt-why">' + esc(note) + '</td><td ' + cls(net) + '>' + (net == null ? '-' : usd(net)) + '</td></tr>';
     }).join('');
     const done = T.slots.filter(x => x.state === 'closed' && x.run).reduce((a, x) => a + (x.run.netPnl || 0), 0), openN = T.slots.filter(x => x.state === 'open').reduce((a, x) => a + (x.live ? x.live.netPnl : 0), 0);
-    return '<div class="bt-card"><h3>Today</h3><div class="sub">Each strategy at its time: waiting for a valid entry, open, closed (and why) or not traded (and why). Net PnL is after fees and slippage. Closed today <b ' + cls(done) + '>' + usd(done) + '</b> · open now <b ' + cls(openN) + '>' + usd(openN) + '</b>. Click a row to see its trade.</div>' +
-      '<div class="bt-scroll"><table class="bt-t bt-today"><thead><tr><th>Entry time</th><th>Strategy</th><th>Status</th><th>What happened</th><th>Net PnL</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    return '<div class="bt-card"><h3>Today</h3><div class="sub">Each strategy at its time: waiting for a valid entry, open, closed (and why) or not traded (and why). Each PnL is that one trade, after fees and slippage. Click a row to see its trade.</div>' +
+      '<div class="bt-scroll"><table class="bt-t bt-today"><thead><tr><th>Entry time</th><th>Strategy</th><th>Status</th><th>What happened</th><th>PnL</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>';
   }
   function tradesCard() {
     const runs = S.runs.filter(r => r.status === 'closed' || r.status === 'open');
     const tl = S.pa.sel ? { id: S.pa.sel } : null;
     const num = v => v == null ? null : Number(v);
-    const body = runs.length ? '<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Strategy</th><th>Date</th><th>Entry (IST)</th><th>Exit (IST)</th><th>Why it exited</th><th>Gross</th><th>Fees</th><th>Slippage</th><th>Net PnL</th></tr></thead><tbody>' + runs.slice(0, 40).map(r => {
+    const body = runs.length ? '<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Strategy</th><th>Date</th><th>Entry (IST)</th><th>Exit (IST)</th><th>Why it exited</th><th>Gross</th><th>Fees</th><th>Slippage</th><th>PnL (after fees)</th></tr></thead><tbody>' + runs.slice(0, 40).map(r => {
       const fees = r.fees_entry == null ? null : Number(r.fees_entry) + Number(r.fees_exit || 0), open = r.status === 'open';
       return '<tr class="click ' + (tl && tl.id === r.id ? 'sel' : '') + '" data-bt-run="' + esc(r.id) + '"><td>' + esc(name(r.strategy + '|' + r.book)) + '</td><td>' + esc(r.date_key) + '</td><td>' + (r.entry_at ? esc(IST(new Date(r.entry_at).getTime()).slice(6)) : '-') + '</td><td>' + (open ? '<span class="dim">open</span>' : r.exit_at ? esc(IST(new Date(r.exit_at).getTime()).slice(6)) : '-') + '</td><td>' + esc(exitText(r.exit_reason)) + '</td><td ' + cls(num(r.gross_pnl)) + '>' + (r.gross_pnl == null ? '-' : usd(Number(r.gross_pnl))) + '</td><td class="dim">' + (fees == null ? '-' : usd(fees)) + '</td><td class="dim">' + (r.slippage_usd == null ? '-' : usd(Number(r.slippage_usd))) + '</td><td ' + cls(num(r.net_pnl)) + '>' + (r.net_pnl == null ? '-' : '<b>' + usd(Number(r.net_pnl)) + '</b>') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="bt-note">No trades yet. The first ones appear after a strategy enters.</div>';
     const detail = '';
@@ -58598,13 +58653,6 @@ document.addEventListener('click', function(e) {
     if (S.liveErr) h += `<div class="bt-card"><div class="bt-note warn">${esc(S.liveErr)}</div></div>`;
     if (st && !st.enabled) h += `<div class="bt-card"><h3>Bot is switched off</h3><div class="bt-note">The paper engine only runs when <b>BOT_ENABLED=true</b> is set on the server. Nothing is being traded or recorded until it is switched on; then every trade it takes appears here.</div></div>`;
     h += todayCard();
-    h += `<div class="bt-card"><h3>Running positions</h3>${S.positions.length ? `<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Run</th><th>Margin</th><th>Net PnL</th><th>% margin</th><th>To TP</th><th>Stop distance</th><th>Time exit</th><th>Spot</th></tr></thead><tbody>${S.positions.map(p => {
-      const fut = p.exit && p.exit.kind === 'futures';
-      const tp = fut ? null : (p.exit && p.exit.tpPctOfMargin != null && p.pnl ? p.exit.tpPctOfMargin * p.marginUsd - p.pnl.netPnl : null);
-      const stops = fut ? [] : (p.legs || []).filter(l => l.side === 'short' && l.role === 'body' && p.exit && p.exit.stopMultiple).map(l => l.entryPrice * p.exit.stopMultiple - l.mark);
-      const fl = fut && p.legs && p.legs[0] ? p.legs[0] : null;
-      const futTp = fut ? Math.abs(p.exit.target - p.spot) : null, futSl = fut ? Math.abs(p.spot - p.exit.stop) : null;
-      return `<tr class="click" data-bt-run="${esc(p.id)}"><td>${esc(name(p.strategy + '|' + p.book))}${fl ? ` <span class="dim">${esc(fl.side)} ${fl.lots} lots @ ${Math.round(fl.entryPrice)}</span>` : ''}</td><td>${usd(p.marginUsd)}</td><td ${cls(p.pnl && p.pnl.netPnl)}>${p.pnl ? usd(p.pnl.netPnl) : '-'}</td><td ${cls(p.pnl && p.pnl.pctOfMargin)}>${p.pnl ? pct(p.pnl.pctOfMargin, 1) : '-'}</td><td>${fut ? usd(futTp, 0) + ' of price' : tp == null ? '-' : usd(tp)}</td><td>${fut ? usd(futSl, 0) + ' of price' : stops.length ? usd(Math.min(...stops)) : '-'}</td><td>${p.minutesToTimeExit == null ? '-' : (p.minutesToTimeExit / 60).toFixed(1) + ' h'}</td><td>${Math.round(p.spot)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="bt-note">No open positions.</div>'}</div>`;
 
     h += paCard();
     h += tradesCard();
@@ -58645,15 +58693,15 @@ document.addEventListener('click', function(e) {
     const before = S.sig;
     try {
       S.liveErr = null;
-      const [status, runs, events, positions, today, drops, pnl] = await Promise.all([api('/status'), api('/runs?limit=60'), api('/events?limit=60'),
-        api('/positions').catch(() => ({ positions: [] })), api('/today').catch(() => null), api('/drops?limit=30').catch(() => null), api('/pnl').catch(() => null)]);
-      S.status = status; S.runs = runs.runs; S.events = events.events; S.positions = positions.positions || []; S.today = today; S.drops = drops; S.pnl = pnl;
+      const [status, runs, events, positions, today, drops] = await Promise.all([api('/status'), api('/runs?limit=60'), api('/events?limit=60'),
+        api('/positions').catch(() => ({ positions: [] })), api('/today').catch(() => null), api('/drops?limit=30').catch(() => null)]);
+      S.status = status; S.runs = runs.runs; S.events = events.events; S.positions = positions.positions || []; S.today = today; S.drops = drops;
     } catch (e) { S.liveErr = e.message; if (e.status === 401) S.status = null; }
     S.busy = false;
     // redraw only when the data changed, so a refresh every 5 s never flickers or resets what you are reading
-    S.sig = JSON.stringify([S.pnl, S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
+    S.sig = JSON.stringify([S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (force || S.sig !== before) draw();
-    if (!S.liveErr) { loadHeavy(force); if (force || Date.now() - S.pa.at > 60000) loadPnlAnalysis(); }
+    if (!S.liveErr) { loadHeavy(force); loadSparks(); if (force || Date.now() - S.pa.at > 60000) loadPnlAnalysis(); }
   }
   /** The scoreboard, top performer and auto-learn are the slow part: they load behind the page, at most once a minute. */
   async function loadHeavy(force) {
@@ -58666,7 +58714,7 @@ document.addEventListener('click', function(e) {
     } catch (e) { S.liveErr = e.message; }
     S.heavyBusy = false;
     const before = S.sig;
-    S.sig = JSON.stringify([S.pnl, S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
+    S.sig = JSON.stringify([S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (S.sig !== before) draw();
   }
   function openRun(id) { return pickTrade(id); }
@@ -58720,7 +58768,7 @@ document.addEventListener('click', function(e) {
     const t = e.target; if (!t || !t.dataset) return;
     if (t.dataset.bt === 'strat') { S.sel.strat = t.value; draw(); }
     else if (t.dataset.pa === 'pick') pickTrade(t.value);
-    else if (t.dataset.pa === 'scope') { S.pa.scope = t.value; S.pa.hairE = -1; loadPnlAnalysis(); }
+    else if (t.dataset.pa === 'scope') { S.pa.scope = t.value; S.pa.hairE = -1; S.pa.sel = null; S.pa.d = null; loadPnlAnalysis(); }
   });
   const hairEv = e => { const svg = e.target && e.target.closest && e.target.closest('.pcSvg'); if (svg) hairFromEvent(svg, e); };
   root.addEventListener('pointermove', hairEv);
