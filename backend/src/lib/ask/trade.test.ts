@@ -24,7 +24,7 @@ const valid = (r: unknown) => strategySchema.safeParse(r).success;
 describe('trade commands', () => {
   it('"entry 50" means 50 lots', () => {
     for (const q of ['entry 50', 'Entry 50', 'enter 50 lots', 'sell 50', 'please entry 50.']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'entry', lots: 50 });
-    expect(T.parseTrade('entry 5 delta 0.08-0.12 expiry nearest stop 3x')).toMatchObject({ kind: 'entry', lots: 5, patch: { deltaLow: 0.08, deltaHigh: 0.12, expiry: { mode: 'nearest' }, stopMultiple: 3 } });
+    expect(T.parseTrade('entry 5 delta 0.08 expiry current stop 3x')).toMatchObject({ kind: 'entry', lots: 5, patch: { deltaTarget: 0.08, expiry: { mode: 'current' }, stopMultiple: 3 } });
   });
   it('"exit" is a kill, but only as a command on its own', () => {
     for (const q of ['exit', 'Exit all', 'kill all', 'hard exit', 'close all positions', 'square off']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'exit' });
@@ -39,14 +39,48 @@ describe('trade commands', () => {
     expect(T.parseTrade('no', null)).toBeNull();
   });
   it('a change while a card is waiting is a patch; a normal question is not', () => {
-    expect(T.parseTrade('delta 0.08-0.12', 'summary')).toMatchObject({ kind: 'patch', patch: { deltaLow: 0.08, deltaHigh: 0.12 } });
+    expect(T.parseTrade('delta 0.08', 'summary')).toMatchObject({ kind: 'patch', patch: { deltaTarget: 0.08 } });
     expect(T.parseTrade('how does the bot work', 'summary')).toBeNull();
     expect(T.parseTrade('exit 07:00', 'builder')).toMatchObject({ kind: 'patch', patch: { exitTime: '07:00' } });
   });
   it('saves defaults with "set default"', () => {
-    expect(T.parseTrade('set default delta 0.10-0.15, expiry b2b, stop 2x, entry 22:30, exit 07:00, days mon tue wed'))
-      .toMatchObject({ kind: 'default', patch: { deltaLow: 0.1, deltaHigh: 0.15, expiry: { mode: 'b2b' }, stopMultiple: 2, entryTime: '22:30', exitTime: '07:00', days: ['mon', 'tue', 'wed'] } });
+    expect(T.parseTrade('set default delta 0.10, expiry 1dte, stop 2x, entry 22:30, exit 07:00, days mon tue wed'))
+      .toMatchObject({ kind: 'default', patch: { deltaTarget: 0.1, expiry: { mode: 'next' }, stopMultiple: 2, entryTime: '22:30', exitTime: '07:00', days: ['mon', 'tue', 'wed'] } });
     expect(T.parseTrade('show my default')).toMatchObject({ kind: 'showdefault' });
+  });
+});
+
+describe('expiry words', () => {
+  it('0dte is current, 1dte is next, 2dte and next to next are n2n', () => {
+    expect(T.parsePatch('0dte').expiry).toEqual({ mode: 'current' });
+    expect(T.parsePatch('expiry 1dte').expiry).toEqual({ mode: 'next' });
+    expect(T.parsePatch('2 dte').expiry).toEqual({ mode: 'n2n' });
+    expect(T.parsePatch('expiry next to next').expiry).toEqual({ mode: 'n2n' });
+    expect(T.parsePatch('next expiry').expiry).toEqual({ mode: 'next' });
+  });
+});
+
+describe('the default is one two-leg strangle on the current expiry', () => {
+  it('applying nothing keeps 2 legs, delta 0.10, current expiry', () => {
+    const r = T.applyPatch(base(), {});
+    expect(r.legs).toHaveLength(2);
+    expect(r.legs.map((l: any) => l.pick)).toEqual([{ mode: 'delta', target: 0.1 }, { mode: 'delta', target: 0.1 }]);
+    expect(r.expiry).toEqual({ mode: 'current' });
+  });
+});
+
+describe('option or future?', () => {
+  it('"entry 50" alone does not say, so Ask me asks', () => {
+    expect(T.parseTrade('entry 50')!.patch.legs).toBeUndefined();
+    expect(T.parseTrade('entry 50 future long')!.patch).toMatchObject({ legs: 'future', side: 'long' });
+    expect(T.parseTrade('entry 10 option')!.patch).toMatchObject({ legs: 'strangle' });
+  });
+  it('the answer can be typed in several ways', () => {
+    for (const [q, want] of [['option', { legs: 'strangle' }], ['strangle', { legs: 'strangle' }], ['future', { legs: 'future', side: 'long' }], ['future short', { legs: 'future', side: 'short' }], ['sell', { legs: 'future', side: 'short' }], ['long', { legs: 'future', side: 'long' }]] as const) {
+      expect(T.parseTrade(q, 'choose'), q).toMatchObject({ kind: 'choice', patch: want });
+    }
+    expect(T.parseTrade('banana', 'choose')).toBeNull();
+    expect(T.parseTrade('cancel', 'choose')).toMatchObject({ kind: 'cancel' });
   });
 });
 
@@ -72,7 +106,7 @@ describe('patches', () => {
     expect(T.parsePatch('hello there')).toEqual({});
   });
   it('every rule it writes passes the server schema', () => {
-    const phrases = ['', 'delta 0.05-0.08', 'expiry nearest', 'expiry next', 'b2b', 'expiry 261027', 'stop 3x', 'no stop', 'straddle', 'call only', 'put only', 'futures long', 'futures short',
+    const phrases = ['', 'delta 0.05', 'delta 0.05-0.08', 'expiry current', '0dte', 'expiry next', '1dte', '2dte', 'next to next', 'b2b', 'expiry 261027', 'stop 3x', 'no stop', 'straddle', 'call only', 'put only', 'futures long', 'futures short',
       'between 22:30 and 01:30', 'entry 10:00', 'exit 07:00', 'days mon tue', 'mode live', 'net target 30 net stop 50', 'straddle stop 3x exit 05:00 days friday'];
     for (const ph of phrases) {
       const r = T.applyPatch(base(), T.parsePatch(ph));
@@ -88,8 +122,8 @@ describe('patches', () => {
     expect(r.days).toHaveLength(7);
   });
   it('a delta change reaches both legs, and a straddle drops the delta', () => {
-    const r = T.applyPatch(base(), T.parsePatch('delta 0.08-0.12'));
-    expect(r.legs.map((l: any) => [l.pick.low, l.pick.high])).toEqual([[0.08, 0.12], [0.08, 0.12]]);
+    const r = T.applyPatch(base(), T.parsePatch('delta 0.08'));
+    expect(r.legs.map((l: any) => l.pick.target)).toEqual([0.08, 0.08]);
     const s = T.applyPatch(base(), T.parsePatch('straddle'));
     expect(s.legs.map((l: any) => l.pick.mode)).toEqual(['atm', 'atm']);
   });

@@ -20,12 +20,22 @@ export const conditionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rsi'), tf, op: cmp, value: z.number().min(0).max(100), period: z.number().int().min(2).max(100).optional() }),
   z.object({ type: z.literal('adx'), tf, op: cmp, value: z.number().min(0).max(100), period: z.number().int().min(2).max(100).optional() }),
   z.object({ type: z.literal('ema'), tf, fast: z.number().int().min(2).max(200), slow: z.number().int().min(3).max(400), state: z.enum(['above', 'below']) }),
+  /** ATM implied volatility of the chosen expiry, in vol points. */
+  z.object({ type: z.literal('atmiv'), op: cmp, value: z.number().min(0).max(500) }),
+  /** Speed vs IV: how far price moved over `minutes`, in units of the move the ATM IV implies for that time. 1 = exactly as implied. */
+  z.object({ type: z.literal('speed'), op: cmp, value: z.number().min(0).max(50), minutes: z.number().int().min(5).max(720).optional() }),
+  z.object({ type: z.literal('macd'), tf, state: z.enum(['bullish', 'bearish']) }),
+  z.object({ type: z.literal('bb'), tf, state: z.enum(['above_upper', 'below_lower', 'inside']), period: z.number().int().min(5).max(100).optional() }),
+  z.object({ type: z.literal('atr'), tf, op: cmp, pct: z.number().min(0).max(50), period: z.number().int().min(2).max(100).optional() }),
+  z.object({ type: z.literal('vwap'), state: z.enum(['above', 'below']) }),
+  z.object({ type: z.literal('change'), op: cmp, pct: z.number().min(-50).max(50), minutes: z.number().int().min(5).max(1440) }),
 ]);
 export type Condition = z.infer<typeof conditionSchema>;
 
 /** How a leg's strike is chosen. A delta band picks the lowest delta inside it ("whichever is lower"). */
 export const pickSchema = z.discriminatedUnion('mode', [
-  z.object({ mode: z.literal('delta'), low: z.number().min(0.01).max(0.9), high: z.number().min(0.01).max(0.9) }),
+  /** `target`: the strike whose delta is NEAREST to it. `low`/`high` (older rules): the lowest delta inside the band. */
+  z.object({ mode: z.literal('delta'), target: z.number().min(0.01).max(0.9).optional(), low: z.number().min(0.01).max(0.9).optional(), high: z.number().min(0.01).max(0.9).optional() }),
   z.object({ mode: z.literal('strike'), strike: z.number().positive() }),
   z.object({ mode: z.literal('offset'), points: z.number().min(0).max(200_000) }),
   z.object({ mode: z.literal('atm') }),
@@ -41,9 +51,12 @@ export const optionLegSchema = z.object({
 });
 export type OptionLegRule = z.infer<typeof optionLegSchema>;
 
-/** nearest / next = one expiry, b2b = both back-to-back expiries (nearest and the one after), fixed = an expiry code like 261027. */
+/**
+ * current = 0DTE (the first expiry still listed), next = 1DTE, n2n = 2DTE, fixed = an expiry code like 261027.
+ * `nearest` and `b2b` are older saved rules: nearest is current, b2b trades the first two together.
+ */
 export const expirySchema = z.object({
-  mode: z.enum(['nearest', 'next', 'b2b', 'fixed']),
+  mode: z.enum(['current', 'next', 'n2n', 'fixed', 'nearest', 'b2b']),
   code: z.string().regex(/^\d{6}$/).optional(),
 });
 export type ExpiryRule = z.infer<typeof expirySchema>;
@@ -88,7 +101,8 @@ export const strategySchema = z.object({
   if (s.instrument === 'future' && !s.future) ctx.addIssue({ code: 'custom', path: ['future'], message: 'a futures strategy needs a long or short side' });
   if (s.expiry.mode === 'fixed' && !s.expiry.code) ctx.addIssue({ code: 'custom', path: ['expiry', 'code'], message: 'a fixed expiry needs its code, like 261027' });
   for (const [i, l] of s.legs.entries()) {
-    if (l.pick.mode === 'delta' && l.pick.low > l.pick.high) ctx.addIssue({ code: 'custom', path: ['legs', i, 'pick'], message: 'delta low must not be above high' });
+    if (l.pick.mode === 'delta' && l.pick.target == null && (l.pick.low == null || l.pick.high == null)) ctx.addIssue({ code: 'custom', path: ['legs', i, 'pick'], message: 'give the delta to aim for' });
+    if (l.pick.mode === 'delta' && l.pick.low != null && l.pick.high != null && l.pick.low > l.pick.high) ctx.addIssue({ code: 'custom', path: ['legs', i, 'pick'], message: 'delta low must not be above high' });
   }
   for (const [i, c] of (s.entry.kind === 'window' ? s.entry.conditions : []).entries()) {
     if (c.type === 'ema' && c.fast >= c.slow) ctx.addIssue({ code: 'custom', path: ['entry', 'conditions', i], message: 'the fast EMA must be shorter than the slow one' });
@@ -101,15 +115,15 @@ export const DEFAULT_EXIT: ExitRule = {
   alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true,
 };
 
-/** The saved defaults behind "entry 50": a short strangle, delta 0.10-0.15 (lower), both back-to-back expiries, 2x stops. */
+/** The saved defaults behind "entry 50": ONE short strangle (2 legs) at the strikes nearest 0.10 delta, current (0DTE) expiry, 2x stops. */
 export function defaultStrangle(over: Partial<AlgoStrategy> = {}): AlgoStrategy {
   return {
     name: 'Short strangle', mode: 'paper', instrument: 'option',
     legs: [
-      { type: 'call', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15 } },
-      { type: 'put', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15 } },
+      { type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1 } },
+      { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1 } },
     ],
-    expiry: { mode: 'b2b' },
+    expiry: { mode: 'current' },
     entry: { kind: 'hard', time: '22:30' },
     days: [...DAY_NAMES],
     exit: { ...DEFAULT_EXIT },

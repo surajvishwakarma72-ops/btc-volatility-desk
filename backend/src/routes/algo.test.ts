@@ -130,8 +130,8 @@ describe('algo API', () => {
     expect(r.statusCode).toBe(200);
     const p = r.json().preview;
     expect(p.ok).toBe(true);
-    expect(p.legs).toHaveLength(4);
-    expect(p.expiries).toEqual([code(E1), code(E2)]);
+    expect(p.legs).toHaveLength(2);
+    expect(p.expiries).toEqual([code(E1)]);
     expect(p.margin).toMatchObject({ required: 120 });
     expect(p.stops).toContain('2x');
     expect(p.plan).toBeUndefined();

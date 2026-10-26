@@ -58464,8 +58464,8 @@ document.addEventListener('click', function(e) {
   const DEFAULT_EXIT = () => ({ legStopMultiple: 2, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true });
   const newForm = () => ({
     id: null, name: 'Short strangle', mode: 'paper', instrument: 'option', lots: 50,
-    legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15, strike: 100000, points: 3000 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15, strike: 100000, points: 3000 } }],
-    future: { side: 'long' }, expiry: { mode: 'b2b', code: '' },
+    legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }],
+    future: { side: 'long' }, expiry: { mode: 'current', code: '' },
     entry: { kind: 'hard', time: '22:30', from: '22:30', to: '01:30', conditions: [] },
     days: DAYS.slice(), exit: DEFAULT_EXIT(),
   });
@@ -58477,7 +58477,7 @@ document.addEventListener('click', function(e) {
     put: f => { f.name = 'Short put'; f.instrument = 'option'; f.legs = [mkLeg('put', 'sell', 'delta')]; },
     future: f => { f.name = 'BTC perpetual'; f.instrument = 'future'; f.legs = []; f.exit.legStopMultiple = null; f.exit.futStopPct = 1; f.exit.futTargetPct = 2; },
   };
-  function mkLeg(type, side, mode) { return { type, side, pick: { mode, low: 0.1, high: 0.15, strike: 100000, points: 3000 } }; }
+  function mkLeg(type, side, mode) { return { type, side, pick: { mode, target: 0.1, strike: 100000, points: 3000 } }; }
 
   const S = { st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: 'runs', formOpen: true, at: 0 };
 
@@ -58508,7 +58508,7 @@ document.addEventListener('click', function(e) {
   }
   function nn(v) { return v == null || v === '' ? null : num(v, null); }
   function pickOf(p) {
-    if (p.mode === 'delta') return { mode: 'delta', low: num(p.low, 0.1), high: num(p.high, 0.15) };
+    if (p.mode === 'delta') return { mode: 'delta', target: num(p.target, 0.1) };
     if (p.mode === 'strike') return { mode: 'strike', strike: num(p.strike, 0) };
     if (p.mode === 'offset') return { mode: 'offset', points: num(p.points, 0) };
     return { mode: 'atm' };
@@ -58519,13 +58519,20 @@ document.addEventListener('click', function(e) {
     else if (c.type === 'premium') o.value = num(c.value, 0);
     else if (c.type === 'rsi' || c.type === 'adx') { o.tf = c.tf || '15m'; o.op = c.op || '<'; o.value = num(c.value, 50); }
     else if (c.type === 'ema') { o.tf = c.tf || '15m'; o.fast = Math.round(num(c.fast, 9)); o.slow = Math.round(num(c.slow, 21)); o.state = c.state || 'above'; }
+    else if (c.type === 'atmiv') { o.op = c.op || '<'; o.value = num(c.value, 45); }
+    else if (c.type === 'speed') { o.op = c.op || '<'; o.value = num(c.value, 1); o.minutes = Math.round(num(c.minutes, 60)); }
+    else if (c.type === 'macd') { o.tf = c.tf || '15m'; o.state = c.state || 'bullish'; }
+    else if (c.type === 'bb') { o.tf = c.tf || '15m'; o.state = c.state || 'inside'; }
+    else if (c.type === 'atr') { o.tf = c.tf || '15m'; o.op = c.op || '<'; o.pct = num(c.pct, 0.5); }
+    else if (c.type === 'vwap') { o.state = c.state || 'above'; }
+    else if (c.type === 'change') { o.op = c.op || '<'; o.pct = num(c.pct, 1); o.minutes = Math.round(num(c.minutes, 60)); }
     return o;
   }
   function fromRule(r, lots, id) {
     const f = newForm(); f.id = id || null; f.name = r.name; f.mode = r.mode; f.instrument = r.instrument; f.lots = lots;
-    f.legs = (r.legs || []).map(l => ({ type: l.type, side: l.side, lots: l.lots || '', pick: Object.assign({ mode: 'delta', low: 0.1, high: 0.15, strike: 100000, points: 3000 }, l.pick) }));
+    f.legs = (r.legs || []).map(l => ({ type: l.type, side: l.side, lots: l.lots || '', pick: Object.assign({ mode: 'delta', target: 0.1, strike: 100000, points: 3000 }, l.pick, l.pick && l.pick.mode === 'delta' && l.pick.target == null ? { target: l.pick.low != null ? l.pick.low : 0.1 } : {}) }));
     f.future = r.future || { side: 'long' };
-    f.expiry = { mode: r.expiry.mode, code: r.expiry.code || '' };
+    f.expiry = { mode: r.expiry.mode === 'nearest' || r.expiry.mode === 'b2b' ? 'current' : r.expiry.mode, code: r.expiry.code || '' };
     f.entry = r.entry.kind === 'hard' ? { kind: 'hard', time: r.entry.time, from: '22:30', to: '01:30', conditions: [] } : { kind: 'window', time: '22:30', from: r.entry.from, to: r.entry.to, conditions: r.entry.conditions.map(c => Object.assign({}, c)) };
     f.days = r.days.slice(); f.exit = Object.assign(DEFAULT_EXIT(), r.exit);
     return f;
@@ -58533,9 +58540,9 @@ document.addEventListener('click', function(e) {
 
   /* ---------- the rule in plain words ---------- */
   function words(r, lots) {
-    const pk = p => p.mode === 'delta' ? 'delta ' + p.low + '-' + p.high + ' (lowest)' : p.mode === 'strike' ? 'strike ' + p.strike : p.mode === 'offset' ? p.points + ' points from spot' : 'at the money';
+    const pk = p => p.mode === 'delta' ? 'the strike nearest delta ' + (p.target != null ? p.target : p.low) : p.mode === 'strike' ? 'strike ' + p.strike : p.mode === 'offset' ? p.points + ' points from spot' : 'at the money';
     const legs = r.instrument === 'future' ? (r.future.side === 'long' ? 'Buy' : 'Sell') + ' ' + lots + ' lots BTC perpetual' : r.legs.map(l => (l.side === 'sell' ? 'Sell ' : 'Buy ') + (l.lots || lots) + ' ' + (l.type === 'call' ? 'call' : 'put') + ' ' + pk(l.pick)).join(' + ');
-    const ex = r.instrument === 'future' ? '' : ', expiry ' + ({ nearest: 'nearest', next: 'next', b2b: 'back-to-back (nearest + next)', fixed: r.expiry.code }[r.expiry.mode]);
+    const ex = r.instrument === 'future' ? '' : ', expiry ' + ({ current: 'current (0DTE)', nearest: 'current (0DTE)', next: 'next (1DTE)', n2n: 'next to next (2DTE)', b2b: 'current + next', fixed: r.expiry.code }[r.expiry.mode]);
     const en = r.entry.kind === 'hard' ? 'at ' + r.entry.time + ' IST' : 'between ' + r.entry.from + ' and ' + r.entry.to + ' IST' + (r.entry.conditions.length ? ' when ' + r.entry.conditions.map(condWords).join(' and ') : '');
     const x = r.exit, bits = [];
     if (x.legStopMultiple != null && r.instrument === 'option') bits.push('stop ' + x.legStopMultiple + 'x per sold leg');
@@ -58552,6 +58559,13 @@ document.addEventListener('click', function(e) {
       case 'dvol': return 'DVOL ' + c.op + ' ' + c.value;
       case 'spot': return 'spot ' + c.op + ' ' + c.value;
       case 'premium': return 'premium collected is at least $' + c.value;
+      case 'atmiv': return 'ATM IV ' + c.op + ' ' + c.value;
+      case 'speed': return 'speed vs IV (' + (c.minutes || 60) + ' min) ' + c.op + ' ' + c.value + 'x';
+      case 'macd': return 'MACD(' + c.tf + ') is ' + c.state;
+      case 'bb': return 'price is ' + ({ inside: 'inside', above_upper: 'above the upper', below_lower: 'below the lower' }[c.state]) + ' Bollinger band (' + c.tf + ')';
+      case 'atr': return 'ATR(' + c.tf + ') ' + c.op + ' ' + c.pct + '% of price';
+      case 'vwap': return 'price is ' + c.state + ' VWAP';
+      case 'change': return 'price change over ' + c.minutes + ' min ' + c.op + ' ' + c.pct + '%';
       case 'rsi': return 'RSI(' + c.tf + ') ' + c.op + ' ' + c.value;
       case 'adx': return 'ADX(' + c.tf + ') ' + c.op + ' ' + c.value;
       case 'ema': return 'EMA' + c.fast + ' is ' + c.state + ' EMA' + c.slow + ' (' + c.tf + ')';
@@ -58569,7 +58583,7 @@ document.addEventListener('click', function(e) {
     return '<div class="al-leg"><b>Leg ' + (i + 1) + '</b>' +
       sel('legs.' + i + '.side', l.side, [['sell', 'Sell'], ['buy', 'Buy']]) + sel('legs.' + i + '.type', l.type, [['call', 'Call'], ['put', 'Put']]) +
       sel('legs.' + i + '.pick.mode', l.pick.mode, [['delta', 'by delta'], ['strike', 'fixed strike'], ['offset', 'points from spot'], ['atm', 'at the money']], { struct: 1 }) +
-      (l.pick.mode === 'delta' ? inp('legs.' + i + '.pick.low', l.pick.low, { t: 'num', type: 'number', step: '0.01', cls: 's' }) + '<span>to</span>' + inp('legs.' + i + '.pick.high', l.pick.high, { t: 'num', type: 'number', step: '0.01', cls: 's' }) + '<span class="dim">lowest delta in the band</span>' : '') +
+      (l.pick.mode === 'delta' ? '<span>nearest to</span>' + inp('legs.' + i + '.pick.target', l.pick.target, { t: 'num', type: 'number', step: '0.01', cls: 's' }) + '<span class="dim">delta</span>' : '') +
       (l.pick.mode === 'strike' ? inp('legs.' + i + '.pick.strike', l.pick.strike, { t: 'num', type: 'number', cls: 'm' }) : '') +
       (l.pick.mode === 'offset' ? inp('legs.' + i + '.pick.points', l.pick.points, { t: 'num', type: 'number', cls: 'm' }) : '') +
       '<span class="dim">lots</span>' + inp('legs.' + i + '.lots', l.lots, { t: 'num', type: 'number', cls: 's', ph: 'same' }) +
@@ -58585,6 +58599,13 @@ document.addEventListener('click', function(e) {
     else if (c.type === 'spot') body = '<span>Spot</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 'm' });
     else if (c.type === 'premium') body = '<span>Premium collected at least $</span>' + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
     else if (c.type === 'rsi' || c.type === 'adx') body = '<span>' + c.type.toUpperCase() + '</span>' + tf + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
+    else if (c.type === 'atmiv') body = '<span>ATM IV</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
+    else if (c.type === 'speed') body = '<span>Speed vs IV over</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', step: '0.1', cls: 's' }) + '<span class="dim">x the move IV implies (1 = as implied)</span>';
+    else if (c.type === 'macd') body = '<span>MACD</span>' + tf + sel(b + 'state', c.state || 'bullish', [['bullish', 'bullish (histogram above 0)'], ['bearish', 'bearish (histogram below 0)']]);
+    else if (c.type === 'bb') body = '<span>Price</span>' + sel(b + 'state', c.state || 'inside', [['inside', 'inside the Bollinger band'], ['above_upper', 'above the upper band'], ['below_lower', 'below the lower band']]) + tf;
+    else if (c.type === 'atr') body = '<span>ATR</span>' + tf + op + inp(b + 'pct', c.pct, { t: 'num', type: 'number', step: '0.1', cls: 's' }) + '<span>% of price</span>';
+    else if (c.type === 'vwap') body = '<span>Price</span>' + sel(b + 'state', c.state || 'above', [['above', 'above'], ['below', 'below']]) + '<span>VWAP (last 24h)</span>';
+    else if (c.type === 'change') body = '<span>Price change over</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min</span>' + op + inp(b + 'pct', c.pct, { t: 'num', type: 'number', step: '0.1', cls: 's' }) + '<span>%</span>';
     else if (c.type === 'ema') body = '<span>EMA</span>' + inp(b + 'fast', c.fast, { t: 'num', type: 'number', cls: 's' }) + sel(b + 'state', c.state || 'above', [['above', 'is above'], ['below', 'is below']]) + '<span>EMA</span>' + inp(b + 'slow', c.slow, { t: 'num', type: 'number', cls: 's' }) + tf;
     return '<div class="al-leg"><b>' + (i + 1) + '</b>' + body + '<button type="button" class="al-x" data-al="delcond" data-i="' + i + '" title="Remove condition">×</button></div>';
   }
@@ -58600,7 +58621,7 @@ document.addEventListener('click', function(e) {
       fld('Instrument', sel('instrument', f.instrument, [['option', 'Options'], ['future', 'BTC futures']], { struct: 1 })) + '</div>';
     if (opts) {
       h += '<div class="al-sub">Legs <button type="button" class="al-btn" data-al="addleg">+ Add leg</button></div>' + f.legs.map(legRow).join('');
-      h += '<div class="al-grid">' + fld('Expiry', sel('expiry.mode', f.expiry.mode, [['b2b', 'Back-to-back (nearest + next)'], ['nearest', 'Nearest'], ['next', 'Next (second nearest)'], ['fixed', 'Fixed code']], { struct: 1 }), 'Back-to-back trades the whole structure in the nearest AND the next expiry (double the lots in total).') +
+      h += '<div class="al-grid">' + fld('Expiry', sel('expiry.mode', f.expiry.mode, [['current', 'Current (0DTE)'], ['next', 'Next (1DTE)'], ['n2n', 'Next to next (2DTE)'], ['fixed', 'Fixed code']], { struct: 1 }), 'One expiry only: current is 0DTE (the first one still listed), next is 1DTE, next to next is 2DTE.') +
         (f.expiry.mode === 'fixed' ? fld('Expiry code', inp('expiry.code', f.expiry.code, { ph: '261027' }), 'DDMMYY') : '') + '</div>';
     } else {
       h += '<div class="al-grid">' + fld('Side', sel('future.side', f.future.side, [['long', 'Buy (long)'], ['short', 'Sell (short)']])) + '</div>';
@@ -58609,7 +58630,7 @@ document.addEventListener('click', function(e) {
       fld('How', sel('entry.kind', f.entry.kind, [['hard', 'Hard time: enter at one time'], ['window', 'Window: wait until the conditions are met']], { struct: 1 })) +
       (f.entry.kind === 'hard' ? fld('At (IST)', inp('entry.time', f.entry.time, { type: 'time' })) : fld('From (IST)', inp('entry.from', f.entry.from, { type: 'time' })) + fld('Until (IST)', inp('entry.to', f.entry.to, { type: 'time' }))) + '</div>';
     if (f.entry.kind === 'window') {
-      h += '<div class="al-sub">Conditions (all must be true) <select data-al-add="cond"><option value="">+ Add condition…</option>' + [['gate', 'Desk gate says GO'], ['dvol', 'DVOL level'], ['spot', 'Spot level'], ['premium', 'Premium collected'], ['rsi', 'RSI'], ['adx', 'ADX'], ['ema', 'EMA cross']].map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select></div>' +
+      h += '<div class="al-sub">Conditions (all must be true) <select data-al-add="cond"><option value="">+ Add condition…</option>' + [['gate', 'Desk gate says GO'], ['dvol', 'DVOL level'], ['spot', 'Spot level'], ['premium', 'Premium collected'], ['atmiv', 'ATM IV level'], ['speed', 'Speed vs IV'], ['rsi', 'RSI'], ['adx', 'ADX'], ['ema', 'EMA cross'], ['macd', 'MACD'], ['bb', 'Bollinger band'], ['atr', 'ATR (volatility of price)'], ['vwap', 'VWAP'], ['change', 'Price change over time']].map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select></div>' +
         (f.entry.conditions.length ? f.entry.conditions.map(condRow).join('') : '<div class="al-note">No conditions: it enters at the start of the window. Add some to wait for the right moment.</div>');
     }
     h += '<div class="al-sub">Days</div><div class="al-days">' + DAYS.map(d => '<button type="button" class="al-day' + (f.days.includes(d) ? ' on' : '') + '" data-al="day" data-d="' + d + '">' + DAYL[d] + '</button>').join('') + '</div>' +
@@ -58747,7 +58768,7 @@ document.addEventListener('click', function(e) {
     const el = e.target;
     if (el.dataset && el.dataset.alAdd === 'cond') {
       const t = el.value; if (!t) return;
-      const base = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' } }[t];
+      const base = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 } }[t];
       S.form.entry.conditions.push(Object.assign({ type: t }, base)); S.formTouched = true; paintForm(); return;
     }
     if (!el.dataset || !el.dataset.f) return;
@@ -60718,10 +60739,14 @@ document.addEventListener('click', function(e) {
   function parsePatch(raw) {
     const q = ' ' + String(raw || '').toLowerCase().replace(/[,;]+/g, ' , ').replace(/\s+/g, ' ') + ' ';
     const p = {}; let m;
-    if ((m = /delta\s*(?:of|from|between)?\s*(0?\.\d+)\s*(?:-|to|and)\s*(0?\.\d+)/.exec(q))) { const a = Number(m[1]), b = Number(m[2]); p.deltaLow = Math.min(a, b); p.deltaHigh = Math.max(a, b); }
-    if (/\b(b2b|back[- ]?to[- ]?back)\b/.test(q)) p.expiry = { mode: 'b2b' };
+    if ((m = /delta\s*(?:of|from|between|near|nearest|nearest to|around|=)?\s*(0?\.\d+)\s*(?:-|to|and)\s*(0?\.\d+)/.exec(q))) p.deltaTarget = Math.min(Number(m[1]), Number(m[2]));
+    else if ((m = /delta\s*(?:of|near|nearest|nearest to|around|=)?\s*(0?\.\d+)/.exec(q)) || (m = /(0?\.\d+)\s*delta/.exec(q))) p.deltaTarget = Number(m[1]);
+    if (/\b(2 ?dte|n2n|next to next|next[- ]next|second next)\b/.test(q)) p.expiry = { mode: 'n2n' };
+    else if (/\b(1 ?dte)\b/.test(q)) p.expiry = { mode: 'next' };
+    else if (/\b(0 ?dte|current expir\w*|todays? expir\w*)\b/.test(q)) p.expiry = { mode: 'current' };
+    else if (/\b(b2b|back[- ]?to[- ]?back)\b/.test(q)) p.expiry = { mode: 'b2b' };
     else if ((m = /expiry\s*(?:code\s*)?(\d{6})\b/.exec(q))) p.expiry = { mode: 'fixed', code: m[1] };
-    else if (/\b(nearest|nearby|current)\s*(?:expiry|expiries)?\b/.test(q) && /expir/.test(q)) p.expiry = { mode: 'nearest' };
+    else if (/\b(nearest|nearby|current)\s*(?:expiry|expiries)?\b/.test(q) && /expir/.test(q)) p.expiry = { mode: 'current' };
     else if (/\bnext\s+(?:day\s+)?expir/.test(q) || /\bexpiry\s+next\b/.test(q)) p.expiry = { mode: 'next' };
     if (/\bno\s+(?:stop|sl|stoploss)\b/.test(q)) p.stopMultiple = null;
     else if ((m = /(?:stop\s*loss|stoploss|stop|sl)\s*(?:at|of|=)?\s*(\d+(?:\.\d+)?)\s*x\b/.exec(q)) || (m = /\b(\d+(?:\.\d+)?)\s*x\s*(?:stop\s*loss|stoploss|stop|sl)\b/.exec(q))) p.stopMultiple = Number(m[1]);
@@ -60742,23 +60767,24 @@ document.addEventListener('click', function(e) {
     if ((m = /\bmode\s+(paper|live)\b|\b(?:go|run|switch to|trade)\s+(paper|live)\b/.exec(q))) p.mode = m[1] || m[2];
     if (/\bstraddle\b/.test(q)) p.legs = 'straddle'; else if (/\bstrangle\b/.test(q)) p.legs = 'strangle';
     else if (/\b(call only|only call|just call|short call)\b/.test(q)) p.legs = 'call'; else if (/\b(put only|only put|just put|short put)\b/.test(q)) p.legs = 'put';
+    if (!p.legs && /\boptions?\b/.test(q)) p.legs = 'strangle';
     if (/\b(futures?|perp|perpetual|btcusd)\b/.test(q)) { p.legs = 'future'; p.side = /\b(short|sell)\b/.test(q) ? 'short' : 'long'; }
     if ((m = /\b(?:net\s+)?(?:target|profit target|take profit)\s*(?:of|at|=)?\s*\$?\s*(\d+(?:\.\d+)?)/.exec(q))) p.netTarget = Number(m[1]);
     if ((m = /\b(?:net stop|net loss|max loss|loss limit)\s*(?:of|at|=)?\s*\$?\s*(\d+(?:\.\d+)?)/.exec(q))) p.netStop = Number(m[1]);
     return p;
   }
 
-  const leg = (type, side, mode, lo, hi) => ({ type, side, pick: mode === 'delta' ? { mode, low: lo, high: hi } : { mode } });
+  const leg = (type, side, mode, target) => ({ type, side, pick: mode === 'delta' ? { mode, target } : { mode } });
   /** A new rule from a patch; the original is not changed. */
   function applyPatch(rule, p) {
     const r = JSON.parse(JSON.stringify(rule));
-    const lo = p.deltaLow != null ? p.deltaLow : (r.legs.find(l => l.pick.mode === 'delta') || { pick: { low: 0.1 } }).pick.low;
-    const hi = p.deltaHigh != null ? p.deltaHigh : (r.legs.find(l => l.pick.mode === 'delta') || { pick: { high: 0.15 } }).pick.high;
-    if (p.legs === 'strangle') { r.instrument = 'option'; r.legs = [leg('call', 'sell', 'delta', lo, hi), leg('put', 'sell', 'delta', lo, hi)]; r.name = 'Short strangle'; delete r.future; }
+    const dl0 = r.legs.find(l => l.pick.mode === 'delta');
+    const tg = p.deltaTarget != null ? p.deltaTarget : dl0 ? (dl0.pick.target != null ? dl0.pick.target : dl0.pick.low != null ? dl0.pick.low : 0.1) : 0.1;
+    if (p.legs === 'strangle') { r.instrument = 'option'; r.legs = [leg('call', 'sell', 'delta', tg), leg('put', 'sell', 'delta', tg)]; r.name = 'Short strangle'; delete r.future; }
     else if (p.legs === 'straddle') { r.instrument = 'option'; r.legs = [leg('call', 'sell', 'atm'), leg('put', 'sell', 'atm')]; r.name = 'Short straddle'; delete r.future; }
-    else if (p.legs === 'call' || p.legs === 'put') { r.instrument = 'option'; r.legs = [leg(p.legs, 'sell', 'delta', lo, hi)]; r.name = 'Short ' + p.legs; delete r.future; }
+    else if (p.legs === 'call' || p.legs === 'put') { r.instrument = 'option'; r.legs = [leg(p.legs, 'sell', 'delta', tg)]; r.name = 'Short ' + p.legs; delete r.future; }
     else if (p.legs === 'future') { r.instrument = 'future'; r.legs = []; r.future = { side: p.side || 'long' }; r.name = 'BTC perpetual ' + (p.side || 'long'); if (r.exit.futStopPct == null) r.exit.futStopPct = 1; }
-    else if (p.deltaLow != null || p.deltaHigh != null) r.legs.forEach(l => { if (l.pick.mode === 'delta') { l.pick.low = lo; l.pick.high = hi; } });
+    else if (p.deltaTarget != null) r.legs.forEach(l => { if (l.pick.mode === 'delta') { l.pick = { mode: 'delta', target: tg }; } });
     if (p.expiry) r.expiry = p.expiry;
     if ('stopMultiple' in p) r.exit.legStopMultiple = p.stopMultiple;
     if (p.window) r.entry = { kind: 'window', from: p.window.from, to: p.window.to, conditions: r.entry.kind === 'window' ? r.entry.conditions : [] };
@@ -60771,6 +60797,15 @@ document.addEventListener('click', function(e) {
     return r;
   }
   const hasAny = p => Object.keys(p).length > 0;
+  /** The answer to "future or option?": a patch, or null when the text does not say. */
+  function parseChoice(q) {
+    q = ' ' + String(q || '').toLowerCase() + ' ';
+    if (/\b(future|futures|perp|perpetual|btcusd)\b/.test(q)) return { legs: 'future', side: /\b(short|sell)\b/.test(q) ? 'short' : 'long' };
+    if (/\b(option|options|strangle|straddle)\b/.test(q)) return { legs: /\bstraddle\b/.test(q) ? 'straddle' : 'strangle' };
+    if (/\b(long|buy)\b/.test(q)) return { legs: 'future', side: 'long' };
+    if (/\b(short|sell)\b/.test(q)) return { legs: 'future', side: 'short' };
+    return null;
+  }
 
   /** What a message means for the trading flow. `pending` is true while a summary, builder or exit card is waiting. */
   function parseTrade(raw, pending) {
@@ -60778,6 +60813,7 @@ document.addEventListener('click', function(e) {
     if (!q) return null;
     if (pending && /^(ok|okay|yes|y|confirm|go|go ahead|do it|execute|place it|place order|yes do it|ok return)$/.test(q)) return { kind: 'ok' };
     if (pending && /^(cancel|no|n|abort|never ?mind|stop|dont|don't)$/.test(q)) return { kind: 'cancel' };
+    if (pending === 'choose') { const c = parseChoice(q); if (c) return { kind: 'choice', patch: Object.assign(parsePatch(q), c) }; }
     let m;
     if (/^(?:please )?(?:exit|exit all|close all|kill all|kill|hard exit|hard kill|square ?off|square off all|exit everything|close everything|exit all positions|close all positions|kill all positions)(?: now)?$/.test(q)) return { kind: 'exit' };
     if ((m = /^(?:please )?(?:entry|enter|entre|sell|short|go short|open)\s+(\d{1,6})(?:\s*lots?)?\b(.*)$/.exec(q))) {
@@ -60785,13 +60821,13 @@ document.addEventListener('click', function(e) {
     }
     if ((m = /^(?:set|save|change|update|make)\s+(?:my\s+)?(?:default|defaults|standard)\b\s*(?:entry|exit|rules?|settings?|conditions?)?\s*(?:to|as|=|:)?\s*(.*)$/.exec(q))) return { kind: 'default', patch: parsePatch(m[1]) };
     if (/^(?:show|what(?:'s| is| are)?)\s+(?:my\s+)?(?:default|defaults)\b/.test(q) || /^my defaults?$/.test(q)) return { kind: 'showdefault' };
-    if (pending && pending !== 'exit') { const p = parsePatch(q); if (hasAny(p)) return { kind: 'patch', patch: p }; }
+    if (pending && pending !== 'exit' && pending !== 'choose') { const p = parsePatch(q); if (hasAny(p)) return { kind: 'patch', patch: p }; }
     return null;
   }
 
   const money = v => v == null || !isFinite(v) ? '-' : (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
   const daysText = d => d.length === 7 ? 'every day' : d.map(x => x[0].toUpperCase() + x.slice(1)).join(', ');
-  const expiryText = (r, pv) => pv && pv.expiries && pv.expiries.length ? pv.expiries.join(' + ') : ({ nearest: 'nearest', next: 'next', b2b: 'nearest + next (back-to-back)', fixed: r.expiry.code }[r.expiry.mode]);
+  const expiryText = (r, pv) => pv && pv.expiries && pv.expiries.length ? pv.expiries.join(' + ') : ({ current: 'current (0DTE)', nearest: 'current (0DTE)', next: 'next (1DTE)', n2n: 'next to next (2DTE)', b2b: 'current + next', fixed: r.expiry.code }[r.expiry.mode]);
   const entryText = (r, now) => now ? 'now, at market' : r.entry.kind === 'hard' ? r.entry.time + ' IST' : r.entry.from + ' to ' + r.entry.to + ' IST, when ' + (r.entry.conditions.length ? 'the conditions are met' : 'the window opens');
   const stopText = r => r.instrument === 'future' ? (r.exit.futStopPct != null ? r.exit.futStopPct + '% stop' : 'no stop') + (r.exit.futTargetPct != null ? ', ' + r.exit.futTargetPct + '% target' : '') : r.exit.legStopMultiple != null ? r.exit.legStopMultiple + 'x each sold leg' + (r.exit.exitAllOnLegStop ? ', everything closes if one leg stops' : '') : 'no per-leg stop';
   /** The reply once the order is in. */
@@ -60823,13 +60859,13 @@ document.addEventListener('click', function(e) {
   const post = (p, b) => api(p, { method: 'POST', body: JSON.stringify(b || {}) });
   const FALLBACK = () => ({
     name: 'Short strangle', mode: 'paper', instrument: 'option',
-    legs: [leg('call', 'sell', 'delta', 0.1, 0.15), leg('put', 'sell', 'delta', 0.1, 0.15)],
-    expiry: { mode: 'b2b' }, entry: { kind: 'hard', time: '22:30' }, days: DAYN.slice(),
+    legs: [leg('call', 'sell', 'delta', 0.1), leg('put', 'sell', 'delta', 0.1)],
+    expiry: { mode: 'current' }, entry: { kind: 'hard', time: '22:30' }, days: DAYN.slice(),
     exit: { legStopMultiple: 2, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true },
   });
-  const T = { stage: null, rule: null, lots: 0, pv: null, when: 'now', live: null };
+  const T = { stage: null, rule: null, lots: 0, pv: null, when: 'now', live: null, held: null };
   const API = { push: null };
-  const reset = () => { T.stage = null; T.rule = null; T.pv = null; T.when = 'now'; };
+  const reset = () => { T.stage = null; T.rule = null; T.pv = null; T.when = 'now'; T.held = null; };
 
   async function loadDefaults() { try { return (await api('/defaults')).defaults || FALLBACK(); } catch (e) { return FALLBACK(); } }
   async function preview() {
@@ -60843,10 +60879,11 @@ document.addEventListener('click', function(e) {
     if (!cmd) return null;
     if (cmd.kind === 'cancel') { reset(); return msg('text', { text: 'Cancelled. Nothing was placed.' }); }
     if (cmd.kind === 'entry') {
-      T.rule = applyPatch(await loadDefaults(), cmd.patch); T.lots = cmd.lots; T.when = 'now';
-      await preview(); T.stage = 'summary';
-      return msg('summary', { snap: snap() });
+      T.lots = cmd.lots; T.when = 'now'; T.held = cmd.patch;
+      if (!cmd.patch.legs) { T.stage = 'choose'; return msg('choose', { lots: cmd.lots }); }
+      return build(cmd.patch);
     }
+    if (cmd.kind === 'choice') return build(Object.assign({}, T.held || {}, cmd.patch));
     if (cmd.kind === 'patch') {
       T.rule = applyPatch(T.rule, cmd.patch); await preview();
       return msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap(), note: 'Updated.' });
@@ -60861,13 +60898,18 @@ document.addEventListener('click', function(e) {
       T.stage = 'exit'; return msg('exit', { open });
     }
     if (cmd.kind === 'default') {
-      if (!hasAny(cmd.patch)) return msg('text', { text: 'Tell me what to save, for example: set default delta 0.10-0.15, expiry b2b, stop 2x, entry 22:30, exit 07:00, days mon tue wed thu fri.' });
+      if (!hasAny(cmd.patch)) return msg('text', { text: 'Tell me what to save, for example: set default delta 0.10, expiry current, stop 2x, entry 22:30, exit 07:00, days mon tue wed thu fri.' });
       const base = await loadDefaults(); const next = applyPatch(base, cmd.patch);
       try { await api('/defaults', { method: 'PUT', body: JSON.stringify({ rule: next }) }); } catch (e) { return msg('text', { text: 'Could not save: ' + e.message }); }
       return msg('saved', { rule: next, lots: T.lots || 1 });
     }
     if (cmd.kind === 'showdefault') return msg('saved', { rule: await loadDefaults(), lots: 1, shown: true });
     return null;
+  }
+  async function build(patch) {
+    T.rule = applyPatch(await loadDefaults(), patch); T.held = null;
+    await preview(); T.stage = 'summary';
+    return msg('summary', { snap: snap() });
   }
   const snap = () => ({ rule: JSON.parse(JSON.stringify(T.rule)), lots: T.lots, pv: T.pv, when: T.when, stage: T.stage, live: null });
 
@@ -60919,8 +60961,8 @@ document.addEventListener('click', function(e) {
     const o = (v, c, l) => '<option value="' + v + '"' + (v === c ? ' selected' : '') + '>' + l + '</option>';
     return '<div class="at-form">' +
       '<label>Lots<input data-atf="lots" type="number" min="1" value="' + s.lots + '"></label>' +
-      (dl ? '<label>Delta from<input data-atf="dlo" type="number" step="0.01" value="' + dl.pick.low + '"></label><label>to<input data-atf="dhi" type="number" step="0.01" value="' + dl.pick.high + '"></label>' : '') +
-      (r.instrument === 'option' ? '<label>Expiry<select data-atf="exp">' + o('b2b', r.expiry.mode, 'Back-to-back') + o('nearest', r.expiry.mode, 'Nearest') + o('next', r.expiry.mode, 'Next') + '</select></label>' : '') +
+      (dl ? '<label>Delta nearest to<input data-atf="dtg" type="number" step="0.01" value="' + (dl.pick.target != null ? dl.pick.target : dl.pick.low) + '"></label>' : '') +
+      (r.instrument === 'option' ? '<label>Expiry<select data-atf="exp">' + o('current', r.expiry.mode === 'nearest' || r.expiry.mode === 'b2b' ? 'current' : r.expiry.mode, 'Current (0DTE)') + o('next', r.expiry.mode, 'Next (1DTE)') + o('n2n', r.expiry.mode, 'Next to next (2DTE)') + '</select></label>' : '') +
       '<label>Run<select data-atf="when">' + o('now', s.when, 'Now, at market') + o('later', s.when, 'At the entry time below') + '</select></label>' +
       '<label>Entry time<input data-atf="etime" type="time" value="' + esc(r.entry.kind === 'hard' ? r.entry.time : r.entry.from) + '"></label>' +
       '<label>Exit time<input data-atf="xtime" type="time" value="' + esc(r.exit.exitTime || '') + '"></label>' +
@@ -60932,6 +60974,9 @@ document.addEventListener('click', function(e) {
   function render(m) {
     if (!m) return '';
     if (m.kind === 'text') return '<div class="at-card"><div>' + esc(m.text) + '</div></div>';
+    if (m.kind === 'choose') {
+      return '<div class="at-card"><div class="at-h">Entry ' + m.lots + ' lots: option or future?</div><div class="at-act"><button type="button" class="at-btn pri" data-at="pick" data-k="strangle">Option: one strangle (2 legs, nearest 0.10 delta)</button><button type="button" class="at-btn" data-at="pick" data-k="long">Future: buy (long)</button><button type="button" class="at-btn" data-at="pick" data-k="short">Future: sell (short)</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div><div class="at-fine">Or type: option, future long, future short.</div></div>';
+    }
     if (m.kind === 'summary') return summaryCard(m, false);
     if (m.kind === 'builder') return summaryCard(m, true);
     if (m.kind === 'done') {
@@ -60962,6 +61007,7 @@ document.addEventListener('click', function(e) {
     const b = e.target.closest && e.target.closest('#askPanel [data-at]'); if (!b) return;
     const a = b.dataset.at;
     if (a === 'ok') { const m = await handle('ok'); if (m) answer(m); }
+    else if (a === 'pick') { const k = b.dataset.k; const m = await handle(k === 'strangle' ? 'option' : 'future ' + k); if (m) answer(m); }
     else if (a === 'cancel') { reset(); answer(msg('text', { text: 'Cancelled. Nothing was placed.' })); }
     else if (a === 'day') {
       const d = b.dataset.d, r = T.rule; if (!r) return;
@@ -60981,8 +61027,8 @@ document.addEventListener('click', function(e) {
     const v = k => { const el = last(k); return el ? el.value : null; };
     const r = T.rule; if (!r) return;
     const lots = Math.round(Number(v('lots'))); if (lots >= 1) T.lots = lots;
-    const dlo = v('dlo'), dhi = v('dhi');
-    if (dlo != null && dhi != null && dlo !== '' && dhi !== '') r.legs.forEach(l => { if (l.pick.mode === 'delta') { l.pick.low = Math.min(Number(dlo), Number(dhi)); l.pick.high = Math.max(Number(dlo), Number(dhi)); } });
+    const dtg = v('dtg');
+    if (dtg != null && dtg !== '') r.legs.forEach(l => { if (l.pick.mode === 'delta') l.pick = { mode: 'delta', target: Number(dtg) }; });
     const ex = v('exp'); if (ex) r.expiry = { mode: ex };
     const wh = v('when'); if (wh) T.when = wh;
     const et = v('etime'); if (et) { if (r.entry.kind === 'hard') r.entry.time = et; else r.entry.from = et; }
@@ -61005,7 +61051,7 @@ document.addEventListener('click', function(e) {
     '#askPanel .at-cl{list-style:none;margin:6px 0 0;padding:0}#askPanel .at-cl li.ok{color:var(--down,#35BB7D)}#askPanel .at-cl li.no{color:var(--warn,#E3AE45)}#askPanel .at-cl span{color:var(--muted,#8fa3b5)}';
   D.head.appendChild(style);
 
-  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, congrats, API, active: () => T.stage };
+  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, congrats, API, active: () => T.stage };
 })();
 </script><script id="askWidget">
 /* Ask me: a floating chat that answers from the desk's own data (database, live feeds).

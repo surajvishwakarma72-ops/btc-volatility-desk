@@ -1,5 +1,5 @@
 import { evalConditions, type ConditionResult, type MarketView } from '../../lib/algo/conditions.js';
-import { describeLeg, planOptionEntry, type PlannedLeg } from '../../lib/algo/plan.js';
+import { chooseExpiries, describeLeg, planOptionEntry, type PlannedLeg } from '../../lib/algo/plan.js';
 import { entryState, exitAtMs, istDay, windowOn, type AlgoStrategy, type Condition, type EntryWindow } from '../../lib/algo/rule.js';
 import type { Bar } from '../../lib/bot/futures.js';
 import type { ChainOption } from '../../lib/bot/strike-picker.js';
@@ -57,12 +57,24 @@ export interface CheckInfo {
   windowEnd: number | null;
 }
 
-const needsBars = (cs: readonly Condition[]) => cs.some((c) => c.type === 'rsi' || c.type === 'adx' || c.type === 'ema');
+export const needsBars = (cs: readonly Condition[]) => cs.some((c) => ['rsi', 'adx', 'ema', 'speed', 'macd', 'bb', 'atr', 'vwap', 'change'].includes(c.type));
 export const conditionsOf = (r: AlgoStrategy): Condition[] => (r.entry.kind === 'window' ? r.entry.conditions : []);
+
+/** ATM IV (vol points) of the first expiry the rule trades: the average of the call and put nearest spot. */
+export function atmIvOf(rule: AlgoStrategy, m: MarketData, nowMs: number): number | null {
+  const ex = chooseExpiries(rule.expiry, m.expiries, nowMs);
+  const e = typeof ex === 'string' ? m.expiries.filter((x) => x - nowMs > 0).sort((a, b) => a - b)[0] : ex[0];
+  if (e == null) return null;
+  const row = m.chain.filter((o) => o.expiryMs === e && o.iv > 0 && Number.isFinite(o.iv));
+  if (!row.length) return null;
+  const k = row.reduce((b, o) => (Math.abs(o.strike - m.spot) < Math.abs(b - m.spot) ? o.strike : b), row[0]!.strike);
+  const ivs = row.filter((o) => o.strike === k).map((o) => o.iv);
+  return ivs.reduce((a, b) => a + b, 0) / ivs.length;
+}
 
 /** Build the concrete plan and the view the conditions look at. */
 export function buildPlan(rule: AlgoStrategy, m: MarketData, lots: number, nowMs: number): { plan: EntryPlan | null; reason: string | null; view: MarketView } {
-  const base: MarketView = { spot: m.spot, dvol: m.dvol, gateGo: m.gateGo, gateReasons: m.gateReasons, premium: null, bars5m: m.bars5m };
+  const base: MarketView = { spot: m.spot, dvol: m.dvol, gateGo: m.gateGo, gateReasons: m.gateReasons, premium: null, bars5m: m.bars5m, atmIv: atmIvOf(rule, m, nowMs) };
   if (rule.instrument === 'future') return { plan: { kind: 'future', future: { side: rule.future!.side, lots: rule.future!.lots ?? lots, spot: m.spot } }, reason: null, view: base };
   const p = planOptionEntry(rule, m.chain, m.expiries, m.spot, lots, nowMs);
   if (!p.ok) return { plan: null, reason: p.reason, view: base };

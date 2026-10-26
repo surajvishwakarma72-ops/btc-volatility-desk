@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { adxLast, emaLast, evalConditions, type MarketView } from './conditions.js';
+import { adxLast, emaLast, evalConditions, speedVsIv, type MarketView } from './conditions.js';
 import { chooseExpiries, expiryCodeOf, planOptionEntry } from './plan.js';
 import { DEFAULT_EXIT, defaultStrangle, entryState, exitAtMs, strategySchema, windowOn } from './rule.js';
 import { IST_OFFSET_MS, istMidnightMs } from '../bot/schedule.js';
@@ -99,19 +99,61 @@ const chainFor = (e: number): ChainOption[] => [
   opt('put', 96_000, 0.16, e), opt('put', 95_000, 0.13, e), opt('put', 94_000, 0.105, e), opt('put', 93_000, 0.07, e),
 ];
 
+describe('more conditions', () => {
+  const up = bars(Array.from({ length: 200 }, (_, i) => 100_000 + i * 20));
+  it('ATM IV level', () => {
+    expect(evalConditions([{ type: 'atmiv', op: '<', value: 50 }], view({ atmIv: 42 })).met).toBe(true);
+    expect(evalConditions([{ type: 'atmiv', op: '<', value: 40 }], view({ atmIv: 42 })).met).toBe(false);
+    expect(evalConditions([{ type: 'atmiv', op: '<', value: 50 }], view({ atmIv: null })).met).toBe(false);
+  });
+  it('speed vs IV compares the move with what IV implies', () => {
+    // 60 min = 12 bars of 20 points on 100k: 0.24% move. IV 40 implies 40*sqrt(60/525600) = 0.427% per hour
+    const r = speedVsIv(up, 40, 60)!;
+    expect(r).toBeGreaterThan(0.5);
+    expect(r).toBeLessThan(0.6);
+    expect(evalConditions([{ type: 'speed', op: '<', value: 1 }], view({ bars5m: up, atmIv: 40 })).met).toBe(true);
+    expect(evalConditions([{ type: 'speed', op: '>', value: 1 }], view({ bars5m: up, atmIv: 40 })).met).toBe(false);
+    expect(evalConditions([{ type: 'speed', op: '<', value: 1 }], view({ bars5m: up, atmIv: null })).met).toBe(false);
+  });
+  it('macd, bollinger, atr, vwap and change', () => {
+    expect(evalConditions([{ type: 'macd', tf: '5m', state: 'bullish' }], view({ bars5m: up })).results[0]!.now).toMatch(/histogram/);
+    const spike = bars([...Array.from({ length: 60 }, () => 100), 130]);
+    expect(evalConditions([{ type: 'bb', tf: '5m', state: 'above_upper' }], view({ bars5m: spike })).met).toBe(true);
+    expect(evalConditions([{ type: 'bb', tf: '5m', state: 'inside' }], view({ bars5m: spike })).met).toBe(false);
+    expect(evalConditions([{ type: 'atr', tf: '5m', op: '<', pct: 1 }], view({ bars5m: up })).met).toBe(true);
+    expect(evalConditions([{ type: 'vwap', state: 'above' }], view({ bars5m: up })).met).toBe(true);
+    expect(evalConditions([{ type: 'vwap', state: 'below' }], view({ bars5m: up })).met).toBe(false);
+    expect(evalConditions([{ type: 'change', op: '>', pct: 0.1, minutes: 60 }], view({ bars5m: up })).met).toBe(true);
+    expect(evalConditions([{ type: 'change', op: '<', pct: -0.1, minutes: 60 }], view({ bars5m: up })).met).toBe(false);
+  });
+  it('they all validate in a rule', () => {
+    const conds = [{ type: 'atmiv', op: '<', value: 50 }, { type: 'speed', op: '<', value: 1, minutes: 60 }, { type: 'macd', tf: '15m', state: 'bearish' }, { type: 'bb', tf: '5m', state: 'inside' }, { type: 'atr', tf: '1h', op: '<', pct: 1 }, { type: 'vwap', state: 'below' }, { type: 'change', op: '<', pct: 0.5, minutes: 30 }];
+    expect(strategySchema.safeParse(defaultStrangle({ entry: { kind: 'window', from: '22:30', to: '01:30', conditions: conds as never } })).success).toBe(true);
+  });
+});
+
 describe('planOptionEntry', () => {
   const chain = [...chainFor(E1), ...chainFor(E2)];
-  it('picks the lowest delta inside 0.10-0.15 on both sides and trades both back-to-back expiries', () => {
+  it('default: ONE strangle, 2 legs, strikes nearest 0.10 delta, current expiry', () => {
     const p = planOptionEntry(defaultStrangle(), chain, [E1, E2, E3], 100_000, 50, NOW);
     expect(p.ok).toBe(true);
     if (!p.ok) return;
-    expect(p.expiries).toEqual(['271026', '281026']);
-    expect(p.legs).toHaveLength(4);
+    expect(p.expiries).toEqual(['271026']);
+    expect(p.legs).toHaveLength(2);
     expect(p.legs.every((l) => l.lots === 50 && l.side === 'sell')).toBe(true);
-    const e1 = p.legs.filter((l) => l.expiryCode === '271026');
-    expect(e1.find((l) => l.type === 'call')!.delta).toBe(0.11);
-    expect(e1.find((l) => l.type === 'put')!.delta).toBe(0.105);
+    expect(p.legs.find((l) => l.type === 'call')!.delta).toBe(0.11);
+    expect(p.legs.find((l) => l.type === 'put')!.delta).toBe(0.105);
     expect(p.premium).toBeGreaterThan(0);
+  });
+  it('current is 0DTE, next is 1DTE, n2n is 2DTE', () => {
+    expect(chooseExpiries({ mode: 'current' }, [E1, E2, E3], NOW)).toEqual([E1]);
+    expect(chooseExpiries({ mode: 'next' }, [E1, E2, E3], NOW)).toEqual([E2]);
+    expect(chooseExpiries({ mode: 'n2n' }, [E1, E2, E3], NOW)).toEqual([E3]);
+    expect(typeof chooseExpiries({ mode: 'n2n' }, [E1, E2], NOW)).toBe('string');
+  });
+  it('older rules: nearest and b2b still work', () => {
+    expect(chooseExpiries({ mode: 'b2b' }, [E1, E2, E3], NOW)).toEqual([E1, E2]);
+    expect(chooseExpiries({ mode: 'nearest' }, [E1, E2], NOW)).toEqual([E1]);
   });
   it('nearest, next and fixed expiry', () => {
     expect(chooseExpiries({ mode: 'nearest' }, [E1, E2], NOW)).toEqual([E1]);
@@ -121,9 +163,19 @@ describe('planOptionEntry', () => {
     expect(chooseExpiries({ mode: 'nearest' }, [E1, E2], E1 - 10 * 60_000)).toEqual([E2]); // too close to settle
   });
   it('says why when no strike fits', () => {
-    const p = planOptionEntry(defaultStrangle({ expiry: { mode: 'nearest' } }), [opt('call', 110_000, 0.02, E1), opt('put', 90_000, 0.02, E1)], [E1], 100_000, 10, NOW);
+    const p = planOptionEntry(defaultStrangle({ expiry: { mode: 'current' } }), [opt('call', 110_000, 0.02, E1), opt('put', 90_000, 0.02, E1)], [E1], 100_000, 10, NOW);
     expect(p.ok).toBe(false);
     if (!p.ok) expect(p.reason).toMatch(/delta/);
+  });
+  it('aims at the strike nearest the target, not the lowest in a band', () => {
+    const s = defaultStrangle({ legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.13 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.13 } }] });
+    const p = planOptionEntry(s, chainFor(E1), [E1], 100_000, 5, NOW);
+    expect(p.ok && p.legs.map((l) => l.delta)).toEqual([0.13, 0.13]);
+  });
+  it('older band rules still pick the lowest delta in the band', () => {
+    const s = defaultStrangle({ legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', low: 0.1, high: 0.15 } }] });
+    const p = planOptionEntry(s, chainFor(E1), [E1], 100_000, 5, NOW);
+    expect(p.ok && p.legs[0]!.delta).toBe(0.11);
   });
   it('an atm straddle lands on one strike', () => {
     const s = defaultStrangle({ expiry: { mode: 'nearest' }, legs: [{ type: 'call', side: 'sell', pick: { mode: 'atm' } }, { type: 'put', side: 'sell', pick: { mode: 'atm' } }] });

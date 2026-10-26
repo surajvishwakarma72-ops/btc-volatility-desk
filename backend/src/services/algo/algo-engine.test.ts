@@ -125,7 +125,7 @@ describe('AlgoEngine entry', () => {
     const r = rig(defaultStrangle(), now, { mk: () => market({ chain: [] }) });
     await r.engine.tick();
     expect(r.placed).toHaveLength(0);
-    expect(r.engine.checks.get('s1')!.planReason).toMatch(/delta/);
+    expect(r.engine.checks.get('s1')!.planReason).toMatch(/call/);
   });
 
   it('a futures strategy enters with the command lots', async () => {

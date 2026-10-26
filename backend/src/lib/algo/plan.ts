@@ -32,21 +32,31 @@ export function chooseExpiries(rule: AlgoStrategy['expiry'], expiries: readonly 
     return hit ? [hit] : `expiry ${rule.code} is not listed (or settles within the hour)`;
   }
   if (!live.length) return 'no expiry is listed';
-  if (rule.mode === 'nearest') return [live[0]!];
-  if (rule.mode === 'next') return live.length > 1 ? [live[1]!] : 'there is no second expiry listed';
-  return live.length > 1 ? [live[0]!, live[1]!] : [live[0]!]; // b2b: the nearest and the one right after it
+  if (rule.mode === 'current' || rule.mode === 'nearest') return [live[0]!];
+  if (rule.mode === 'next') return live.length > 1 ? [live[1]!] : 'there is no 1DTE (next) expiry listed';
+  if (rule.mode === 'n2n') return live.length > 2 ? [live[2]!] : 'there is no 2DTE (next to next) expiry listed';
+  return live.length > 1 ? [live[0]!, live[1]!] : [live[0]!]; // b2b (older rules): the first two together
 }
 
 function pickLeg(rule: OptionLegRule, chain: readonly ChainOption[], expiryMs: number, spot: number): ChainOption | string {
   const side = rule.side === 'sell' ? 'bid' : 'ask';
   const usable = (o: ChainOption) => o.type === rule.type && o.expiryMs === expiryMs && o[side] > 0;
   const p = rule.pick;
+  if (p.mode === 'delta' && p.target != null) {
+    // the strike whose delta is nearest the target
+    const t = p.target;
+    const best = chain.filter(usable).reduce<ChainOption | null>((b, o) => (b == null || Math.abs(o.delta - t) < Math.abs(b.delta - t) ? o : b), null);
+    // never settle for a strike far from the ask: a 0.02-delta option is not "nearest 0.10" in any useful sense
+    if (!best) return `no ${rule.type} is quoted with a ${side}`;
+    return Math.abs(best.delta - t) <= 0.05 ? best : `the closest ${rule.type} to delta ${t} has delta ${best.delta.toFixed(2)}, too far away`;
+  }
   if (p.mode === 'delta') {
-    // the lowest delta inside the band: further from the money, the safer side of the band
+    const lowB = p.low ?? 0.1, highB = p.high ?? 0.15;
+    // older rules: the lowest delta inside the band
     const hit = rule.side === 'sell'
-      ? pickBodyLeg(chain, rule.type, expiryMs, { low: p.low, high: p.high, target: p.low })
-      : chain.filter((o) => usable(o) && o.delta >= p.low && o.delta <= p.high).sort((a, b) => a.delta - b.delta)[0] ?? null;
-    return hit ?? `no ${rule.type} with delta ${p.low}-${p.high} and a ${side} is quoted`;
+      ? pickBodyLeg(chain, rule.type, expiryMs, { low: lowB, high: highB, target: lowB })
+      : chain.filter((o) => usable(o) && o.delta >= lowB && o.delta <= highB).sort((a, b) => a.delta - b.delta)[0] ?? null;
+    return hit ?? `no ${rule.type} with delta ${lowB}-${highB} and a ${side} is quoted`;
   }
   const cand = chain.filter(usable);
   if (!cand.length) return `no ${rule.type} is quoted with a ${side}`;

@@ -4,7 +4,7 @@ import { istDateKey } from '../../lib/bot/schedule.js';
 import { deltaKeyStatus } from '../delta-keys.js';
 import { paperFor } from '../paper/paper-terminal.js';
 import { getWatchConfig } from '../watch/watch-store.js';
-import { buildPlan, conditionsOf, describePlan, runName, summariseWhy, type EntryPlan } from './algo-engine.js';
+import { buildPlan, conditionsOf, needsBars, describePlan, runName, summariseWhy, type EntryPlan } from './algo-engine.js';
 import { evalConditions } from '../../lib/algo/conditions.js';
 import { createRun, type RunRow } from './algo-store.js';
 import { paperBroker } from './brokers.js';
@@ -52,7 +52,7 @@ export interface Preview {
 export async function previewEntry(userId: string, rule: AlgoStrategy, lots: number): Promise<Preview> {
   const now = Date.now();
   const conds = conditionsOf(rule);
-  const m = await loadMarket(conds.some((c) => c.type === 'rsi' || c.type === 'adx' || c.type === 'ema'));
+  const m = await loadMarket(needsBars(conds));
   const { plan, reason, view } = buildPlan(rule, m, lots, now);
   const ev = evalConditions(conds, view);
   const mult = rule.exit.legStopMultiple;

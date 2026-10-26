@@ -1,4 +1,4 @@
-import { aggregate, rsi, type Bar } from '../bot/futures.js';
+import { aggregate, atr, rsi, vwap, type Bar } from '../bot/futures.js';
 import type { Condition } from './rule.js';
 
 export type Tf = '5m' | '15m' | '1h';
@@ -9,6 +9,8 @@ export interface MarketView {
   dvol: number | null;
   gateGo: boolean | null;
   gateReasons: string[];
+  /** ATM implied volatility of the expiry the strategy trades, in vol points (null when no chain). */
+  atmIv?: number | null;
   /** Total premium (USD) the sold legs would collect right now; null when the legs cannot be priced yet. */
   premium: number | null;
   /** Closed candles, oldest first: 5 minute bars (15m and 1h are built from them). */
@@ -56,6 +58,50 @@ export function adxLast(bars: readonly Bar[], n = 14): number | null {
   return a;
 }
 
+/** The whole EMA series (same seeding as emaLast). */
+function emaSeries(values: readonly number[], n: number): number[] {
+  if (values.length < n) return [];
+  const k = 2 / (n + 1);
+  let e = values.slice(0, n).reduce((a, b) => a + b, 0) / n;
+  const out = [e];
+  for (let i = n; i < values.length; i++) { e = values[i]! * k + e * (1 - k); out.push(e); }
+  return out;
+}
+
+/** MACD(12,26,9) histogram of the last bar; null without enough history. */
+export function macdHist(closes: readonly number[]): number | null {
+  const f = emaSeries(closes, 12), sl = emaSeries(closes, 26);
+  if (!sl.length) return null;
+  const off = f.length - sl.length;
+  const macd = sl.map((v, i) => f[i + off]! - v);
+  const sig = emaSeries(macd, 9);
+  return sig.length ? macd[macd.length - 1]! - sig[sig.length - 1]! : null;
+}
+
+/** Bollinger bands (period, 2 standard deviations) on the last close. */
+export function bollinger(closes: readonly number[], n = 20): { mid: number; upper: number; lower: number } | null {
+  if (closes.length < n) return null;
+  const w = closes.slice(-n), mid = w.reduce((a, b) => a + b, 0) / n;
+  const sd = Math.sqrt(w.reduce((a, b) => a + (b - mid) ** 2, 0) / n);
+  return { mid, upper: mid + 2 * sd, lower: mid - 2 * sd };
+}
+
+/** Price move over `minutes` as a percent, from closed 5m bars. */
+export function changePct(bars: readonly Bar[], minutes: number): number | null {
+  const k = Math.max(1, Math.round(minutes / 5));
+  if (bars.length <= k) return null;
+  const a = bars[bars.length - 1 - k]!.c, b = bars[bars.length - 1]!.c;
+  return a > 0 ? ((b - a) / a) * 100 : null;
+}
+
+/** Speed vs IV: the move over `minutes` divided by the move the ATM IV implies for that time (1 sigma = IV x sqrt(t / year)). */
+export function speedVsIv(bars: readonly Bar[], atmIv: number | null | undefined, minutes: number): number | null {
+  const ch = changePct(bars, minutes);
+  if (ch == null || !atmIv || atmIv <= 0) return null;
+  const sigmaPct = atmIv * Math.sqrt(minutes / (365 * 24 * 60));
+  return Math.abs(ch) / sigmaPct;
+}
+
 const test = (op: '<' | '>', a: number, b: number) => (op === '<' ? a < b : a > b);
 const fmt = (n: number | null, d = 1) => (n == null ? 'no data' : n.toFixed(d));
 
@@ -82,6 +128,34 @@ export function evalCondition(c: Condition, v: MarketView): ConditionResult {
       const f = emaLast(cl, c.fast), s = emaLast(cl, c.slow);
       const ok = f != null && s != null && (c.state === 'above' ? f > s : f < s);
       return { label: `EMA ${c.fast} ${c.state} EMA ${c.slow} (${c.tf})`, ok, now: f == null || s == null ? 'no data' : `${f.toFixed(0)} vs ${s.toFixed(0)}` };
+    }
+    case 'atmiv':
+      return { label: `ATM IV ${c.op} ${c.value}`, ok: v.atmIv != null && test(c.op, v.atmIv, c.value), now: `ATM IV ${fmt(v.atmIv ?? null)}` };
+    case 'speed': {
+      const m = c.minutes ?? 60, r = speedVsIv(v.bars5m, v.atmIv, m);
+      return { label: `Speed vs IV (${m} min) ${c.op} ${c.value}`, ok: r != null && test(c.op, r, c.value), now: r == null ? 'no data' : `${r.toFixed(2)}x implied` };
+    }
+    case 'macd': {
+      const h = macdHist(closesOf(barsFor(v, c.tf)));
+      return { label: `MACD ${c.tf} ${c.state}`, ok: h != null && (c.state === 'bullish' ? h > 0 : h < 0), now: h == null ? 'no data' : `histogram ${h.toFixed(1)}` };
+    }
+    case 'bb': {
+      const cl = closesOf(barsFor(v, c.tf)), b = bollinger(cl, c.period ?? 20), last = cl[cl.length - 1];
+      const ok = b != null && last != null && (c.state === 'above_upper' ? last > b.upper : c.state === 'below_lower' ? last < b.lower : last <= b.upper && last >= b.lower);
+      return { label: `Price ${({ above_upper: 'above the upper', below_lower: 'below the lower', inside: 'inside the' } as const)[c.state]} Bollinger band (${c.tf})`, ok, now: b && last != null ? `${last.toFixed(0)} in ${b.lower.toFixed(0)}-${b.upper.toFixed(0)}` : 'no data' };
+    }
+    case 'atr': {
+      const bs = barsFor(v, c.tf), a = atr(bs, c.period ?? 14), last = bs[bs.length - 1]?.c;
+      const pct = a != null && last ? (a / last) * 100 : null;
+      return { label: `ATR ${c.tf} ${c.op} ${c.pct}% of price`, ok: pct != null && test(c.op, pct, c.pct), now: pct == null ? 'no data' : `ATR ${pct.toFixed(2)}%` };
+    }
+    case 'vwap': {
+      const day = v.bars5m.slice(-288), w = vwap(day), last = v.bars5m[v.bars5m.length - 1]?.c;
+      return { label: `Price ${c.state} VWAP (last 24h)`, ok: w != null && last != null && (c.state === 'above' ? last > w : last < w), now: w == null || last == null ? 'no data' : `${last.toFixed(0)} vs ${w.toFixed(0)}` };
+    }
+    case 'change': {
+      const ch = changePct(v.bars5m, c.minutes);
+      return { label: `Price change over ${c.minutes} min ${c.op} ${c.pct}%`, ok: ch != null && test(c.op, ch, c.pct), now: ch == null ? 'no data' : `${ch.toFixed(2)}%` };
     }
   }
 }
