@@ -31,7 +31,7 @@ const tok = (app: any, sub: string) => ({ authorization: `Bearer ${app.jwt.sign(
 const base = { strategyId: null, dateKey: '2026-10-25', status: 'entered' as const, lots: 5, reason: 'test', ref: 'r', windowStart: null, exitAt: null, plan: { rule: { exit: { netTargetUsd: 40 } } } };
 
 describe('PnL analysis includes algo runs (Paper and Live)', () => {
-  let liveClosed: string, liveOpen: string;
+  let liveClosed: string, liveOpen: string, liveGone: string;
   beforeAll(async () => {
     h.db = new PGlite() as never;
     await ensureAlgoSchema();
@@ -45,13 +45,25 @@ describe('PnL analysis includes algo runs (Paper and Live)', () => {
     await recordMark(b.id, t0 + 660_000, -1, null); await recordMark(b.id, t0 + 720_000, 2, null);
     liveOpen = b.id;
     await createRun({ ...base, userId: V, name: 'Someone else', mode: 'paper', enteredAt: t0 });
+    // the position was already gone on Delta when the engine looked, so it finished with no PnL figure of its own
+    const c = (await createRun({ ...base, userId: U, name: 'Closed on Delta', mode: 'live', dateKey: '2026-10-24', enteredAt: t0 - 600_000 }))!;
+    await recordMark(c.id, t0 - 540_000, 3, null); await recordMark(c.id, t0 - 480_000, -6.5, null);
+    await finishRun(c.id, 'exited', 'no open position left in these contracts', null);
+    liveGone = c.id;
+  });
+
+  it('a run that closed with no PnL figure keeps its last recorded minute on the curve', async () => {
+    const app = await build();
+    const j = (await app.inject({ method: 'GET', url: '/bot/pnl/trades?scope=algo', headers: tok(app, U) })).json();
+    expect(j.equity.find((e: any) => e.id === liveGone)).toMatchObject({ net: -6.5, strategy: 'Closed on Delta (live)' });
+    await app.close();
   });
 
   it('the algo curve lists the signed-in user\'s closed runs and open runs', async () => {
     const app = await build();
     const j = (await app.inject({ method: 'GET', url: '/bot/pnl/trades?scope=algo', headers: tok(app, U) })).json();
-    expect(j.equity.map((e: any) => e.id)).toEqual([liveClosed]);
-    expect(j.equity[0]).toMatchObject({ net: 9.5, strategy: 'Night strangle (live)' });
+    expect(j.equity.map((e: any) => e.id).sort()).toEqual([liveClosed, liveGone].sort());
+    expect(j.equity.find((e: any) => e.id === liveClosed)).toMatchObject({ net: 9.5, strategy: 'Night strangle (live)' });
     expect(j.open).toEqual([expect.objectContaining({ id: liveOpen, mode: 'live' })]);
     const other = (await app.inject({ method: 'GET', url: '/bot/pnl/trades?scope=algo', headers: tok(app, V) })).json();
     expect(other.equity).toHaveLength(0);
