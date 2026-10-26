@@ -23,23 +23,44 @@ async function realCreds(userId: string): Promise<{ key: string; secret: string 
   return null;
 }
 
+/**
+ * The accounts to watch: the read key's account and, when the trading key belongs to a different account (a sub-account), that one too.
+ * Legs from the read account are watch-only when the two differ: they get their own group (":watch") that the hard exit never acts on,
+ * because the hard exit only ever sends orders with the trading key.
+ */
+async function watchedAccounts(userId: string): Promise<Array<{ creds: { key: string; secret: string }; watchOnly: boolean }>> {
+  const read = await realCreds(userId);
+  const trade = await loadDeltaKey(userId, 'trade');
+  if (read && trade && read.key !== trade.key) return [{ creds: read, watchOnly: true }, { creds: trade, watchOnly: false }];
+  const one = trade ?? read;
+  return one ? [{ creds: one, watchOnly: false }] : [];
+}
+
 async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[] | null> {
-  const creds = await realCreds(userId);
-  if (!creds) return null;
-  let hit = posCache.get(userId);
-  if (!hit || Date.now() - hit.at > 8_000) {
-    hit = { at: Date.now(), list: await fetchOptionPositions(creds.key, creds.secret) };
-    posCache.set(userId, hit);
+  const accounts = await watchedAccounts(userId);
+  if (!accounts.length) return null;
+  const lists: Array<{ list: OptionPosition[]; watchOnly: boolean }> = [];
+  for (const a of accounts) {
+    const ck = `${userId}|${a.creds.key}`;
+    let hit = posCache.get(ck);
+    if (!hit || Date.now() - hit.at > 8_000) {
+      hit = { at: Date.now(), list: await fetchOptionPositions(a.creds.key, a.creds.secret) };
+      posCache.set(ck, hit);
+    }
+    lists.push({ list: hit.list, watchOnly: a.watchOnly });
   }
-  if (!hit.list.length) return [];
+  if (!lists.some((l) => l.list.length)) return [];
   const snap = await marketFeed().fast();
   const by = new Map(snap.rows.map((r) => [r.symbol, r]));
   for (const r of snap.rows) ticks.set(r.symbol, r.tick);
   const out: WatchLeg[] = [];
-  for (const p of hit.list) {
-    if (p.size >= 0) continue; // only sold legs have a stop to watch
-    const row = by.get(p.symbol), mark = row && row.mark > 0 ? row.mark : null;
-    out.push({ source: 'delta', group: expiryOf(p.symbol), groupLabel: expiryLabel(expiryOf(p.symbol)), symbol: p.symbol, side: 'sold', entry: p.entry, mark, stop: p.entry * stopMultiple, lots: Math.abs(p.size) });
+  for (const { list, watchOnly } of lists) {
+    for (const p of list) {
+      if (p.size >= 0) continue; // only sold legs have a stop to watch
+      const row = by.get(p.symbol), mark = row && row.mark > 0 ? row.mark : null;
+      const exp = expiryOf(p.symbol), label = expiryLabel(exp);
+      out.push({ source: 'delta', group: watchOnly ? `${exp}:watch` : exp, groupLabel: watchOnly ? label.replace('Delta ·', 'Delta main (watch only) ·') : label, symbol: p.symbol, side: 'sold', entry: p.entry, mark, stop: p.entry * stopMultiple, lots: Math.abs(p.size) });
+    }
   }
   return out;
 }

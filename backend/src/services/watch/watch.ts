@@ -133,7 +133,8 @@ export class WatchService {
     // a real position at the hard-exit distance: hand it to the live exit (which has its own locks)
     if (this.src.hardExit) {
       for (const g of groups) {
-        if (g.source === 'delta' && g.legs.some((l) => l.level === 'hard' || l.level === 'breach')) await this.src.hardExit(uid, g, cfg).catch((e) => { this.lastError = `hard exit: ${(e as Error).message}`; });
+        // the read account's ":watch" group is watch-only: nothing is ever sent for it
+        if (g.source === 'delta' && !g.group.endsWith(':watch') && g.legs.some((l) => l.level === 'hard' || l.level === 'breach')) await this.src.hardExit(uid, g, cfg).catch((e) => { this.lastError = `hard exit: ${(e as Error).message}`; });
       }
     }
   }

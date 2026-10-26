@@ -110,6 +110,12 @@ describe('handing a real position to the hard exit', () => {
     await m.svc.tick();
     expect(m.hard).toHaveLength(0);
   });
+  it('a watch-only group (the read account when the trading key is another account) raises the alarm but never calls the hard exit', async () => {
+    const m = make({ real: { [OWNER]: [leg('delta', '261027:watch', 'C', 199)] } });
+    await m.svc.tick();
+    expect(m.svc.snapshotFor(OWNER)!.alarms).toHaveLength(1);
+    expect(m.hard).toHaveLength(0);
+  });
   it('a failing hard exit is recorded and does not stop the watching', async () => {
     const m = make({ real: { [OWNER]: [leg('delta', 'e', 'C', 199)] } }, { hardExit: async () => { throw new Error('exchange down'); } });
     await m.svc.tick();
