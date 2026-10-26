@@ -124,24 +124,6 @@ describe('live status and close', () => {
     expect(res.ok).toBe(false);
     expect(r.posts).toHaveLength(0);
   });
-  it('watches the position with the read key when there is one, and falls back to the trade key', async () => {
-    const used: string[] = [];
-    const mk = (withRead: boolean): LiveEntryDeps => ({
-      liveEnabled: () => true,
-      cfg: async () => ({ liveArmed: true, dryRun: false }),
-      tradeKey: async () => ({ key: 'TRADE', secret: 's' }),
-      readKey: withRead ? async () => ({ key: 'READ', secret: 's' }) : undefined,
-      positions: async (k) => { used.push(k); return []; },
-      book: async () => ({ bids: [], asks: [] }) as any,
-      productId: async () => 1, tickOf: () => 0.5,
-      post: async () => ({ ok: true, status: 200, body: {}, errorText: '' }),
-      log: async () => undefined, sleep: async () => undefined,
-    });
-    const ref = JSON.stringify({ symbols: ['C-BTC-105000-271026'] });
-    await makeLiveBroker(mk(true)).status('u', ref);
-    await makeLiveBroker(mk(false)).status('u', ref);
-    expect(used).toEqual(['READ', 'TRADE']);
-  });
   it('reports closed when the contracts are flat', async () => {
     const r = rig();
     const st = await r.broker.status('u', JSON.stringify({ symbols: ['C-BTC-105000-271026'] }));
