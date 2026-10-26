@@ -29,6 +29,19 @@ export const conditionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('atr'), tf, op: cmp, pct: z.number().min(0).max(50), period: z.number().int().min(2).max(100).optional() }),
   z.object({ type: z.literal('vwap'), state: z.enum(['above', 'below']) }),
   z.object({ type: z.literal('change'), op: cmp, pct: z.number().min(-50).max(50), minutes: z.number().int().min(5).max(1440) }),
+  /** ADX is below `value` and lower than it was `bars` bars ago: a trend that is fading. */
+  z.object({ type: z.literal('adx_falling'), tf, value: z.number().min(0).max(100), bars: z.number().int().min(1).max(50).optional() }),
+  /** ATM IV / DVOL is lower than it was `minutes` ago by at least `minDrop` vol points. */
+  z.object({ type: z.literal('atmiv_falling'), minutes: z.number().int().min(5).max(720), minDrop: z.number().min(0).max(50).optional() }),
+  z.object({ type: z.literal('dvol_falling'), minutes: z.number().int().min(5).max(720), minDrop: z.number().min(0).max(50).optional() }),
+  /** RSI is lower than it was `bars` bars ago by at least `minDrop` points. */
+  z.object({ type: z.literal('rsi_falling'), tf, bars: z.number().int().min(1).max(50).optional(), minDrop: z.number().min(0).max(50).optional() }),
+  /** Realised volatility over the last `minutes` is lower than over the `minutes` before. */
+  z.object({ type: z.literal('rv_falling'), minutes: z.number().int().min(15).max(720).optional() }),
+  /** Tonight IV against what the IV usually is at this clock time: `above` (rich) or `below` (cheap) by at least `points`. */
+  z.object({ type: z.literal('ivclock'), op: z.enum(['above', 'below']), points: z.number().min(0).max(50) }),
+  /** Edge: ATM IV minus expected realised vol, in vol points, between `low` and `high`. */
+  z.object({ type: z.literal('edge'), low: z.number().min(-100).max(100), high: z.number().min(-100).max(100) }),
 ]);
 export type Condition = z.infer<typeof conditionSchema>;
 
@@ -108,6 +121,7 @@ export const strategySchema = z.object({
     if (l.pick.mode === 'delta' && l.pick.low != null && l.pick.high != null && l.pick.low > l.pick.high) ctx.addIssue({ code: 'custom', path: ['legs', i, 'pick'], message: 'delta low must not be above high' });
   }
   for (const [i, c] of (s.entry.kind === 'window' ? s.entry.conditions : []).entries()) {
+    if (c.type === 'edge' && c.low > c.high) ctx.addIssue({ code: 'custom', path: ['entry', 'conditions', i], message: 'edge: low must not be above high' });
     if (c.type === 'ema' && c.fast >= c.slow) ctx.addIssue({ code: 'custom', path: ['entry', 'conditions', i], message: 'the fast EMA must be shorter than the slow one' });
   }
 });

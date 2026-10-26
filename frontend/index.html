@@ -58714,7 +58714,7 @@ document.addEventListener('click', function(e) {
   }
   new MutationObserver(() => { if (active()) show(); }).observe($('pgScore'), { attributes: true, attributeFilter: ['class'] });
   setInterval(() => { if (active() && !D.hidden && S.level !== 'day') load(); }, 60000);
-  window.scorePage = { show, summarize, byStrategy, byWeekday, byDay, verdict, bestWorst, weekdayOf };
+  window.scorePage = { show, summarize, byStrategy, byWeekday, byDay, verdict, bestWorst, weekdayOf, open: src => { if (SRC[src]) { S.src = src; S.level = 'strategies'; S.strat = null; S.wd = null; S.day = null; S.trades = null; } const nb = D.querySelector('#nav button[data-page="pgScore"]'); if (nb) nb.click(); S.built = false; show(); } };
   if (active()) show();
 })();
 </script>
@@ -58790,6 +58790,8 @@ document.addEventListener('click', function(e) {
 #pgAlgo .pc table.pcT{border-collapse:collapse;width:100%;font-size:12px}
 #pgAlgo .pc .bt-note{font-size:12px;color:var(--muted);margin:6px 0}
 #pgAlgo tr.al-rr{cursor:pointer}#pgAlgo tr.al-rr:hover td{background:var(--panel2)}#pgAlgo tr.al-rr.sel td{background:var(--panel2);box-shadow:inset 0 1px 0 var(--focus),inset 0 -1px 0 var(--focus)}
+@keyframes alFlash{0%{box-shadow:0 0 0 3px var(--focus,#58A6D6);background:rgba(88,166,214,.25)}100%{box-shadow:0 0 0 0 transparent}}
+#pgAlgo .al-flash{animation:alFlash 1.8s ease-out 1}
 #pgAlgo .al-ev{list-style:none;margin:0;padding:0;font-size:12.5px}
 #pgAlgo .al-ev li{padding:4px 0;border-bottom:1px solid var(--line)}
 #pgAlgo .al-ev li.bad{color:var(--up)}
@@ -58875,6 +58877,12 @@ document.addEventListener('click', function(e) {
     else if (c.type === 'atr') { o.tf = c.tf || '15m'; o.op = c.op || '<'; o.pct = num(c.pct, 0.5); }
     else if (c.type === 'vwap') { o.state = c.state || 'above'; }
     else if (c.type === 'change') { o.op = c.op || '<'; o.pct = num(c.pct, 1); o.minutes = Math.round(num(c.minutes, 60)); }
+    else if (c.type === 'adx_falling') { o.tf = c.tf || '15m'; o.value = num(c.value, 25); o.bars = Math.round(num(c.bars, 3)); }
+    else if (c.type === 'atmiv_falling' || c.type === 'dvol_falling') { o.minutes = Math.round(num(c.minutes, 30)); o.minDrop = num(c.minDrop, 0.3); }
+    else if (c.type === 'rsi_falling') { o.tf = c.tf || '15m'; o.bars = Math.round(num(c.bars, 3)); o.minDrop = num(c.minDrop, 1); }
+    else if (c.type === 'rv_falling') { o.minutes = Math.round(num(c.minutes, 60)); }
+    else if (c.type === 'ivclock') { o.op = c.op || 'above'; o.points = num(c.points, 1); }
+    else if (c.type === 'edge') { o.low = num(c.low, 1); o.high = num(c.high, 8); }
     return o;
   }
   function fromRule(r, lots, id) {
@@ -58910,6 +58918,13 @@ document.addEventListener('click', function(e) {
       case 'dvol': return 'DVOL ' + c.op + ' ' + c.value;
       case 'spot': return 'spot ' + c.op + ' ' + c.value;
       case 'premium': return 'premium collected is at least $' + c.value;
+      case 'adx_falling': return 'ADX(' + c.tf + ') below ' + c.value + ' and falling';
+      case 'atmiv_falling': return 'ATM IV falling over ' + c.minutes + ' min';
+      case 'dvol_falling': return 'DVOL falling over ' + c.minutes + ' min';
+      case 'rsi_falling': return 'RSI(' + c.tf + ') falling';
+      case 'rv_falling': return 'realised vol falling';
+      case 'ivclock': return "tonight's IV " + c.op + ' its clock path by ' + c.points + ' pt';
+      case 'edge': return 'edge between ' + c.low + ' and ' + c.high + ' pts';
       case 'atmiv': return 'ATM IV ' + c.op + ' ' + c.value;
       case 'speed': return 'speed vs IV (' + (c.minutes || 60) + ' min) ' + c.op + ' ' + c.value + 'x';
       case 'macd': return 'MACD(' + c.tf + ') is ' + c.state;
@@ -58950,6 +58965,12 @@ document.addEventListener('click', function(e) {
     else if (c.type === 'spot') body = '<span>Spot</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 'm' });
     else if (c.type === 'premium') body = '<span>Premium collected at least $</span>' + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
     else if (c.type === 'rsi' || c.type === 'adx') body = '<span>' + c.type.toUpperCase() + '</span>' + tf + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
+    else if (c.type === 'adx_falling') body = '<span>ADX</span>' + tf + '<span>below</span>' + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' }) + '<span>and lower than</span>' + inp(b + 'bars', c.bars, { t: 'num', type: 'number', cls: 's' }) + '<span>bars ago</span>';
+    else if (c.type === 'atmiv_falling' || c.type === 'dvol_falling') body = '<span>' + (c.type === 'atmiv_falling' ? 'ATM IV' : 'DVOL') + ' falling over</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min, down at least</span>' + inp(b + 'minDrop', c.minDrop, { t: 'num', type: 'number', step: '0.1', cls: 's' }) + '<span>pt</span>';
+    else if (c.type === 'rsi_falling') body = '<span>RSI</span>' + tf + '<span>falling: down at least</span>' + inp(b + 'minDrop', c.minDrop, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>over</span>' + inp(b + 'bars', c.bars, { t: 'num', type: 'number', cls: 's' }) + '<span>bars</span>';
+    else if (c.type === 'rv_falling') body = '<span>Realised vol: the last</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min lower than the</span><span>min before it</span>';
+    else if (c.type === 'ivclock') body = '<span>Tonight IV is</span>' + sel(b + 'op', c.op || 'above', [['above', 'above (rich)'], ['below', 'below (cheap)']]) + '<span>its clock path by at least</span>' + inp(b + 'points', c.points, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>pt</span><span class="dim">clock path = the usual IV at this IST time on earlier days</span>';
+    else if (c.type === 'edge') body = '<span>Edge between</span>' + inp(b + 'low', c.low, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>and</span>' + inp(b + 'high', c.high, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>pts</span><span class="dim">ATM IV minus expected realised vol</span>';
     else if (c.type === 'atmiv') body = '<span>ATM IV</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
     else if (c.type === 'speed') body = '<span>Speed vs IV over</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', step: '0.1', cls: 's' }) + '<span class="dim">x the move IV implies (1 = as implied)</span>';
     else if (c.type === 'macd') body = '<span>MACD</span>' + tf + sel(b + 'state', c.state || 'bullish', [['bullish', 'bullish (histogram above 0)'], ['bearish', 'bearish (histogram below 0)']]);
@@ -58981,10 +59002,10 @@ document.addEventListener('click', function(e) {
       fld('How', sel('entry.kind', f.entry.kind, [['hard', 'Hard time: enter at one time'], ['window', 'Window: wait until the conditions are met']], { struct: 1 })) +
       (f.entry.kind === 'hard' ? fld('At (IST)', inp('entry.time', f.entry.time, { type: 'time' })) : fld('From (IST)', inp('entry.from', f.entry.from, { type: 'time' })) + fld('Until (IST)', inp('entry.to', f.entry.to, { type: 'time' }))) + '</div>';
     if (f.entry.kind === 'window') {
-      h += '<div class="al-sub">Conditions (all must be true) <select data-al-add="cond"><option value="">+ Add condition…</option>' + [['gate', 'Desk gate says GO'], ['dvol', 'DVOL level'], ['spot', 'Spot level'], ['premium', 'Premium collected'], ['atmiv', 'ATM IV level'], ['speed', 'Speed vs IV'], ['rsi', 'RSI'], ['adx', 'ADX'], ['ema', 'EMA cross'], ['macd', 'MACD'], ['bb', 'Bollinger band'], ['atr', 'ATR (volatility of price)'], ['vwap', 'VWAP'], ['change', 'Price change over time']].map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select></div>' +
+      h += '<div class="al-sub">Conditions (all must be true) <select data-al-add="cond"><option value="">+ Add condition…</option>' + [['gate', 'Desk gate says GO'], ['dvol', 'DVOL level'], ['spot', 'Spot level'], ['premium', 'Premium collected'], ['atmiv', 'ATM IV level'], ['speed', 'Speed vs IV'], ['rsi', 'RSI'], ['adx', 'ADX'], ['ema', 'EMA cross'], ['macd', 'MACD'], ['bb', 'Bollinger band'], ['atr', 'ATR (volatility of price)'], ['vwap', 'VWAP'], ['change', 'Price change over time'], ['adx_falling', 'ADX below and falling'], ['atmiv_falling', 'ATM IV falling'], ['dvol_falling', 'DVOL falling'], ['rsi_falling', 'RSI falling'], ['rv_falling', 'Realised vol (RV) falling'], ['ivclock', 'Tonight IV vs clock'], ['edge', 'Edge between']].map(x => '<option value="' + x[0] + '">' + x[1] + '</option>').join('') + '</select></div>' +
         (f.entry.conditions.length ? f.entry.conditions.map(condRow).join('') : '<div class="al-note">No conditions: it enters at the start of the window. Add some to wait for the right moment.</div>');
     }
-    h += '<div class="al-sub">Days</div><div class="al-days">' + DAYS.map(d => '<button type="button" class="al-day' + (f.days.includes(d) ? ' on' : '') + '" data-al="day" data-d="' + d + '">' + DAYL[d] + '</button>').join('') + '</div>' +
+    h += '<div class="al-sub">Days</div><div class="al-days">' + DAYS.map(d => '<button type="button" class="al-day' + (f.days.includes(d) ? ' on' : '') + '" data-al="day" data-d="' + d + '" data-flash="days.' + d + '">' + DAYL[d] + '</button>').join('') + '</div>' +
       '<div class="al-note">A window that runs past midnight belongs to the day it starts.</div>';
     h += '<div class="al-sub">Exit and stops</div><div class="al-grid">' +
       (opts ? fld('Stop per sold leg (x entry price)', inp('exit.legStopMultiple', f.exit.legStopMultiple, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' }), '2 = a leg sold at 100 stops at 200. Empty = no per-leg stop.') :
@@ -59140,6 +59161,20 @@ document.addEventListener('click', function(e) {
     skeleton(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { }
   }
 
+  /** Ask me fills the form: show the Algo page with this rule in the writer and flash the boxes that just changed. */
+  function fill(rule, lots, flash) {
+    S.form = fromRule(rule, lots, null); S.formTouched = true; S.formOpen = true; S.pv = null; S.err = null;
+    const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb && !active()) nb.click();
+    if (!S.built) S.built = false;
+    S.built = true; skeleton();
+    let first = null;
+    (flash || []).forEach(p => {
+      const list = p.slice(-1) === '*' ? Array.from(root.querySelectorAll('[data-f^="' + p.slice(0, -1) + '"]')) : [root.querySelector('[data-f="' + p + '"]') || root.querySelector('[data-flash="' + p + '"]')];
+      list.forEach(el => { if (el) { el.classList.add('al-flash'); if (!first) first = el; } });
+    });
+    if (first && first.scrollIntoView) try { first.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { }
+  }
+
   /* ---------- page skeleton ---------- */
   function skeleton() {
     root.innerHTML = '<div class="al"><div class="al-top"><h2>Algo trading</h2><span class="al-sub2">Write your own entry and exit rules. Nothing is fixed. Paper first; real orders only with a trading key.</span></div>' +
@@ -59195,7 +59230,7 @@ document.addEventListener('click', function(e) {
     const el = e.target;
     if (el.dataset && el.dataset.alAdd === 'cond') {
       const t = el.value; if (!t) return;
-      const base = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 } }[t];
+      const base = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 }, adx_falling: { tf: '15m', value: 25, bars: 3 }, atmiv_falling: { minutes: 30, minDrop: 0.3 }, dvol_falling: { minutes: 60, minDrop: 0.5 }, rsi_falling: { tf: '15m', bars: 3, minDrop: 1 }, rv_falling: { minutes: 60 }, ivclock: { op: 'above', points: 1 }, edge: { low: 1, high: 8 } }[t];
       S.form.entry.conditions.push(Object.assign({ type: t }, base)); S.formTouched = true; paintForm(); return;
     }
     if (!el.dataset || !el.dataset.f) return;
@@ -59246,7 +59281,7 @@ document.addEventListener('click', function(e) {
   function tick() { if (active() && !D.hidden) refresh(); }
   new MutationObserver(() => { if (active() && Date.now() - S.at > 1500) { S.at = Date.now(); refresh(); } }).observe($('pgAlgo'), { attributes: true, attributeFilter: ['class'] });
   timer = setInterval(tick, 5000);
-  window.algoPage = { refresh, toRule, words, track: id => { S.sel = id; S.pnl = null; S.hair = -1; S.tab = 'runs'; const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb) nb.click(); S.built = false; refresh(); } };
+  window.algoPage = { refresh, toRule, words, fill, reset: () => { S.form = newForm(); S.formTouched = false; S.pv = null; if (S.built) skeleton(); }, track: id => { S.sel = id; S.pnl = null; S.hair = -1; S.tab = 'runs'; const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb) nb.click(); S.built = false; refresh(); } };
   if (active()) refresh();
 })();
 </script>
@@ -61256,6 +61291,8 @@ document.addEventListener('click', function(e) {
     if (pending === 'when') { const c = parseWhen(q); if (c) return { kind: 'when', patch: Object.assign(parsePatch(q), c) }; }
     if (pending === 'choose') { const c = parseChoice(q); if (c) return { kind: 'choice', patch: Object.assign(parsePatch(q), c) }; }
     let m;
+    if (/\b(day ?wise|day-wise|by day|per day|each day|weekday ?wise|by weekday|strategy ?wise|by strategy|which day)\b/.test(q) && /\b(pnl|p&l|profit|performance|results?|score|good|best|works?)\b/.test(q)) return { kind: 'dayscore' };
+    if (/^(open |show )?(the )?score( page)?$/.test(q)) return { kind: 'dayscore' };
     if (/\b(indicators?|signals?)\b/.test(q) && /\b(futures?|options?|strangle|algo|trading|trade)\b/.test(q) && /\b(best|top|which|recommend\w*|suggest\w*|work\w*|learn\w*|use)\b/.test(q)) return { kind: 'insight', which: /\bfutures?\b/.test(q) && !/\boptions?\b/.test(q) ? 'future' : /\b(options?|strangle)\b/.test(q) && !/\bfutures?\b/.test(q) ? 'option' : 'both' };
     if (/^(?:please )?(?:exit|exit all|close all|kill all|kill|hard exit|hard kill|square ?off|square off all|exit everything|close everything|exit all positions|close all positions|kill all positions)(?: now)?$/.test(q)) return { kind: 'exit' };
     if ((m = /^(?:please )?(?:entry|enter|entre|sell|short|go short|open)\s+(\d{1,6})(?:\s*lots?)?\b(.*)$/.exec(q))) {
@@ -61317,6 +61354,7 @@ document.addEventListener('click', function(e) {
   const msg = (kind, o) => Object.assign({ kind }, o);
 
   async function handle(q) {
+    if (window.askWizard) { const wm = await window.askWizard.handle(q); if (wm) return wm; }
     const cmd = parseTrade(q, T.stage);
     if (!cmd) return null;
     if (cmd.kind === 'cancel') { reset(); return msg('text', { text: 'Cancelled. Nothing was placed.' }); }
@@ -61326,6 +61364,7 @@ document.addEventListener('click', function(e) {
     }
     if (cmd.kind === 'choice' || cmd.kind === 'when') { T.held = Object.assign({}, T.held || {}, cmd.patch); return next(); }
     if (cmd.kind === 'insight') return insight(cmd.which);
+    if (cmd.kind === 'dayscore') return dayScore();
     if (cmd.kind === 'patch') {
       T.rule = applyPatch(T.rule, cmd.patch); await preview();
       return msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap(), note: 'Updated.' });
@@ -61369,6 +61408,39 @@ document.addEventListener('click', function(e) {
     }
     T.stage = T.when === 'later' ? 'builder' : 'summary';
     return msg(T.stage, { snap: snap(), note });
+  }
+  /** Strategy-wise and day-wise PnL from the recorded trades of the bot, the Algo panel and Paper Trade */
+  async function dayScore() {
+    const SPG = window.scorePage; if (!SPG) return msg('text', { text: 'The Score page is not loaded.' });
+    const out = [];
+    for (const src of ['bot', 'algo', 'paper']) {
+      try {
+        const j = await api2('/score/trades?source=' + src); const gs = SPG.byStrategy(j.trades);
+        out.push({ src, groups: gs.slice(0, 6).map(g => ({ label: g.label, key: g.key, stats: g.stats, verdict: g.verdict, wds: SPG.byWeekday(g.trades), bw: SPG.bestWorst(SPG.byWeekday(g.trades)) })) });
+      } catch (e) { out.push({ src, groups: [], err: e.message }); }
+    }
+    return msg('dayscore', { out });
+  }
+  async function api2(path) {
+    const t = tok(); if (!t) throw new Error('Sign in first');
+    const r = await fetch('/api/v1' + path, { headers: { Accept: 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.success === false) throw new Error((j && j.error) || 'HTTP ' + r.status);
+    return j;
+  }
+  function dayScoreCard(m) {
+    const NAMES = { bot: 'Bot (paper)', algo: 'Algo trading', paper: 'Paper Trade' };
+    let h = '<div class="at-card"><div class="at-h">PnL by strategy and by weekday</div><div class="at-fine">Green made money, red lost. Open the Score page, click a strategy, then a weekday, then a day to see that day minute by minute with the hairline.</div>';
+    for (const o of m.out) {
+      h += '<div class="at-sub">' + NAMES[o.src] + '</div>';
+      if (o.err) { h += '<div class="at-fine">' + esc(o.err) + '</div>'; continue; }
+      if (!o.groups.length) { h += '<div class="at-fine">No finished trades yet.</div>'; continue; }
+      h += o.groups.map(g => '<div class="at-ds"><div class="at-dh"><b>' + esc(g.label) + '</b> <span class="at-badge">' + esc({ working: 'Working', marginal: 'Weak', losing: 'Losing', few: 'Too few trades' }[g.verdict.tag]) + '</span> <span class="' + (g.stats.total >= 0 ? 'at-up' : 'at-dn') + '">' + money(g.stats.total) + '</span> <span class="at-fine">' + g.stats.n + ' trades, won ' + Math.round(g.stats.winRate * 100) + '%</span></div>' +
+        '<div class="at-wk">' + g.wds.map(d => '<div class="' + (d.stats.n === 0 ? '' : d.stats.total >= 0 ? 'w' : 'l') + '"><span>' + d.short + '</span><b>' + (d.stats.n ? money(d.stats.total).replace('.00', '') : '-') + '</b><i>' + (d.stats.n ? d.stats.wins + '/' + d.stats.n : '') + '</i></div>').join('') + '</div>' +
+        '<div class="at-fine">' + esc(g.bw.text) + '</div></div>').join('');
+      h += '<div class="at-act"><button type="button" class="at-btn pri" data-at="score" data-src="' + o.src + '">Open ' + NAMES[o.src] + ' on the Score page</button></div>';
+    }
+    return h + '</div>';
   }
   async function insight(which) {
     try { const j = await api('/insights'); return msg('insight', { data: j, which }); }
@@ -61456,6 +61528,8 @@ document.addEventListener('click', function(e) {
   function render(m) {
     if (!m) return '';
     if (m.kind === 'text') return '<div class="at-card"><div>' + esc(m.text) + '</div></div>';
+    if ((m.kind === 'wz' || m.kind === 'wzdone') && window.askWizard) return window.askWizard.render(m);
+    if (m.kind === 'dayscore') return dayScoreCard(m);
     if (m.kind === 'choose') {
       return '<div class="at-card"><div class="at-h">Entry ' + m.lots + ' lots: option or future?</div><div class="at-act"><button type="button" class="at-btn pri" data-at="pick" data-k="strangle">Option: one strangle (2 legs, nearest 0.10 delta)</button><button type="button" class="at-btn" data-at="pick" data-k="long">Future: buy (long)</button><button type="button" class="at-btn" data-at="pick" data-k="short">Future: sell (short)</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div><div class="at-fine">Or type: option, future long, future short.</div></div>';
     }
@@ -61494,6 +61568,7 @@ document.addEventListener('click', function(e) {
     const a = b.dataset.at;
     if (a === 'ok') { const m = await handle('ok'); if (m) answer(m); }
     else if (a === 'when') { const m = await handle(b.dataset.k === 'now' ? 'now' : 'schedule'); if (m) answer(m); }
+    else if (a === 'score') { if (window.scorePage) window.scorePage.open(b.dataset.src); }
     else if (a === 'track') { if (window.algoPage) window.algoPage.track(b.dataset.id); }
     else if (a === 'pick') { const k = b.dataset.k; const m = await handle(k === 'strangle' ? 'option' : 'future ' + k); if (m) answer(m); }
     else if (a === 'cancel') { reset(); answer(msg('text', { text: 'Cancelled. Nothing was placed.' })); }
@@ -61538,11 +61613,448 @@ document.addEventListener('click', function(e) {
     '#askPanel .at-act{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}#askPanel .at-btn{background:var(--panel,#121a24);color:var(--text,#e6edf5);border:1px solid var(--line2,#2c394a);border-radius:7px;padding:6px 12px;font:600 12px inherit;cursor:pointer}#askPanel .at-btn.pri{border-color:var(--down,#35BB7D)}#askPanel .at-btn.bad{border-color:var(--up,#EF5A5E);color:var(--up,#EF5A5E)}' +
     '#askPanel .at-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px 8px;margin:8px 0}#askPanel .at-form label{display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--muted,#8fa3b5)}#askPanel .at-form input,#askPanel .at-form select{background:var(--panel,#121a24);color:var(--text,#e6edf5);border:1px solid var(--line2,#2c394a);border-radius:6px;padding:4px 6px;font:13px inherit;min-width:0}' +
     '#askPanel .at-days{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px}#askPanel .at-day{background:var(--panel,#121a24);color:var(--muted,#8fa3b5);border:1px solid var(--line2,#2c394a);border-radius:999px;padding:3px 10px;font:600 11.5px inherit;cursor:pointer}#askPanel .at-day.on{color:var(--text,#e6edf5);border-color:var(--focus,#58A6D6)}' +
+    '#askPanel .at-ds{border-top:1px solid var(--line2,#2c394a);padding:6px 0}#askPanel .at-dh{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center}#askPanel .at-up{color:var(--down,#35BB7D);font-weight:700}#askPanel .at-dn{color:var(--up,#EF5A5E);font-weight:700}#askPanel .at-wk{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin:4px 0}#askPanel .at-wk div{display:flex;flex-direction:column;align-items:center;border:1px solid var(--line2,#2c394a);border-radius:6px;padding:3px 0;font-size:11px}#askPanel .at-wk div.w{border-color:var(--down,#35BB7D)}#askPanel .at-wk div.w b{color:var(--down,#35BB7D)}#askPanel .at-wk div.l{border-color:var(--up,#EF5A5E)}#askPanel .at-wk div.l b{color:var(--up,#EF5A5E)}#askPanel .at-wk i{font-style:normal;color:var(--muted,#8fa3b5);font-size:10px}' +
     '#askPanel .at-rec{border:1px solid var(--line2,#2c394a);border-radius:9px;padding:7px 10px;margin:8px 0}#askPanel .at-rec.go{border-color:var(--down,#35BB7D)}#askPanel .at-rec.wait{border-color:var(--warn,#E3AE45)}#askPanel .at-rh{font-weight:700}#askPanel .at-rec.go .at-rh{color:var(--down,#35BB7D)}#askPanel .at-rec.wait .at-rh{color:var(--warn,#E3AE45)}' +
     '#askPanel .at-cl{list-style:none;margin:6px 0 0;padding:0}#askPanel .at-cl li.ok{color:var(--down,#35BB7D)}#askPanel .at-cl li.no{color:var(--warn,#E3AE45)}#askPanel .at-cl span{color:var(--muted,#8fa3b5)}';
   D.head.appendChild(style);
 
   window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, congrats, API, active: () => T.stage };
+})();
+</script><script id="askWizard">
+/* Ask me: "algo trading" starts a guided build of an Algo strategy. The Algo page opens beside the chat and its form fills in as you answer,
+   one step at a time, with a recommendation at each step that comes from your own recorded results and the live market.
+   Nothing is placed until the last step, and Live still needs a saved trading key (the server enforces every lock). */
+(function askWizard() {
+  'use strict';
+  const D = document;
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // WIZARD-CORE-START
+  function makeWizardCore(P) {
+    const parsePatch = P.parsePatch, applyPatch = P.applyPatch, parseChoice = P.parseChoice;
+    const COND = {
+      adx_falling: { type: 'adx_falling', tf: '15m', value: 25, bars: 3 },
+      atmiv_falling: { type: 'atmiv_falling', minutes: 30, minDrop: 0.3 },
+      dvol_falling: { type: 'dvol_falling', minutes: 60, minDrop: 0.5 },
+      rsi_falling: { type: 'rsi_falling', tf: '15m', bars: 3, minDrop: 1 },
+      rv_falling: { type: 'rv_falling', minutes: 60 },
+      ivclock: { type: 'ivclock', op: 'above', points: 1 },
+      edge: { type: 'edge', low: 1, high: 8 },
+      gate: { type: 'gate' },
+      dvol_below: { type: 'dvol', op: '<', value: 55 },
+    };
+    const COND_NAMES = {
+      adx_falling: 'ADX below 25 and falling', atmiv_falling: 'ATM IV falling', dvol_falling: 'DVOL falling', rsi_falling: 'RSI falling',
+      rv_falling: 'Realised vol falling', ivclock: "Tonight's IV above its clock path", edge: 'Edge between 1 and 8 pts', gate: 'Desk gate says GO', dvol_below: 'DVOL below 55',
+    };
+    const SLOT = { ASIA_SHORT: '10:00', NY_SHORT: '22:30', EVE_LONG: '17:30', PRE_LONG: '05:00' };
+    const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+    const TITLES = { kind: 'Options or futures, and which structure?', delta: 'Which delta should the strikes be nearest to?', expiry: 'Which expiry?', when: 'Trade now, or schedule it?',
+      entry: 'How should it enter?', time: 'At what time (IST)?', conditions: 'Which conditions must be true before it enters?', days: 'On which days?',
+      stops: 'Stop loss and target?', exittime: 'Close everything at what time (IST)?', lots: 'How many lots?', mode: 'Paper or Live?', review: 'Review: save, arm, or place it?' };
+
+    const clone = o => JSON.parse(JSON.stringify(o));
+    function steps(w) {
+      const opt = w.rule.instrument === 'option', win = w.rule.entry.kind === 'window';
+      return ['kind'].concat(opt ? ['delta', 'expiry'] : []).concat(['when']).concat(w.when === 'later' ? ['entry', 'time'].concat(win ? ['conditions'] : []).concat(['days']) : []).concat(['stops', 'exittime', 'lots', 'mode', 'review']);
+    }
+    const hhmm = (h, m, ap) => { h = Number(h); m = Number(m || 0); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; return h > 23 || m > 59 ? null : String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); };
+    function times(q) {
+      const out = [], re = /\b(\d{1,2})[:.](\d{2})\s*(am|pm)?\b|\b(\d{1,2})\s*(am|pm)\b/g; let m;
+      while ((m = re.exec(q))) { const t = m[1] != null ? hhmm(m[1], m[2], m[3]) : hhmm(m[4], 0, m[5]); if (t) out.push(t); }
+      return out;
+    }
+    const plus3h = t => { const [h, m] = t.split(':').map(Number); return String((h + 3) % 24).padStart(2, '0') + ':' + String(m).padStart(2, '0'); };
+    const DAYRE = /^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*[ ,]*)+$/;
+
+    /** Read one answer for one step. {ok:true, ...} or {ok:false, hint} */
+    function parseAnswer(step, text, w) {
+      const q = String(text || '').toLowerCase().replace(/[.!]+$/g, '').trim();
+      const bad = hint => ({ ok: false, hint });
+      let m;
+      if (step === 'kind') {
+        if (/^(short )?call( only)?$/.test(q)) return { ok: true, patch: { legs: 'call' } };
+        if (/^(short )?put( only)?$/.test(q)) return { ok: true, patch: { legs: 'put' } };
+        const c = parseChoice(q); if (c) return { ok: true, patch: c };
+        return bad('Say option strangle, option straddle, call, put, future long or future short.');
+      }
+      if (step === 'delta') {
+        if ((m = /(\d*\.\d+|\d{1,2})/.exec(q))) { let v = Number(m[1]); if (v >= 1) v = v / 100; if (v >= 0.01 && v <= 0.9) return { ok: true, patch: { deltaTarget: v } }; }
+        return bad('Give a delta like 0.10 (or 10).');
+      }
+      if (step === 'expiry') {
+        if (/\b(2 ?dte|n2n|next[- ]to[- ]next|second)\b/.test(q)) return { ok: true, patch: { expiry: { mode: 'n2n' } } };
+        if (/\b(1 ?dte|next|tomorrow)\b/.test(q)) return { ok: true, patch: { expiry: { mode: 'next' } } };
+        if (/\b(0 ?dte|current|today|nearest)\b/.test(q)) return { ok: true, patch: { expiry: { mode: 'current' } } };
+        return bad('Say current (0DTE), next (1DTE) or next to next (2DTE).');
+      }
+      if (step === 'when') {
+        if (/\b(now|immediately|market|right away)\b/.test(q)) return { ok: true, when: 'now' };
+        if (/\b(schedule|scheduled|later|tonight|tomorrow|time)\b/.test(q)) return { ok: true, when: 'later' };
+        return bad('Say now, or schedule.');
+      }
+      if (step === 'entry') {
+        if (/\b(window|wait|condition|between)\b/.test(q)) return { ok: true, entryKind: 'window' };
+        if (/\b(hard|fixed|exact|time|at)\b/.test(q)) return { ok: true, entryKind: 'hard' };
+        return bad('Say hard time, or window.');
+      }
+      if (step === 'time') {
+        const t = times(q);
+        if (!t.length) return bad('Give a time like 22:30' + (w.rule.entry.kind === 'window' ? ', or a window like 22:30 to 01:30.' : '.'));
+        if (w.rule.entry.kind === 'window') return { ok: true, window: { from: t[0], to: t[1] || plus3h(t[0]) } };
+        return { ok: true, entryTime: t[0] };
+      }
+      if (step === 'conditions') {
+        if (/^(done|finish|finished|no more|that'?s all|skip|none|no|next)$/.test(q)) return { ok: true, done: true };
+        let id = null;
+        if (COND[q]) id = q;
+        else if (/dvol/.test(q) && /fall/.test(q)) id = 'dvol_falling';
+        else if (/(atm ?iv|\biv\b)/.test(q) && /fall/.test(q)) id = 'atmiv_falling';
+        else if (/(adx|adix)/.test(q)) id = 'adx_falling';
+        else if (/rsi/.test(q)) id = 'rsi_falling';
+        else if (/(\brv\b|realised|realized)/.test(q)) id = 'rv_falling';
+        else if (/clock/.test(q)) id = 'ivclock';
+        else if (/\bedge\b/.test(q)) id = 'edge';
+        else if (/gate/.test(q)) id = 'gate';
+        else if (/dvol/.test(q)) id = 'dvol_below';
+        if (!id) return bad('Pick one of the conditions, or say done.');
+        const c = clone(COND[id]);
+        if (id === 'edge' && (m = /(-?\d+(?:\.\d+)?)\s*(?:and|to|-)\s*(-?\d+(?:\.\d+)?)/.exec(q))) { c.low = Math.min(Number(m[1]), Number(m[2])); c.high = Math.max(Number(m[1]), Number(m[2])); }
+        if (id === 'adx_falling' && (m = /(?:below|under|<)\s*(\d+)/.exec(q))) c.value = Number(m[1]);
+        if ((id === 'atmiv_falling' || id === 'dvol_falling' || id === 'rv_falling') && (m = /(\d+)\s*min/.exec(q))) c.minutes = Number(m[1]);
+        if (id === 'ivclock' && /below|cheap/.test(q)) c.op = 'below';
+        return { ok: true, cond: c, id };
+      }
+      if (step === 'days') {
+        if (/^(every ?day|all|all days|daily|7 days)$/.test(q)) return { ok: true, days: DAYS.slice() };
+        if (/\bweekdays?\b/.test(q)) return { ok: true, days: DAYS.slice(0, 5) };
+        const p = DAYRE.test(q) ? parsePatch('days ' + q) : parsePatch(q);
+        if (p.days && p.days.length) return { ok: true, days: p.days };
+        return bad('Say every day, weekdays, or days like mon tue fri.');
+      }
+      if (step === 'stops') {
+        if (/^(default|ok|okay|keep|same|yes|skip)$/.test(q)) return { ok: true, patch: {} };
+        if (/^(none|no stop|no)$/.test(q)) return { ok: true, patch: w.rule.instrument === 'option' ? { stopMultiple: null } : { stopUsd: 0 }, none: true };
+        const two = /\$\s*(\d+(?:\.\d+)?)[^\d$]+\$\s*(\d+(?:\.\d+)?)/.exec(q);
+        if (two) return { ok: true, patch: { stopUsd: Number(two[1]), netTarget: Number(two[2]) } };
+        const p = parsePatch(q);
+        if (p.stopMultiple !== undefined || p.stopUsd != null || p.netTarget != null || p.netStop != null) return { ok: true, patch: p };
+        if ((m = /^(\d+(?:\.\d+)?)\s*x$/.exec(q))) return { ok: true, patch: { stopMultiple: Number(m[1]) } };
+        return bad(w.rule.instrument === 'option' ? 'Say 2x, 3x, none, or a net target like target $40.' : 'Give dollars, like stop $25 target $50.');
+      }
+      if (step === 'exittime') {
+        if (/^(none|no|skip|no exit|never)$/.test(q)) return { ok: true, exitTime: null };
+        const t = times(q); if (t.length) return { ok: true, exitTime: t[0] };
+        return bad('Give a time like 07:00, or say none.');
+      }
+      if (step === 'lots') {
+        if ((m = /(\d{1,6})/.exec(q)) && Number(m[1]) >= 1) return { ok: true, lots: Number(m[1]) };
+        return bad('Give a number of lots, like 50.');
+      }
+      if (step === 'mode') {
+        if (/live/.test(q)) return { ok: true, mode: 'live' };
+        if (/paper|test|demo/.test(q)) return { ok: true, mode: 'paper' };
+        return bad('Say paper or live.');
+      }
+      if (step === 'review') {
+        if (/cancel|abort/.test(q)) return { ok: true, act: 'cancel' };
+        if (/arm/.test(q)) return { ok: true, act: 'arm' };
+        if (/save/.test(q)) return { ok: true, act: 'save' };
+        if (/(now|place|enter|execute|go)/.test(q)) return { ok: true, act: 'now' };
+        return bad('Say save, save and arm, or place now.');
+      }
+      return bad('I did not understand that.');
+    }
+
+    /** Apply a read answer to the wizard state. Returns the form boxes to flash. */
+    function applyAnswer(w, step, a) {
+      const r = w.rule;
+      if (step === 'kind') {
+        const hadFuture = r.instrument === 'future';
+        w.rule = applyPatch(r, a.patch);
+        if (w.rule.instrument === 'future') { w.rule.exit.legStopMultiple = null; } else if (hadFuture) { w.rule.exit.legStopMultiple = 2; w.rule.exit.futStopUsd = null; w.rule.exit.futTargetUsd = null; }
+        return ['name', 'instrument', 'legs.0.type', 'legs.0.pick.mode', 'legs.0.pick.target', 'legs.1.type', 'future.side'];
+      }
+      if (step === 'delta') { w.rule = applyPatch(r, a.patch); return ['legs.0.pick.target', 'legs.1.pick.target']; }
+      if (step === 'expiry') { w.rule = applyPatch(r, a.patch); return ['expiry.mode']; }
+      if (step === 'when') { w.when = a.when; return []; }
+      if (step === 'entry') {
+        w.rule.entry = a.entryKind === 'hard' ? { kind: 'hard', time: r.entry.kind === 'hard' ? r.entry.time : '22:30' } : { kind: 'window', from: '22:30', to: '01:30', conditions: r.entry.kind === 'window' ? r.entry.conditions : [] };
+        return ['entry.kind'];
+      }
+      if (step === 'time') {
+        if (a.window) { w.rule.entry = { kind: 'window', from: a.window.from, to: a.window.to, conditions: r.entry.kind === 'window' ? r.entry.conditions : [] }; return ['entry.from', 'entry.to']; }
+        w.rule.entry = { kind: 'hard', time: a.entryTime }; return ['entry.time'];
+      }
+      if (step === 'conditions') {
+        if (a.done || r.entry.kind !== 'window') return [];
+        const list = r.entry.conditions, i = list.findIndex(c => c.type === a.cond.type);
+        if (i >= 0) list[i] = a.cond; else list.push(a.cond);
+        return ['entry.conditions.' + (i >= 0 ? i : list.length - 1) + '.*'];
+      }
+      if (step === 'days') { w.rule.days = a.days; return a.days.map(d => 'days.' + d); }
+      if (step === 'stops') {
+        if (a.none && r.instrument === 'future') { w.rule.exit.futStopUsd = null; w.rule.exit.futTargetUsd = null; return ['exit.futStopUsd', 'exit.futTargetUsd']; }
+        w.rule = applyPatch(r, a.patch);
+        return ['exit.legStopMultiple', 'exit.futStopUsd', 'exit.futTargetUsd', 'exit.netTargetUsd', 'exit.netStopUsd'];
+      }
+      if (step === 'exittime') { w.rule.exit.exitTime = a.exitTime; return ['exit.exitTime']; }
+      if (step === 'lots') { w.lots = a.lots; return ['lots']; }
+      if (step === 'mode') { w.rule.mode = a.mode; return ['mode']; }
+      return [];
+    }
+
+    const sayDays = d => d.length === 7 ? 'every day' : d.map(x => x[0].toUpperCase() + x.slice(1)).join(', ');
+    /** One line of what has been decided so far */
+    function summary(w) {
+      const r = w.rule, bits = [];
+      bits.push(r.instrument === 'future' ? 'BTC future ' + (r.future ? r.future.side : 'long') : r.legs.map(l => (l.side === 'sell' ? 'sell ' : 'buy ') + l.type).join(' + '));
+      if (r.instrument === 'option') {
+        const d = r.legs.find(l => l.pick.mode === 'delta');
+        if (d) bits.push('nearest delta ' + (d.pick.target != null ? d.pick.target : d.pick.low));
+        bits.push({ current: '0DTE', nearest: '0DTE', next: '1DTE', n2n: '2DTE', b2b: '0DTE+1DTE', fixed: r.expiry.code }[r.expiry.mode]);
+      }
+      bits.push(w.lots + ' lots');
+      bits.push(w.when === 'now' ? 'now' : r.entry.kind === 'hard' ? 'at ' + r.entry.time + ' IST' : r.entry.from + '-' + r.entry.to + ' IST' + (r.entry.conditions.length ? ' with ' + r.entry.conditions.length + ' condition(s)' : '') + ', ' + sayDays(r.days));
+      return bits.join(' · ');
+    }
+
+    /* ---------- recommendations, all from recorded results and the live read ---------- */
+    const money = v => (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
+    function recKind(d) {
+      const out = [];
+      if (d.best) out.push('Your recorded results: <b>' + d.best.label + '</b> is the best so far (' + money(d.best.stats.total) + ' over ' + d.best.stats.n + ' trades, won ' + Math.round(d.best.stats.winRate * 100) + '%).' + (SLOT[d.best.key] ? ' It enters at ' + SLOT[d.best.key] + ' IST.' : ''));
+      else out.push('No strategy has 5 recorded trades yet, so nothing can be called best from your own results. The short strangle is the desk default.');
+      if (d.futTop) out.push('For futures, the best recent signal is ' + d.futTop.label + ' (right ' + Math.round(d.futTop.winRate * 100) + '% of the time over 4 hours), saying ' + (d.futTop.now === 1 ? 'buy' : d.futTop.now === -1 ? 'sell' : 'nothing') + ' now.');
+      return out;
+    }
+    function recTime(d) {
+      if (!d.best || !SLOT[d.best.key]) return ['No recorded strategy with at least 5 trades to take a time from. 22:30 IST (New York) and 10:00 IST (Asia) are the desk slots.'];
+      return ['Your best recorded slot is ' + d.best.label + ' at ' + SLOT[d.best.key] + ' IST (' + money(d.best.stats.total) + ', won ' + Math.round(d.best.stats.winRate * 100) + '% of ' + d.best.stats.n + ').'];
+    }
+    /** d.days = weekday stats of the best-matching strategy: [{wd, name, short, stats, kind}] */
+    function recDays(d) {
+      const days = d.days || [];
+      const good = days.filter(x => x.kind === 'good'), bad = days.filter(x => x.kind === 'bad');
+      if (!days.some(x => x.stats.n >= 3)) return { text: ['Not enough recorded trades on each weekday yet (at least 3 per day) to say which days suit it.'], chips: [] };
+      const t = [];
+      if (good.length) t.push('Days that have worked for ' + d.label + ': ' + good.map(x => x.name + ' (' + money(x.stats.total) + ', won ' + x.stats.wins + '/' + x.stats.n + ')').join(', ') + '.');
+      if (bad.length) t.push('Days that have lost: ' + bad.map(x => x.name + ' (' + money(x.stats.total) + ', won ' + x.stats.wins + '/' + x.stats.n + ')').join(', ') + '.');
+      return { text: t, chips: good.length ? [{ v: good.map(x => x.short.toLowerCase()).join(' '), label: 'Best days: ' + good.map(x => x.short).join(' ') }] : [] };
+    }
+    /** pv.conditions: the live result of every candidate condition from one preview */
+    function recConditions(list) {
+      if (!list || !list.length) return ['Live check not available right now.'];
+      return list.map(c => (c.ok ? '✓ ' : '✗ ') + c.label + ' · ' + c.now);
+    }
+    function recStops(w, pv) {
+      const sg = pv && pv.recommend && pv.recommend.suggest;
+      if (w.rule.instrument === 'future') return [sg && sg.stopUsd ? 'Suggested stop $' + sg.stopUsd + ' and target $' + sg.targetUsd + ' (0.5% and 1% of the position, a 1:2 risk to reward).' : 'Futures need a dollar stop and target: for example stop $25, target $50.'];
+      return ['2x on each sold leg, closing everything when one stops, is the desk default. A net target (for example $40) closes the whole trade once it is up that much.'];
+    }
+    function recLots(pv) {
+      if (pv && pv.margin && pv.margin.required != null) return ['At this size the margin is about ' + money(pv.margin.required) + ' on your Paper account (' + (pv.margin.note || 'estimate') + ').'];
+      return ['Margin cannot be estimated right now.'];
+    }
+
+    function chipsFor(step, w, extra) {
+      const C = (v, label) => ({ v, label: label || v });
+      extra = extra || [];
+      switch (step) {
+        case 'kind': return [C('strangle', 'Option: short strangle (2 legs)'), C('straddle', 'Option: short straddle'), C('call', 'Short call'), C('put', 'Short put'), C('long', 'Future: buy'), C('short', 'Future: sell')];
+        case 'delta': return [C('0.08'), C('0.10'), C('0.12'), C('0.15')];
+        case 'expiry': return [C('current', 'Current (0DTE)'), C('next', 'Next (1DTE)'), C('n2n', 'Next to next (2DTE)')];
+        case 'when': return [C('now', 'Trade now (at market)'), C('later', 'Schedule it')];
+        case 'entry': return [C('hard', 'Hard time'), C('window', 'Window: wait for conditions')];
+        case 'time': return w.rule.entry.kind === 'window' ? extra.concat([C('22:30 to 01:30'), C('10:00 to 13:00'), C('17:30 to 20:30')]) : extra.concat([C('22:30'), C('10:00'), C('17:30'), C('05:00')]);
+        case 'conditions': return ['adx_falling', 'atmiv_falling', 'dvol_falling', 'rsi_falling', 'rv_falling', 'ivclock', 'edge', 'gate'].map(id => C(id, COND_NAMES[id])).concat([C('done', 'Done adding')]);
+        case 'days': return extra.concat([C('every day', 'Every day'), C('weekdays', 'Weekdays (Mon to Fri)')]);
+        case 'stops': return w.rule.instrument === 'option' ? [C('2x'), C('3x'), C('none', 'No per-leg stop'), C('default', 'Keep the default')] : extra.concat([C('none', 'No stop')]);
+        case 'exittime': return [C('none', 'No exit time'), C('07:00'), C('17:00'), C('23:00')];
+        case 'lots': return [C('10'), C('50'), C('100')];
+        case 'mode': return extra.length ? [C('paper', 'Paper account'), C('live', 'Live (real orders)')] : [C('paper', 'Paper account')];
+        case 'review': return [C('save', 'Save'), C('arm', 'Save and arm')].concat(w.when === 'now' ? [C('now', 'Place now at market')] : []).concat([C('cancel', 'Cancel')]);
+      }
+      return [];
+    }
+    const isStart = text => {
+      const q = String(text || '').toLowerCase().trim().replace(/[?!.]+$/, '');
+      if (/^(what|how|why|explain|tell me about|define|does|is)\b/.test(q)) return false;
+      return /^(algo|algo trading|algo trade|algo trading panel|algo panel|new algo|new algo strategy|create algo|create algo strategy|build algo|build algo strategy|start algo|start algo trading|open algo|open algo trading|algo form|algo strategy|algo builder|set up algo|setup algo|set up algo trading)$/.test(q) || /\balgo\b.*\b(create|build|new|start|set ?up|form|fill|open)\b/.test(q);
+    };
+    return { COND, COND_NAMES, SLOT, TITLES, steps, parseAnswer, applyAnswer, summary, recKind, recTime, recDays, recConditions, recStops, recLots, chipsFor, isStart, times };
+  }
+  // WIZARD-CORE-END
+
+  /* ---------- the flow: data, state and cards ---------- */
+  const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { return localStorage.getItem('desk_jwt'); } };
+  async function http(path, opt) {
+    const t = tok(); if (!t) throw new Error('Sign in first');
+    const r = await fetch('/api/v1' + path, Object.assign({ headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, cache: 'no-store' }, opt || {}));
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || j.success === false) throw new Error((j && j.error) || 'HTTP ' + r.status);
+    return j;
+  }
+  const post = (p, b) => http(p, { method: 'POST', body: JSON.stringify(b || {}) });
+  let CORE = null;
+  const core = () => (CORE = CORE || makeWizardCore(window.askTrade));
+  const cache = {};
+  async function cached(key, fn, ttl) { const c = cache[key]; if (c && Date.now() - c.at < (ttl || 300000)) return c.v; const v = await fn().catch(() => null); cache[key] = { at: Date.now(), v }; return v; }
+  const getScore = () => cached('score', async () => (await http('/score/trades?source=bot')).trades);
+  const getIns = () => cached('ins', async () => (await http('/algo/insights')).market);
+  const live = () => cached('live', async () => (await http('/algo/state')).live, 30000);
+
+  /** What the recorded results say about the best strategy and its weekdays (only strategies with at least 5 trades count) */
+  async function scoreFacts(preferOption) {
+    const trades = await getScore(); const SP = window.scorePage;
+    if (!trades || !SP) return { best: null, days: [], label: '' };
+    const groups = SP.byStrategy(trades).filter(g => g.stats.n >= 5 && (!preferOption || /SHORT|LONG|CAL/.test(g.key) && !/^FUT/.test(g.key)));
+    const best = groups.length ? groups[0] : null;
+    return { best, days: best ? SP.byWeekday(best.trades) : [], label: best ? best.label : '' };
+  }
+  async function previewNow(w, rule) { try { return (await post('/algo/preview', { rule: rule || w.rule, lots: w.lots })).preview; } catch (e) { return null; } }
+
+  const W = { w: null, hist: [], step: null, pv: null };
+  const active = () => !!W.w;
+
+  const fillForm = (flash) => { if (window.algoPage && W.w) window.algoPage.fill(W.w.rule, W.w.lots, flash); };
+  async function card(note) {
+    const C = core(), w = W.w, st = W.step, list = C.steps(w), idx = list.indexOf(st) + 1;
+    let rec = [], extra = [], chipsHtml = '', pv = null;
+    try {
+      if (st === 'kind') { const f = await scoreFacts(true), ins = await getIns(); rec = C.recKind({ best: f.best, futTop: ins && ins.futures ? (ins.futures.find(x => x.score > 1) || null) : null }); }
+      else if (st === 'delta' || st === 'expiry') rec = ['0.10 delta and the current (0DTE) expiry are the desk defaults. Closer to 0 delta is safer but pays less.'];
+      else if (st === 'when') rec = ['A scheduled trade waits for its time and conditions and enters once per window. "Now" places it at market straight away.'];
+      else if (st === 'entry') rec = ['A hard time enters at that minute. A window waits for the conditions you pick and enters the first time they are all true.'];
+      else if (st === 'time') { const f = await scoreFacts(true); rec = C.recTime({ best: f.best }); if (f.best && C.SLOT[f.best.key] && w.rule.entry.kind === 'hard') extra = [{ v: C.SLOT[f.best.key], label: C.SLOT[f.best.key] + ' (your best slot)' }]; }
+      else if (st === 'conditions') {
+        const all = Object.keys(C.COND).filter(k => k !== 'dvol_below').map(k => JSON.parse(JSON.stringify(C.COND[k])));
+        const probe = JSON.parse(JSON.stringify(w.rule)); probe.entry = { kind: 'window', from: '00:00', to: '23:59', conditions: all };
+        const p = await previewNow(w, probe); rec = C.recConditions(p && p.conditions); const ins = await getIns();
+        const calm = ins && ins.options ? ins.options.filter(o => o.now && o.calmerPct > 5).slice(0, 2) : [];
+        if (calm.length) rec.push('Calm signs that held up on the last 4 weeks and are true now: ' + calm.map(o => o.label).join('; ') + '.');
+        if (w.rule.entry.conditions.length) rec.push('Already added: ' + w.rule.entry.conditions.map(c => (window.algoPage ? window.algoPage.words({ name: '', mode: 'paper', instrument: 'option', legs: [], expiry: { mode: 'current' }, entry: { kind: 'window', from: '00:00', to: '00:00', conditions: [c] }, days: ['mon'], exit: {} }, 1).replace(/^.*when /, '').replace(/ on Mon.*$/, '') : c.type)).join('; ') + '.');
+      }
+      else if (st === 'days') { const f = await scoreFacts(true); const d = C.recDays({ days: f.days, label: f.label }); rec = d.text; extra = d.chips; }
+      else if (st === 'stops') { pv = await previewNow(w); rec = C.recStops(w, pv); const sg = pv && pv.recommend && pv.recommend.suggest; if (w.rule.instrument === 'future' && sg && sg.stopUsd) extra = [{ v: 'stop $' + sg.stopUsd + ' target $' + sg.targetUsd, label: 'Suggested: stop $' + sg.stopUsd + ', target $' + sg.targetUsd }]; }
+      else if (st === 'exittime') rec = ['An exit time closes everything at that IST time. The New York strangle (22:30) has been exiting at 07:00 IST in the desk plans; Asia at 16:00.'];
+      else if (st === 'lots') { pv = await previewNow(w); rec = C.recLots(pv); }
+      else if (st === 'mode') { const lv = await live(); extra = lv && lv.tradeKey ? [1] : []; rec = [lv && lv.tradeKey ? 'A trading key is saved. Live still needs arming and dry-run off in Settings, and starts in dry-run.' : 'Paper only: Live unlocks when you save a trading key in Settings.']; }
+      else if (st === 'review') {
+        pv = await previewNow(w); W.pv = pv;
+        if (pv && pv.recommend) rec = [(pv.recommend.verdict === 'go' ? '✓ ' : '! ') + pv.recommend.headline].concat(pv.recommend.reasons).concat(pv.recommend.suggest && pv.recommend.suggest.note ? [pv.recommend.suggest.note] : []);
+        if (pv && w.rule.entry.kind === 'window' && w.when === 'later') rec = rec.concat(C.recConditions(pv.conditions));
+      }
+    } catch (e) { rec = rec.length ? rec : ['(Could not load a recommendation: ' + e.message + ')']; }
+    const chips = C.chipsFor(st, w, extra);
+    chipsHtml = chips.map(c => '<button type="button" class="at-btn" data-at="wz" data-v="' + esc(c.v) + '">' + esc(c.label) + '</button>').join('');
+    const words = window.algoPage ? window.algoPage.words(w.rule, w.lots) : '';
+    return { kind: 'wz', title: C.TITLES[st], idx, total: list.length, note: note || null, summary: C.summary(w), chipsHtml, rec, review: st === 'review' ? words : null, step: st };
+  }
+
+  async function start() {
+    let def = null; try { def = (await http('/algo/defaults')).defaults; } catch (e) { def = null; }
+    const base = def || { name: 'Short strangle', mode: 'paper', instrument: 'option', legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1 } }], expiry: { mode: 'current' }, entry: { kind: 'hard', time: '22:30' }, days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], exit: { legStopMultiple: 2, futStopUsd: null, futTargetUsd: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true } };
+    // an older saved default could still carry the back-to-back expiry or a delta band: this guided path starts from one strangle on the current expiry
+    const rule = JSON.parse(JSON.stringify(base)); if (rule.expiry && (rule.expiry.mode === 'b2b' || rule.expiry.mode === 'nearest')) rule.expiry = { mode: 'current' };
+    rule.mode = 'paper';
+    W.w = { rule, lots: 50, when: 'later' }; W.hist = []; W.step = 'kind';
+    fillForm(['name', 'lots']);
+    return Object.assign(await card('I opened the Algo page and will fill its form as you answer. Type your own answer any time, or tap a choice.'), {});
+  }
+  const snapshot = () => ({ w: JSON.parse(JSON.stringify(W.w)), step: W.step });
+
+  async function advance(flash, note) {
+    const C = core(), list = C.steps(W.w);
+    let i = list.indexOf(W.step);
+    // after the conditions step stays until "done" is said; every other step moves on
+    W.step = list[i + 1] || 'review';
+    fillForm(flash);
+    return card(note);
+  }
+
+  async function answerText(text) {
+    const C = core(), st = W.step, w = W.w;
+    const q = String(text || '').trim();
+    if (/^(cancel|stop|quit|exit wizard|never ?mind)$/i.test(q)) { end(); return { kind: 'text', text: 'Cancelled. Nothing was saved or placed. The form on the Algo page keeps what was filled so far.' }; }
+    if (q === '__cancel') { end(); return { kind: 'text', text: 'Cancelled. Nothing was saved or placed.' }; }
+    if (q === '__back') {
+      const h = W.hist.pop(); if (!h) return card('That is the first step.');
+      W.w = h.w; W.step = h.step; fillForm([]); return card();
+    }
+    if (q === '__skip') { W.hist.push(snapshot()); return advance([], 'Skipped.'); }
+    let a = C.parseAnswer(st, q, w);
+    if (!a.ok) {
+      // a sentence may carry several answers at once ("delta 0.12 expiry 1dte"): apply what it says
+      const p = window.askTrade.parsePatch(q);
+      if (Object.keys(p).length && st !== 'review') {
+        W.hist.push(snapshot()); W.w.rule = window.askTrade.applyPatch(W.w.rule, p);
+        if (p.when) W.w.when = p.when;
+        fillForm(['legs.0.pick.target', 'legs.1.pick.target', 'expiry.mode', 'entry.time', 'entry.from', 'entry.to', 'exit.exitTime', 'exit.legStopMultiple', 'exit.netTargetUsd', 'exit.netStopUsd', 'exit.futStopUsd', 'exit.futTargetUsd']);
+        return card('Updated from what you wrote.');
+      }
+      // an ordinary question is not an answer: let the rest of Ask me take it, and keep the wizard where it is
+      if (/^(what|how|why|explain|tell|show|which|when|who|is|are|does|can|should)\b/i.test(q) || /\?\s*$/.test(q)) return null;
+      return card(a.hint);
+    }
+    if (st === 'review') return finish(a.act);
+    W.hist.push(snapshot());
+    const flash = C.applyAnswer(w, st, a);
+    // the conditions step repeats until "done"
+    if (st === 'conditions' && !a.done) { fillForm(flash); return card('Added. Pick another condition, or say done.'); }
+    // choosing a mode of "now" means the entry is at market: no schedule steps follow
+    return advance(flash, st === 'kind' ? 'Form updated.' : null);
+  }
+
+  async function finish(act) {
+    const w = W.w;
+    if (act === 'cancel') { end(); return { kind: 'text', text: 'Cancelled. Nothing was saved or placed.' }; }
+    try {
+      if (act === 'now') {
+        const rule = JSON.parse(JSON.stringify(w.rule));
+        const r = await post('/algo/enter-now', { rule, lots: w.lots });
+        end(); if (window.algoPage) { window.algoPage.reset(); window.algoPage.refresh(); }
+        return { kind: 'wzdone', head: r.dry ? 'Dry run only: nothing was sent to Delta.' : 'Congratulations, order placed with stoploss.', text: r.detail || '', runId: r.run ? r.run.id : null, words: window.algoPage ? window.algoPage.words(rule, w.lots) : '' };
+      }
+      const sv = await post('/algo/strategies', { rule: w.rule, lots: w.lots });
+      if (act === 'arm') await post('/algo/strategies/' + sv.strategy.id + '/arm', { armed: true });
+      const words = window.algoPage ? window.algoPage.words(w.rule, w.lots) : '';
+      end(); if (window.algoPage) { window.algoPage.reset(); window.algoPage.refresh(); }
+      return { kind: 'wzdone', head: act === 'arm' ? 'Saved and armed. It now waits for its window.' : 'Saved. Press Arm on the Algo page when you want it to start (editing always disarms).', text: '', words };
+    } catch (e) { return { kind: 'text', text: 'It was NOT saved: ' + e.message }; }
+  }
+  function end() { W.w = null; W.hist = []; W.step = null; W.pv = null; }
+
+  async function handle(text) {
+    if (!active()) { if (core().isStart(text)) return start(); return null; }
+    return answerText(text);
+  }
+
+  /* ---------- drawing ---------- */
+  function render(m) {
+    if (m.kind === 'wzdone') {
+      return '<div class="at-card done"><div class="at-h ok">' + esc(m.head) + '</div>' + (m.words ? '<div class="at-sub">' + esc(m.words) + '</div>' : '') + (m.text ? '<div class="at-fine">' + esc(m.text) + '</div>' : '') +
+        '<div class="at-act">' + (m.runId ? '<button type="button" class="at-btn pri" data-at="track" data-id="' + esc(m.runId) + '">Open live PnL graph</button>' : '') + '<button type="button" class="at-btn" data-at="wzopen">Open the Algo page</button></div></div>';
+    }
+    return '<div class="at-card wz"><div class="at-h">Algo trading · step ' + m.idx + ' of ' + m.total + '</div>' +
+      (m.note ? '<div class="at-note">' + esc(m.note) + '</div>' : '') +
+      '<div class="at-sub">' + esc(m.title) + '</div><div class="at-fine">So far: ' + esc(m.summary) + '</div>' +
+      (m.review ? '<div class="at-sub">' + esc(m.review) + '</div>' : '') +
+      '<div class="at-act">' + m.chipsHtml + '</div>' +
+      (m.rec && m.rec.length ? '<div class="at-rec go"><div class="at-rh">Recommendation</div><ul class="at-ul">' + m.rec.map(x => '<li>' + String(x).replace(/<(?!\/?b>)/g, '&lt;') + '</li>').join('') + '</ul><div class="at-fine">From your recorded results and the live market, not a forecast.</div></div>' : '') +
+      '<div class="at-fine">Type your own answer too. The form on the Algo page fills in as you go.</div>' +
+      '<div class="at-act"><button type="button" class="at-btn" data-at="wz" data-v="__back">Back</button><button type="button" class="at-btn" data-at="wz" data-v="__skip">Skip</button><button type="button" class="at-btn" data-at="wz" data-v="__cancel">Cancel</button></div></div>';
+  }
+
+  D.addEventListener('click', async e => {
+    const b = e.target.closest && e.target.closest('#askPanel [data-at="wz"],#askPanel [data-at="wzopen"]'); if (!b) return;
+    if (b.dataset.at === 'wzopen') { const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb) nb.click(); return; }
+    if (!active()) return;
+    const m = await answerText(b.dataset.v);
+    if (m && window.askTrade && window.askTrade.API.push) window.askTrade.API.push(m);
+  });
+
+  window.askWizard = { handle, render, active, start, makeWizardCore, end };
 })();
 </script><script id="askWidget">
 /* Ask me: a floating chat that answers from the desk's own data (database, live feeds).
@@ -61553,7 +62065,7 @@ document.addEventListener('click', function(e) {
   if (D.getElementById('askFab')) return;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tok = () => { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch (e) { try { return localStorage.getItem('desk_jwt'); } catch (x) { return null; } } };
-  const S = { open: false, big: false, sug: [], sugI: -1, msgs: [], busy: false, suggestions: ['Entry 50', 'Exit', 'Should I trade tonight?', 'What is the top performer?', 'What is the most important indicator?', 'How did Monday do in the backtest?', 'Is IV enough to trade?', 'Is premium selling worth it?', 'How do I set up my Delta API key?', 'How does the bot work?', 'Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
+  const S = { open: false, big: false, sug: [], sugI: -1, msgs: [], busy: false, suggestions: ['Algo trading', 'Day wise PnL', 'Entry 50', 'Exit', 'Should I trade tonight?', 'What is the top performer?', 'What is the most important indicator?', 'How did Monday do in the backtest?', 'Is IV enough to trade?', 'Is premium selling worth it?', 'How do I set up my Delta API key?', 'How does the bot work?', 'Running positions', "Today's PnL", 'This week by strategy', 'Why was the last trade stopped?', 'Why no trade today?', 'Best session', 'Market now', 'What data do you have?', 'Summarise bot runs', 'What is Risk-ADX?', 'Explain N2N', 'Recent errors', 'What is the NY short rule?'], loginErr: null };
 
   const fab = D.createElement('button');
   fab.id = 'askFab'; fab.type = 'button'; fab.setAttribute('aria-label', 'Ask me about the desk data'); fab.setAttribute('aria-expanded', 'false');

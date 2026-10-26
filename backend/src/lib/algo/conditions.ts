@@ -1,5 +1,6 @@
 import { aggregate, atr, rsi, vwap, type Bar } from '../bot/futures.js';
 import type { Condition } from './rule.js';
+import { latest, valueAgo, type ClockIv, type Sample } from './series-math.js';
 
 export type Tf = '5m' | '15m' | '1h';
 
@@ -15,6 +16,10 @@ export interface MarketView {
   premium: number | null;
   /** Closed candles, oldest first: 5 minute bars (15m and 1h are built from them). */
   bars5m: readonly Bar[];
+  /** Recorded ATM IV / DVOL (about a day, oldest first) for the falling conditions, and the usual IV for this clock time. */
+  hist?: readonly Sample[];
+  clock?: ClockIv | null;
+  nowMs?: number;
 }
 
 export interface ConditionResult {
@@ -66,6 +71,28 @@ function emaSeries(values: readonly number[], n: number): number[] {
   const out = [e];
   for (let i = n; i < values.length; i++) { e = values[i]! * k + e * (1 - k); out.push(e); }
   return out;
+}
+
+const PER_YEAR_5M = 365 * 24 * 12;
+
+/** Annualised realised volatility (percent) of `count` 5 minute returns ending `skip` bars before the last bar. */
+export function rvPct(bars: readonly Bar[], count: number, skip = 0): number | null {
+  const end = bars.length - skip;
+  if (count < 2 || end - count - 1 < 0) return null;
+  const rets: number[] = [];
+  for (let i = end - count; i < end; i++) rets.push(Math.log(bars[i]!.c / bars[i - 1]!.c));
+  const m = rets.reduce((a, b) => a + b, 0) / rets.length;
+  const sd = Math.sqrt(rets.reduce((a, b) => a + (b - m) ** 2, 0) / (rets.length - 1));
+  return Number.isFinite(sd) ? sd * Math.sqrt(PER_YEAR_5M) * 100 : null;
+}
+
+/** The desk Edge, estimated on the server: ATM IV minus expected realised vol (half the last 24 hours, half the last five days). */
+export function edgeEstimate(bars: readonly Bar[], atmIv: number | null | undefined): { edge: number; expected: number } | null {
+  if (!atmIv) return null;
+  const r24 = rvPct(bars, 288), r5 = rvPct(bars, Math.min(1440, bars.length - 1));
+  if (r24 == null || r5 == null || bars.length < 576) return null;
+  const expected = (r24 + r5) / 2;
+  return { edge: atmIv - expected, expected };
 }
 
 /** MACD(12,26,9) histogram of the last bar; null without enough history. */
@@ -128,6 +155,34 @@ export function evalCondition(c: Condition, v: MarketView): ConditionResult {
       const f = emaLast(cl, c.fast), s = emaLast(cl, c.slow);
       const ok = f != null && s != null && (c.state === 'above' ? f > s : f < s);
       return { label: `EMA ${c.fast} ${c.state} EMA ${c.slow} (${c.tf})`, ok, now: f == null || s == null ? 'no data' : `${f.toFixed(0)} vs ${s.toFixed(0)}` };
+    }
+    case 'adx_falling': {
+      const bs = barsFor(v, c.tf), k = c.bars ?? 3, now = adxLast(bs, 14), prev = adxLast(bs.slice(0, bs.length - k), 14);
+      return { label: `ADX ${c.tf} below ${c.value} and falling (vs ${k} bars ago)`, ok: now != null && prev != null && now < c.value && now < prev, now: now == null || prev == null ? 'no data' : `ADX ${now.toFixed(1)}, was ${prev.toFixed(1)}` };
+    }
+    case 'atmiv_falling':
+    case 'dvol_falling': {
+      const key = c.type === 'atmiv_falling' ? 'atmIv' : 'dvol', name = key === 'atmIv' ? 'ATM IV' : 'DVOL', h = v.hist ?? [], t = v.nowMs ?? Date.now();
+      const now = key === 'dvol' && v.dvol != null ? v.dvol : latest(h, key), ago = valueAgo(h, key, t, c.minutes), drop = c.minDrop ?? 0.2;
+      return { label: `${name} falling over ${c.minutes} min (down at least ${drop} pt)`, ok: now != null && ago != null && now <= ago - drop, now: now == null ? 'no data' : ago == null ? `${name} ${now.toFixed(1)}, no ${c.minutes} min history yet` : `${name} ${now.toFixed(1)}, ${ago.toFixed(1)} ${c.minutes} min ago` };
+    }
+    case 'rsi_falling': {
+      const bs = barsFor(v, c.tf), k = c.bars ?? 3, now = rsi(closesOf(bs), 14), prev = rsi(closesOf(bs.slice(0, bs.length - k)), 14), drop = c.minDrop ?? 1;
+      return { label: `RSI ${c.tf} falling (down at least ${drop} over ${k} bars)`, ok: now != null && prev != null && now <= prev - drop, now: now == null || prev == null ? 'no data' : `RSI ${now.toFixed(1)}, was ${prev.toFixed(1)}` };
+    }
+    case 'rv_falling': {
+      const m = c.minutes ?? 60, k = Math.max(3, Math.round(m / 5)), now = rvPct(v.bars5m, k), prev = rvPct(v.bars5m, k, k);
+      return { label: `Realised vol falling (last ${m} min below the ${m} min before)`, ok: now != null && prev != null && now <= prev * 0.95, now: now == null || prev == null ? 'no data' : `RV ${now.toFixed(1)}, before ${prev.toFixed(1)}` };
+    }
+    case 'ivclock': {
+      const ck = v.clock;
+      const cur = ck ? (ck.source === 'ATM IV' ? v.atmIv : v.dvol) : null;
+      const diff = ck && cur != null ? cur - ck.value : null;
+      return { label: `Tonight IV ${c.op === 'above' ? 'above' : 'below'} its clock path by ${c.points} pt`, ok: diff != null && (c.op === 'above' ? diff >= c.points : diff <= -c.points), now: ck == null ? 'no clock history yet' : diff == null ? 'no data' : `${ck.source} ${diff >= 0 ? '+' : ''}${diff.toFixed(1)} vs usual ${ck.value.toFixed(1)} (${ck.days} days)` };
+    }
+    case 'edge': {
+      const e = edgeEstimate(v.bars5m, v.atmIv);
+      return { label: `Edge between ${c.low} and ${c.high} pts`, ok: e != null && e.edge >= c.low && e.edge <= c.high, now: e == null ? 'no data' : `Edge ${e.edge >= 0 ? '+' : ''}${e.edge.toFixed(1)} (IV ${v.atmIv!.toFixed(1)} minus expected RV ${e.expected.toFixed(1)})` };
     }
     case 'atmiv':
       return { label: `ATM IV ${c.op} ${c.value}`, ok: v.atmIv != null && test(c.op, v.atmIv, c.value), now: `ATM IV ${fmt(v.atmIv ?? null)}` };

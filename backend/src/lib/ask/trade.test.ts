@@ -125,6 +125,19 @@ describe('dollar stops and targets', () => {
   });
 });
 
+describe('day wise pnl questions', () => {
+  it('open the strategy and weekday scoreboard in the chat', () => {
+    for (const q of ['day wise pnl', 'show me day wise pnl', 'pnl by day', 'strategy wise pnl', 'which day is good for profit', 'weekday wise performance']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'dayscore' });
+    expect(T.parseTrade('score')).toMatchObject({ kind: 'dayscore' });
+    expect(T.parseTrade('open the score page')).toMatchObject({ kind: 'dayscore' });
+  });
+  it('plain talk about days or pnl is not taken', () => {
+    expect(T.parseTrade('how did monday do in the backtest')).toBeNull();
+    expect(T.parseTrade('what is the pnl')).toBeNull();
+    expect(T.parseTrade("today's pnl")).toBeNull();
+  });
+});
+
 describe('asking for the best indicator', () => {
   it('needs both an indicator word and futures / options', () => {
     expect(T.parseTrade('best indicator for futures')).toMatchObject({ kind: 'insight', which: 'future' });
