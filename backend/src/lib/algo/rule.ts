@@ -70,7 +70,10 @@ export type EntryRule = z.infer<typeof entrySchema>;
 export const exitSchema = z.object({
   /** Per-leg stop as a multiple of the sell price (2 = double). null: no per-leg stop. */
   legStopMultiple: z.number().min(1.05).max(20).nullable(),
-  /** Futures: stop and target as a percent of the entry price. */
+  /** Futures: stop and target in dollars of profit or loss on the position (the price level is worked out from the lots). */
+  futStopUsd: z.number().positive().nullable().optional(),
+  futTargetUsd: z.number().positive().nullable().optional(),
+  /** Futures, older rules: stop and target as a percent of the entry price. */
   futStopPct: z.number().min(0.1).max(50).nullable().optional(),
   futTargetPct: z.number().min(0.1).max(200).nullable().optional(),
   netTargetUsd: z.number().positive().nullable(),

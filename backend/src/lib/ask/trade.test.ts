@@ -13,7 +13,7 @@ const html = fs.readFileSync(path.resolve(here, '../../../../frontend/index.html
 const a = html.indexOf('// ASKTRADE-CORE-START'), b = html.indexOf('// ASKTRADE-CORE-END');
 if (a < 0 || b < 0) throw new Error('ASKTRADE markers not found in frontend/index.html');
 const T = new Function(`${html.slice(a, b)}\nreturn { parseTrade, parsePatch, applyPatch, congrats };`)() as {
-  parseTrade(q: string, pending?: string | null): { kind: string; lots?: number; patch?: any } | null;
+  parseTrade(q: string, pending?: string | null): { kind: string; lots?: number; patch?: any; which?: string } | null;
   parsePatch(q: string): any;
   applyPatch(rule: any, p: any): any;
   congrats(rule: any, lots: number, pv: any, res: any, when: string): { head: string; rows: string[][]; lines: string[] };
@@ -81,6 +81,57 @@ describe('option or future?', () => {
     }
     expect(T.parseTrade('banana', 'choose')).toBeNull();
     expect(T.parseTrade('cancel', 'choose')).toMatchObject({ kind: 'cancel' });
+  });
+});
+
+describe('trade now or schedule', () => {
+  it('the answer can be typed, or already be in the sentence', () => {
+    expect(T.parseTrade('now', 'when')).toMatchObject({ kind: 'when', patch: { when: 'now' } });
+    expect(T.parseTrade('schedule', 'when')).toMatchObject({ kind: 'when', patch: { when: 'later' } });
+    expect(T.parseTrade('at 22:30 tonight', 'when')).toMatchObject({ kind: 'when', patch: { when: 'later', entryTime: '22:30' } });
+    expect(T.parseTrade('banana', 'when')).toBeNull();
+    expect(T.parseTrade('entry 50 future long now')!.patch).toMatchObject({ legs: 'future', when: 'now' });
+    expect(T.parseTrade('entry 50 option schedule')!.patch).toMatchObject({ legs: 'strangle', when: 'later' });
+    expect(T.parseTrade('entry 50')!.patch.when).toBeUndefined();
+  });
+});
+
+describe('dollar stops and targets', () => {
+  it('a futures rule takes stop and target in dollars', () => {
+    expect(T.parsePatch('stop $20 target $40')).toMatchObject({ stopUsd: 20, netTarget: 40 });
+    expect(T.parsePatch('stop loss 15 dollars')).toMatchObject({ stopUsd: 15 });
+    const r = T.applyPatch(base(), T.parsePatch('future long stop $25 target $50'));
+    expect(r.instrument).toBe('future');
+    expect(r.exit.futStopUsd).toBe(25);
+    expect(r.exit.futTargetUsd).toBe(50);
+    expect(r.exit.futStopPct).toBeNull();
+    expect(valid(r)).toBe(true);
+  });
+  it('the same words on an option strangle set the net stop and target', () => {
+    const r = T.applyPatch(base(), T.parsePatch('stop $30 target $40'));
+    expect(r.exit.netStopUsd).toBe(30);
+    expect(r.exit.netTargetUsd).toBe(40);
+    expect(r.exit.futStopUsd ?? null).toBeNull();
+    expect(valid(r)).toBe(true);
+  });
+  it('"stop 3x" is still a multiple', () => {
+    expect(T.parsePatch('stop 3x')).toMatchObject({ stopMultiple: 3 });
+    expect(T.parsePatch('stop 3x').stopUsd).toBeUndefined();
+  });
+  it('the read-back says dollars', () => {
+    const r = T.applyPatch(base(), T.parsePatch('future short stop $25 target $50'));
+    const c = T.congrats(r, 50, { expiries: [], lines: [] }, { detail: 'x' }, 'now');
+    expect(Object.fromEntries(c.rows.map(([k, v]) => [k, v]))['Stoploss']).toBe('$25 stop, $50 target');
+  });
+});
+
+describe('asking for the best indicator', () => {
+  it('needs both an indicator word and futures / options', () => {
+    expect(T.parseTrade('best indicator for futures')).toMatchObject({ kind: 'insight', which: 'future' });
+    expect(T.parseTrade('which indicators work for option selling')).toMatchObject({ kind: 'insight', which: 'option' });
+    expect(T.parseTrade('suggest the best indicator for algo trading')).toMatchObject({ kind: 'insight', which: 'both' });
+    expect(T.parseTrade('what is the most important indicator')).toBeNull();
+    expect(T.parseTrade('what is rsi')).toBeNull();
   });
 });
 

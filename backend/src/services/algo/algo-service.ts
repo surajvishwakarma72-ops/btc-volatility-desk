@@ -4,12 +4,14 @@ import { istDateKey } from '../../lib/bot/schedule.js';
 import { deltaKeyStatus } from '../delta-keys.js';
 import { paperFor } from '../paper/paper-terminal.js';
 import { getWatchConfig } from '../watch/watch-store.js';
-import { buildPlan, conditionsOf, needsBars, describePlan, runName, summariseWhy, type EntryPlan } from './algo-engine.js';
+import { atmIvOf, buildPlan, conditionsOf, describePlan, runName, summariseWhy, type EntryPlan } from './algo-engine.js';
 import { evalConditions } from '../../lib/algo/conditions.js';
 import { createRun, type RunRow } from './algo-store.js';
 import { paperBroker } from './brokers.js';
 import { killAllLive, liveBroker } from './live-entry.js';
 import { loadMarket } from './algo-runtime.js';
+import { loadInsights } from './insights-service.js';
+import { speedVsIv } from '../../lib/algo/conditions.js';
 
 /**
  * What the Algo routes and the Ask-me trading commands share: a preview of an entry, an immediate entry, exit-all, the unlock
@@ -45,14 +47,58 @@ export interface Preview {
   stops: string;
   conditions: Array<{ label: string; ok: boolean; now: string }>;
   conditionsMet: boolean;
+  recommend: Recommendation | null;
   plan: EntryPlan | null;
+}
+
+export interface Recommendation {
+  verdict: 'go' | 'wait';
+  headline: string;
+  reasons: string[];
+  /** What it suggests for the order itself. Futures: dollar stop and target and a side. Options: the stop multiple. */
+  suggest: { side?: 'long' | 'short'; stopUsd?: number; targetUsd?: number; stopMultiple?: number; note: string };
+}
+
+/**
+ * The auto recommendation shown with the summary. Rule based: the desk gate, DVOL, ATM IV, speed vs IV, and what the best
+ * recent indicator says right now. It is a read of the conditions, not a forecast.
+ */
+export async function recommend(rule: AlgoStrategy, lots: number, m: Awaited<ReturnType<typeof loadMarket>>, plan: EntryPlan | null): Promise<Recommendation> {
+  const reasons: string[] = [];
+  let bad = 0;
+  if (m.gateGo === false) { bad++; reasons.push(`The desk gate says WAIT (${m.gateReasons.join('; ') || 'not clear'}).`); }
+  else if (m.gateGo) reasons.push('The desk gate says GO.');
+  if (m.dvol != null) reasons.push(`DVOL is ${m.dvol.toFixed(1)}.`);
+  let ins: Awaited<ReturnType<typeof loadInsights>> | null = null;
+  try { ins = await loadInsights(); } catch { ins = null; }
+  const notional = lots * 0.001 * m.spot;
+  if (rule.instrument === 'future') {
+    const top = ins?.futures.find((f) => f.score > 1 && f.now !== 0) ?? null;
+    const side: 'long' | 'short' = rule.future?.side ?? 'long';
+    const stopUsd = Math.max(1, Math.round(notional * 0.005)), targetUsd = stopUsd * 2;
+    if (top) {
+      const dir = top.now === 1 ? 'long' : 'short';
+      reasons.push(`The best recent futures indicator (${top.label}) points ${dir} now: it was right ${(top.winRate * 100).toFixed(0)}% of the time over 4 hours in the last 4 weeks.`);
+      if (dir !== side) { bad++; reasons.push(`That is against the ${side} you chose.`); }
+    } else reasons.push('No recent indicator is giving a clear signal right now.');
+    const sp = speedVsIv(m.bars5m, atmIvOf(rule, m, Date.now()), 60);
+    if (sp != null) reasons.push(`Price moved ${sp.toFixed(2)}x what the ATM IV implies over the last hour.`);
+    return { verdict: bad ? 'wait' : 'go', headline: bad ? 'Better to wait or reconsider' : 'Conditions are acceptable', reasons, suggest: { side: top ? (top.now === 1 ? 'long' : 'short') : side, stopUsd, targetUsd, note: `Suggested stop $${stopUsd} and target $${targetUsd} (0.5% and 1% of the $${notional.toFixed(0)} position, a 1:2 risk to reward).` } };
+  }
+  const sp = speedVsIv(m.bars5m, atmIvOf(rule, m, Date.now()), 60);
+  if (sp != null) { reasons.push(`Price moved ${sp.toFixed(2)}x what the ATM IV implies over the last hour.`); if (sp > 1.5) { bad++; reasons.push('That is fast for a seller: wait for it to calm down.'); } }
+  const calm = ins?.options.filter((o) => o.now && o.calmerPct > 5).slice(0, 2) ?? [];
+  if (calm.length) reasons.push(`Calm signs that held up recently and are true now: ${calm.map((c) => c.label).join('; ')}.`);
+  else if (ins?.options.length) reasons.push('None of the recent calm signs is true right now.');
+  void plan;
+  return { verdict: bad ? 'wait' : 'go', headline: bad ? 'Better to wait' : 'Conditions are acceptable for selling', reasons, suggest: { stopMultiple: 2, note: 'A 2x stop on each sold leg, with everything closing when one stops.' } };
 }
 
 /** Everything the trade summary shows, without placing anything. */
 export async function previewEntry(userId: string, rule: AlgoStrategy, lots: number): Promise<Preview> {
   const now = Date.now();
   const conds = conditionsOf(rule);
-  const m = await loadMarket(needsBars(conds));
+  const m = await loadMarket(true); // candles are always loaded so the recommendation can read speed vs IV
   const { plan, reason, view } = buildPlan(rule, m, lots, now);
   const ev = evalConditions(conds, view);
   const mult = rule.exit.legStopMultiple;
@@ -75,7 +121,7 @@ export async function previewEntry(userId: string, rule: AlgoStrategy, lots: num
     expiries: plan?.kind === 'option' ? plan.expiries : [],
     premium: plan?.kind === 'option' ? plan.premium : null,
     legs: plan?.kind === 'option' ? plan.legs.map((l) => ({ symbol: l.symbol, side: l.side, lots: l.lots, strike: l.strike, type: l.type, expiryCode: l.expiryCode, price: l.side === 'sell' ? l.bid : l.ask, delta: l.delta })) : [],
-    margin, conditions: ev.results, conditionsMet: ev.met, plan,
+    margin, conditions: ev.results, conditionsMet: ev.met, recommend: await recommend(rule, lots, m, plan).catch(() => null), plan,
   };
 }
 

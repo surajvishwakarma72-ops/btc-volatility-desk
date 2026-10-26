@@ -43,6 +43,8 @@ export interface AlgoDeps {
   getRun(strategyId: string, dateKey: string): Promise<RunRow | null>;
   createRun: typeof createRun;
   finishRun: typeof finishRun;
+  /** Record the run's net PnL for the minute chart (optional so tests need not provide it). */
+  mark?(runId: string, tMs: number, net: number, spot: number | null): Promise<void>;
   market(needBars: boolean): Promise<MarketData>;
   broker(mode: 'paper' | 'live'): Broker;
 }
@@ -152,7 +154,7 @@ export class AlgoEngine {
     const why = summariseWhy(rule, ev.results, w);
     const name = runName(rule, plan);
     const placed = await d.broker(rule.mode).place(s.userId, rule, plan, name);
-    const base = { userId: s.userId, strategyId: s.id, name, dateKey: w.dateKey, mode: rule.mode, lots: plan.kind === 'option' ? Math.max(...plan.legs.map((l) => l.lots)) : plan.future.lots, plan: { rule, plan, why }, windowStart: w.startMs, enteredAt: now, exitAt: null as number | null };
+    const base = { userId: s.userId, strategyId: s.id, name, dateKey: w.dateKey, mode: rule.mode, lots: plan.kind === 'option' ? Math.max(...plan.legs.map((l) => l.lots)) : plan.future.lots, plan: { rule, plan, why, conds: ev.results.map((x) => ({ label: x.label, ok: x.ok })) }, windowStart: w.startMs, enteredAt: now, exitAt: null as number | null };
     if (!placed.ok) {
       await d.createRun({ ...base, status: 'failed', reason: placed.reason, ref: null, enteredAt: null });
       return;
@@ -189,6 +191,7 @@ export class AlgoEngine {
     const broker = d.broker(r.mode);
     const st = await broker.status(r.userId, r.ref);
     if (!st) return; // the account could not be read this time; try again next tick
+    if (st.netPnl != null && d.mark) await d.mark(r.id, now, st.netPnl, st.future?.mark ?? null).catch(() => undefined);
     if (!st.open) { await d.finishRun(r.id, 'exited', st.closedReason ?? 'the position is closed', st.netPnl); return; }
     const x = rule.exit;
     let why: string | null = null;
@@ -198,7 +201,11 @@ export class AlgoEngine {
     else if (st.future) {
       const { entry, mark, side } = st.future;
       const move = ((side === 'long' ? mark - entry : entry - mark) / entry) * 100;
-      if (x.futTargetPct != null && move >= x.futTargetPct) why = `futures target ${x.futTargetPct}% reached`;
+      // dollars of profit or loss on the position: one lot is 0.001 BTC
+      const usdMove = (side === 'long' ? mark - entry : entry - mark) * r.lots * 0.001;
+      if (x.futTargetUsd != null && usdMove >= x.futTargetUsd) why = `futures target $${x.futTargetUsd} reached (${usdMove.toFixed(2)})`;
+      else if (x.futStopUsd != null && usdMove <= -x.futStopUsd) why = `futures stop $${x.futStopUsd} reached (${usdMove.toFixed(2)})`;
+      else if (x.futTargetPct != null && move >= x.futTargetPct) why = `futures target ${x.futTargetPct}% reached`;
       else if (x.futStopPct != null && move <= -x.futStopPct) why = `futures stop ${x.futStopPct}% reached`;
     }
     if (!why) return;

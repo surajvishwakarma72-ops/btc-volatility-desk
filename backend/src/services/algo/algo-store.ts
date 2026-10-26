@@ -40,6 +40,13 @@ CREATE TABLE IF NOT EXISTS algo_runs (
 );
 CREATE INDEX IF NOT EXISTS algo_runs_user_idx ON algo_runs (user_id, created_at DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS algo_runs_window_idx ON algo_runs (strategy_id, date_key) WHERE strategy_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS algo_run_marks (
+  run_id uuid NOT NULL,
+  t timestamptz NOT NULL,
+  net numeric NOT NULL,
+  spot numeric,
+  PRIMARY KEY (run_id, t)
+);
 CREATE TABLE IF NOT EXISTS algo_defaults (
   user_id uuid PRIMARY KEY,
   rule jsonb NOT NULL,
@@ -185,6 +192,27 @@ export async function openRuns(): Promise<RunRow[]> {
 export async function recentRuns(userId: string, limit = 30): Promise<RunRow[]> {
   await ensureAlgoSchema();
   return ((await pool.query('SELECT * FROM algo_runs WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2', [userId, limit])).rows as any[]).map(mapRun);
+}
+
+// ---------- PnL by minute ----------
+
+/** One net-PnL sample per minute per run; a second sample in the same minute is ignored. */
+export async function recordMark(runId: string, tMs: number, net: number, spot: number | null): Promise<void> {
+  await ensureAlgoSchema();
+  const minute = Math.floor(tMs / 60_000) * 60_000;
+  await pool.query(
+    'INSERT INTO algo_run_marks (run_id, t, net, spot) VALUES ($1, to_timestamp($2::double precision / 1000.0), $3, $4) ON CONFLICT DO NOTHING',
+    [runId, minute, net, spot],
+  );
+}
+
+export interface MarkSeries { t: number[]; net: number[]; spot: Array<number | null> }
+
+export async function getMarks(runId: string): Promise<MarkSeries> {
+  await ensureAlgoSchema();
+  const r = await pool.query('SELECT t, net, spot FROM algo_run_marks WHERE run_id = $1 ORDER BY t', [runId]);
+  const rows = r.rows as any[];
+  return { t: rows.map((x) => new Date(x.t).getTime()), net: rows.map((x) => Number(x.net)), spot: rows.map((x) => (x.spot == null ? null : Number(x.spot))) };
 }
 
 // ---------- defaults and the pending Ask-me order ----------

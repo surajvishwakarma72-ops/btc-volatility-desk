@@ -3,7 +3,7 @@ import { evaluateGate } from '../bot/gate.js';
 import type { Bar } from '../../lib/bot/futures.js';
 import { deribitWorker } from '../deribit-flow-worker.js';
 import { AlgoEngine, type AlgoDeps, type MarketData } from './algo-engine.js';
-import { createRun, finishRun, getRun, listArmed, openRuns } from './algo-store.js';
+import { createRun, finishRun, getRun, listArmed, openRuns, recordMark } from './algo-store.js';
 import { paperBroker } from './brokers.js';
 import { liveBroker, refreshTicks } from './live-entry.js';
 
@@ -36,6 +36,7 @@ export const realAlgoDeps: AlgoDeps = {
   getRun,
   createRun,
   finishRun,
+  mark: recordMark,
   market: loadMarket,
   broker: (mode) => (mode === 'live' ? liveBroker : paperBroker),
 };

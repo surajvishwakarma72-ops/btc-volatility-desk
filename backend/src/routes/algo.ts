@@ -5,8 +5,9 @@ import { defaultStrangle, exitAtMs, exitSchema, strategySchema, type AlgoStrateg
 import { istDateKey } from '../lib/bot/schedule.js';
 import { algoEngine } from '../services/algo/algo-runtime.js';
 import { conditionsOf } from '../services/algo/algo-engine.js';
-import { clearPending, createRun, deleteStrategy, finishRun, getDefaults, getRunById, getStrategy, listStrategies, recentRuns, saveDefaults, saveStrategy, setArmed } from '../services/algo/algo-store.js';
+import { clearPending, createRun, deleteStrategy, finishRun, getDefaults, getMarks, getRunById, getStrategy, listStrategies, recentRuns, saveDefaults, saveStrategy, setArmed } from '../services/algo/algo-store.js';
 import { enterNow, exitAll, liveState, previewEntry } from '../services/algo/algo-service.js';
+import { loadInsights, ownRunStats } from '../services/algo/insights-service.js';
 import { paperBroker } from '../services/algo/brokers.js';
 import { liveBroker } from '../services/algo/live-entry.js';
 import { fetchOptionPositions, OPTION_SYMBOL } from '../services/watch/live-exit.js';
@@ -117,6 +118,39 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
     if (!b.success) return bad(reply, need(b.error));
     await saveDefaults(userId(req), b.data);
     return { success: true };
+  });
+
+  // PnL minute by minute for one run: the data behind the chart with the hairline.
+  fastify.get('/runs/:id/pnl', auth, async (req, reply) => {
+    const id = z.string().uuid().safeParse((req.params as { id?: string }).id);
+    if (!id.success) return bad(reply, 'bad id');
+    const uid = userId(req);
+    const run = await getRunById(uid, id.data);
+    if (!run) return bad(reply, 'no such run', 404);
+    const m = await getMarks(run.id);
+    // an open run also gets the live point so the chart reaches "now"
+    if (run.status === 'entered' && run.ref) {
+      const st = await (run.mode === 'live' ? liveBroker : paperBroker).status(uid, run.ref).catch(() => null);
+      if (st?.netPnl != null) { m.t.push(Date.now()); m.net.push(st.netPnl); m.spot.push(st.future?.mark ?? null); }
+    }
+    const rule = (run.plan as { rule?: { exit?: { netTargetUsd?: number | null; futTargetUsd?: number | null } } } | null)?.rule;
+    let peak = null as { t: number; net: number } | null, trough = null as { t: number; net: number } | null;
+    m.net.forEach((v, i) => { if (!peak || v > peak.net) peak = { t: m.t[i]!, net: v }; if (!trough || v < trough.net) trough = { t: m.t[i]!, net: v }; });
+    return {
+      success: true, t: m.t, net: m.net, gross: m.net, spot: m.spot, legs: [],
+      tp: rule?.exit?.netTargetUsd ?? rule?.exit?.futTargetUsd ?? null, stats: { peak, trough },
+      run: { id: run.id, name: run.name, status: run.status === 'entered' ? 'open' : 'closed', mode: run.mode, lots: run.lots, enteredAt: run.enteredAt, exitedAt: run.exitedAt, exitReason: run.exitReason, margin: null },
+    };
+  });
+
+  // What has worked: indicators ranked on recent candles, and how your own finished runs did per condition.
+  fastify.get('/insights', auth, async (req, reply) => {
+    try {
+      const [market, own] = await Promise.all([loadInsights(), ownRunStats(userId(req))]);
+      return { success: true, market, own };
+    } catch (e) {
+      return bad(reply, `candles unavailable: ${(e as Error).message}`, 502);
+    }
   });
 
   // Close one tracked run now (the panel's "Exit now").

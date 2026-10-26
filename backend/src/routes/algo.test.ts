@@ -24,6 +24,10 @@ vi.mock('../services/algo/algo-runtime.js', () => ({
   algoEngine: { checks: new Map(), errors: new Map([['66666666-6666-6666-6666-666666666666', 'secret strategy name: boom']]) },
   loadMarket: async () => ({ spot: 100_000, chain, expiries: [E1, E2], dvol: 50, gateGo: true, gateReasons: [], bars5m: [] }),
 }));
+vi.mock('../services/algo/insights-service.js', () => ({
+  loadInsights: async () => ({ at: 1, bars: 10, from: 1, to: 2, note: 'x', options: [], futures: [{ id: 'ema_9_21', label: 'EMA 9 vs EMA 21', n: 100, winRate: 0.55, avgPct: 0.1, score: 2, now: 1, long: null, short: null }] }),
+  ownRunStats: async () => ({ finished: 0, wins: 0, totalPnl: 0, byCondition: [] }),
+}));
 vi.mock('../services/paper/paper-terminal.js', () => ({
   paperFor: () => ({
     previewBasket: async () => ({ ok: true, marginRequired: 120, availableAfter: 880 }),
@@ -40,6 +44,7 @@ const { algoRoutes } = await import('./algo.js');
 const { ensureAlgoSchema } = await import('../services/algo/algo-store.js');
 const { defaultStrangle } = await import('../lib/algo/rule.js');
 const { saveDeltaKey } = await import('../services/delta-keys.js');
+const { recordMark } = await import('../services/algo/algo-store.js');
 
 const U = '11111111-1111-1111-1111-111111111111', V = '22222222-2222-2222-2222-222222222222';
 async function build() {
@@ -186,6 +191,45 @@ describe('algo API', () => {
     expect(ok.statusCode).toBe(200);
     expect(h.closed).toEqual([sid]);
     expect((await app.inject({ method: 'POST', url: `/algo/runs/${run.id}/exit`, headers: tok(app, V) })).statusCode).toBe(409);
+    await app.close();
+  });
+
+  it('PnL by minute for the chart of a run, only for its owner', async () => {
+    const app = await build();
+    const sid = '77777777-7777-7777-7777-777777777777';
+    h.strategiesOpen = [{ id: sid, name: 'S', netPnl: 2.5, legs: [] }];
+    const run = (await app.inject({ method: 'POST', url: '/algo/adopt', headers: tok(app, V), payload: { source: 'paper', id: sid, exit: { ...defaultStrangle().exit, netTargetUsd: 30 } } })).json().run;
+    const t0 = Math.floor(Date.now() / 60_000) * 60_000 - 5 * 60_000;
+    await recordMark(run.id, t0, 1.5, null);
+    await recordMark(run.id, t0 + 60_000, -2, null);
+    await recordMark(run.id, t0 + 60_000, 99, null); // the same minute again is ignored
+    const j = (await app.inject({ method: 'GET', url: `/algo/runs/${run.id}/pnl`, headers: tok(app, V) })).json();
+    expect(j.t.length).toBe(3); // two recorded minutes plus the live point (status says 2.5)
+    expect(j.net.slice(0, 2)).toEqual([1.5, -2]);
+    expect(j.tp).toBe(30);
+    expect(j.stats.trough.net).toBe(-2);
+    expect(j.run.status).toBe('open');
+    expect((await app.inject({ method: 'GET', url: `/algo/runs/${run.id}/pnl`, headers: tok(app, U) })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('insights come back with your own record', async () => {
+    const app = await build();
+    const j = (await app.inject({ method: 'GET', url: '/algo/insights', headers: tok(app, U) })).json();
+    expect(j.market.futures[0].id).toBe('ema_9_21');
+    expect(j.own).toMatchObject({ finished: 0 });
+    await app.close();
+  });
+
+  it('the preview carries an auto recommendation', async () => {
+    const app = await build();
+    const p = (await app.inject({ method: 'POST', url: '/algo/preview', headers: tok(app, U), payload: { rule: defaultStrangle(), lots: 50 } })).json().preview;
+    expect(p.recommend).toMatchObject({ verdict: expect.stringMatching(/go|wait/) });
+    expect(p.recommend.suggest.stopMultiple).toBe(2);
+    const fut = { ...defaultStrangle(), instrument: 'future', legs: [], future: { side: 'long' } };
+    const f = (await app.inject({ method: 'POST', url: '/algo/preview', headers: tok(app, U), payload: { rule: fut, lots: 50 } })).json().preview;
+    // 50 lots = 0.05 BTC = $5006 at 100123: stop 0.5% = $25, target = $50
+    expect(f.recommend.suggest).toMatchObject({ stopUsd: 25, targetUsd: 50, side: 'long' });
     await app.close();
   });
 

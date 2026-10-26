@@ -19,6 +19,7 @@ function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['
   const runs: RunRow[] = [];
   const placed: unknown[] = [];
   const closed: string[] = [];
+  const marks: Array<[string, number]> = [];
   const status = { open: true, netPnl: 0 as number | null, closedReason: null as string | null };
   const broker: Broker = {
     place: opts.place ?? (async (_u, _r, plan) => { placed.push(plan); return { ok: true, ref: 'basket-1', detail: 'ok' }; }),
@@ -38,10 +39,11 @@ function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['
       return row;
     },
     finishRun: async (id, s, why, pnl) => { const r = runs.find((x) => x.id === id)!; r.status = s; r.exitReason = why; r.netPnl = pnl; },
+    mark: async (id, _t, net) => { marks.push([id, net]); },
     market: async () => (opts.mk ? opts.mk() : market()),
     broker: () => broker,
   };
-  return { engine: new AlgoEngine(deps), runs, placed, closed, status };
+  return { engine: new AlgoEngine(deps), runs, placed, closed, status, marks };
 }
 
 describe('AlgoEngine entry', () => {
@@ -191,6 +193,41 @@ describe('AlgoEngine exit', () => {
     (r.engine as unknown as { d: AlgoDeps }).d.broker = () => ({ place: async () => ({ ok: false, reason: 'x' }), status: async () => null, closeAll: async () => ({ ok: true }) });
     await r.engine.tick();
     expect(r.runs[0]!.status).toBe('entered');
+  });
+
+  it('records the net PnL of an open run every tick', async () => {
+    const r = await enter(defaultStrangle());
+    r.status.netPnl = 3.5;
+    await r.engine.tick();
+    r.status.netPnl = -1.25;
+    await r.engine.tick();
+    expect(r.marks.slice(-2)).toEqual([['r1', 3.5], ['r1', -1.25]]);
+  });
+
+  it('futures stop and target in dollars of the position', async () => {
+    const rule: AlgoStrategy = { ...defaultStrangle(), instrument: 'future', legs: [], future: { side: 'short' }, exit: { ...defaultStrangle().exit, futTargetUsd: 20, futStopUsd: 15 } };
+    const now = { t: at(MON, '22:30') };
+    const r = rig(rule, now);
+    await r.engine.tick();
+    const d = (r.engine as unknown as { d: AlgoDeps }).d;
+    let mark = 99_900;
+    d.broker = () => ({ place: async () => ({ ok: false, reason: 'x' }), status: async () => ({ open: true, netPnl: 1, future: { entry: 100_000, mark, side: 'short' as const } }), closeAll: async (_u, _r2, why) => { r.closed.push(why); return { ok: true }; } });
+    await r.engine.tick(); // short, 100 points down = +$5 on 50 lots: inside both limits
+    expect(r.closed).toHaveLength(0);
+    mark = 99_600; // +$20
+    await r.engine.tick();
+    expect(r.closed[0]).toContain('target $20');
+  });
+
+  it('futures dollar stop closes a losing short', async () => {
+    const rule: AlgoStrategy = { ...defaultStrangle(), instrument: 'future', legs: [], future: { side: 'short' }, exit: { ...defaultStrangle().exit, futStopUsd: 15 } };
+    const now = { t: at(MON, '22:30') };
+    const r = rig(rule, now);
+    await r.engine.tick();
+    const d = (r.engine as unknown as { d: AlgoDeps }).d;
+    d.broker = () => ({ place: async () => ({ ok: false, reason: 'x' }), status: async () => ({ open: true, netPnl: -16, future: { entry: 100_000, mark: 100_320, side: 'short' as const } }), closeAll: async (_u, _r2, why) => { r.closed.push(why); return { ok: true }; } });
+    await r.engine.tick(); // $16 against 50 lots
+    expect(r.closed[0]).toContain('stop $15');
   });
 
   it('futures stop and target in percent', async () => {

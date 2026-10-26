@@ -58441,6 +58441,19 @@ document.addEventListener('click', function(e) {
 #pgAlgo .al-t td{padding:4px 7px;border-bottom:1px solid var(--line);vertical-align:top}
 #pgAlgo .al-t td.w{max-width:420px;color:var(--muted)}
 #pgAlgo .al-row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px}
+#pgAlgo .pc .pcSvg{width:100%;max-width:980px;margin-left:auto;margin-right:auto;height:auto;display:block;color:var(--text);touch-action:pan-y;cursor:crosshair;outline:none;margin-top:6px}
+#pgAlgo .pc .pcSvg:focus-visible{outline:2px solid var(--focus,#9CC9EE);outline-offset:2px;border-radius:6px}
+#pgAlgo .pc .pcSvg text{font-size:10.5px;fill:var(--muted)}
+#pgAlgo .pc .pcHd{font-size:13px;margin:4px 0 0}
+#pgAlgo .pc .pcTiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin:8px 0}
+#pgAlgo .pc .pcTile{display:flex;flex-direction:column;gap:1px;border:1px solid var(--line2);border-radius:10px;padding:7px 9px;background:var(--panel2)}
+#pgAlgo .pc .pcTile b{font:800 17px/1.15 var(--font);font-variant-numeric:tabular-nums}
+#pgAlgo .pc .pcK{font-size:10.5px;color:var(--muted)}
+#pgAlgo .pc .pcRead{border:1px solid var(--focus,#9CC9EE);border-radius:10px;padding:2px 8px 6px;margin:6px 0;background:var(--panel)}
+#pgAlgo .pc .pcScroll{overflow:auto}
+#pgAlgo .pc table.pcT{border-collapse:collapse;width:100%;font-size:12px}
+#pgAlgo .pc .bt-note{font-size:12px;color:var(--muted);margin:6px 0}
+#pgAlgo tr.al-rr{cursor:pointer}#pgAlgo tr.al-rr:hover td{background:var(--panel2)}#pgAlgo tr.al-rr.sel td{background:var(--panel2);box-shadow:inset 0 1px 0 var(--focus),inset 0 -1px 0 var(--focus)}
 #pgAlgo .al-ev{list-style:none;margin:0;padding:0;font-size:12.5px}
 #pgAlgo .al-ev li{padding:4px 0;border-bottom:1px solid var(--line)}
 #pgAlgo .al-ev li.bad{color:var(--up)}
@@ -58461,7 +58474,7 @@ document.addEventListener('click', function(e) {
   const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
   const DAYL = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
 
-  const DEFAULT_EXIT = () => ({ legStopMultiple: 2, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true });
+  const DEFAULT_EXIT = () => ({ legStopMultiple: 2, futStopUsd: null, futTargetUsd: null, futStopPct: null, futTargetPct: null, netTargetUsd: null, netStopUsd: null, exitTime: null, alarmPoints: 20, hardPoints: 5, exitAllOnLegStop: true });
   const newForm = () => ({
     id: null, name: 'Short strangle', mode: 'paper', instrument: 'option', lots: 50,
     legs: [{ type: 'call', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }, { type: 'put', side: 'sell', pick: { mode: 'delta', target: 0.1, strike: 100000, points: 3000 } }],
@@ -58475,11 +58488,11 @@ document.addEventListener('click', function(e) {
     long: f => { f.name = 'Long straddle'; f.instrument = 'option'; f.legs = [mkLeg('call', 'buy', 'atm'), mkLeg('put', 'buy', 'atm')]; f.exit.legStopMultiple = null; },
     call: f => { f.name = 'Short call'; f.instrument = 'option'; f.legs = [mkLeg('call', 'sell', 'delta')]; },
     put: f => { f.name = 'Short put'; f.instrument = 'option'; f.legs = [mkLeg('put', 'sell', 'delta')]; },
-    future: f => { f.name = 'BTC perpetual'; f.instrument = 'future'; f.legs = []; f.exit.legStopMultiple = null; f.exit.futStopPct = 1; f.exit.futTargetPct = 2; },
+    future: f => { f.name = 'BTC perpetual'; f.instrument = 'future'; f.legs = []; f.exit.legStopMultiple = null; f.exit.futStopPct = null; f.exit.futTargetPct = null; f.exit.futStopUsd = 25; f.exit.futTargetUsd = 50; },
   };
   function mkLeg(type, side, mode) { return { type, side, pick: { mode, target: 0.1, strike: 100000, points: 3000 } }; }
 
-  const S = { st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: 'runs', formOpen: true, at: 0 };
+  const S = { sel: null, pnl: null, meta: null, hair: -1, ins: null, insAt: 0, st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: 'runs', formOpen: true, at: 0 };
 
   async function api(path, opt) {
     const t = tok(); if (!t) { const e = new Error('Sign in first'); e.status = 401; throw e; }
@@ -58495,7 +58508,7 @@ document.addEventListener('click', function(e) {
   /* ---------- form <-> rule ---------- */
   const num = (v, d) => { const n = Number(v); return isFinite(n) && v !== '' && v != null ? n : d; };
   function toRule(f) {
-    const exit = { legStopMultiple: f.exit.legStopMultiple == null || f.exit.legStopMultiple === '' ? null : num(f.exit.legStopMultiple, 2), futStopPct: nn(f.exit.futStopPct), futTargetPct: nn(f.exit.futTargetPct), netTargetUsd: nn(f.exit.netTargetUsd), netStopUsd: nn(f.exit.netStopUsd), exitTime: f.exit.exitTime || null, alarmPoints: num(f.exit.alarmPoints, 20), hardPoints: num(f.exit.hardPoints, 5), exitAllOnLegStop: !!f.exit.exitAllOnLegStop };
+    const exit = { legStopMultiple: f.exit.legStopMultiple == null || f.exit.legStopMultiple === '' ? null : num(f.exit.legStopMultiple, 2), futStopUsd: nn(f.exit.futStopUsd), futTargetUsd: nn(f.exit.futTargetUsd), futStopPct: nn(f.exit.futStopPct), futTargetPct: nn(f.exit.futTargetPct), netTargetUsd: nn(f.exit.netTargetUsd), netStopUsd: nn(f.exit.netStopUsd), exitTime: f.exit.exitTime || null, alarmPoints: num(f.exit.alarmPoints, 20), hardPoints: num(f.exit.hardPoints, 5), exitAllOnLegStop: !!f.exit.exitAllOnLegStop };
     const rule = {
       name: String(f.name || '').trim() || 'Strategy', mode: f.mode, instrument: f.instrument,
       legs: f.instrument === 'option' ? f.legs.map(l => ({ type: l.type, side: l.side, pick: pickOf(l.pick), ...(l.lots ? { lots: Math.round(num(l.lots, 1)) } : {}) })) : [],
@@ -58546,6 +58559,8 @@ document.addEventListener('click', function(e) {
     const en = r.entry.kind === 'hard' ? 'at ' + r.entry.time + ' IST' : 'between ' + r.entry.from + ' and ' + r.entry.to + ' IST' + (r.entry.conditions.length ? ' when ' + r.entry.conditions.map(condWords).join(' and ') : '');
     const x = r.exit, bits = [];
     if (x.legStopMultiple != null && r.instrument === 'option') bits.push('stop ' + x.legStopMultiple + 'x per sold leg');
+    if (x.futStopUsd != null && r.instrument === 'future') bits.push('stop $' + x.futStopUsd);
+    if (x.futTargetUsd != null && r.instrument === 'future') bits.push('target $' + x.futTargetUsd);
     if (x.futStopPct != null && r.instrument === 'future') bits.push('stop ' + x.futStopPct + '%');
     if (x.futTargetPct != null && r.instrument === 'future') bits.push('target ' + x.futTargetPct + '%');
     if (x.netTargetUsd != null) bits.push('net target $' + x.netTargetUsd);
@@ -58637,7 +58652,7 @@ document.addEventListener('click', function(e) {
       '<div class="al-note">A window that runs past midnight belongs to the day it starts.</div>';
     h += '<div class="al-sub">Exit and stops</div><div class="al-grid">' +
       (opts ? fld('Stop per sold leg (x entry price)', inp('exit.legStopMultiple', f.exit.legStopMultiple, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' }), '2 = a leg sold at 100 stops at 200. Empty = no per-leg stop.') :
-        fld('Stop (% from entry)', inp('exit.futStopPct', f.exit.futStopPct, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' })) + fld('Target (% from entry)', inp('exit.futTargetPct', f.exit.futTargetPct, { t: 'nullnum', type: 'number', step: '0.1', ph: 'none' }))) +
+        fld('Stop loss ($ on the position)', inp('exit.futStopUsd', f.exit.futStopUsd, { t: 'nullnum', type: 'number', step: '1', ph: 'none' }), 'Closes the position when it is down this many dollars. One lot is 0.001 BTC.') + fld('Target ($ on the position)', inp('exit.futTargetUsd', f.exit.futTargetUsd, { t: 'nullnum', type: 'number', step: '1', ph: 'none' }), 'Closes the position when it is up this many dollars.')) +
       fld('Net profit target ($)', inp('exit.netTargetUsd', f.exit.netTargetUsd, { t: 'nullnum', type: 'number', ph: 'none' }), 'Close everything when the whole trade is up this much.') +
       fld('Net stop loss ($)', inp('exit.netStopUsd', f.exit.netStopUsd, { t: 'nullnum', type: 'number', ph: 'none' }), 'Close everything when the whole trade is down this much.') +
       fld('Exit at (IST)', '<input data-f="exit.exitTime" data-t="nulltime" type="time" value="' + esc(f.exit.exitTime || '') + '">') + '</div>' +
@@ -58696,9 +58711,9 @@ document.addEventListener('click', function(e) {
     const st = S.st; if (!st) return '';
     if (!st.runs.length) return '<div class="al-note">No runs yet.</div>';
     const badge = r => ({ entered: 'ok', exited: '', skipped: 'warn', failed: 'bad', dry: 'warn' }[r] || '');
-    return '<div class="al-scroll"><table class="al-t"><thead><tr><th>Started (IST)</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Lots</th><th>Net PnL</th><th>Why / result</th><th></th></tr></thead><tbody>' + st.runs.map(r => {
+    return '<div class="al-scroll"><div class="al-note">Click a run to open its live PnL graph above the list.</div><table class="al-t"><thead><tr><th>Started (IST)</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Lots</th><th>Net PnL</th><th>Why / result</th><th></th></tr></thead><tbody>' + st.runs.map(r => {
       const pnl = r.status === 'entered' ? r.liveNetPnl : r.netPnl;
-      return '<tr><td>' + IST(r.enteredAt || r.windowStart) + '</td><td>' + esc(r.name) + '</td><td>' + (r.mode === 'live' ? 'Live' : 'Paper') + '</td><td><span class="al-chip ' + badge(r.status) + '">' + esc(r.status) + '</span></td><td>' + (r.lots || '') + '</td><td class="' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '</td><td class="w">' + esc((r.status === 'entered' ? (r.plan && r.plan.why) || r.reason : r.exitReason || r.reason || '')) + '</td>' +
+      return '<tr class="al-rr' + (S.sel === r.id ? ' sel' : '') + '" data-al="runchart" data-id="' + r.id + '" title="Click to see its PnL by minute"><td>' + IST(r.enteredAt || r.windowStart) + '</td><td>' + esc(r.name) + '</td><td>' + (r.mode === 'live' ? 'Live' : 'Paper') + '</td><td><span class="al-chip ' + badge(r.status) + '">' + esc(r.status) + '</span></td><td>' + (r.lots || '') + '</td><td class="' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '</td><td class="w">' + esc((r.status === 'entered' ? (r.plan && r.plan.why) || r.reason : r.exitReason || r.reason || '')) + '</td>' +
         '<td>' + (r.status === 'entered' ? '<button type="button" class="al-btn" data-al="runexit" data-id="' + r.id + '">Exit now</button>' : '') + '</td></tr>';
     }).join('') + '</tbody></table></div>';
   }
@@ -58718,20 +58733,93 @@ document.addEventListener('click', function(e) {
     return '<ul class="al-ev">' + e.map(x => '<li class="' + (x.kind.indexOf('failed') >= 0 ? 'bad' : '') + '"><span class="dim">' + IST(x.at) + '</span> ' + (x.dryRun ? '<span class="al-chip warn">dry</span> ' : '') + esc(x.detail) + '</li>').join('') + '</ul>';
   }
 
+  /* ---------- PnL tracker with a hairline ---------- */
+  const PC = () => window.pnlChart;
+  async function loadTrack() {
+    if (!S.sel || !tok()) return;
+    try { const d = await api('/runs/' + S.sel + '/pnl'); if (d.run) { S.pnl = d; } } catch (e) { S.pnl = { error: e.message }; }
+    paintTrack();
+  }
+  function paintTrack() {
+    const el = $('alTrack'); if (!el) return;
+    if (!S.sel) { el.innerHTML = '<div class="al-note">Click a run in the list below to see its PnL minute by minute. Move over the graph, or use the arrow keys, to read any minute.</div>'; return; }
+    const d = S.pnl;
+    if (!d) { el.innerHTML = '<div class="al-note">Loading…</div>'; return; }
+    if (d.error) { el.innerHTML = '<div class="al-err">' + esc(d.error) + '</div>'; return; }
+    if (!PC()) { el.innerHTML = '<div class="al-note">The chart is not loaded.</div>'; return; }
+    const ch = PC().minuteChart(d, 'alT'); S.meta = ch.meta;
+    const net = d.net.length ? d.net[d.net.length - 1] : null;
+    el.innerHTML = '<div class="pc"><div class="pcHd"><b>' + esc(d.run.name) + '</b> · ' + (d.run.mode === 'live' ? 'LIVE' : 'Paper') + ' · ' + (d.run.status === 'open' ? 'open now' : 'closed' + (d.run.exitReason ? ': ' + esc(d.run.exitReason) : '')) + (net != null ? ' · PnL <b class="' + sgn(net) + '">' + usd(net) + '</b>' : '') + '</div>' + ch.html + '<div id="alReadT"></div></div>';
+    if (S.meta) setHair(S.hair >= 0 && S.hair < S.meta.n ? S.hair : S.meta.n - 1);
+  }
+  function setHair(i) {
+    const meta = S.meta, d = S.pnl; if (!meta || !d || !PC()) return;
+    if (i < 0 || i >= meta.n) i = meta.n - 1;
+    S.hair = i;
+    const pl = PC().placeAt(meta, d, i), g = $('alTH'); if (!g || !pl) return;
+    const ln = $('alTL'), dot = $('alTD'); ln.setAttribute('x1', pl.x); ln.setAttribute('x2', pl.x); dot.setAttribute('cx', pl.x); dot.setAttribute('cy', pl.y);
+    const b = $('alTTb'), tt = $('alTTt'); if (b && tt) { const cx = Math.max(30, Math.min(760 - 30, pl.x)); b.setAttribute('x', cx - 22); tt.setAttribute('x', cx); tt.textContent = pl.label; }
+    g.setAttribute('visibility', 'visible');
+    const out = $('alReadT'); if (out) out.innerHTML = PC().minuteReadout(d, i);
+  }
+  const hairEv = e => { const svg = e.target && e.target.closest && e.target.closest('.pcSvg'); if (!svg || svg.dataset.pc !== 'alT' || !S.meta) return; const r = svg.getBoundingClientRect(); if (r.width) setHair(PC().indexAt(S.meta, (e.clientX - r.left) / r.width * 760)); };
+  root.addEventListener('pointermove', hairEv);
+  root.addEventListener('pointerdown', hairEv);
+  root.addEventListener('keydown', e => {
+    const svg = e.target && e.target.classList && e.target.classList.contains('pcSvg') ? e.target : null; if (!svg || svg.dataset.pc !== 'alT' || !S.meta) return;
+    const cur = S.hair >= 0 ? S.hair : S.meta.n - 1, step = e.shiftKey ? 10 : 1; let i = cur;
+    if (e.key === 'ArrowLeft') i = Math.max(0, cur - step); else if (e.key === 'ArrowRight') i = Math.min(S.meta.n - 1, cur + step); else if (e.key === 'Home') i = 0; else if (e.key === 'End') i = S.meta.n - 1; else return;
+    e.preventDefault(); setHair(i);
+  });
+
+  /* ---------- what worked: the learning tab ---------- */
+  const pc1 = v => v == null || !isFinite(v) ? '-' : (v * 100).toFixed(0) + '%';
+  function insHtml() {
+    const x = S.ins; if (!x) return '<div class="al-note">Working out which indicators did best on the last four weeks of candles…</div>';
+    if (x.error) return '<div class="al-err">' + esc(x.error) + '</div>';
+    const m = x.market, own = x.own;
+    const nowTxt = v => v === 1 ? '<span class="pos">buy</span>' : v === -1 ? '<span class="neg">sell</span>' : '<span class="dim">no signal</span>';
+    let h = '<div class="al-note">' + esc(m.note) + ' Based on ' + m.bars + ' fifteen-minute candles' + (m.from ? ' from ' + IST(m.from).slice(0, 5) + ' to ' + IST(m.to).slice(0, 5) : '') + '.</div>';
+    h += '<div class="al-sub">Futures: which signal was right most often, 4 hours ahead</div>';
+    if (!m.futures.length) h += '<div class="al-note">Not enough candles yet.</div>';
+    else h += '<div class="al-scroll"><table class="al-t"><thead><tr><th>Indicator</th><th>Signals</th><th>Right</th><th>Avg move</th><th>Score</th><th>Says now</th><th>Use</th></tr></thead><tbody>' + m.futures.map((f, i) => '<tr><td class="w">' + (i === 0 ? '<span class="al-chip ok">best</span> ' : '') + esc(f.label) + '</td><td>' + f.n + '</td><td>' + pc1(f.winRate) + '</td><td class="' + sgn(f.avgPct) + '">' + (f.avgPct >= 0 ? '+' : '') + f.avgPct.toFixed(3) + '%</td><td>' + f.score.toFixed(1) + '</td><td>' + nowTxt(f.now) + '</td><td>' + (f.long ? '<button type="button" class="al-btn" data-al="addcond" data-k="f" data-i="' + i + '" data-s="long">add for buy</button> ' : '') + (f.short ? '<button type="button" class="al-btn" data-al="addcond" data-k="f" data-i="' + i + '" data-s="short">add for sell</button>' : '') + '</td></tr>').join('') + '</tbody></table></div><div class="al-note">Score is the average move divided by its noise: above 2 is worth testing, below 1 is likely luck.</div>';
+    h += '<div class="al-sub">Selling options: which calm sign came before a quieter 8 hours</div>';
+    if (!m.options.length) h += '<div class="al-note">Not enough candles yet.</div>';
+    else h += '<div class="al-scroll"><table class="al-t"><thead><tr><th>Condition</th><th>Cases</th><th>Next 8h range</th><th>Calmer than average</th><th>Stayed inside 2%</th><th>True now</th><th>Use</th></tr></thead><tbody>' + m.options.map((o, i) => '<tr><td class="w">' + (i === 0 ? '<span class="al-chip ok">best</span> ' : '') + esc(o.label) + '</td><td>' + o.n + '</td><td>' + o.avgRange.toFixed(2) + '% <span class="dim">(avg ' + o.baseline.toFixed(2) + '%)</span></td><td class="' + (o.calmerPct > 0 ? 'pos' : 'neg') + '">' + o.calmerPct.toFixed(0) + '%</td><td>' + pc1(o.calmRate) + ' <span class="dim">(avg ' + pc1(o.baselineCalmRate) + ')</span></td><td>' + (o.now ? '<span class="pos">yes</span>' : '<span class="dim">no</span>') + '</td><td>' + (o.condition ? '<button type="button" class="al-btn" data-al="addcond" data-k="o" data-i="' + i + '">add to my rule</button>' : '<span class="dim">not a rule condition</span>') + '</td></tr>').join('') + '</tbody></table></div>';
+    h += '<div class="al-sub">Your own record: how your finished runs did per condition</div>';
+    if (!own.finished) h += '<div class="al-note">No finished runs yet. Every run records which conditions were true when it entered, and this table fills in from your results.</div>';
+    else {
+      h += '<div class="al-note">' + own.finished + ' finished runs, ' + own.wins + ' won, net ' + usd(own.totalPnl) + '.' + (own.finished < 20 ? ' That is too few to learn much from: treat the table as a first hint.' : '') + '</div>';
+      if (own.byCondition.length) h += '<div class="al-scroll"><table class="al-t"><thead><tr><th>Condition true at entry</th><th>Runs</th><th>Won</th><th>Average PnL</th><th>Total</th></tr></thead><tbody>' + own.byCondition.map(c => '<tr><td class="w">' + esc(c.label) + '</td><td>' + c.runs + '</td><td>' + c.wins + '</td><td class="' + sgn(c.avgPnl) + '">' + usd(c.avgPnl) + '</td><td class="' + sgn(c.totalPnl) + '">' + usd(c.totalPnl) + '</td></tr>').join('') + '</tbody></table></div>';
+    }
+    return h;
+  }
+  function addCond(b) {
+    const x = S.ins && S.ins.market; if (!x) return;
+    const i = Number(b.dataset.i), c = b.dataset.k === 'f' ? (x.futures[i] || {})[b.dataset.s] : (x.options[i] || {}).condition;
+    if (!c) return;
+    const fm = S.form; fm.entry.kind = 'window'; fm.entry.conditions.push(JSON.parse(JSON.stringify(c)));
+    if (b.dataset.k === 'f') { fm.instrument = 'future'; fm.legs = []; fm.future = { side: b.dataset.s }; }
+    S.formTouched = true; S.formOpen = true; S.ok = 'Added to the rule writer as an entry condition (the entry became a window: set its times). Press Save and arm when it looks right.';
+    skeleton(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) { }
+  }
+
   /* ---------- page skeleton ---------- */
   function skeleton() {
     root.innerHTML = '<div class="al"><div class="al-top"><h2>Algo trading</h2><span class="al-sub2">Write your own entry and exit rules. Nothing is fixed. Paper first; real orders only with a trading key.</span></div>' +
       '<div id="alTop"></div>' +
       '<section class="al-sec"><h3 data-al="toggleform" style="cursor:pointer">Rule writer <span class="dim">' + (S.formOpen ? '▾' : '▸') + '</span></h3><div id="alForm"' + (S.formOpen ? '' : ' hidden') + '></div></section>' +
       '<section class="al-sec"><h3>Your strategies</h3><div id="alList"></div></section>' +
-      '<section class="al-sec"><div class="al-tabs"><button type="button" data-al="tab" data-k="runs" class="' + (S.tab === 'runs' ? 'on' : '') + '">Runs and open trades</button><button type="button" data-al="tab" data-k="open" class="' + (S.tab === 'open' ? 'on' : '') + '">Track a position that is already open</button><button type="button" data-al="tab" data-k="ev" class="' + (S.tab === 'ev' ? 'on' : '') + '">Live order log</button></div><div id="alTab"></div></section></div>';
+      '<section class="al-sec"><h3>PnL tracker</h3><div id="alTrack"></div></section>' +
+      '<section class="al-sec"><div class="al-tabs"><button type="button" data-al="tab" data-k="runs" class="' + (S.tab === 'runs' ? 'on' : '') + '">Runs and open trades</button><button type="button" data-al="tab" data-k="open" class="' + (S.tab === 'open' ? 'on' : '') + '">Track a position that is already open</button><button type="button" data-al="tab" data-k="ins" class="' + (S.tab === 'ins' ? 'on' : '') + '">What worked (learning)</button><button type="button" data-al="tab" data-k="ev" class="' + (S.tab === 'ev' ? 'on' : '') + '">Live order log</button></div><div id="alTab"></div></section></div>';
     paintForm(); paintLive();
   }
   function paintForm() { const el = $('alForm'); if (el) el.innerHTML = formHtml(); }
   function paintLive() {
     const a = $('alTop'), b = $('alList'), c = $('alTab');
     if (a) a.innerHTML = topHtml(); if (b) b.innerHTML = stratHtml();
-    if (c) c.innerHTML = S.tab === 'runs' ? runsHtml() : S.tab === 'open' ? openHtml() : evHtml();
+    if (c) c.innerHTML = S.tab === 'runs' ? runsHtml() : S.tab === 'open' ? openHtml() : S.tab === 'ins' ? insHtml() : evHtml();
+    paintTrack();
   }
 
   /* ---------- data ---------- */
@@ -58742,6 +58830,9 @@ document.addEventListener('click', function(e) {
       S.st = await api('/state');
       if (S.tab === 'open' || !S.open) S.open = await api('/open-positions').catch(() => S.open);
       if (S.tab === 'ev') S.ev = (await api('/events')).events;
+      if (S.tab === 'ins' && (!S.ins || Date.now() - S.insAt > 300000)) { S.ins = await api('/insights').catch(e => ({ error: e.message })); S.insAt = Date.now(); }
+      if (!S.sel && S.st) { const o = S.st.runs.find(x => x.status === 'entered'); if (o) S.sel = o.id; }
+      if (S.sel) await loadTrack();
       paintLive(); if (!S.formTouched) paintForm();
     } catch (e) { const a = $('alTop'); if (a) a.innerHTML = '<div class="al-err">' + esc(e.message) + '</div>'; }
   }
@@ -58789,7 +58880,9 @@ document.addEventListener('click', function(e) {
     if (a === 'delcond') { f.entry.conditions.splice(Number(b.dataset.i), 1); S.formTouched = true; paintForm(); return; }
     if (a === 'day') { const d = b.dataset.d; f.days = f.days.includes(d) ? f.days.filter(x => x !== d) : f.days.concat(d); S.formTouched = true; paintForm(); return; }
     if (a === 'newform') { S.form = newForm(); S.pv = null; S.formTouched = false; paintForm(); return; }
-    if (a === 'tab') { S.tab = b.dataset.k; D.querySelectorAll('.al-tabs button').forEach(x => x.classList.toggle('on', x.dataset.k === S.tab)); if (S.tab === 'open') S.open = null; if (S.tab === 'ev') S.ev = null; paintLive(); refresh(); return; }
+    if (a === 'tab') { S.tab = b.dataset.k; D.querySelectorAll('.al-tabs button').forEach(x => x.classList.toggle('on', x.dataset.k === S.tab)); if (S.tab === 'open') S.open = null; if (S.tab === 'ev') S.ev = null; if (S.tab === 'ins') S.ins = null; paintLive(); refresh(); return; }
+    if (a === 'runchart') { S.sel = b.dataset.id; S.pnl = null; S.hair = -1; paintLive(); await loadTrack(); const t = $('alTrack'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
+    if (a === 'addcond') { addCond(b); return; }
     if (a === 'preview') return run(async () => { S.pv = (await post('/preview', { rule: toRule(f), lots: lotsOf() })).preview; });
     if (a === 'save' || a === 'savearm') return run(async () => {
       const r = await post('/strategies', { id: f.id || undefined, rule: toRule(f), lots: lotsOf() });
@@ -58817,7 +58910,7 @@ document.addEventListener('click', function(e) {
   function tick() { if (active() && !D.hidden) refresh(); }
   new MutationObserver(() => { if (active() && Date.now() - S.at > 1500) { S.at = Date.now(); refresh(); } }).observe($('pgAlgo'), { attributes: true, attributeFilter: ['class'] });
   timer = setInterval(tick, 5000);
-  window.algoPage = { refresh, toRule, words };
+  window.algoPage = { refresh, toRule, words, track: id => { S.sel = id; S.pnl = null; S.hair = -1; S.tab = 'runs'; const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb) nb.click(); S.built = false; refresh(); } };
   if (active()) refresh();
 })();
 </script>
@@ -60768,8 +60861,11 @@ document.addEventListener('click', function(e) {
     if (/\bstraddle\b/.test(q)) p.legs = 'straddle'; else if (/\bstrangle\b/.test(q)) p.legs = 'strangle';
     else if (/\b(call only|only call|just call|short call)\b/.test(q)) p.legs = 'call'; else if (/\b(put only|only put|just put|short put)\b/.test(q)) p.legs = 'put';
     if (!p.legs && /\boptions?\b/.test(q)) p.legs = 'strangle';
+    if (/\b(now|right now|immediately|at market|trade now)\b/.test(q)) p.when = 'now';
+    else if (/\b(schedule|scheduled|later|tonight|tomorrow)\b/.test(q)) p.when = 'later';
     if (/\b(futures?|perp|perpetual|btcusd)\b/.test(q)) { p.legs = 'future'; p.side = /\b(short|sell)\b/.test(q) ? 'short' : 'long'; }
-    if ((m = /\b(?:net\s+)?(?:target|profit target|take profit)\s*(?:of|at|=)?\s*\$?\s*(\d+(?:\.\d+)?)/.exec(q))) p.netTarget = Number(m[1]);
+    if ((m = /(?:stop\s*loss|stoploss|stop|sl)\s*(?:of|at|=)?\s*\$\s*(\d+(?:\.\d+)?)/.exec(q)) || (m = /(?:stop\s*loss|stoploss|stop|sl)\s*(?:of|at|=)?\s*(\d+(?:\.\d+)?)\s*(?:usd|dollars?|bucks)\b/.exec(q)) || (m = /\$\s*(\d+(?:\.\d+)?)\s*(?:stop\s*loss|stoploss|stop|sl)\b/.exec(q))) p.stopUsd = Number(m[1]);
+    if ((m = /\b(?:net\s+)?(?:target|profit target|take profit|tp)\s*(?:of|at|=)?\s*\$?\s*(\d+(?:\.\d+)?)/.exec(q))) p.netTarget = Number(m[1]);
     if ((m = /\b(?:net stop|net loss|max loss|loss limit)\s*(?:of|at|=)?\s*\$?\s*(\d+(?:\.\d+)?)/.exec(q))) p.netStop = Number(m[1]);
     return p;
   }
@@ -60783,21 +60879,29 @@ document.addEventListener('click', function(e) {
     if (p.legs === 'strangle') { r.instrument = 'option'; r.legs = [leg('call', 'sell', 'delta', tg), leg('put', 'sell', 'delta', tg)]; r.name = 'Short strangle'; delete r.future; }
     else if (p.legs === 'straddle') { r.instrument = 'option'; r.legs = [leg('call', 'sell', 'atm'), leg('put', 'sell', 'atm')]; r.name = 'Short straddle'; delete r.future; }
     else if (p.legs === 'call' || p.legs === 'put') { r.instrument = 'option'; r.legs = [leg(p.legs, 'sell', 'delta', tg)]; r.name = 'Short ' + p.legs; delete r.future; }
-    else if (p.legs === 'future') { r.instrument = 'future'; r.legs = []; r.future = { side: p.side || 'long' }; r.name = 'BTC perpetual ' + (p.side || 'long'); if (r.exit.futStopPct == null) r.exit.futStopPct = 1; }
+    else if (p.legs === 'future') { r.instrument = 'future'; r.legs = []; r.future = { side: p.side || 'long' }; r.name = 'BTC perpetual ' + (p.side || 'long'); r.exit.futStopPct = null; r.exit.futTargetPct = null; r.exit.legStopMultiple = null; }
     else if (p.deltaTarget != null) r.legs.forEach(l => { if (l.pick.mode === 'delta') { l.pick = { mode: 'delta', target: tg }; } });
     if (p.expiry) r.expiry = p.expiry;
     if ('stopMultiple' in p) r.exit.legStopMultiple = p.stopMultiple;
+    if (p.stopUsd != null) { if (r.instrument === 'future') r.exit.futStopUsd = p.stopUsd; else r.exit.netStopUsd = p.stopUsd; }
     if (p.window) r.entry = { kind: 'window', from: p.window.from, to: p.window.to, conditions: r.entry.kind === 'window' ? r.entry.conditions : [] };
     else if (p.entryTime) r.entry = { kind: 'hard', time: p.entryTime };
     if ('exitTime' in p) r.exit.exitTime = p.exitTime;
     if (p.days) r.days = p.days;
     if (p.mode) r.mode = p.mode;
-    if (p.netTarget != null) r.exit.netTargetUsd = p.netTarget;
-    if (p.netStop != null) r.exit.netStopUsd = p.netStop;
+    if (p.netTarget != null) { if (r.instrument === 'future') r.exit.futTargetUsd = p.netTarget; else r.exit.netTargetUsd = p.netTarget; }
+    if (p.netStop != null) { if (r.instrument === 'future') r.exit.futStopUsd = p.netStop; else r.exit.netStopUsd = p.netStop; }
     return r;
   }
   const hasAny = p => Object.keys(p).length > 0;
   /** The answer to "future or option?": a patch, or null when the text does not say. */
+  /** "trade now" or "schedule": a patch, or null */
+  function parseWhen(q) {
+    q = ' ' + String(q || '').toLowerCase() + ' ';
+    if (/\b(now|right now|immediately|market|execute)\b/.test(q)) return { when: 'now' };
+    if (/\b(schedule|scheduled|later|tonight|tomorrow|at \d)/.test(q)) return { when: 'later' };
+    return null;
+  }
   function parseChoice(q) {
     q = ' ' + String(q || '').toLowerCase() + ' ';
     if (/\b(future|futures|perp|perpetual|btcusd)\b/.test(q)) return { legs: 'future', side: /\b(short|sell)\b/.test(q) ? 'short' : 'long' };
@@ -60813,15 +60917,17 @@ document.addEventListener('click', function(e) {
     if (!q) return null;
     if (pending && /^(ok|okay|yes|y|confirm|go|go ahead|do it|execute|place it|place order|yes do it|ok return)$/.test(q)) return { kind: 'ok' };
     if (pending && /^(cancel|no|n|abort|never ?mind|stop|dont|don't)$/.test(q)) return { kind: 'cancel' };
+    if (pending === 'when') { const c = parseWhen(q); if (c) return { kind: 'when', patch: Object.assign(parsePatch(q), c) }; }
     if (pending === 'choose') { const c = parseChoice(q); if (c) return { kind: 'choice', patch: Object.assign(parsePatch(q), c) }; }
     let m;
+    if (/\b(indicators?|signals?)\b/.test(q) && /\b(futures?|options?|strangle|algo|trading|trade)\b/.test(q) && /\b(best|top|which|recommend\w*|suggest\w*|work\w*|learn\w*|use)\b/.test(q)) return { kind: 'insight', which: /\bfutures?\b/.test(q) && !/\boptions?\b/.test(q) ? 'future' : /\b(options?|strangle)\b/.test(q) && !/\bfutures?\b/.test(q) ? 'option' : 'both' };
     if (/^(?:please )?(?:exit|exit all|close all|kill all|kill|hard exit|hard kill|square ?off|square off all|exit everything|close everything|exit all positions|close all positions|kill all positions)(?: now)?$/.test(q)) return { kind: 'exit' };
     if ((m = /^(?:please )?(?:entry|enter|entre|sell|short|go short|open)\s+(\d{1,6})(?:\s*lots?)?\b(.*)$/.exec(q))) {
       const lots = Number(m[1]); if (lots >= 1) return { kind: 'entry', lots, patch: parsePatch(m[2]) };
     }
     if ((m = /^(?:set|save|change|update|make)\s+(?:my\s+)?(?:default|defaults|standard)\b\s*(?:entry|exit|rules?|settings?|conditions?)?\s*(?:to|as|=|:)?\s*(.*)$/.exec(q))) return { kind: 'default', patch: parsePatch(m[1]) };
     if (/^(?:show|what(?:'s| is| are)?)\s+(?:my\s+)?(?:default|defaults)\b/.test(q) || /^my defaults?$/.test(q)) return { kind: 'showdefault' };
-    if (pending && pending !== 'exit' && pending !== 'choose') { const p = parsePatch(q); if (hasAny(p)) return { kind: 'patch', patch: p }; }
+    if (pending && pending !== 'exit' && pending !== 'choose' && pending !== 'when') { const p = parsePatch(q); if (hasAny(p)) return { kind: 'patch', patch: p }; }
     return null;
   }
 
@@ -60829,7 +60935,7 @@ document.addEventListener('click', function(e) {
   const daysText = d => d.length === 7 ? 'every day' : d.map(x => x[0].toUpperCase() + x.slice(1)).join(', ');
   const expiryText = (r, pv) => pv && pv.expiries && pv.expiries.length ? pv.expiries.join(' + ') : ({ current: 'current (0DTE)', nearest: 'current (0DTE)', next: 'next (1DTE)', n2n: 'next to next (2DTE)', b2b: 'current + next', fixed: r.expiry.code }[r.expiry.mode]);
   const entryText = (r, now) => now ? 'now, at market' : r.entry.kind === 'hard' ? r.entry.time + ' IST' : r.entry.from + ' to ' + r.entry.to + ' IST, when ' + (r.entry.conditions.length ? 'the conditions are met' : 'the window opens');
-  const stopText = r => r.instrument === 'future' ? (r.exit.futStopPct != null ? r.exit.futStopPct + '% stop' : 'no stop') + (r.exit.futTargetPct != null ? ', ' + r.exit.futTargetPct + '% target' : '') : r.exit.legStopMultiple != null ? r.exit.legStopMultiple + 'x each sold leg' + (r.exit.exitAllOnLegStop ? ', everything closes if one leg stops' : '') : 'no per-leg stop';
+  const stopText = r => r.instrument === 'future' ? (r.exit.futStopUsd != null ? '$' + r.exit.futStopUsd + ' stop' : r.exit.futStopPct != null ? r.exit.futStopPct + '% stop' : 'no stop') + (r.exit.futTargetUsd != null ? ', $' + r.exit.futTargetUsd + ' target' : r.exit.futTargetPct != null ? ', ' + r.exit.futTargetPct + '% target' : '') : r.exit.legStopMultiple != null ? r.exit.legStopMultiple + 'x each sold leg' + (r.exit.exitAllOnLegStop ? ', everything closes if one leg stops' : '') : 'no per-leg stop';
   /** The reply once the order is in. */
   function congrats(rule, lots, pv, res, when) {
     const dry = res && res.dry;
@@ -60880,10 +60986,10 @@ document.addEventListener('click', function(e) {
     if (cmd.kind === 'cancel') { reset(); return msg('text', { text: 'Cancelled. Nothing was placed.' }); }
     if (cmd.kind === 'entry') {
       T.lots = cmd.lots; T.when = 'now'; T.held = cmd.patch;
-      if (!cmd.patch.legs) { T.stage = 'choose'; return msg('choose', { lots: cmd.lots }); }
-      return build(cmd.patch);
+      return next();
     }
-    if (cmd.kind === 'choice') return build(Object.assign({}, T.held || {}, cmd.patch));
+    if (cmd.kind === 'choice' || cmd.kind === 'when') { T.held = Object.assign({}, T.held || {}, cmd.patch); return next(); }
+    if (cmd.kind === 'insight') return insight(cmd.which);
     if (cmd.kind === 'patch') {
       T.rule = applyPatch(T.rule, cmd.patch); await preview();
       return msg(T.stage === 'builder' ? 'builder' : 'summary', { snap: snap(), note: 'Updated.' });
@@ -60906,10 +61012,31 @@ document.addEventListener('click', function(e) {
     if (cmd.kind === 'showdefault') return msg('saved', { rule: await loadDefaults(), lots: 1, shown: true });
     return null;
   }
+  /** The next question: option or future, then trade now or schedule, then the summary. */
+  async function next() {
+    const p = T.held || {};
+    if (!p.legs) { T.stage = 'choose'; return msg('choose', { lots: T.lots }); }
+    if (!p.when && !p.entryTime && !p.window) { T.stage = 'when'; return msg('when', { lots: T.lots, what: p.legs === 'future' ? 'BTC future ' + (p.side || 'long') : 'option strangle' }); }
+    return build(p);
+  }
   async function build(patch) {
     T.rule = applyPatch(await loadDefaults(), patch); T.held = null;
-    await preview(); T.stage = 'summary';
-    return msg('summary', { snap: snap() });
+    T.when = patch.when || (patch.entryTime || patch.window ? 'later' : 'now');
+    await preview();
+    let note = T.when === 'later' ? 'Scheduled trade: set the entry time and the days below, then say ok to arm it. It places itself at that time.' : null;
+    const sg = T.pv && T.pv.recommend && T.pv.recommend.suggest;
+    if (T.rule.instrument === 'future' && sg && sg.stopUsd) {
+      const x = T.rule.exit, filled = [];
+      if (x.futStopUsd == null && x.futStopPct == null) { x.futStopUsd = sg.stopUsd; filled.push('stop $' + sg.stopUsd); }
+      if (x.futTargetUsd == null && x.futTargetPct == null) { x.futTargetUsd = sg.targetUsd; filled.push('target $' + sg.targetUsd); }
+      if (filled.length) note = (note ? note + ' ' : '') + 'I filled in ' + filled.join(' and ') + ' from the recommendation: change them if you like.';
+    }
+    T.stage = T.when === 'later' ? 'builder' : 'summary';
+    return msg(T.stage, { snap: snap(), note });
+  }
+  async function insight(which) {
+    try { const j = await api('/insights'); return msg('insight', { data: j, which }); }
+    catch (e) { return msg('text', { text: 'I could not work out the indicators now: ' + e.message }); }
   }
   const snap = () => ({ rule: JSON.parse(JSON.stringify(T.rule)), lots: T.lots, pv: T.pv, when: T.when, stage: T.stage, live: null });
 
@@ -60921,7 +61048,7 @@ document.addEventListener('click', function(e) {
       if (when === 'now') res = await post('/enter-now', { rule, lots });
       else { const sv = await post('/strategies', { rule, lots }); await post('/strategies/' + sv.strategy.id + '/arm', { armed: true }); res = { detail: 'It is armed on the Algo page and waits for its time.' }; }
       const c = congrats(rule, lots, pv, res, when);
-      reset(); return msg('done', { c });
+      reset(); return msg('done', { c, runId: res && res.run ? res.run.id : null });
     } catch (e) { return msg('text', { text: 'The order was NOT placed: ' + e.message }); }
   }
   async function killAll() {
@@ -60934,6 +61061,24 @@ document.addEventListener('click', function(e) {
   /* ---------- drawing ---------- */
   const words = r => (window.algoPage && window.algoPage.words) ? window.algoPage.words(r, 1) : r.name;
   function condList(list) { return list && list.length ? '<ul class="at-cl">' + list.map(c => '<li class="' + (c.ok ? 'ok' : 'no') + '">' + (c.ok ? '✓ ' : '✗ ') + esc(c.label) + ' <span>· ' + esc(c.now) + '</span></li>').join('') + '</ul>' : ''; }
+  /** The auto recommendation: a verdict, the reasons, and what it suggests for the order. */
+  function recHtml(rc) {
+    if (!rc) return '';
+    return '<div class="at-rec ' + (rc.verdict === 'go' ? 'go' : 'wait') + '"><div class="at-rh">' + (rc.verdict === 'go' ? '✓ ' : '! ') + 'Recommendation: ' + esc(rc.headline) + '</div><ul class="at-ul">' + rc.reasons.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' + (rc.suggest && rc.suggest.note ? '<div class="at-fine">' + esc(rc.suggest.note) + '</div>' : '') + '<div class="at-fine">A reading of the conditions from recorded data, not a forecast. The decision is yours.</div></div>';
+  }
+  function insightCard(m) {
+    const mk = m.data.market, own = m.data.own, w = m.which;
+    const pc = v => (v * 100).toFixed(0) + '%';
+    let h = '<div class="at-card"><div class="at-h">Best indicators on the last 4 weeks</div>';
+    if (w !== 'option') {
+      h += '<div class="at-sub">For futures (right over the next 4 hours)</div>' + (mk.futures.length ? '<ul class="at-ul">' + mk.futures.slice(0, 4).map((f, i) => '<li>' + (i === 0 ? '<b>Best: </b>' : '') + esc(f.label) + ' · right ' + pc(f.winRate) + ' · avg ' + (f.avgPct >= 0 ? '+' : '') + f.avgPct.toFixed(3) + '% · says now ' + (f.now === 1 ? 'buy' : f.now === -1 ? 'sell' : 'nothing') + '</li>').join('') + '</ul>' : '<div class="at-fine">Not enough candles yet.</div>');
+    }
+    if (w !== 'future') {
+      h += '<div class="at-sub">For selling options (calm before the next 8 hours)</div>' + (mk.options.length ? '<ul class="at-ul">' + mk.options.slice(0, 4).map((o, i) => '<li>' + (i === 0 ? '<b>Best: </b>' : '') + esc(o.label) + ' · ' + o.calmerPct.toFixed(0) + '% calmer than average · stayed inside 2% ' + pc(o.calmRate) + ' (avg ' + pc(o.baselineCalmRate) + ') · true now: ' + (o.now ? 'yes' : 'no') + '</li>').join('') + '</ul>' : '<div class="at-fine">Not enough candles yet.</div>');
+    }
+    h += '<div class="at-fine">Your own record: ' + (own.finished ? own.finished + ' finished runs, ' + own.wins + ' won' + (own.finished < 20 ? ' (too few to learn much from yet)' : '') : 'no finished runs yet, so nothing to learn from your trades yet') + '. ' + esc(mk.note) + ' Open the Algo page, tab What worked, to add any of these as an entry condition.</div></div>';
+    return h;
+  }
   function summaryCard(m, builder) {
     const s = m.snap, r = s.rule, pv = s.pv;
     let h = '<div class="at-card"><div class="at-h">' + (builder ? 'Strategy builder' : 'Trade summary') + '<span class="at-badge ' + (r.mode === 'live' ? 'live' : '') + '">' + (r.mode === 'live' ? 'LIVE' : 'Paper') + '</span></div>';
@@ -60946,6 +61091,7 @@ document.addEventListener('click', function(e) {
         (pv.margin && pv.margin.required != null ? '<span>Margin needed</span><b>' + money(pv.margin.required) + '</b>' : '') +
         '<span>Entry</span><b>' + esc(entryText(r, s.when === 'now')) + '</b><span>Exit</span><b>' + esc((r.exit.exitTime ? r.exit.exitTime + ' IST' : 'no exit time') + (r.exit.netTargetUsd != null ? ', target $' + r.exit.netTargetUsd : '') + (r.exit.netStopUsd != null ? ', net stop $' + r.exit.netStopUsd : '')) + '</b>' +
         '<span>Stoploss</span><b>' + esc(stopText(r)) + '</b><span>Days</span><b>' + esc(daysText(r.days)) + '</b></div>';
+      h += recHtml(pv.recommend);
       if (pv.margin) h += '<div class="at-fine">Margin is ' + esc(pv.margin.note) + '.</div>';
       if (r.entry.kind === 'window' && s.when !== 'now') h += condList(pv.conditions);
     }
@@ -60966,7 +61112,7 @@ document.addEventListener('click', function(e) {
       '<label>Run<select data-atf="when">' + o('now', s.when, 'Now, at market') + o('later', s.when, 'At the entry time below') + '</select></label>' +
       '<label>Entry time<input data-atf="etime" type="time" value="' + esc(r.entry.kind === 'hard' ? r.entry.time : r.entry.from) + '"></label>' +
       '<label>Exit time<input data-atf="xtime" type="time" value="' + esc(r.exit.exitTime || '') + '"></label>' +
-      (r.instrument === 'option' ? '<label>Stop (x)<input data-atf="stop" type="number" step="0.1" value="' + (r.exit.legStopMultiple == null ? '' : r.exit.legStopMultiple) + '" placeholder="none"></label>' : '') +
+      (r.instrument === 'option' ? '<label>Stop (x)<input data-atf="stop" type="number" step="0.1" value="' + (r.exit.legStopMultiple == null ? '' : r.exit.legStopMultiple) + '" placeholder="none"></label>' : '<label>Stop loss $<input data-atf="fstop" type="number" value="' + (r.exit.futStopUsd == null ? '' : r.exit.futStopUsd) + '" placeholder="none"></label><label>Target $<input data-atf="ftgt" type="number" value="' + (r.exit.futTargetUsd == null ? '' : r.exit.futTargetUsd) + '" placeholder="none"></label>') +
       '<label>Net target $<input data-atf="tgt" type="number" value="' + (r.exit.netTargetUsd == null ? '' : r.exit.netTargetUsd) + '" placeholder="none"></label><label>Net stop $<input data-atf="nstop" type="number" value="' + (r.exit.netStopUsd == null ? '' : r.exit.netStopUsd) + '" placeholder="none"></label>' +
       '<label>Mode<select data-atf="mode">' + o('paper', r.mode, 'Paper') + o('live', r.mode, 'Live (needs trading key)') + '</select></label>' +
       '<div class="at-days">' + DAYN.map(d => '<button type="button" class="at-day' + (r.days.includes(d) ? ' on' : '') + '" data-at="day" data-d="' + d + '">' + d[0].toUpperCase() + d.slice(1) + '</button>').join('') + '</div></div>';
@@ -60977,12 +61123,16 @@ document.addEventListener('click', function(e) {
     if (m.kind === 'choose') {
       return '<div class="at-card"><div class="at-h">Entry ' + m.lots + ' lots: option or future?</div><div class="at-act"><button type="button" class="at-btn pri" data-at="pick" data-k="strangle">Option: one strangle (2 legs, nearest 0.10 delta)</button><button type="button" class="at-btn" data-at="pick" data-k="long">Future: buy (long)</button><button type="button" class="at-btn" data-at="pick" data-k="short">Future: sell (short)</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div><div class="at-fine">Or type: option, future long, future short.</div></div>';
     }
+    if (m.kind === 'when') {
+      return '<div class="at-card"><div class="at-h">Entry ' + m.lots + ' lots, ' + esc(m.what) + ': trade now or schedule?</div><div class="at-act"><button type="button" class="at-btn pri" data-at="when" data-k="now">Trade now (at market)</button><button type="button" class="at-btn" data-at="when" data-k="later">Schedule it (set time and days)</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div><div class="at-fine">Or type: now, or schedule. A scheduled trade waits for its time and days and places itself.</div></div>';
+    }
+    if (m.kind === 'insight') return insightCard(m);
     if (m.kind === 'summary') return summaryCard(m, false);
     if (m.kind === 'builder') return summaryCard(m, true);
     if (m.kind === 'done') {
       const c = m.c;
       return '<div class="at-card done"><div class="at-h ok">' + esc(c.head) + '</div><div class="at-kv">' + c.rows.map(r => '<span>' + esc(r[0]) + '</span><b>' + esc(r[1]) + '</b>').join('') + '</div>' +
-        (c.lines && c.lines.length ? '<ul class="at-ul">' + c.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') + '<div class="at-fine">Track it on the Algo page. The stop alarm watches it too.</div></div>';
+        (c.lines && c.lines.length ? '<ul class="at-ul">' + c.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') + '<div class="at-act">' + (m.runId ? '<button type="button" class="at-btn pri" data-at="track" data-id="' + esc(m.runId) + '">Open live PnL graph</button>' : '') + '</div><div class="at-fine">Track it on the Algo page. The stop alarm watches it too.</div></div>';
     }
     if (m.kind === 'saved') {
       return '<div class="at-card"><div class="at-h">' + (m.shown ? 'Your saved default' : 'Saved as your default') + '</div><div class="at-sub">' + esc(words(m.rule)) + '</div><div class="at-fine">"entry 50" now uses this. Type "set default ..." to change it.</div></div>';
@@ -61007,6 +61157,8 @@ document.addEventListener('click', function(e) {
     const b = e.target.closest && e.target.closest('#askPanel [data-at]'); if (!b) return;
     const a = b.dataset.at;
     if (a === 'ok') { const m = await handle('ok'); if (m) answer(m); }
+    else if (a === 'when') { const m = await handle(b.dataset.k === 'now' ? 'now' : 'schedule'); if (m) answer(m); }
+    else if (a === 'track') { if (window.algoPage) window.algoPage.track(b.dataset.id); }
     else if (a === 'pick') { const k = b.dataset.k; const m = await handle(k === 'strangle' ? 'option' : 'future ' + k); if (m) answer(m); }
     else if (a === 'cancel') { reset(); answer(msg('text', { text: 'Cancelled. Nothing was placed.' })); }
     else if (a === 'day') {
@@ -61034,6 +61186,8 @@ document.addEventListener('click', function(e) {
     const et = v('etime'); if (et) { if (r.entry.kind === 'hard') r.entry.time = et; else r.entry.from = et; }
     const xt = v('xtime'); r.exit.exitTime = xt || null;
     const st = v('stop'); if (st != null) r.exit.legStopMultiple = st === '' ? null : Number(st);
+    const fs = v('fstop'); if (fs != null) r.exit.futStopUsd = fs === '' ? null : Number(fs);
+    const ft = v('ftgt'); if (ft != null) r.exit.futTargetUsd = ft === '' ? null : Number(ft);
     const tg = v('tgt'); if (tg != null) r.exit.netTargetUsd = tg === '' ? null : Number(tg);
     const ns = v('nstop'); if (ns != null) r.exit.netStopUsd = ns === '' ? null : Number(ns);
     const md = v('mode'); if (md) r.mode = md;
@@ -61048,10 +61202,11 @@ document.addEventListener('click', function(e) {
     '#askPanel .at-act{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}#askPanel .at-btn{background:var(--panel,#121a24);color:var(--text,#e6edf5);border:1px solid var(--line2,#2c394a);border-radius:7px;padding:6px 12px;font:600 12px inherit;cursor:pointer}#askPanel .at-btn.pri{border-color:var(--down,#35BB7D)}#askPanel .at-btn.bad{border-color:var(--up,#EF5A5E);color:var(--up,#EF5A5E)}' +
     '#askPanel .at-form{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px 8px;margin:8px 0}#askPanel .at-form label{display:flex;flex-direction:column;gap:2px;font-size:11.5px;color:var(--muted,#8fa3b5)}#askPanel .at-form input,#askPanel .at-form select{background:var(--panel,#121a24);color:var(--text,#e6edf5);border:1px solid var(--line2,#2c394a);border-radius:6px;padding:4px 6px;font:13px inherit;min-width:0}' +
     '#askPanel .at-days{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px}#askPanel .at-day{background:var(--panel,#121a24);color:var(--muted,#8fa3b5);border:1px solid var(--line2,#2c394a);border-radius:999px;padding:3px 10px;font:600 11.5px inherit;cursor:pointer}#askPanel .at-day.on{color:var(--text,#e6edf5);border-color:var(--focus,#58A6D6)}' +
+    '#askPanel .at-rec{border:1px solid var(--line2,#2c394a);border-radius:9px;padding:7px 10px;margin:8px 0}#askPanel .at-rec.go{border-color:var(--down,#35BB7D)}#askPanel .at-rec.wait{border-color:var(--warn,#E3AE45)}#askPanel .at-rh{font-weight:700}#askPanel .at-rec.go .at-rh{color:var(--down,#35BB7D)}#askPanel .at-rec.wait .at-rh{color:var(--warn,#E3AE45)}' +
     '#askPanel .at-cl{list-style:none;margin:6px 0 0;padding:0}#askPanel .at-cl li.ok{color:var(--down,#35BB7D)}#askPanel .at-cl li.no{color:var(--warn,#E3AE45)}#askPanel .at-cl span{color:var(--muted,#8fa3b5)}';
   D.head.appendChild(style);
 
-  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, congrats, API, active: () => T.stage };
+  window.askTrade = { handle, render, parseTrade, parsePatch, applyPatch, parseChoice, parseWhen, congrats, API, active: () => T.stage };
 })();
 </script><script id="askWidget">
 /* Ask me: a floating chat that answers from the desk's own data (database, live feeds).

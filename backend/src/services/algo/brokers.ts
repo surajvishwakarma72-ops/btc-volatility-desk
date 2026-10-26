@@ -9,13 +9,22 @@ import type { Broker, BrokerStatus, EntryPlan, PlaceResult } from './algo-engine
 const PERP = 'BTCUSD';
 const round1 = (n: number) => Math.round(n * 10) / 10;
 
+/** The price at which a futures stop of `futStopUsd` dollars (or, for older rules, a percent) is hit. One lot is 0.001 BTC, so $1 of price move is lots x 0.001 dollars. */
+export function futureStopPrice(exit: AlgoStrategy['exit'], side: 'long' | 'short', spot: number, lots: number): number | null {
+  if (exit.futStopUsd != null) {
+    const move = exit.futStopUsd / (lots * 0.001);
+    return round1(side === 'long' ? spot - move : spot + move);
+  }
+  const pct = exit.futStopPct;
+  return pct == null ? null : round1(side === 'long' ? spot * (1 - pct / 100) : spot * (1 + pct / 100));
+}
+
 export const paperBroker: Broker = {
   async place(userId: string, rule: AlgoStrategy, plan: EntryPlan, name: string): Promise<PlaceResult> {
     const t = paperFor(userId);
     if (plan.kind === 'future') {
       const { side, lots, spot } = plan.future;
-      const pct = rule.exit.futStopPct;
-      const stop = pct == null ? null : round1(side === 'long' ? spot * (1 - pct / 100) : spot * (1 + pct / 100));
+      const stop = futureStopPrice(rule.exit, side, spot, lots);
       const r = await t.placeBasket([{ symbol: PERP, side: side === 'long' ? 'buy' : 'sell', lots, stop }], name);
       return r.ok ? { ok: true, ref: (r as { basketId: string }).basketId, detail: `${side} ${lots} lots BTC perpetual` } : { ok: false, reason: r.reason ?? 'the paper account refused the order' };
     }
