@@ -58086,6 +58086,22 @@ document.addEventListener('click', function(e) {
 #pgBot .pnl-row div{display:flex;flex-direction:column;gap:1px;font-size:13px}
 #pgBot .pnl-row .dim{font-size:11px}
 @media (max-width:760px){#pgBot .pnl-grid{grid-template-columns:1fr}#pgBot .pnl-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+#pgBot .pc .pcSvg{width:100%;max-width:980px;margin-left:auto;margin-right:auto;height:auto;display:block;color:var(--text);touch-action:pan-y;cursor:crosshair;outline:none;margin-top:6px}
+#pgBot .pc .pcSvg:focus-visible{outline:2px solid var(--focus,#9CC9EE);outline-offset:2px;border-radius:6px}
+#pgBot .pc .pcSvg text{font-size:10.5px;fill:var(--muted)}
+#pgBot .pc .pcHd{font-size:13px;margin:10px 0 0}
+#pgBot .pc .pcSel{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+#pgBot .pc .pcSel select{max-width:320px}
+#pgBot .pc .pcTiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:6px;margin:8px 0}
+#pgBot .pc .pcTile{display:flex;flex-direction:column;gap:1px;border:1px solid var(--line2);border-radius:10px;padding:7px 9px;background:var(--panel2)}
+#pgBot .pc .pcTile b{font:800 17px/1.15 var(--font);font-variant-numeric:tabular-nums}
+#pgBot .pc .pcK{font-size:10.5px;color:var(--muted)}
+#pgBot .pc .pcRead{border:1px solid var(--focus,#9CC9EE);border-radius:10px;padding:2px 8px 6px;margin:6px 0;background:var(--panel)}
+#pgBot .pc .pcScroll{overflow:auto}
+#pgBot .pc table.pcT{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums}
+#pgBot .pc .pcT th{text-align:right;color:var(--muted);font-weight:600;padding:3px 7px;border-bottom:1px solid var(--line2)}
+#pgBot .pc .pcT td{text-align:right;padding:3px 7px;border-bottom:1px solid var(--line)}
+#pgBot .pc .pcT th:first-child,#pgBot .pc .pcT td:first-child{text-align:left}
 #pgBot details.bt-fold{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:0 0 10px}
 #pgBot .bt-today th:nth-child(n+2):nth-child(-n+4),#pgBot .bt-today td:nth-child(n+2):nth-child(-n+4){text-align:left}
 #pgBot details.bt-fold>summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
@@ -58129,7 +58145,169 @@ document.addEventListener('click', function(e) {
 #pgBot .bt-login{max-width:340px;margin:30px auto;text-align:center}
 #pgBot .bt-login input{width:100%;box-sizing:border-box;margin:8px 0}
 @media (max-width:760px){#pgBot .bt-grid{grid-template-columns:1fr}#pgBot .bt-top h2{font-size:16px}}
-</style><script id="botPage">
+</style><script data-block="pnl-chart">
+/* PnL charts for the Bot page: one trade minute by minute, and all trades as an equity curve with drawdown. Every chart has a hairline
+   (a vertical line that follows the pointer, a finger or the arrow keys) and a readout of the exact numbers at that minute or trade.
+   Pure drawing code over numbers the server recorded. */
+(function pnlChartModule() {
+  'use strict';
+  // PNLCHART-START
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const ist = ms => new Date(ms + 19800000).toISOString();
+  const hm = ms => ist(ms).slice(11, 16);
+  const dt = ms => ist(ms).slice(5, 10) + ' ' + ist(ms).slice(11, 16);
+  const usd = (v, d) => v == null || !isFinite(v) ? '-' : (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(d == null ? 2 : d);
+  const sg = v => v == null || !isFinite(v) ? 'dim' : v > 0 ? 'pos' : v < 0 ? 'neg' : 'dim';
+  const GRN = '#15803D', RED = '#C53030', BLU = '#2B6CB0', AMB = '#D69E2E';
+  const W = 760, H = 300, L = 58, R = 14, T = 16, B = 30;
+  const REASON = { tp: 'take profit', stop: 'stop loss', time: 'time exit', kill: 'kill switch', manual: 'manual' };
+
+  function ticks(lo, hi, n) {
+    const span = hi - lo || 1, raw = span / n, p = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / p, step = (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * p, out = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(Math.abs(v) < 1e-9 ? 0 : v);
+    return out;
+  }
+  const money = v => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 10 ? v.toFixed(1) : v.toFixed(2));
+
+  /** One trade, minute by minute. d = the /bot/runs/:id/pnl answer. */
+  function minuteChart(d, id) {
+    const n = d && d.t ? d.t.length : 0;
+    if (n < 2) return { html: '<div class="bt-note">Not enough minutes recorded yet to draw this trade. The bot records one point a minute while it is open.</div>', meta: null };
+    const x0 = d.t[0], x1 = d.t[n - 1];
+    let lo = Math.min(0, ...d.net), hi = Math.max(0, ...d.net);
+    if (d.tp != null) hi = Math.max(hi, d.tp);
+    const pad = (hi - lo) * 0.14 || 1; lo -= pad; hi += pad;
+    const X = t => L + (t - x0) / (x1 - x0) * (W - L - R), Y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B), zero = Y(0);
+    const line = d.t.map((t, i) => X(t).toFixed(1) + ',' + Y(d.net[i]).toFixed(1)).join(' ');
+    const area = 'M' + X(x0).toFixed(1) + ',' + zero.toFixed(1) + ' L' + line.split(' ').join(' L') + ' L' + X(x1).toFixed(1) + ',' + zero.toFixed(1) + ' Z';
+    let g = '<defs><clipPath id="' + id + 'P"><rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + Math.max(0, zero - T).toFixed(1) + '"/></clipPath><clipPath id="' + id + 'N"><rect x="' + L + '" y="' + zero.toFixed(1) + '" width="' + (W - L - R) + '" height="' + Math.max(0, H - B - zero).toFixed(1) + '"/></clipPath></defs>';
+    for (const v of ticks(lo, hi, 5)) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '" stroke="currentColor" opacity="' + (v === 0 ? .55 : .12) + '"' + (v === 0 ? ' stroke-dasharray="5 4"' : '') + '/><text x="' + (L - 6) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end">' + (v < 0 ? '-' : '') + '$' + money(Math.abs(v)) + '</text>';
+    const span = (x1 - x0) / 60000, step = span > 600 ? 120 : span > 300 ? 60 : span > 120 ? 30 : span > 60 ? 15 : 10;
+    for (let t = Math.ceil(x0 / (step * 60000)) * step * 60000; t <= x1; t += step * 60000) g += '<line x1="' + X(t).toFixed(1) + '" x2="' + X(t).toFixed(1) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="currentColor" opacity=".07"/><text x="' + X(t).toFixed(1) + '" y="' + (H - 10) + '" text-anchor="middle">' + hm(t) + '</text>';
+    g += '<path d="' + area + '" fill="' + GRN + '" opacity=".22" clip-path="url(#' + id + 'P)"/><path d="' + area + '" fill="' + RED + '" opacity=".22" clip-path="url(#' + id + 'N)"/>';
+    if (d.tp != null) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(d.tp).toFixed(1) + '" y2="' + Y(d.tp).toFixed(1) + '" stroke="' + GRN + '" stroke-dasharray="6 4" opacity=".8"/><text x="' + (L + 4) + '" y="' + (Y(d.tp) - 4).toFixed(1) + '" style="fill:' + GRN + '">take profit ' + usd(d.tp, 0) + '</text>';
+    g += '<polyline points="' + line + '" fill="none" stroke="' + BLU + '" stroke-width="2.4" stroke-linejoin="round"/>';
+    // entry, peak, trough, exit
+    const st = d.stats || {};
+    g += '<line x1="' + X(x0).toFixed(1) + '" x2="' + X(x0).toFixed(1) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + BLU + '" stroke-dasharray="2 3" opacity=".7"/><text x="' + (X(x0) + 4).toFixed(1) + '" y="' + (T + 10) + '" style="fill:' + BLU + '">entry</text>';
+    if (st.peak) g += '<circle cx="' + X(st.peak.t).toFixed(1) + '" cy="' + Y(st.peak.net).toFixed(1) + '" r="4" fill="' + GRN + '"/><text x="' + X(st.peak.t).toFixed(1) + '" y="' + (Y(st.peak.net) - 8).toFixed(1) + '" text-anchor="middle" style="fill:' + GRN + '">best ' + usd(st.peak.net) + '</text>';
+    if (st.trough && st.trough.net < 0) g += '<circle cx="' + X(st.trough.t).toFixed(1) + '" cy="' + Y(st.trough.net).toFixed(1) + '" r="4" fill="' + RED + '"/><text x="' + X(st.trough.t).toFixed(1) + '" y="' + (Y(st.trough.net) + 16).toFixed(1) + '" text-anchor="middle" style="fill:' + RED + '">worst ' + usd(st.trough.net) + '</text>';
+    const closed = d.run && d.run.status === 'closed';
+    if (closed) g += '<line x1="' + X(x1).toFixed(1) + '" x2="' + X(x1).toFixed(1) + '" y1="' + T + '" y2="' + (H - B) + '" stroke="' + AMB + '" stroke-width="2" opacity=".9"/><text x="' + (X(x1) - 4).toFixed(1) + '" y="' + (T + 10) + '" text-anchor="end" style="fill:' + AMB + '">exit: ' + esc(REASON[d.run.exitReason] || d.run.exitReason || 'closed') + '</text>';
+    else g += '<circle cx="' + X(x1).toFixed(1) + '" cy="' + Y(d.net[n - 1]).toFixed(1) + '" r="5" fill="' + AMB + '"><title>open now</title></circle><text x="' + (X(x1) - 7).toFixed(1) + '" y="' + (T + 10) + '" text-anchor="end" style="fill:' + AMB + '">open now</text>';
+    g += '<g id="' + id + 'H" visibility="hidden"><line id="' + id + 'L" x1="0" x2="0" y1="' + T + '" y2="' + (H - B) + '" stroke="currentColor" stroke-width="1.2"/><circle id="' + id + 'D" r="5" fill="#fff" stroke="currentColor" stroke-width="2"/><rect id="' + id + 'Tb" y="' + (H - B + 2) + '" width="44" height="15" rx="4" fill="currentColor"/><text id="' + id + 'Tt" y="' + (H - B + 13) + '" text-anchor="middle" style="fill:var(--bg,#fff);font-weight:700">00:00</text></g>';
+    g += '<rect class="pcHit" x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (H - T - B) + '" fill="transparent"/>';
+    const html = '<svg class="pcSvg" data-pc="' + id + '" tabindex="0" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Trade PnL by minute. Move over it, or use the arrow keys, to read each minute.">' + g + '</svg>';
+    return { html, meta: { kind: 'minute', id, n, t: d.t, x0, x1, lo, hi, X, Y } };
+  }
+
+  /** All trades: cumulative net PnL, and under it how far below its high the curve was after each trade. */
+  function equityChart(E, id) {
+    const e = E && E.equity ? E.equity : [], n = e.length;
+    if (n < 2) return { html: '<div class="bt-note">The curve needs at least two closed trades.</div>', meta: null };
+    const H2 = 340, topB = 214, ddT = 244, ddB = 308;
+    let lo = Math.min(0, ...e.map(p => p.cum)), hi = Math.max(0, ...e.map(p => p.cum)); const pad = (hi - lo) * 0.12 || 1; lo -= pad; hi += pad;
+    const maxDd = Math.max(1, ...e.map(p => p.dd));
+    const X = i => L + (i / (n - 1)) * (W - L - R), Y = v => T + (1 - (v - lo) / (hi - lo)) * (topB - T), zero = Y(0), YD = v => ddT + (v / maxDd) * (ddB - ddT);
+    const line = e.map((p, i) => X(i).toFixed(1) + ',' + Y(p.cum).toFixed(1)).join(' ');
+    const area = 'M' + X(0).toFixed(1) + ',' + zero.toFixed(1) + ' L' + line.split(' ').join(' L') + ' L' + X(n - 1).toFixed(1) + ',' + zero.toFixed(1) + ' Z';
+    let g = '<defs><clipPath id="' + id + 'P"><rect x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + Math.max(0, zero - T).toFixed(1) + '"/></clipPath><clipPath id="' + id + 'N"><rect x="' + L + '" y="' + zero.toFixed(1) + '" width="' + (W - L - R) + '" height="' + Math.max(0, topB - zero).toFixed(1) + '"/></clipPath></defs>';
+    for (const v of ticks(lo, hi, 4)) g += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + Y(v).toFixed(1) + '" y2="' + Y(v).toFixed(1) + '" stroke="currentColor" opacity="' + (v === 0 ? .55 : .12) + '"' + (v === 0 ? ' stroke-dasharray="5 4"' : '') + '/><text x="' + (L - 6) + '" y="' + (Y(v) + 4).toFixed(1) + '" text-anchor="end">' + (v < 0 ? '-' : '') + '$' + money(Math.abs(v)) + '</text>';
+    g += '<path d="' + area + '" fill="' + GRN + '" opacity=".22" clip-path="url(#' + id + 'P)"/><path d="' + area + '" fill="' + RED + '" opacity=".22" clip-path="url(#' + id + 'N)"/><polyline points="' + line + '" fill="none" stroke="' + BLU + '" stroke-width="2.4" stroke-linejoin="round"/>';
+    if (n <= 80) e.forEach((p, i) => { g += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(p.cum).toFixed(1) + '" r="3" fill="' + (p.net >= 0 ? GRN : RED) + '"/>'; });
+    g += '<text x="' + L + '" y="' + (ddT - 6) + '" style="fill:var(--muted)">Drawdown: how far below its high the curve was (max ' + usd(maxDd, 0) + ')</text><line x1="' + L + '" x2="' + (W - R) + '" y1="' + ddT + '" y2="' + ddT + '" stroke="currentColor" opacity=".25"/>';
+    const bw = Math.max(1.5, (W - L - R) / n * 0.7);
+    e.forEach((p, i) => { if (p.dd > 0) g += '<rect x="' + (X(i) - bw / 2).toFixed(1) + '" y="' + ddT + '" width="' + bw.toFixed(1) + '" height="' + (YD(p.dd) - ddT).toFixed(1) + '" fill="' + RED + '" opacity=".75"/>'; });
+    const labelAt = i => '<text x="' + X(i).toFixed(1) + '" y="' + (H2 - 8) + '" text-anchor="' + (i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle') + '">' + esc(e[i].dateKey.slice(5)) + '</text>';
+    g += labelAt(0) + labelAt(Math.floor((n - 1) / 2)) + labelAt(n - 1);
+    g += '<g id="' + id + 'H" visibility="hidden"><line id="' + id + 'L" x1="0" x2="0" y1="' + T + '" y2="' + ddB + '" stroke="currentColor" stroke-width="1.2"/><circle id="' + id + 'D" r="5" fill="#fff" stroke="currentColor" stroke-width="2"/></g>';
+    g += '<rect class="pcHit" x="' + L + '" y="' + T + '" width="' + (W - L - R) + '" height="' + (ddB - T) + '" fill="transparent"/>';
+    const html = '<svg class="pcSvg" data-pc="' + id + '" tabindex="0" viewBox="0 0 ' + W + ' ' + H2 + '" role="img" aria-label="Equity curve and drawdown of all closed trades. Move over it, or use the arrow keys, to read each trade.">' + g + '</svg>';
+    return { html, meta: { kind: 'equity', id, n, X: i => X(i), Y: i => Y(e[i].cum) } };
+  }
+
+  /** Index of the point nearest to x (in chart units) */
+  function indexAt(meta, x) {
+    if (!meta) return -1;
+    if (meta.kind === 'equity') return Math.max(0, Math.min(meta.n - 1, Math.round((x - L) / (W - L - R) * (meta.n - 1))));
+    const tt = meta.x0 + (x - L) / (W - L - R) * (meta.x1 - meta.x0);
+    let a = 0, b = meta.n - 1;
+    while (b - a > 1) { const m = (a + b) >> 1; if (meta.t[m] <= tt) a = m; else b = m; }
+    return Math.abs(meta.t[a] - tt) <= Math.abs(meta.t[b] - tt) ? a : b;
+  }
+  /** Where the hairline and dot sit for point i, and the time label for a minute chart */
+  function placeAt(meta, d, i) {
+    if (!meta || i < 0) return null;
+    if (meta.kind === 'equity') return { x: meta.X(i), y: meta.Y(i), label: '' };
+    return { x: meta.X(meta.t[i]), y: meta.Y(d.net[i]), label: hm(meta.t[i]) };
+  }
+
+  const tile = (k, v, tone, sub) => '<div class="pcTile"><span class="pcK">' + esc(k) + '</span><b class="' + (tone || '') + '">' + esc(v) + '</b>' + (sub ? '<span class="pcK">' + esc(sub) + '</span>' : '') + '</div>';
+
+  /** The numbers under the hairline for one minute of one trade */
+  function minuteReadout(d, i) {
+    if (i < 0 || !d || !d.t || i >= d.t.length) return '<div class="bt-note">Move over the graph (or press the arrow keys) to read any minute.</div>';
+    const t = d.t[i], net = d.net[i], prev = i > 0 ? d.net[i - 1] : null, el = Math.round((t - d.t[0]) / 60000);
+    let hi = -Infinity; for (let k = 0; k <= i; k++) hi = Math.max(hi, d.net[k]);
+    const margin = d.run && d.run.margin;
+    const legs = (d.legs || []).map(l => '<tr><td>' + esc(l.symbol.replace(/-BTC/, '')) + ' <span class="dim">' + esc(l.side) + '</span></td><td>' + (l.mark[i] == null ? '-' : Number(l.mark[i]).toFixed(1)) + '</td><td class="' + sg(l.pnl[i]) + '">' + usd(l.pnl[i]) + '</td><td>' + (l.iv[i] == null ? '-' : Number(l.iv[i]).toFixed(1)) + '</td><td>' + (l.delta[i] == null ? '-' : Number(l.delta[i]).toFixed(2)) + '</td></tr>').join('');
+    return '<div class="pcRead"><div class="pcTiles">' +
+      tile('Time (IST)', dt(t), '', 'T+' + Math.floor(el / 60) + 'h ' + String(el % 60).padStart(2, '0') + 'm') +
+      tile('Net PnL', usd(net), sg(net), margin ? (net / margin * 100).toFixed(1) + '% of margin' : '') +
+      tile('Gross PnL', usd(d.gross[i]), sg(d.gross[i]), 'fees ' + usd(d.gross[i] - net)) +
+      tile('This minute', prev == null ? '-' : (net - prev >= 0 ? '+' : '') + (net - prev).toFixed(2), prev == null ? '' : sg(net - prev), 'vs the minute before') +
+      tile('Best so far', usd(hi), 'pos', hi > net ? 'now ' + usd(hi - net) + ' below it' : 'at its best now') +
+      (d.spot && d.spot[i] != null ? tile('BTC', Number(d.spot[i]).toFixed(0), '', '') : '') +
+      (d.tp != null ? tile('To take profit', usd(d.tp - net), '', 'target ' + usd(d.tp, 0)) : '') + '</div>' +
+      (legs ? '<div class="pcScroll"><table class="pcT"><thead><tr><th>Leg</th><th>Mark</th><th>PnL</th><th>IV</th><th>Delta</th></tr></thead><tbody>' + legs + '</tbody></table></div>' : '') + '</div>';
+  }
+
+  function equityReadout(E, i) {
+    const e = E && E.equity ? E.equity : [];
+    if (i < 0 || i >= e.length) return '<div class="bt-note">Move over the curve to read any trade. Click to open that trade minute by minute.</div>';
+    const p = e[i];
+    return '<div class="pcRead"><div class="pcTiles">' + tile('Trade', '#' + p.n + ' of ' + e.length, '', p.dateKey) + tile('Strategy', p.strategy.replace(/_/g, ' ').toLowerCase(), '', REASON[p.reason] || p.reason || '') +
+      tile('This trade', usd(p.net), sg(p.net)) + tile('Total so far', usd(p.cum), sg(p.cum)) + tile('Below its high', usd(p.dd), p.dd > 0 ? 'neg' : 'pos', p.dd > 0 ? '' : 'at a new high') + '</div></div>';
+  }
+
+  /** What one trade did overall, as tiles */
+  function tradeTiles(d) {
+    const r = d.run || {}, s = d.stats || {}, m = r.margin, net = r.status === 'closed' ? r.net : (d.net.length ? d.net[d.net.length - 1] : null);
+    const fees = (r.feesEntry || 0) + (r.feesExit || 0);
+    return '<div class="pcTiles">' +
+      tile(r.status === 'closed' ? 'Net PnL' : 'Net PnL now', usd(net), sg(net), m && net != null ? (net / m * 100).toFixed(1) + '% of margin' : '') +
+      tile('Gross PnL', usd(r.status === 'closed' ? r.gross : (d.gross.length ? d.gross[d.gross.length - 1] : null)), '', 'fees ' + usd(fees)) +
+      tile('Best moment', s.peak ? usd(s.peak.net) : '-', 'pos', s.peak ? 'after ' + s.peak.atMin + ' min' : '') +
+      tile('Worst moment', s.trough ? usd(s.trough.net) : '-', s.trough && s.trough.net < 0 ? 'neg' : '', s.trough ? 'after ' + s.trough.atMin + ' min' : '') +
+      tile(r.status === 'closed' ? 'Given back from best' : 'Below its best now', s.gaveBack != null ? usd(s.gaveBack) : '-', s.gaveBack > 0 ? 'neg' : 'pos') +
+      tile('Worst fall from a high', s.maxDrawdown ? usd(s.maxDrawdown.amount) : '-', s.maxDrawdown ? 'neg' : '', s.maxDrawdown ? 'between ' + hm(s.maxDrawdown.fromT) + ' and ' + hm(s.maxDrawdown.toT) : 'never fell') +
+      tile('Time in profit', s.timeInProfitPct != null ? s.timeInProfitPct.toFixed(0) + '%' : '-', '', 'of ' + (s.minutes || 0) + ' minutes') +
+      tile('Held', s.holdMin != null ? Math.floor(s.holdMin / 60) + 'h ' + String(s.holdMin % 60).padStart(2, '0') + 'm' : '-', '', s.gapMinutes ? s.gapMinutes + ' min not recorded' : 'every minute recorded') +
+      tile('Biggest minute', s.biggestMinute ? (s.biggestMinute.change >= 0 ? '+' : '') + s.biggestMinute.change.toFixed(2) : '-', s.biggestMinute ? sg(s.biggestMinute.change) : '', s.biggestMinute ? 'at ' + hm(s.biggestMinute.t) : '') +
+      tile('Margin used', usd(m, 0), '', r.exitReason ? 'exit: ' + (REASON[r.exitReason] || r.exitReason) : 'still open') + '</div>';
+  }
+
+  /** The statistics of the whole run of trades, as tiles */
+  function allTiles(s) {
+    if (!s || !s.trades) return '<div class="bt-note">No closed trades yet.</div>';
+    const pct = v => v == null ? '-' : (v * 100).toFixed(0) + '%', x = (v, d) => v == null ? '-' : v.toFixed(d == null ? 2 : d);
+    return '<div class="pcTiles">' +
+      tile('Closed trades', s.trades, '', s.wins + ' won · ' + s.losses + ' lost') + tile('Net PnL', usd(s.netTotal), sg(s.netTotal), 'fees ' + usd(s.feesTotal, 0) + ' already taken out') +
+      tile('Win rate', pct(s.winRate), '') + tile('Average win', usd(s.avgWin), 'pos') + tile('Average loss', usd(s.avgLoss), 'neg') +
+      tile('Win / loss size', x(s.payoff), s.payoff != null && s.payoff >= 1 ? 'pos' : '', 'average win ÷ average loss') +
+      tile('Profit factor', s.profitFactor == null ? 'no loss yet' : x(s.profitFactor), s.profitFactor != null && s.profitFactor >= 1 ? 'pos' : 'neg', 'profit ÷ loss') +
+      tile('Per trade', usd(s.expectancy), sg(s.expectancy), 'expectancy') +
+      tile('Best trade', s.best ? usd(s.best.net) : '-', 'pos', s.best ? s.best.dateKey : '') + tile('Worst trade', s.worst ? usd(s.worst.net) : '-', 'neg', s.worst ? s.worst.dateKey : '') +
+      tile('Max drawdown', s.maxDrawdown ? usd(s.maxDrawdown.amount) : '-', s.maxDrawdown ? 'neg' : '', s.maxDrawdown ? 'trade #' + s.maxDrawdown.fromN + ' to #' + s.maxDrawdown.toN : '') +
+      tile('Longest streaks', s.longestWinStreak + ' wins · ' + s.longestLossStreak + ' losses', '') +
+      tile('Average hold', s.avgHoldMin == null ? '-' : Math.floor(s.avgHoldMin / 60) + 'h ' + String(Math.round(s.avgHoldMin % 60)).padStart(2, '0') + 'm', '') +
+      tile('Return on margin', s.avgReturnOnMargin == null ? '-' : (s.avgReturnOnMargin * 100).toFixed(1) + '%', sg(s.avgReturnOnMargin), 'average per trade') + '</div>';
+  }
+  // PNLCHART-END
+  window.pnlChart = { minuteChart, equityChart, indexAt, placeAt, minuteReadout, equityReadout, tradeTiles, allTiles, ticks };
+})();
+</script>
+<script id="botPage">
 /* Bot page: live paper-trading monitor. Records only the trades the bot really took. Read-only except pause/resume/kill.
    Live data comes from the authenticated /api/v1/bot/* routes. */
 (function botPage() {
@@ -58188,7 +58366,7 @@ document.addEventListener('click', function(e) {
       '<div class="nx-note">Futures strategies have no fixed start: they trade when a sweep or signal appears inside their window. All times are IST.</div>';
   }
 
-  const S = { view: 'live', live: null, today: null, open: {}, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
+  const S = { view: 'live', live: null, today: null, open: {}, pa: { scope: 'all', eq: null, sel: null, d: null, hairT: -1, hairE: -1, metaT: null, metaE: null, busy: false, at: 0, err: null }, liveErr: null, status: null, positions: [], runs: [], events: [], loginErr: null,
     sel: { strat: null, split: 'byWeekday', timeline: null, askOut: null }, busy: false, killArm: 0 };
 
   async function api(path, opt) {
@@ -58305,6 +58483,62 @@ document.addEventListener('click', function(e) {
     return h + '</div>';
   }
 
+  /* ---------- PnL analysis: a trade minute by minute, and all trades, each with a hairline ---------- */
+  const PC = () => window.pnlChart;
+  const shortName = k => (STRAT[k] || k).replace(/ \d\d:\d\d$/, '');
+  function paCard() {
+    const P = S.pa, d = P.d, eq = P.eq;
+    const opens = (S.positions || []).filter(p => p.id && p.book !== 'gated');
+    const closed = eq && eq.equity ? eq.equity.slice().reverse().slice(0, 60) : [];
+    const opt = [];
+    for (const p of opens) opt.push('<option value="' + esc(p.id) + '"' + (P.sel === p.id ? ' selected' : '') + '>OPEN now · ' + esc(shortName(p.strategy)) + '</option>');
+    for (const c of closed) opt.push('<option value="' + esc(c.id) + '"' + (P.sel === c.id ? ' selected' : '') + '>' + esc(c.dateKey) + ' · ' + esc(shortName(c.strategy)) + ' · ' + usd(c.net) + '</option>');
+    let h = '<div class="bt-card pc" id="paCard"><h3>PnL analysis</h3><div class="sub">Every minute of a trade is recorded. Move your mouse or finger across a graph, or press the arrow keys when it is focused: the hairline reads that exact minute and the numbers appear under it.</div>' +
+      '<div class="bt-row"><label class="pcSel">Trade <select data-pa="pick">' + (opt.length ? opt.join('') : '<option>No trades yet</option>') + '</select></label><label class="pcSel">Curve of <select data-pa="scope">' + [['all', 'all trades'], ['options', 'options trades'], ['futures', 'futures trades']].map(x => '<option value="' + x[0] + '"' + (P.scope === x[0] ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></label></div>';
+    if (P.err && !d && !eq) return h + '<div class="bt-note warn">' + esc(P.err) + '</div></div>';
+    if (d && PC()) {
+      const r = d.run, ch = PC().minuteChart(d, 'pcT'); P.metaT = ch.meta;
+      h += '<div class="pcHd">Selected trade: <b>' + esc(shortName(r.strategy)) + '</b> · ' + esc(r.dateKey) + ' · ' + (r.status === 'closed' ? 'closed' : 'open now') + ' · net PnL by minute</div>' + ch.html + '<div id="pcReadT"></div>' + PC().tradeTiles(d);
+    } else h += '<div class="bt-note">' + (P.busy ? 'Loading the trade…' : 'Pick a trade above to see it minute by minute.') + '</div>';
+    if (eq && PC() && eq.equity.length) {
+      const ec = PC().equityChart(eq, 'pcE'); P.metaE = ec.meta;
+      h += '<div class="pcHd" style="margin-top:14px">All trades together: running total and drawdown (click a point to open that trade)</div>' + ec.html + '<div id="pcReadE"></div>' + PC().allTiles(eq.stats);
+    } else if (eq) h += '<div class="pcHd" style="margin-top:14px">All trades together</div><div class="bt-note">No closed trades in this selection yet.</div>';
+    return h + '</div>';
+  }
+  /** put a hairline on point i of a chart and show that point's numbers under it */
+  function setHair(id, i) {
+    const P = S.pa, isT = id === 'pcT', meta = isT ? P.metaT : P.metaE, data = isT ? P.d : P.eq; if (!meta || !data) return;
+    const n = meta.n; if (i < 0 || i >= n) i = n - 1;
+    if (isT) P.hairT = i; else P.hairE = i;
+    const pl = PC().placeAt(meta, data, i), g = $(id + 'H'); if (!g || !pl) return;
+    const ln = $(id + 'L'), dot = $(id + 'D'); ln.setAttribute('x1', pl.x); ln.setAttribute('x2', pl.x); dot.setAttribute('cx', pl.x); dot.setAttribute('cy', pl.y);
+    if (isT) { const b = $(id + 'Tb'), tt = $(id + 'Tt'), cx = Math.max(30, Math.min(760 - 30, pl.x)); b.setAttribute('x', cx - 22); tt.setAttribute('x', cx); tt.textContent = pl.label; }
+    g.setAttribute('visibility', 'visible');
+    const out = $(isT ? 'pcReadT' : 'pcReadE'); if (out) out.innerHTML = isT ? PC().minuteReadout(data, i) : PC().equityReadout(data, i);
+  }
+  function applyHair() { const P = S.pa; if (P.metaT && P.d) setHair('pcT', P.hairT >= 0 ? P.hairT : P.metaT.n - 1); if (P.metaE && P.eq) setHair('pcE', P.hairE >= 0 ? P.hairE : P.metaE.n - 1); }
+  function hairFromEvent(svg, e) {
+    const rect = svg.getBoundingClientRect(); if (!rect.width) return;
+    const id = svg.dataset.pc, meta = id === 'pcT' ? S.pa.metaT : S.pa.metaE; if (!meta) return;
+    setHair(id, PC().indexAt(meta, (e.clientX - rect.left) / rect.width * 760));
+  }
+  async function loadPnlAnalysis() {
+    if (!tok() || S.pa.busy) return; S.pa.busy = true;
+    try {
+      S.pa.eq = await api('/pnl/trades?scope=' + encodeURIComponent(S.pa.scope));
+      if (!S.pa.sel) { const open = (S.positions || []).find(p => p.id && p.book !== 'gated'); S.pa.sel = open ? open.id : (S.pa.eq.equity.length ? S.pa.eq.equity[S.pa.eq.equity.length - 1].id : null); }
+      if (S.pa.sel) S.pa.d = await api('/runs/' + S.pa.sel + '/pnl');
+      S.pa.err = null;
+    } catch (e) { S.pa.err = e.message; }
+    S.pa.busy = false; S.pa.at = Date.now(); S.sig = ''; draw();
+  }
+  async function pickTrade(id) {
+    S.pa.sel = id; S.pa.hairT = -1;
+    try { S.pa.d = await api('/runs/' + id + '/pnl'); S.pa.err = null; } catch (e) { S.pa.err = e.message; }
+    S.sig = ''; draw();
+    const el = $('paCard'); if (el && el.scrollIntoView) { try { el.scrollIntoView({ block: 'start', behavior: 'smooth' }); } catch (e) { } }
+  }
   /* ---------- Today timeline, trades table, folded extras ---------- */
   const fold = (key, title, inner) => inner ? '<details class="bt-fold" data-bt-fold="' + key + '"' + (S.open[key] ? ' open' : '') + '><summary>' + esc(title) + '</summary>' + inner + '</details>' : '';
   const SLOT_STATE = { upcoming: ['Upcoming', 'dim'], waiting: ['Waiting for entry', 'warn'], open: ['Open', 'ok'], closed: ['Closed', ''], dropped: ['No trade', 'bad'], missed: ['Missed', 'bad'] };
@@ -58348,13 +58582,13 @@ document.addEventListener('click', function(e) {
   }
   function tradesCard() {
     const runs = S.runs.filter(r => r.status === 'closed' || r.status === 'open');
-    const tl = S.sel.timeline;
+    const tl = S.pa.sel ? { id: S.pa.sel } : null;
     const num = v => v == null ? null : Number(v);
     const body = runs.length ? '<div class="bt-scroll"><table class="bt-t"><thead><tr><th>Strategy</th><th>Date</th><th>Entry (IST)</th><th>Exit (IST)</th><th>Why it exited</th><th>Gross</th><th>Fees</th><th>Slippage</th><th>Net PnL</th></tr></thead><tbody>' + runs.slice(0, 40).map(r => {
       const fees = r.fees_entry == null ? null : Number(r.fees_entry) + Number(r.fees_exit || 0), open = r.status === 'open';
       return '<tr class="click ' + (tl && tl.id === r.id ? 'sel' : '') + '" data-bt-run="' + esc(r.id) + '"><td>' + esc(name(r.strategy + '|' + r.book)) + '</td><td>' + esc(r.date_key) + '</td><td>' + (r.entry_at ? esc(IST(new Date(r.entry_at).getTime()).slice(6)) : '-') + '</td><td>' + (open ? '<span class="dim">open</span>' : r.exit_at ? esc(IST(new Date(r.exit_at).getTime()).slice(6)) : '-') + '</td><td>' + esc(exitText(r.exit_reason)) + '</td><td ' + cls(num(r.gross_pnl)) + '>' + (r.gross_pnl == null ? '-' : usd(Number(r.gross_pnl))) + '</td><td class="dim">' + (fees == null ? '-' : usd(fees)) + '</td><td class="dim">' + (r.slippage_usd == null ? '-' : usd(Number(r.slippage_usd))) + '</td><td ' + cls(num(r.net_pnl)) + '>' + (r.net_pnl == null ? '-' : '<b>' + usd(Number(r.net_pnl)) + '</b>') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="bt-note">No trades yet. The first ones appear after a strategy enters.</div>';
-    const detail = tl ? '<h3 style="margin-top:10px">Trade timeline · ' + esc(name(tl.strategy + '|' + tl.book)) + '</h3><div class="sub">' + esc(tl.summary || '') + '</div>' + lineChart([{ label: 'Net PnL', points: tl.points, color: '#58A6D6', marks: tl.marks }], { title: 'Trade PnL timeline', fmtX: v => (v / 60).toFixed(1) + 'h' }) : '';
-    return '<div class="bt-card"><h3>Trades</h3><div class="sub">Net PnL = gross PnL minus fees (spread and slippage are already in the fill prices). The always book trades every day; the gated book repeats the same trade only when the gate said GO, so it is not added again in the totals. Click a trade for its minute-by-minute chart.</div>' + body + detail + '</div>';
+    const detail = '';
+    return '<div class="bt-card"><h3>Trades</h3><div class="sub">Net PnL = gross PnL minus fees (spread and slippage are already in the fill prices). The always book trades every day; the gated book repeats the same trade only when the gate said GO, so it is not added again in the totals. Click a trade to open its minute-by-minute graph above.</div>' + body + detail + '</div>';
   }
 
   /* ---------- live view ---------- */
@@ -58372,6 +58606,7 @@ document.addEventListener('click', function(e) {
       const futTp = fut ? Math.abs(p.exit.target - p.spot) : null, futSl = fut ? Math.abs(p.spot - p.exit.stop) : null;
       return `<tr class="click" data-bt-run="${esc(p.id)}"><td>${esc(name(p.strategy + '|' + p.book))}${fl ? ` <span class="dim">${esc(fl.side)} ${fl.lots} lots @ ${Math.round(fl.entryPrice)}</span>` : ''}</td><td>${usd(p.marginUsd)}</td><td ${cls(p.pnl && p.pnl.netPnl)}>${p.pnl ? usd(p.pnl.netPnl) : '-'}</td><td ${cls(p.pnl && p.pnl.pctOfMargin)}>${p.pnl ? pct(p.pnl.pctOfMargin, 1) : '-'}</td><td>${fut ? usd(futTp, 0) + ' of price' : tp == null ? '-' : usd(tp)}</td><td>${fut ? usd(futSl, 0) + ' of price' : stops.length ? usd(Math.min(...stops)) : '-'}</td><td>${p.minutesToTimeExit == null ? '-' : (p.minutesToTimeExit / 60).toFixed(1) + ' h'}</td><td>${Math.round(p.spot)}</td></tr>`; }).join('')}</tbody></table></div>` : '<div class="bt-note">No open positions.</div>'}</div>`;
 
+    h += paCard();
     h += tradesCard();
 
     h += fold('ask', 'Ask the bot: what was happening at a given minute?', `<div class="bt-card"><h3>Ask: what was happening at a given minute?</h3><div class="bt-row"><input id="btAskT" placeholder="HH:MM (IST)" size="8"><input id="btAskD" placeholder="YYYY-MM-DD (today)" size="14"><button type="button" class="bt-btn" data-bt="ask">Look up</button></div>${S.sel.askOut ? `<pre class="bt-pre">${esc(S.sel.askOut)}</pre>` : '<div class="bt-note">Shows every position, the market context and every decision the bot recorded at that minute.</div>'}</div>`);
@@ -58397,6 +58632,7 @@ document.addEventListener('click', function(e) {
     const keep = { y: window.scrollY }; const ae = D.activeElement && D.activeElement.id; const av = ae && $(ae) ? $(ae).value : null;
     root.innerHTML = tabs + chips + act + '</div>' + (tok() ? pnlStrip() : '') + '<div class="bt-next" id="btNext"></div>' + body + '</div>';
     renderNext();
+    try { applyHair(); } catch (e) { console.warn('hairline', e); }
     if (ae && av != null && $(ae)) { $(ae).value = av; try { $(ae).focus(); } catch (e) { } }
     void keep;
   }
@@ -58417,7 +58653,7 @@ document.addEventListener('click', function(e) {
     // redraw only when the data changed, so a refresh every 5 s never flickers or resets what you are reading
     S.sig = JSON.stringify([S.pnl, S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (force || S.sig !== before) draw();
-    if (!S.liveErr) loadHeavy(force);
+    if (!S.liveErr) { loadHeavy(force); if (force || Date.now() - S.pa.at > 60000) loadPnlAnalysis(); }
   }
   /** The scoreboard, top performer and auto-learn are the slow part: they load behind the page, at most once a minute. */
   async function loadHeavy(force) {
@@ -58433,18 +58669,7 @@ document.addEventListener('click', function(e) {
     S.sig = JSON.stringify([S.pnl, S.today && S.today.slots, S.status, S.positions, S.runs && S.runs.slice(0, 40), S.events && S.events.slice(0, 40), S.live && S.live.runs, S.liveErr, S.drops && [S.drops.waiting && S.drops.waiting.map(w => [w.key, w.attempts, w.lastReason]), S.drops.drops && S.drops.drops.slice(0, 25)], S.top, S.learn]);
     if (S.sig !== before) draw();
   }
-  async function openRun(id) {
-    try {
-      const [tl, ex] = await Promise.all([api('/runs/' + id + '/timeline?step=15m'), api('/runs/' + id + '/explain')]);
-      const run = ex.run, t0 = new Date(run.entry_at).getTime();
-      const points = tl.points.map(p => [Math.round((Number(p.minute_ms) - t0) / 60000), Number(p.net_pnl)]);
-      const marks = []; if (run.exit_at && run.net_pnl != null) marks.push([Math.round((new Date(run.exit_at).getTime() - t0) / 60000), Number(run.net_pnl), { label: 'exit: ' + run.exit_reason }]);
-      const mk = marks.map(m => Object.assign([m[0], m[1]], { label: m[2].label, color: '#EF5A5E' }));
-      const s = ex.summary;
-      S.sel.timeline = { id, strategy: run.strategy, book: run.book, points, marks: mk, summary: `${s.exitReason ? 'Exit: ' + s.exitReason + ' (' + (s.exitDetail || '') + '). ' : 'Still open. '}Net ${s.netPnl == null ? '-' : usd(Number(s.netPnl))}; peak ${s.peakPnl == null ? '-' : usd(Number(s.peakPnl))}; gave back ${s.gaveBackFromPeak == null ? '-' : usd(s.gaveBackFromPeak)}; fees ${usd(s.feesUsd)}; slippage ${usd(s.slippageUsd)}.` };
-    } catch (e) { S.sel.timeline = null; S.liveErr = e.message; }
-    draw();
-  }
+  function openRun(id) { return pickTrade(id); }
   async function ask() {
     const t = ($('btAskT') || {}).value || '', d = ($('btAskD') || {}).value || '';
     try {
@@ -58491,7 +58716,25 @@ document.addEventListener('click', function(e) {
     if (a === 'login') login(); else if (a === 'learnrun') reviewNow(); else if (a === 'ask') ask(); else if (a === 'pause') act('/pause'); else if (a === 'resume') act('/resume'); else if (a === 'killreset') act('/kill/reset');
     else if (a === 'kill') { if (S.killArm > Date.now()) { S.killArm = 0; act('/kill'); } else { S.killArm = Date.now() + 5000; draw(); setTimeout(draw, 5100); } }
   });
-  root.addEventListener('change', e => { const t = e.target; if (t.dataset && t.dataset.bt === 'strat') { S.sel.strat = t.value; draw(); } });
+  root.addEventListener('change', e => {
+    const t = e.target; if (!t || !t.dataset) return;
+    if (t.dataset.bt === 'strat') { S.sel.strat = t.value; draw(); }
+    else if (t.dataset.pa === 'pick') pickTrade(t.value);
+    else if (t.dataset.pa === 'scope') { S.pa.scope = t.value; S.pa.hairE = -1; loadPnlAnalysis(); }
+  });
+  const hairEv = e => { const svg = e.target && e.target.closest && e.target.closest('.pcSvg'); if (svg) hairFromEvent(svg, e); };
+  root.addEventListener('pointermove', hairEv);
+  root.addEventListener('pointerdown', hairEv);
+  root.addEventListener('click', e => { const svg = e.target && e.target.closest && e.target.closest('.pcSvg'); if (svg && svg.dataset.pc === 'pcE' && S.pa.eq && S.pa.hairE >= 0) { const p = S.pa.eq.equity[S.pa.hairE]; if (p) pickTrade(p.id); } });
+  root.addEventListener('keydown', e => {
+    const svg = e.target && e.target.classList && e.target.classList.contains('pcSvg') ? e.target : null; if (!svg) return;
+    const id = svg.dataset.pc, meta = id === 'pcT' ? S.pa.metaT : S.pa.metaE; if (!meta) return;
+    const cur = (id === 'pcT' ? S.pa.hairT : S.pa.hairE) >= 0 ? (id === 'pcT' ? S.pa.hairT : S.pa.hairE) : meta.n - 1;
+    const step = e.shiftKey ? 10 : 1; let i = cur;
+    if (e.key === 'ArrowLeft') i = Math.max(0, cur - step); else if (e.key === 'ArrowRight') i = Math.min(meta.n - 1, cur + step); else if (e.key === 'Home') i = 0; else if (e.key === 'End') i = meta.n - 1;
+    else if (e.key === 'Enter' && id === 'pcE' && S.pa.eq) { const p = S.pa.eq.equity[cur]; if (p) pickTrade(p.id); return; } else return;
+    e.preventDefault(); setHair(id, i);
+  });
   root.addEventListener('keydown', e => { if (e.key === 'Enter') { if (e.target.id === 'btPw') login(); else if (e.target.id === 'btAskT' || e.target.id === 'btAskD') ask(); } });
 
   setInterval(() => { if (!D.hidden && D.body.dataset.page === 'pgBot') renderNext(); }, 1000);

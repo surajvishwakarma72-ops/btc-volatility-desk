@@ -34,8 +34,9 @@ export interface BrokerResult {
 }
 
 /**
- * Simulated broker: fills against the real L2 book at the moment of the order (sell at bids,
- * buy at asks), pessimistically, with Delta's real fee rates. A leg must fill completely, since
+ * Simulated broker: fills against the real L2 book at the moment of the order, as a market order does on Delta:
+ * sells hit the best bid, buys lift the best ask, and only a size larger than the top level goes deeper. No extra tick
+ * is added to the price. Delta's real fee rates apply. A leg must fill completely, since
  * a half-built strangle is not the strategy being tested.
  */
 export function paperExecute(
@@ -44,7 +45,7 @@ export function paperExecute(
   books: Map<string, Book>,
   rates: Map<string, FeeRates>,
   spot: number,
-  extraTicks = 1,
+  extraTicks = 0,
   tick = 0.5,
 ): BrokerResult {
   const fills: LegFill[] = [];

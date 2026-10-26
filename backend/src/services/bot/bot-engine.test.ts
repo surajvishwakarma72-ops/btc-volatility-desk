@@ -172,8 +172,8 @@ describe('bot engine on a real Postgres', () => {
 
     const legs = await q(`SELECT l.symbol, l.side, l.role, l.entry_price FROM bot_legs l JOIN bot_runs r ON r.id = l.run_id WHERE r.run_key = 'ASIA_SHORT:2026-10-26:always' ORDER BY l.id`);
     expect(legs.map((l) => `${l.side}:${l.role}:${l.symbol}`)).toEqual(['short:body:C-BODY', 'short:body:P-BODY']);
-    // shorts sell into bids (mark-2) with a 1-tick pad against us
-    expect(Number(legs[0]!.entry_price)).toBeCloseTo(98 - 0.5, 6);
+    // shorts sell at the best bid (mark-2), exactly as a market order on Delta fills: no extra tick against us
+    expect(Number(legs[0]!.entry_price)).toBeCloseTo(98, 6);
 
     expect((await q('SELECT COUNT(*)::int AS n FROM bot_fills'))[0].n).toBe(4);
     const marks = await q('SELECT COUNT(*)::int AS n FROM bot_minute_marks');
@@ -188,7 +188,7 @@ describe('bot engine on a real Postgres', () => {
     const e = await newEngine();
     vi.setSystemTime(istToUtc('2026-10-26', 10, 0, 20));
     await e.tick();
-    h.marks.set('C-BODY', 210); // above 2x the ~97.5 entry
+    h.marks.set('C-BODY', 210); // above 2x the ~98 entry
     vi.setSystemTime(istToUtc('2026-10-26', 10, 5, 0));
     await e.tick();
 

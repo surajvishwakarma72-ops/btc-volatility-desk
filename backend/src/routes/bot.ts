@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { pool } from '../db/index.js';
 import { DAY, istDateKey, istMidnightMs } from '../lib/bot/schedule.js';
 import { requireAdmin } from '../lib/guards.js';
+import { analyzeSeries, analyzeTrades, type SeriesPoint, type TradeRec } from '../lib/bot/pnl-analysis.js';
 import { buildTimeline, type SlotRun } from '../lib/bot/timeline.js';
 import { buildAnalytics, type RunRecord } from '../lib/bot/analytics.js';
 import { DEFAULT_PARAMS, DEFAULT_THRESHOLDS } from '../lib/bot/learn.js';
@@ -184,6 +185,69 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
         feesUsd: Number(r.fees_entry ?? 0) + Number(r.fees_exit ?? 0),
       },
     };
+  });
+
+  // One trade, minute by minute: the net PnL line from entry to exit (or now), each leg's mark / PnL / IV, the take-profit target,
+  // the events on that trade, and the statistics a trader reads off it (peak, trough, drawdown, time in profit).
+  fastify.get('/runs/:id/pnl', auth, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return bad(reply, 'invalid run id');
+    await ensureBotSchema();
+    const [run, marks, legsT, events] = await Promise.all([
+      pool.query('SELECT * FROM bot_runs WHERE id=$1', [id]),
+      pool.query('SELECT minute_ms, net_pnl, gross_pnl, pct_margin, spot, snapshot FROM bot_minute_marks WHERE run_id=$1 ORDER BY minute_ms', [id]),
+      pool.query('SELECT symbol, side, role, entry_price, exit_price, lots FROM bot_legs WHERE run_id=$1 ORDER BY id', [id]),
+      pool.query('SELECT at, type, severity, message FROM bot_events WHERE run_id=$1 ORDER BY at LIMIT 60', [id]),
+    ]);
+    if (!run.rowCount) return reply.code(404).send({ success: false, error: 'run not found' });
+    const r = run.rows[0] as any;
+    const rows = marks.rows as any[];
+    const points: SeriesPoint[] = rows.map((m) => ({ t: Number(m.minute_ms), net: Number(m.net_pnl), gross: Number(m.gross_pnl), spot: m.spot == null ? null : Number(m.spot), pct: m.pct_margin == null ? null : Number(m.pct_margin) }));
+    const bySym = new Map<string, { symbol: string; side: string; role: string; entry: number | null; mark: Array<number | null>; pnl: Array<number | null>; iv: Array<number | null>; delta: Array<number | null> }>();
+    for (const l of legsT.rows as any[]) bySym.set(l.symbol, { symbol: l.symbol, side: l.side, role: l.role, entry: l.entry_price == null ? null : Number(l.entry_price), mark: [], pnl: [], iv: [], delta: [] });
+    const n = (v: unknown): number | null => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+    rows.forEach((m, i) => {
+      const sn = (typeof m.snapshot === 'string' ? JSON.parse(m.snapshot) : m.snapshot) as { legs?: Array<{ symbol: string; mark?: number | null; pnl?: number | null; iv?: number | null; delta?: number | null }> } | null;
+      const seen = new Set<string>();
+      for (const l of sn?.legs ?? []) {
+        const s = bySym.get(l.symbol); if (!s) continue; seen.add(l.symbol);
+        s.mark[i] = n(l.mark); s.pnl[i] = n(l.pnl); s.iv[i] = n(l.iv); s.delta[i] = n(l.delta);
+      }
+      for (const s of bySym.values()) if (!seen.has(s.symbol)) { s.mark[i] = null; s.pnl[i] = null; s.iv[i] = null; s.delta[i] = null; }
+    });
+    const last = rows.length ? ((typeof rows[rows.length - 1].snapshot === 'string' ? JSON.parse(rows[rows.length - 1].snapshot) : rows[rows.length - 1].snapshot) as any) : null;
+    const ms = (v: unknown) => (v ? new Date(v as string).getTime() : null);
+    return {
+      success: true,
+      run: {
+        id: r.id, strategy: r.strategy, book: r.book, status: r.status, dateKey: r.date_key, entryMs: ms(r.entry_at), exitMs: ms(r.exit_at), plannedExitMs: ms(r.planned_exit_at),
+        margin: n(r.margin_usd), feesEntry: n(r.fees_entry), feesExit: n(r.fees_exit), net: n(r.net_pnl), gross: n(r.gross_pnl), exitReason: r.exit_reason ?? null, exitDetail: r.exit_detail ?? null,
+      },
+      t: points.map((p) => p.t), net: points.map((p) => p.net), gross: points.map((p) => p.gross), spot: points.map((p) => p.spot), pct: points.map((p) => p.pct),
+      legs: [...bySym.values()],
+      tp: n(last?.tpTargetUsd), stops: last?.stopLevels ?? [],
+      events: (events.rows as any[]).map((e) => ({ at: new Date(e.at).getTime(), type: e.type, severity: e.severity, message: String(e.message ?? '').slice(0, 200) })),
+      stats: analyzeSeries(points),
+    };
+  });
+
+  // All closed trades as one run: the equity curve with its drawdown and the statistics (always book only, so the gated copy is never counted twice).
+  fastify.get('/pnl/trades', auth, async (req) => {
+    await ensureBotSchema();
+    const { scope, limit } = q<{ scope?: string; limit?: string }>(req);
+    const lim = Math.min(Math.max(Number(limit) || 400, 1), 2000);
+    const r = await pool.query(
+      `SELECT id, strategy, book, date_key, entry_at, exit_at, margin_usd, gross_pnl, net_pnl, fees_entry, fees_exit, exit_reason FROM bot_runs
+        WHERE status = 'closed' AND net_pnl IS NOT NULL AND book <> 'gated' AND exit_at IS NOT NULL AND entry_at IS NOT NULL
+          AND ($1::text IS NULL OR ($1 = 'futures' AND strategy LIKE 'FUT\\_%') OR ($1 = 'options' AND strategy NOT LIKE 'FUT\\_%') OR strategy = $1)
+        ORDER BY exit_at DESC LIMIT $2`,
+      [scope && /^[A-Za-z_]{3,30}$/.test(scope) && scope !== 'all' ? scope : null, lim],
+    );
+    const trades: TradeRec[] = (r.rows as any[]).map((x) => ({
+      id: x.id, strategy: x.strategy, book: x.book, dateKey: x.date_key, entryMs: new Date(x.entry_at).getTime(), exitMs: new Date(x.exit_at).getTime(),
+      net: Number(x.net_pnl), gross: Number(x.gross_pnl ?? x.net_pnl), fees: Number(x.fees_entry ?? 0) + Number(x.fees_exit ?? 0), margin: x.margin_usd == null ? null : Number(x.margin_usd), reason: x.exit_reason ?? null,
+    }));
+    return { success: true, ...analyzeTrades(trades) };
   });
 
   fastify.get('/events', auth, async (req) => {
