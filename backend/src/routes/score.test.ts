@@ -92,6 +92,44 @@ describe('GET /score/trades', () => {
     await app.close();
   });
 
+  it('algo: Paper and Live are told apart with mode=paper and mode=live, and no mode still returns both', async () => {
+    const mk = async (key: string, mode: 'paper' | 'live', pnl: number) => {
+      const run = await createRun({ userId: U, strategyId: null, name: 'Night strangle 271026', dateKey: key, mode, status: 'entered', lots: 5, reason: '', plan: { rule: { name: 'Night strangle' } }, ref: 'r', windowStart: 1, enteredAt: Date.parse('2026-10-23T17:00:00Z'), exitAt: null });
+      await finishRun(run!.id, 'exited', 'target', pnl);
+    };
+    await mk('s1', 'live', 20); await mk('s2', 'live', -5); await mk('s3', 'paper', 1000);
+    const app = await build();
+    const get = async (q: string) => (await app.inject({ method: 'GET', url: '/score/trades?source=algo' + q, headers: tok(app, U) })).json();
+    const live = await get('&mode=live'), paper = await get('&mode=paper'), all = await get('');
+    expect(live.trades.map((t: any) => t.net).sort((a: number, b: number) => a - b)).toEqual([-5, 20]);
+    expect(live.mode).toBe('live');
+    expect(paper.trades.map((t: any) => t.net).sort((a: number, b: number) => a - b)).toEqual([-3, 7, 1000]); // the paper runs of the earlier test, and this one: no live run among them
+    expect(paper.mode).toBe('paper');
+    expect(all.trades).toHaveLength(live.trades.length + paper.trades.length);
+    expect(all.mode).toBe('all');
+    expect((await app.inject({ method: 'GET', url: '/score/trades?source=algo&mode=both', headers: tok(app, U) })).statusCode).toBe(400);
+    await app.close();
+  });
+
+  it("real: your own Delta trades, closed only, one group per account, your own only, always marked live", async () => {
+    const t0 = Date.parse('2026-10-24T05:00:00Z');
+    const ins = (id: string, user: string, account: string, status: string, net: number | null) => pool.query(
+      "INSERT INTO real_runs (id, user_id, account, expiry, name, status, entered_at, exited_at, net_pnl) VALUES ($1,$2,$3,'271026','x',$4, to_timestamp($5/1000.0), $6, $7)",
+      [id, user, account, status, t0, status === 'closed' ? new Date(t0 + 3_600_000).toISOString() : null, net]);
+    await ins('aaaaaaaa-0000-0000-0000-000000000001', U, 'main', 'closed', 12.5);
+    await ins('aaaaaaaa-0000-0000-0000-000000000002', U, 'sub', 'closed', null); // closed with no figure of its own: its last minute is used
+    await pool.query("INSERT INTO algo_run_marks (run_id, t, net) VALUES ('aaaaaaaa-0000-0000-0000-000000000002', to_timestamp($1/1000.0), -4.25)", [t0 + 600_000]);
+    await ins('aaaaaaaa-0000-0000-0000-000000000003', U, 'sub', 'open', null);          // still open: not a result yet
+    await ins('aaaaaaaa-0000-0000-0000-000000000004', V, 'main', 'closed', 999);        // someone else's
+    const app = await build();
+    const j = (await app.inject({ method: 'GET', url: '/score/trades?source=real', headers: tok(app, U) })).json();
+    expect(j.mode).toBe('live');
+    expect(j.trades.map((t: any) => t.net).sort((a: number, b: number) => a - b)).toEqual([-4.25, 12.5]);
+    expect(j.trades.find((t: any) => t.net === 12.5)).toMatchObject({ strategy: 'main', label: 'Main account', dateKey: '2026-10-24' });
+    expect(j.trades.find((t: any) => t.net === -4.25)).toMatchObject({ strategy: 'sub', label: 'Sub-account' });
+    await app.close();
+  });
+
   it('paper: closed strategies grouped by structure', async () => {
     const t = Date.parse('2026-10-22T04:00:00Z');
     h.closed = [

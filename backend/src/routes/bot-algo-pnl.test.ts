@@ -88,6 +88,33 @@ describe('PnL analysis includes algo runs (Paper and Live)', () => {
     await app.close();
   });
 
+  it('the PnL analysis curve keeps Paper and Live apart: algo_paper, algo_live (with your own Delta trades), and algo for both', async () => {
+    const t0 = Date.now() - 5_400_000;
+    const pr = (await createRun({ ...base, userId: U, name: 'Practice strangle', mode: 'paper', dateKey: '2026-10-22', enteredAt: t0 }))!;
+    await recordMark(pr.id, t0 + 60_000, 7, null); await finishRun(pr.id, 'exited', 'tp', 7.5);
+    const po = (await createRun({ ...base, userId: U, name: 'Practice open', mode: 'paper', dateKey: '2026-10-23', enteredAt: t0 + 600_000 }))!;
+    const OPEN_REAL = '33333333-3333-3333-3333-333333333331', CLOSED_REAL = '33333333-3333-3333-3333-333333333332';
+    const app = await build();
+    const get = async (scope: string) => (await app.inject({ method: 'GET', url: '/bot/pnl/trades?scope=' + scope, headers: tok(app, U) })).json();
+    const paper = await get('algo_paper'), live = await get('algo_live'), all = await get('algo');
+    const eq = (j: any) => j.equity.map((e: any) => e.id), op = (j: any) => j.open.map((o: any) => o.id);
+
+    expect(eq(paper)).toEqual([pr.id]);                       // paper: only the paper run
+    expect(op(paper)).toEqual([po.id]);                       // and only the open paper run
+    expect(paper.open.every((o: any) => o.mode === 'paper')).toBe(true);
+
+    expect(eq(live)).toEqual(expect.arrayContaining([liveClosed, liveGone, CLOSED_REAL])); // live: the live algo runs and your own Delta trade
+    expect(eq(live)).not.toContain(pr.id);
+    expect(op(live)).toEqual(expect.arrayContaining([liveOpen, OPEN_REAL]));
+    expect(op(live)).not.toContain(po.id);
+    expect(live.open.every((o: any) => o.mode === 'live')).toBe(true);
+
+    expect(eq(all)).toEqual(expect.arrayContaining([pr.id, liveClosed, CLOSED_REAL])); // no scope split: everything, as before
+    expect(op(all)).toEqual(expect.arrayContaining([po.id, liveOpen]));
+    expect(eq(all).length).toBe(eq(paper).length + eq(live).length);
+    await app.close();
+  });
+
   it('the minute view opens an algo run, closed or open, only for its owner', async () => {
     const app = await build();
     const c = (await app.inject({ method: 'GET', url: `/bot/runs/${liveClosed}/pnl`, headers: tok(app, U) })).json();

@@ -268,15 +268,17 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     await ensureBotSchema();
     const { scope, limit } = q<{ scope?: string; limit?: string }>(req);
     const lim = Math.min(Math.max(Number(limit) || 400, 1), 2000);
-    if (scope === 'algo') {
-      // the algo runs (Paper and Live) of the signed-in user; the open ones are listed beside the closed curve
+    // 'algo' is every algo run (older, mixed); 'algo_paper' only the Paper ones; 'algo_live' the Live ones plus the user's own real Delta positions
+    if (scope === 'algo' || scope === 'algo_paper' || scope === 'algo_live') {
+      const only = scope === 'algo_paper' ? 'paper' : scope === 'algo_live' ? 'live' : null;
+      // the algo runs of the signed-in user; the open ones are listed beside the closed curve
       await ensureAlgoSchema();
       const a = await pool.query(
         `SELECT id, name, mode, status, date_key, entered_at, exited_at, exit_reason,
                 COALESCE(net_pnl, (SELECT m.net FROM algo_run_marks m WHERE m.run_id = algo_runs.id ORDER BY m.t DESC LIMIT 1)) AS net_pnl
            FROM algo_runs
-          WHERE user_id = $1 AND entered_at IS NOT NULL AND status IN ('entered','exited') ORDER BY entered_at DESC LIMIT $2`,
-        [userId(req), lim],
+          WHERE user_id = $1 AND entered_at IS NOT NULL AND status IN ('entered','exited') AND ($3::text IS NULL OR mode = $3) ORDER BY entered_at DESC LIMIT $2`,
+        [userId(req), lim, only],
       );
       const rowsA = a.rows as any[];
       const trades: TradeRec[] = rowsA.filter((x) => x.status === 'exited' && x.net_pnl != null && x.exited_at).map((x) => ({
@@ -284,8 +286,8 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
         net: Number(x.net_pnl), gross: Number(x.net_pnl), fees: 0, margin: null, reason: x.exit_reason ?? null,
       }));
       const open = rowsA.filter((x) => x.status === 'entered').map((x) => ({ id: x.id, name: x.name, mode: x.mode, entryMs: new Date(x.entered_at).getTime() }));
-      // the user's own real positions on Delta (main account and sub-account), tracked by the stop alarm's position reader
-      const real = (await pool.query(
+      // the user's own real positions on Delta (main account and sub-account), tracked by the stop alarm's position reader: live money only
+      const real = only === 'paper' ? [] : (await pool.query(
         `SELECT id, name, status, expiry, entered_at, exited_at,
                 COALESCE(net_pnl, (SELECT m.net FROM algo_run_marks m WHERE m.run_id = real_runs.id ORDER BY m.t DESC LIMIT 1)) AS net_pnl
            FROM real_runs WHERE user_id = $1 ORDER BY entered_at DESC LIMIT $2`,

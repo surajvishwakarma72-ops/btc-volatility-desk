@@ -48,14 +48,18 @@ export function classifyPaperLegs(legs: readonly PaperLeg[]): { key: string; lab
   return mk('Mixed or other');
 }
 
-const sourceQ = z.object({ source: z.enum(['bot', 'algo', 'paper']), book: z.enum(['always', 'gated']).optional(), limit: z.coerce.number().int().min(1).max(5000).optional() });
+/**
+ * 'bot' and 'paper' are paper money; 'algo' is the Algo panel and takes mode=paper or mode=live (no mode: both, the older all-in-one answer);
+ * 'real' is the user's own positions on Delta (main account and sub-account), tracked by the stop alarm: always live money.
+ */
+const sourceQ = z.object({ source: z.enum(['bot', 'algo', 'paper', 'real']), mode: z.enum(['paper', 'live']).optional(), book: z.enum(['always', 'gated']).optional(), limit: z.coerce.number().int().min(1).max(5000).optional() });
 
 export const scoreRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: (fastify as any).authenticate };
 
   fastify.get('/trades', auth, async (req, reply) => {
     const q = sourceQ.safeParse(req.query);
-    if (!q.success) return reply.code(400).send({ success: false, error: 'source must be bot, algo or paper' });
+    if (!q.success) return reply.code(400).send({ success: false, error: 'source must be bot, algo, paper or real (algo also takes mode=paper or mode=live)' });
     const { source, limit } = q.data, lim = limit ?? 2000, uid = userId(req);
     let trades: ScoreTrade[] = [];
 
@@ -76,13 +80,27 @@ export const scoreRoutes: FastifyPluginAsync = async (fastify) => {
       await ensureAlgoSchema();
       const r = await pool.query(
         `SELECT id, name, plan, entered_at, exited_at, net_pnl FROM algo_runs
-          WHERE user_id = $1 AND status = 'exited' AND net_pnl IS NOT NULL AND entered_at IS NOT NULL ORDER BY entered_at DESC LIMIT $2`,
-        [uid, lim],
+          WHERE user_id = $1 AND status = 'exited' AND net_pnl IS NOT NULL AND entered_at IS NOT NULL AND ($3::text IS NULL OR mode = $3) ORDER BY entered_at DESC LIMIT $2`,
+        [uid, lim, q.data.mode ?? null],
       );
       trades = (r.rows as any[]).map((x) => {
         const ruleName = String(x.plan?.rule?.name ?? x.name);
         const entry = new Date(x.entered_at).getTime();
         return { id: x.id, strategy: ruleName, label: ruleName, dateKey: istDateKey(entry), entryMs: entry, exitMs: x.exited_at ? new Date(x.exited_at).getTime() : null, net: Number(x.net_pnl) };
+      });
+    } else if (source === 'real') {
+      // positions the user opened on Delta by hand (or any way the desk did not enter itself): one group per account
+      await ensureAlgoSchema();
+      const r = await pool.query(
+        `SELECT id, account, name, entered_at, exited_at,
+                COALESCE(net_pnl, (SELECT m.net FROM algo_run_marks m WHERE m.run_id = real_runs.id ORDER BY m.t DESC LIMIT 1)) AS net_pnl
+           FROM real_runs WHERE user_id = $1 AND status = 'closed' AND exited_at IS NOT NULL ORDER BY entered_at DESC LIMIT $2`,
+        [uid, lim],
+      );
+      const ACCOUNT: Record<string, string> = { main: 'Main account', sub: 'Sub-account', account: 'Delta account' };
+      trades = (r.rows as any[]).filter((x) => x.net_pnl != null).map((x) => {
+        const label = ACCOUNT[x.account as string] ?? String(x.account), entry = new Date(x.entered_at).getTime();
+        return { id: x.id, strategy: String(x.account), label, dateKey: istDateKey(entry), entryMs: entry, exitMs: x.exited_at ? new Date(x.exited_at).getTime() : null, net: Number(x.net_pnl) };
       });
     } else {
       const s = await paperFor(uid).strategies(Math.min(lim, 1000));
@@ -91,6 +109,6 @@ export const scoreRoutes: FastifyPluginAsync = async (fastify) => {
         return { id: x.id, strategy: c.key, label: c.label, dateKey: istDateKey(x.openedAt), entryMs: x.openedAt, exitMs: x.closedAt, net: x.netPnl as number };
       });
     }
-    return { success: true, source, trades };
+    return { success: true, source, mode: source === 'algo' ? (q.data.mode ?? 'all') : source === 'real' ? 'live' : 'paper', trades };
   });
 };

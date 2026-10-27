@@ -58468,6 +58468,8 @@ document.addEventListener('click', function(e) {
 #pgScore .sc-tabs{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:0 0 8px}
 #pgScore .sc-tabs button{background:var(--panel2);color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:6px 14px;font:600 13px var(--font);cursor:pointer}
 #pgScore .sc-tabs button.on{color:var(--text);border-color:var(--focus);background:var(--panel)}
+#pgScore .sc-tabs button.live{border-color:var(--up,#EF5A5E)}
+#pgScore .sc-tabs button.live.on{background:var(--up,#EF5A5E);color:#fff}
 #pgScore .sc-tabs label{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center}
 #pgScore select{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:6px;padding:5px 7px;font:13px var(--font)}
 #pgScore .sc-sp{flex:1}
@@ -58601,7 +58603,10 @@ document.addEventListener('click', function(e) {
   // SCORE-CORE-END
 
   /* ---------- state and data ---------- */
-  const SRC = { bot: 'Bot (paper)', algo: 'Algo trading', paper: 'Paper Trade' };
+  // Paper money and live money are never mixed: the Algo panel has one tab for each, and your own trades on Delta are live
+  const SRC = { bot: 'Bot · Paper', algo_paper: 'Algo · Paper', algo_live: 'Algo · Live', paper: 'Paper Trade', real: 'Your Delta trades · Live' };
+  const LIVE_SRC = k => k === 'algo_live' || k === 'real';
+  const SRCQ = { algo_paper: 'algo&mode=paper', algo_live: 'algo&mode=live' };
   const S = { src: 'bot', book: 'always', days: 0, trades: null, err: null, busy: false, level: 'strategies', strat: null, wd: null, day: null, tid: null, pnl: null, meta: null, hair: -1, built: false, at: 0 };
 
   async function get(path) {
@@ -58614,12 +58619,12 @@ document.addEventListener('click', function(e) {
   }
   async function load() {
     S.busy = true; S.err = null; paint();
-    try { S.trades = (await get('/score/trades?source=' + S.src + (S.src === 'bot' ? '&book=' + S.book : ''))).trades; S.at = Date.now(); }
+    try { S.trades = (await get('/score/trades?source=' + (SRCQ[S.src] || S.src) + (S.src === 'bot' ? '&book=' + S.book : ''))).trades; S.at = Date.now(); }
     catch (e) { S.err = e.message; S.trades = null; }
     S.busy = false; paint();
   }
   const view = () => periodFilter(S.trades || [], S.days, Date.now());
-  const pnlUrl = id => S.src === 'bot' ? '/bot/runs/' + id + '/pnl' : S.src === 'algo' ? '/algo/runs/' + id + '/pnl' : '/paper/strategy/' + id + '/pnl';
+  const pnlUrl = id => S.src === 'bot' || S.src === 'real' ? '/bot/runs/' + id + '/pnl' : S.src === 'algo_paper' || S.src === 'algo_live' ? '/algo/runs/' + id + '/pnl' : '/paper/strategy/' + id + '/pnl';
   async function loadDay(tid) {
     S.tid = tid; S.pnl = null; S.hair = -1; paint();
     try { S.pnl = await get(pnlUrl(tid)); } catch (e) { S.pnl = { error: e.message }; }
@@ -58632,7 +58637,7 @@ document.addEventListener('click', function(e) {
   const tile = (k, v, tone, sub) => '<div class="sc-tile"><span>' + esc(k) + '</span><b class="' + (tone || '') + '">' + esc(v) + '</b>' + (sub ? '<span>' + esc(sub) + '</span>' : '') + '</div>';
 
   function head() {
-    const pre = '<div class="sc-tabs">' + Object.keys(SRC).map(k => '<button type="button" data-sc="src" data-k="' + k + '" class="' + (S.src === k ? 'on' : '') + '">' + SRC[k] + '</button>').join('') +
+    const pre = '<div class="sc-tabs">' + Object.keys(SRC).map(k => '<button type="button" data-sc="src" data-k="' + k + '" class="' + (S.src === k ? 'on' : '') + (LIVE_SRC(k) ? ' live' : '') + '">' + SRC[k] + '</button>').join('') +
       '<span class="sc-sp"></span><label>Period <select data-sc="days">' + [[0, 'All time'], [90, 'Last 90 days'], [30, 'Last 30 days'], [7, 'Last 7 days']].map(x => '<option value="' + x[0] + '"' + (S.days === x[0] ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></label>' +
       (S.src === 'bot' ? '<label>Trades <select data-sc="book"><option value="always"' + (S.book === 'always' ? ' selected' : '') + '>Every trade the bot took</option><option value="gated"' + (S.book === 'gated' ? ' selected' : '') + '>Only on GO days (gated)</option></select></label>' : '') + '</div>';
     const crumbs = ['<a href="#" data-sc="crumb" data-k="strategies">' + esc(SRC[S.src]) + ': all strategies</a>'];
@@ -58786,7 +58791,7 @@ document.addEventListener('click', function(e) {
   }
   new MutationObserver(() => { if (active()) show(); }).observe($('pgScore'), { attributes: true, attributeFilter: ['class'] });
   setInterval(() => { if (active() && !D.hidden && S.level !== 'day') load(); }, 60000);
-  window.scorePage = { show, summarize, byStrategy, byWeekday, byDay, verdict, bestWorst, weekdayOf, open: src => { if (SRC[src]) { S.src = src; S.level = 'strategies'; S.strat = null; S.wd = null; S.day = null; S.trades = null; } const nb = D.querySelector('#nav button[data-page="pgScore"]'); if (nb) nb.click(); S.built = false; show(); } };
+  window.scorePage = { show, summarize, byStrategy, byWeekday, byDay, verdict, bestWorst, weekdayOf, open: src => { if (src === 'algo') src = 'algo_live'; if (SRC[src]) { S.src = src; S.level = 'strategies'; S.strat = null; S.wd = null; S.day = null; S.trades = null; } const nb = D.querySelector('#nav button[data-page="pgScore"]'); if (nb) nb.click(); S.built = false; show(); } };
   if (active()) show();
 })();
 </script>
@@ -58807,6 +58812,12 @@ document.addEventListener('click', function(e) {
 #pgAlgo .al-chip.ok{color:var(--down);border-color:var(--down)}
 #pgAlgo .al-chip.warn{color:var(--warn);border-color:var(--warn)}
 #pgAlgo .al-chip.bad{color:var(--up);border-color:var(--up)}
+#pgAlgo .al-chip.live{background:var(--up);border-color:var(--up);color:#fff;font-weight:700}
+#pgAlgo .al-chip.paper{color:var(--muted);border-color:var(--line2);font-weight:700}
+#pgAlgo .al-seg{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px}
+#pgAlgo .al-seg button{background:var(--panel2);color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:5px 12px;font:600 12.5px var(--font);cursor:pointer}
+#pgAlgo .al-seg button.on{color:var(--text);border-color:var(--focus);background:var(--panel)}
+#pgAlgo .al-hero-h{display:flex;gap:8px;align-items:center;margin:10px 0 4px;font-size:12.5px}
 #pgAlgo button.al-btn{background:var(--panel2);color:var(--text);border:1px solid var(--line2);border-radius:7px;padding:5px 11px;font:600 12px var(--font);cursor:pointer}
 #pgAlgo button.al-btn:hover{border-color:var(--focus)}
 #pgAlgo button.al-btn.pri{border-color:var(--focus)}
@@ -58975,7 +58986,7 @@ document.addEventListener('click', function(e) {
   };
   function mkLeg(type, side, mode) { return { type, side, pick: { mode, target: 0.1, strike: 100000, points: 3000 } }; }
 
-  const S = { fxq: '', fxOpen: {}, rowOpen: {}, help: dkUi.get('al_help', '') === '1', sel: null, pnl: null, meta: null, hair: -1, ins: null, insAt: 0, st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: dkUi.get('al_tab', 'strategies'), formOpen: true, at: 0 };
+  const S = { mv: dkUi.get('al_mv', 'all'), fxq: '', fxOpen: {}, rowOpen: {}, help: dkUi.get('al_help', '') === '1', sel: null, pnl: null, meta: null, hair: -1, ins: null, insAt: 0, st: null, form: newForm(), pv: null, busy: false, err: null, ok: null, open: null, ev: null, armEnter: false, armExit: false, tab: dkUi.get('al_tab', 'strategies'), formOpen: true, at: 0 };
 
   async function api(path, opt) {
     const t = tok(); if (!t) { const e = new Error('Sign in first'); e.status = 401; throw e; }
@@ -59327,11 +59338,12 @@ document.addEventListener('click', function(e) {
   }
   function runsHtml() {
     const st = S.st; if (!st) return '';
-    if (!st.runs.length) return '<div class="al-note">No runs yet.</div>';
+    const runs = st.runs.filter(r => S.mv === 'all' || (r.mode === 'live' ? 'live' : 'paper') === S.mv);
+    if (!runs.length) return '<div class="al-note">No ' + (S.mv === 'live' ? 'Live ' : S.mv === 'paper' ? 'Paper ' : '') + 'runs yet.</div>';
     const badge = r => ({ entered: 'ok', exited: '', skipped: 'warn', failed: 'bad', dry: 'warn' }[r] || '');
-    return '<div class="al-scroll"><div class="al-note">Click a run to open its live PnL graph above the list.</div><table class="al-t"><thead><tr><th>Started (IST)</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Lots</th><th>Net PnL</th><th>Why / result</th><th></th></tr></thead><tbody>' + st.runs.map(r => {
+    return '<div class="al-scroll"><div class="al-note">Click a run to open its live PnL graph above the list.</div><table class="al-t"><thead><tr><th>Started (IST)</th><th>Strategy</th><th>Mode</th><th>Status</th><th>Lots</th><th>Net PnL</th><th>Why / result</th><th></th></tr></thead><tbody>' + runs.map(r => {
       const pnl = r.status === 'entered' ? r.liveNetPnl : r.netPnl;
-      return '<tr class="al-rr' + (S.sel === r.id ? ' sel' : '') + '" data-al="runchart" data-id="' + r.id + '" title="Click to see its PnL by minute"><td>' + IST(r.enteredAt || r.windowStart) + '</td><td>' + esc(r.name) + '</td><td>' + (r.mode === 'live' ? 'Live' : 'Paper') + '</td><td><span class="al-chip ' + badge(r.status) + '">' + esc(r.status) + '</span></td><td>' + (r.lots || '') + '</td><td class="' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '</td><td class="w">' + esc((r.status === 'entered' ? (r.plan && r.plan.why) || r.reason : r.exitReason || r.reason || '')) + '</td>' +
+      return '<tr class="al-rr' + (S.sel === r.id ? ' sel' : '') + '" data-al="runchart" data-id="' + r.id + '" title="Click to see its PnL by minute"><td>' + IST(r.enteredAt || r.windowStart) + '</td><td>' + esc(r.name) + '</td><td>' + '<span class="al-chip ' + (r.mode === 'live' ? 'live' : 'paper') + '">' + (r.mode === 'live' ? 'LIVE' : 'PAPER') + '</span>' + '</td><td><span class="al-chip ' + badge(r.status) + '">' + esc(r.status) + '</span></td><td>' + (r.lots || '') + '</td><td class="' + sgn(pnl) + '">' + (pnl == null ? '-' : usd(pnl)) + '</td><td class="w">' + esc((r.status === 'entered' ? (r.plan && r.plan.why) || r.reason : r.exitReason || r.reason || '')) + '</td>' +
         '<td>' + (r.status === 'entered' ? '<button type="button" class="al-btn" data-al="runexit" data-id="' + r.id + '">Exit now</button>' : '') + '</td></tr>' +
         (r.status === 'entered' && (r.liveLegs || []).length ? '<tr class="al-legrow"><td colspan="8">' + r.liveLegs.map(l => '<span class="al-leg">' + (l.side === 'sell' ? 'Sold ' : 'Bought ') + l.lots + ' x ' + esc(String(l.symbol).replace(/-BTC/, '')) + ' @ ' + Number(l.entry).toFixed(1) + (l.mark == null ? '' : ' now ' + Number(l.mark).toFixed(1)) + ' <b class="' + sgn(l.pnl) + '">' + (l.pnl == null ? '-' : usd(l.pnl)) + '</b></span>').join('') + '</td></tr>' : '');
     }).join('') + '</tbody></table></div>';
@@ -59460,18 +59472,25 @@ document.addEventListener('click', function(e) {
   function heroHtml() {
     const st = S.st; if (!st) return '';
     const dayOf = ms => new Date(ms + 19800000).toISOString().slice(0, 10), todayKey = dayOf(Date.now());
-    const armed = st.strategies.filter(x => x.armed).length, open = st.runs.filter(r => r.status === 'entered'), openNet = open.reduce((a, r) => a + (r.liveNetPnl || 0), 0);
-    const fin = st.runs.filter(r => r.status === 'exited' && r.netPnl != null && r.exitedAt);
-    const today = fin.filter(r => dayOf(r.exitedAt) === todayKey).reduce((a, r) => a + r.netPnl, 0) + openNet;
-    const wins = fin.filter(r => r.netPnl > 0).length;
-    const days = [], labels = [];
-    for (let i = 6; i >= 0; i--) { const k = dayOf(Date.now() - i * 86400000); labels.push(k.slice(5)); days.push(fin.filter(r => dayOf(r.exitedAt) === k).reduce((a, r) => a + r.netPnl, 0)); }
-    return '<div class="dk-kpis">' +
-      dkUi.kpi('Armed', armed + ' of ' + st.strategies.length, armed ? 'pos' : 'dim', armed ? 'waiting for their windows' : 'none is armed') +
-      dkUi.kpi('Open now', String(open.length), open.length ? '' : 'dim', open.length ? 'net ' + usd(openNet) : 'no position') +
-      dkUi.kpi('Today', usd(today), sgn(today), 'closed plus open') +
-      dkUi.kpi('Win rate', fin.length ? Math.round(wins / fin.length * 100) + '%' : '-', fin.length ? (wins / fin.length >= 0.5 ? 'pos' : 'neg') : 'dim', fin.length + ' finished runs') +
-      '<div class="dk-kpi"><span>Last 7 days</span>' + dkUi.bars(days, labels) + '<small>net PnL per day</small></div></div>';
+    const modeOf = m => (m === 'live' ? 'live' : 'paper');
+    /** the numbers for ONE kind of money: live and paper are never added together */
+    const strip = (mode, title) => {
+      const runs = st.runs.filter(r => modeOf(r.mode) === mode), strats = st.strategies.filter(x => modeOf(x.rule.mode) === mode);
+      const armed = strats.filter(x => x.armed).length, open = runs.filter(r => r.status === 'entered'), openNet = open.reduce((a, r) => a + (r.liveNetPnl || 0), 0);
+      const fin = runs.filter(r => r.status === 'exited' && r.netPnl != null && r.exitedAt);
+      const today = fin.filter(r => dayOf(r.exitedAt) === todayKey).reduce((a, r) => a + r.netPnl, 0) + openNet;
+      const wins = fin.filter(r => r.netPnl > 0).length;
+      const days = [], labels = [];
+      for (let i = 6; i >= 0; i--) { const k = dayOf(Date.now() - i * 86400000); labels.push(k.slice(5)); days.push(fin.filter(r => dayOf(r.exitedAt) === k).reduce((a, r) => a + r.netPnl, 0)); }
+      return '<div class="al-hero-h"><span class="al-chip ' + mode + '">' + (mode === 'live' ? 'LIVE' : 'PAPER') + '</span><span class="dim">' + title + '</span></div><div class="dk-kpis">' +
+        dkUi.kpi('Armed', armed + ' of ' + strats.length, armed ? 'pos' : 'dim', armed ? 'waiting for their windows' : 'none is armed') +
+        dkUi.kpi('Open now', String(open.length), open.length ? '' : 'dim', open.length ? 'net ' + usd(openNet) : 'no position') +
+        dkUi.kpi('Today', usd(today), sgn(today), 'closed plus open') +
+        dkUi.kpi('Win rate', fin.length ? Math.round(wins / fin.length * 100) + '%' : '-', fin.length ? (wins / fin.length >= 0.5 ? 'pos' : 'neg') : 'dim', fin.length + ' finished runs') +
+        '<div class="dk-kpi"><span>Last 7 days</span>' + dkUi.bars(days, labels) + '<small>net PnL per day</small></div></div>';
+    };
+    const bar = '<div class="al-seg" role="group" aria-label="Which money to show">' + [['all', 'Live and Paper, side by side'], ['live', 'Live only'], ['paper', 'Paper only']].map(x => '<button type="button" data-al="mv" data-k="' + x[0] + '" class="' + (S.mv === x[0] ? 'on' : '') + '">' + x[1] + '</button>').join('') + '</div>';
+    return bar + (S.mv === 'live' ? strip('live', 'real money on Delta') : S.mv === 'paper' ? strip('paper', 'practice money') : strip('live', 'real money on Delta') + strip('paper', 'practice money'));
   }
   function skeleton() {
     root.innerHTML = '<div class="al' + (S.help ? ' help' : '') + '"><div class="al-top"><h2>Algo trading</h2><span class="al-sub2 al-help">Write your own entry and exit rules. Nothing is fixed. Paper first; real orders only with a trading key.</span></div>' +
@@ -59560,6 +59579,7 @@ document.addEventListener('click', function(e) {
     if (a === 'newform') { S.form = newForm(); S.pv = null; S.formTouched = false; paintForm(); return; }
     if (a === 'tab') { setTab(b.dataset.k); return; }
     if (a === 'help') { S.help = !S.help; dkUi.set('al_help', S.help ? '1' : ''); paintNav(); return; }
+    if (a === 'mv') { S.mv = ['live', 'paper'].includes(b.dataset.k) ? b.dataset.k : 'all'; dkUi.set('al_mv', S.mv); paintLive(); return; }
     if (a === 'runchart') { S.sel = b.dataset.id; S.pnl = null; S.hair = -1; paintLive(); await loadTrack(); const t = $('alTrack'); if (t && t.scrollIntoView) t.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); return; }
     if (a === 'addcond') { addCond(b); return; }
     if (a === 'addc') { addCondType(b.dataset.t); return; }
@@ -59788,12 +59808,14 @@ document.addEventListener('click', function(e) {
 
   /* ---------- PnL analysis: a trade minute by minute, and all trades, each with a hairline ---------- */
   const PC = () => window.pnlChart;
-  const shortName = k => k === 'algo' ? 'Algo (Live & Paper)' : (STRAT[k] || k).replace(/ \d\d:\d\d$/, '');
+  // the Algo curve is Paper or Live, never both mixed; the Live curve also holds your own trades on Delta ('algo' alone is the older mixed one)
+  const isAlgoScope = k => k === 'algo' || k === 'algo_paper' || k === 'algo_live';
+  const shortName = k => k === 'algo' ? 'Algo (Live & Paper)' : k === 'algo_paper' ? 'Algo · Paper' : k === 'algo_live' ? 'Algo · Live (and your own Delta trades)' : (STRAT[k] || k).replace(/ \d\d:\d\d$/, '');
   /** the strategy whose curve is shown: the one chosen, else the live one, else the one traded last */
   function scopeOf() {
     if (S.pa.scope) return S.pa.scope;
     const live = (S.positions || []).find(p => p.id && p.book !== 'gated'); if (live) return live.strategy;
-    const last = (S.runs || []).find(r => r.status === 'closed' || r.status === 'open'); return last ? last.strategy : 'algo';
+    const last = (S.runs || []).find(r => r.status === 'closed' || r.status === 'open'); return last ? last.strategy : 'algo_live';
   }
   const strategyOf = id => { const p = (S.positions || []).find(x => x.id === id); if (p) return p.strategy; const r = (S.runs || []).find(x => x.id === id); return r ? r.strategy : null; };
   function paCard() {
@@ -59802,10 +59824,10 @@ document.addEventListener('click', function(e) {
     const closed = eq && eq.equity ? eq.equity.slice().reverse().slice(0, 60) : [];
     const opt = [];
     for (const p of opens) opt.push('<option value="' + esc(p.id) + '"' + (P.sel === p.id ? ' selected' : '') + '>OPEN now · ' + esc(shortName(p.strategy)) + '</option>');
-    if (scopeOf() === 'algo' && eq && eq.open) for (const o of eq.open) opt.push('<option value="' + esc(o.id) + '"' + (P.sel === o.id ? ' selected' : '') + '>OPEN now · ' + esc(o.name) + ' (' + esc(o.mode) + ')</option>');
+    if (isAlgoScope(scopeOf()) && eq && eq.open) for (const o of eq.open) opt.push('<option value="' + esc(o.id) + '"' + (P.sel === o.id ? ' selected' : '') + '>OPEN now · ' + esc(o.name) + ' (' + esc(o.mode) + ')</option>');
     for (const c of closed) opt.push('<option value="' + esc(c.id) + '"' + (P.sel === c.id ? ' selected' : '') + '>' + esc(c.dateKey) + ' · ' + esc(shortName(c.strategy)) + ' · ' + usd(c.net) + '</option>');
     let h = '<div class="bt-card pc" id="paCard"><h3>PnL analysis</h3><div class="sub">Every minute of a trade is recorded. Move your mouse or finger across a graph, or press the arrow keys when it is focused: the hairline reads that exact minute and the numbers appear under it.</div>' +
-      '<div class="bt-row"><label class="pcSel">Trade <select data-pa="pick">' + (opt.length ? opt.join('') : '<option>No trades yet</option>') + '</select></label><label class="pcSel">Strategy curve <select data-pa="scope">' + ['algo'].concat(Object.keys(STRAT)).map(k => '<option value="' + k + '"' + (scopeOf() === k ? ' selected' : '') + '>' + esc(shortName(k)) + '</option>').join('') + '</select></label></div>';
+      '<div class="bt-row"><label class="pcSel">Trade <select data-pa="pick">' + (opt.length ? opt.join('') : '<option>No trades yet</option>') + '</select></label><label class="pcSel">Strategy curve <select data-pa="scope">' + ['algo_live', 'algo_paper'].concat(Object.keys(STRAT)).map(k => '<option value="' + k + '"' + (scopeOf() === k ? ' selected' : '') + '>' + esc(shortName(k)) + '</option>').join('') + '</select></label></div>';
     if (P.err && !d && !eq) return h + '<div class="bt-note warn">' + esc(P.err) + '</div></div>';
     if (d && PC()) {
       const r = d.run, ch = PC().minuteChart(d, 'pcT'); P.metaT = ch.meta;
@@ -59838,7 +59860,7 @@ document.addEventListener('click', function(e) {
     if (!tok() || S.pa.busy) return; S.pa.busy = true;
     try {
       S.pa.eq = await api('/pnl/trades?scope=' + encodeURIComponent(scopeOf()));
-      if (!S.pa.sel) { const open = scopeOf() === 'algo' ? (S.pa.eq.open || [])[0] : (S.positions || []).find(p => p.id && p.book !== 'gated'); S.pa.sel = open ? open.id : (S.pa.eq.equity.length ? S.pa.eq.equity[S.pa.eq.equity.length - 1].id : null); }
+      if (!S.pa.sel) { const open = isAlgoScope(scopeOf()) ? (S.pa.eq.open || [])[0] : (S.positions || []).find(p => p.id && p.book !== 'gated'); S.pa.sel = open ? open.id : (S.pa.eq.equity.length ? S.pa.eq.equity[S.pa.eq.equity.length - 1].id : null); }
       if (S.pa.sel) S.pa.d = await api('/runs/' + S.pa.sel + '/pnl');
       S.pa.err = null;
     } catch (e) { S.pa.err = e.message; }
@@ -61847,9 +61869,9 @@ document.addEventListener('click', function(e) {
   async function dayScore() {
     const SPG = window.scorePage; if (!SPG) return msg('text', { text: 'The Score page is not loaded.' });
     const out = [];
-    for (const src of ['bot', 'algo', 'paper']) {
+    for (const src of ['bot', 'algo_paper', 'algo_live', 'real', 'paper']) {
       try {
-        const j = await api2('/score/trades?source=' + src); const gs = SPG.byStrategy(j.trades);
+        const j = await api2('/score/trades?source=' + ({ algo_paper: 'algo&mode=paper', algo_live: 'algo&mode=live' }[src] || src)); const gs = SPG.byStrategy(j.trades);
         out.push({ src, groups: gs.slice(0, 6).map(g => ({ label: g.label, key: g.key, stats: g.stats, verdict: g.verdict, wds: SPG.byWeekday(g.trades), bw: SPG.bestWorst(SPG.byWeekday(g.trades)) })) });
       } catch (e) { out.push({ src, groups: [], err: e.message }); }
     }
@@ -61863,7 +61885,7 @@ document.addEventListener('click', function(e) {
     return j;
   }
   function dayScoreCard(m) {
-    const NAMES = { bot: 'Bot (paper)', algo: 'Algo trading', paper: 'Paper Trade' };
+    const NAMES = { bot: 'Bot · Paper', algo_paper: 'Algo · Paper', algo_live: 'Algo · Live', real: 'Your Delta trades · Live', paper: 'Paper Trade' };
     let h = '<div class="at-card"><div class="at-h">PnL by strategy and by weekday</div><div class="at-fine">Green made money, red lost. Open the Score page, click a strategy, then a weekday, then a day to see that day minute by minute with the hairline.</div>';
     for (const o of m.out) {
       h += '<div class="at-sub">' + NAMES[o.src] + '</div>';
