@@ -34,6 +34,8 @@ describe('automatic 2x stop-loss on the trading account', () => {
     expect(r.posts.map((p) => p.product_id).sort()).toEqual([11, 22]);
     expect(r.posts.find((p) => p.product_id === 11)).toMatchObject({ side: 'buy', size: 10, stop_order_type: 'stop_loss_order', stop_trigger_method: 'mark_price', stop_price: '200', reduce_only: true, time_in_force: 'gtc', order_type: 'limit_order' });
     expect(r.posts.find((p) => p.product_id === 22)).toMatchObject({ stop_price: '160' });
+    expect(r.posts.find((p) => p.product_id === 11)!.limit_price).toBe('220'); // 10% above the 200 trigger
+    expect(r.posts.find((p) => p.product_id === 22)!.limit_price).toBe('176'); // 10% above the 160 trigger
     expect(String(r.posts[0].client_order_id).startsWith(STOP_PREFIX)).toBe(true);
     expect(r.events.filter((e) => e.kind === 'auto_stop_order')).toHaveLength(2);
   });

@@ -2,7 +2,7 @@ import { deltaSignedDelete, deltaSignedGet, deltaSignedPost } from '../../routes
 import { loadDeltaKey } from '../delta-keys.js';
 import { getWatchConfig, logWatchEvent } from './watch-store.js';
 import type { OptionPosition } from './live-exit.js';
-import { placeStop } from './stop-order.js';
+import { placeStop, stopLimitPrice } from './stop-order.js';
 
 /**
  * Automatic stop-loss on the trading account: every SOLD option leg gets a real stop order on Delta (a reduce-only buy, stop-limit,
@@ -64,7 +64,7 @@ export class AutoStop {
       if (now - (this.placedAt.get(fk) ?? 0) < REPLACE_MS) continue; // this desk sent one for this leg a moment ago
       if (!(p.entry > 0)) continue;
       const tick = d.tickOf(p.symbol) || 0.1, size = Math.abs(p.size);
-      const stopPrice = roundUp(p.entry * cfg.stopMultiple, tick), limit = roundUp(Math.max(stopPrice * 1.25, stopPrice + 3 * tick), tick);
+      const stopPrice = roundUp(p.entry * cfg.stopMultiple, tick), limit = stopLimitPrice(stopPrice, tick);
       const what = `buy ${size} ${p.symbol} when the mark reaches ${fmt(stopPrice)} (${cfg.stopMultiple}x the sell price ${p.entry}), limit ${fmt(limit)}`;
       if (!live) { await this.note(userId, p.symbol, 'auto_stop_dry', `DRY RUN, nothing sent: would place a stop-loss on Delta: ${what}.`, p.symbol, false); continue; }
       const r = await placeStop(d.post, creds.key, creds.secret, { productId: p.productId, size, stopPrice, limitPrice: limit, clientOrderId: `${STOP_PREFIX}${p.productId}-${Math.floor(now / 1000)}` });

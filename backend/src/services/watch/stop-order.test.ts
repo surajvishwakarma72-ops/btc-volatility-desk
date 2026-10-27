@@ -1,5 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { placeStop, type PostFn } from './stop-order.js';
+import { placeStop, stopLimitPrice, type PostFn } from './stop-order.js';
+
+describe('stopLimitPrice', () => {
+  it('sits 10% above the trigger, rounded up to the tick', () => {
+    expect(stopLimitPrice(200, 0.5)).toBe(220);
+    expect(stopLimitPrice(160, 0.5)).toBe(176);
+    expect(stopLimitPrice(123.4, 0.5)).toBe(136); // 135.74 rounds up
+  });
+  it('is never less than 3 ticks above a small trigger', () => {
+    expect(stopLimitPrice(5, 0.5)).toBe(6.5);
+    expect(stopLimitPrice(1, 0.5)).toBe(2.5);
+  });
+});
 
 const spec = { productId: 11, size: 10, stopPrice: 200, limitPrice: 250 };
 const ok = (id: number) => ({ ok: true, status: 200, body: { result: { id } }, errorText: '' });

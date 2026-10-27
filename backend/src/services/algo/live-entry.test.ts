@@ -148,7 +148,7 @@ describe('exchange stop-loss orders', () => {
     expect(r.stopPosts).toHaveLength(2);
     for (const p of r.stopPosts) {
       expect(p).toMatchObject({ side: 'buy', stop_order_type: 'stop_loss_order', stop_trigger_method: 'mark_price', reduce_only: true, time_in_force: 'gtc', order_type: 'limit_order', size: 10, stop_price: '120' });
-      expect(Number(p.limit_price)).toBeGreaterThan(120);
+      expect(Number(p.limit_price)).toBe(132); // 10% above the 120 trigger
     }
     expect(out.ok && out.detail).toMatch(/Stop-loss on Delta: 2 of 2 sold legs/);
     expect(JSON.parse((out as any).ref).stops).toHaveLength(2);
