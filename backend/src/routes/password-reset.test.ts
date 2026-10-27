@@ -1,0 +1,171 @@
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { PGlite } from '@electric-sql/pglite';
+import Fastify from 'fastify';
+import jwt from '@fastify/jwt';
+
+const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function } }));
+vi.mock('../db/index.js', () => ({
+  pool: {
+    query: async (text: string, params?: unknown[]) => {
+      if (!params || params.length === 0) {
+        const res = await h.db.exec(text);
+        const last = res[res.length - 1];
+        return { rows: last?.rows ?? [], rowCount: last?.rows?.length ?? 0 };
+      }
+      const r = await h.db.query(text, params);
+      return { rows: r.rows, rowCount: r.affectedRows || r.rows.length };
+    },
+  },
+}));
+
+const { authRoutes } = await import('./auth.js');
+const { ensureAuthSchema, createUser } = await import('../services/auth-store.js');
+const { pool } = await import('../db/index.js');
+const { hashPassword, verifyPassword } = await import('../lib/password.js');
+
+const OWNER = '00000000-0000-0000-0000-000000000001';
+async function build() {
+  const app = Fastify();
+  await app.register(jwt, { secret: 'test-secret' });
+  app.decorate('authenticate', async (req: any, reply: any) => { try { await req.jwtVerify(); } catch { return reply.status(401).send({ success: false, error: 'Unauthorized' }); } });
+  await app.register(authRoutes, { prefix: '/auth' });
+  return app;
+}
+const bearer = (t: string) => ({ authorization: `Bearer ${t}` });
+const ownerToken = (app: any) => app.jwt.sign({ sub: OWNER, role: 'admin', email: 'desk@local' });
+
+let friendId = '';
+beforeAll(async () => {
+  process.env.DESK_PASSWORD = 'correct-horse';
+  h.db = new PGlite() as never;
+  await ensureAuthSchema();
+  await pool.query(`INSERT INTO users (id, email, password_hash, display_name, role) VALUES ('${OWNER}','desk@local','!','Desk','trader')`);
+  await ensureAuthSchema().catch(() => undefined);
+  await pool.query("UPDATE users SET email = 'desk@example.com' WHERE id = $1", [OWNER]); // a valid-looking address, so the owner rule (not the email check) is what is tested
+  friendId = (await createUser('friend@example.com', await hashPassword('old-password-123'), 'Friend'))!.id;
+});
+
+const issue = async (app: any, email = 'friend@example.com') => app.inject({ method: 'POST', url: '/auth/reset-codes', headers: bearer(ownerToken(app)), payload: { email } });
+const reset = async (app: any, body: Record<string, unknown>) => app.inject({ method: 'POST', url: '/auth/reset-password', payload: body });
+const login = async (app: any, email: string, password: string) => app.inject({ method: 'POST', url: '/auth/login', payload: { email, password } });
+
+describe('the owner makes a reset code', () => {
+  it('only the owner can: a friend gets 403 and no login gets 401', async () => {
+    const app = await build();
+    const friendTok = app.jwt.sign({ sub: friendId, role: 'trader', email: 'friend@example.com' });
+    expect((await app.inject({ method: 'POST', url: '/auth/reset-codes', headers: bearer(friendTok), payload: { email: 'friend@example.com' } })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url: '/auth/reset-codes', payload: { email: 'friend@example.com' } })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('gives a 12 character code once, with the time it works for, and stores only a hash of it', async () => {
+    const app = await build();
+    const r = await issue(app);
+    expect(r.statusCode).toBe(201);
+    const j = r.json();
+    expect(j.code).toHaveLength(12);
+    expect(j.email).toBe('friend@example.com');
+    expect(new Date(j.expiresAt).getTime()).toBeGreaterThan(Date.now() + 50 * 60_000);
+    expect(j.note).toMatch(/only time/);
+    const stored = JSON.stringify((await pool.query('SELECT * FROM desk_password_resets')).rows);
+    expect(stored).not.toContain(j.code);
+    await app.close();
+  });
+
+  it('says plainly when there is no such account, and refuses the owner (that password lives on the server)', async () => {
+    const app = await build();
+    expect((await issue(app, 'nobody@example.com')).statusCode).toBe(404);
+    const own = await issue(app, 'desk@example.com');
+    expect(own.statusCode).toBe(400);
+    expect(own.json().error).toMatch(/DESK_PASSWORD/);
+    expect((await app.inject({ method: 'POST', url: '/auth/reset-codes', headers: bearer(ownerToken(app)), payload: { email: 'not an email' } })).statusCode).toBe(400);
+    await app.close();
+  });
+});
+
+describe('the friend sets a new password', () => {
+  it('works with the code: signed in at once, the new password logs in, the old one no longer does', async () => {
+    const app = await build();
+    const { code } = (await issue(app)).json();
+    const r = await reset(app, { email: 'Friend@Example.com ', code, newPassword: 'brand-new-password' });
+    expect(r.statusCode).toBe(200);
+    const j = r.json();
+    expect(j.token).toBeTruthy();
+    expect(j.user).toMatchObject({ email: 'friend@example.com', role: 'trader' });
+    expect((await login(app, 'friend@example.com', 'brand-new-password')).statusCode).toBe(200);
+    expect((await login(app, 'friend@example.com', 'old-password-123')).statusCode).toBe(401);
+    const row = (await pool.query('SELECT password_hash FROM users WHERE id = $1', [friendId])).rows[0] as any;
+    expect(await verifyPassword('brand-new-password', row.password_hash)).toBe(true);
+    await app.close();
+  });
+
+  it('a code works once', async () => {
+    const app = await build();
+    const { code } = (await issue(app)).json();
+    expect((await reset(app, { email: 'friend@example.com', code, newPassword: 'first-new-password' })).statusCode).toBe(200);
+    const again = await reset(app, { email: 'friend@example.com', code, newPassword: 'second-new-password' });
+    expect(again.statusCode).toBe(403);
+    expect((await login(app, 'friend@example.com', 'first-new-password')).statusCode).toBe(200);
+    expect((await login(app, 'friend@example.com', 'second-new-password')).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('a wrong code, an unknown email and the owner all get the same answer, and nothing changes', async () => {
+    const app = await build();
+    await issue(app);
+    const wrong = await reset(app, { email: 'friend@example.com', code: 'wrong-code-0000', newPassword: 'whatever-password' });
+    const unknown = await reset(app, { email: 'nobody@example.com', code: 'wrong-code-0000', newPassword: 'whatever-password' });
+    const owner = await reset(app, { email: 'desk@example.com', code: 'wrong-code-0000', newPassword: 'whatever-password' });
+    for (const r of [wrong, unknown, owner]) expect(r.statusCode).toBe(403);
+    expect(wrong.json().error).toBe(unknown.json().error);
+    expect(wrong.json().error).toBe(owner.json().error);
+    expect(wrong.json().error).toMatch(/not valid.*Ask the desk owner for a new one/);
+    expect((await login(app, 'friend@example.com', 'whatever-password')).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('an expired code is refused', async () => {
+    const app = await build();
+    const { code } = (await issue(app)).json();
+    await pool.query(`UPDATE desk_password_resets SET expires_at = now() - interval '1 minute' WHERE user_id = $1 AND used_at IS NULL`, [friendId]);
+    expect((await reset(app, { email: 'friend@example.com', code, newPassword: 'too-late-password' })).statusCode).toBe(403);
+    await app.close();
+  });
+
+  it('a new code voids the earlier one', async () => {
+    const app = await build();
+    const first = (await issue(app)).json().code, second = (await issue(app)).json().code;
+    expect((await reset(app, { email: 'friend@example.com', code: first, newPassword: 'from-the-first-code' })).statusCode).toBe(403);
+    expect((await reset(app, { email: 'friend@example.com', code: second, newPassword: 'from-the-second-code' })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a code made for one friend does not work for another friend's account", async () => {
+    const app = await build();
+    await createUser('other@example.com', await hashPassword('other-password-123'), 'Other');
+    const { code } = (await issue(app)).json();
+    expect((await reset(app, { email: 'other@example.com', code, newPassword: 'hijacked-password' })).statusCode).toBe(403);
+    expect((await login(app, 'other@example.com', 'other-password-123')).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('a too-short new password is refused without using up the code', async () => {
+    const app = await build();
+    const { code } = (await issue(app)).json();
+    const short = await reset(app, { email: 'friend@example.com', code, newPassword: 'short' });
+    expect(short.statusCode).toBe(400);
+    expect(short.json().error).toMatch(/at least 10/);
+    expect((await reset(app, { email: 'friend@example.com', code, newPassword: 'long-enough-password' })).statusCode).toBe(200);
+    await app.close();
+  });
+});
+
+describe('the wrong-password message', () => {
+  it('tells a friend who left the email empty what to do', async () => {
+    const app = await build();
+    const r = await app.inject({ method: 'POST', url: '/auth/login', payload: { password: 'old-password-123' } });
+    expect(r.statusCode).toBe(401);
+    expect(r.json().error).toMatch(/friend account.*type your email/i);
+    await app.close();
+  });
+});

@@ -41627,7 +41627,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         addEventListener('online', () => setTimeout(recheck, 1500)); D.addEventListener('visibilitychange', () => { if (!D.hidden) setTimeout(recheck, 800); });
       }
       /* Your own Delta key (saved encrypted on the server) and, for the owner, invite codes for friends */
-      const DK = { st: null, at: 0, ip: null, msg: null, inv: null, code: null, busy: false };
+      const DK = { st: null, at: 0, ip: null, msg: null, inv: null, code: null, reset: null, busy: false };
       const dkTok = () => { try { return JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { return null; } };
       const dkAdmin = () => { try { const u = JSON.parse(localStorage.getItem('desk_user') || 'null'); return !u || u.role === 'admin'; } catch (e) { return false; } };
       async function dkApi(path, method, body) {
@@ -41662,7 +41662,12 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
     <label class="v18f">How many people can use this code<input id="dkInvUses" type="number" min="1" max="100" value="1"></label>
     <div class="v18btns"><button type="button" class="v18btn pri" data-dk="invite">Create invite code</button></div>
     ${DK.code ? `<p class="pos">New code, shown only now: <code>${esc(DK.code)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.code)}">Copy</button></p>` : ''}
-    ${rows ? `<div style="margin-top:8px">${rows}</div>` : '<p class="s">No invite codes yet.</p>'}</section>`;
+    ${rows ? `<div style="margin-top:8px">${rows}</div>` : '<p class="s">No invite codes yet.</p>'}
+    <div style="margin-top:14px;border-top:1px solid var(--line,#eee);padding-top:10px"><b>A friend forgot the password?</b>
+    <p>Make a one-time reset code for their email and send it to them. On the sign-in window they press "Forgot password?", type their email, the code and a new password. The code works once and expires in 60 minutes.</p>
+    <label class="v18f">Friend's email<input id="dkResetEmail" type="email" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-dk="resetcode">Make reset code</button></div>
+    ${DK.reset ? `<p class="pos">Reset code for ${esc(DK.reset.email)}, shown only now: <code>${esc(DK.reset.code)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.reset.code)}">Copy</button></p>` : ''}</div></section>`;
       }
       D.addEventListener('click', async e => {
         const b = e.target.closest && e.target.closest('[data-dk]'); if (!b) return; const a = b.dataset.dk, val = id => ((D.getElementById(id) || {}).value || '').trim();
@@ -41684,6 +41689,11 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
           DK.code = r.ok ? r.j.code : null; DK.msg = r.ok ? null : { k: 'bad', t: r.j.error || 'Could not create the code' }; DK.at = 0; await dkLoad(true); redraw();
         } else if (a === 'revoke') {
           await dkApi('/auth/invites/' + encodeURIComponent(b.dataset.id), 'DELETE'); DK.at = 0; await dkLoad(true); redraw();
+        } else if (a === 'resetcode') {
+          const email = val('dkResetEmail');
+          if (!email) { DK.msg = { k: 'bad', t: "Type your friend's email first." }; redraw(); return; }
+          const r = await dkApi('/auth/reset-codes', 'POST', { email });
+          DK.reset = r.ok ? { code: r.j.code, email: r.j.email } : null; DK.msg = r.ok ? null : { k: 'bad', t: r.j.error || 'Could not make the reset code' }; redraw();
         }
       });
       /* Stop alarm and hard exit settings */
@@ -60279,6 +60289,10 @@ document.addEventListener('click', function(e) {
       if (mode === 'in') {
         const email = v('daEmail'), password = D.getElementById('daPw').value;
         j = await post('login', email ? { email, password } : { password });
+      } else if (mode === 'reset') {
+        const newPassword = D.getElementById('daPw').value;
+        if (newPassword.length < 10) throw new Error('The new password needs at least 10 characters.');
+        j = await post('reset-password', { email: v('daEmail'), code: v('daReset'), newPassword }); // signs the friend in with the new password
       } else {
         j = await post('signup', { email: v('daEmail'), password: D.getElementById('daPw').value, displayName: v('daName'), inviteCode: v('daCode') });
       }
@@ -60310,6 +60324,7 @@ document.addEventListener('click', function(e) {
     '#daOv .daGo{width:100%;margin-top:6px;padding:11px;border:0;border-radius:9px;background:#2F7CC0;color:#fff;font:800 14px var(--font,system-ui);cursor:pointer}',
     '#daOv .daGo:disabled{opacity:.6}',
     '#daOv .daErr{color:#C53030;font-size:13px;margin:8px 0 0}',
+    '#daOv .daLink{display:block;margin:10px auto 0;background:none;border:0;color:#2F7CC0;font:700 13px var(--font,system-ui);cursor:pointer;padding:2px 4px}',
     '#daOv .daNote{font-size:12px;color:var(--muted,#667085);line-height:1.45;margin:6px 0 0}',
     '#daOv .daX{float:right;background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:var(--muted,#667085)}',
     '#daChip{position:fixed;left:10px;bottom:10px;z-index:9000;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
@@ -60321,16 +60336,18 @@ document.addEventListener('click', function(e) {
   function paint() {
     let ov = D.getElementById('daOv');
     if (!ov) { ov = D.createElement('div'); ov.id = 'daOv'; ov.hidden = true; D.body.appendChild(ov); }
-    const keep = ['daEmail', 'daPw', 'daName', 'daCode'].map(id => [id, (D.getElementById(id) || {}).value]);
-    const up = mode === 'up';
-    ov.innerHTML = '<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : 'Sign in') + '</h2>' +
-      '<div class="daSeg"><button type="button" data-da-mode="in" class="' + (up ? '' : 'on') + '">Sign in</button><button type="button" data-da-mode="up" class="' + (up ? 'on' : '') + '">Create account</button></div>' +
+    const keep = ['daEmail', 'daPw', 'daName', 'daCode', 'daReset'].map(id => [id, (D.getElementById(id) || {}).value]);
+    const up = mode === 'up', rs = mode === 'reset';
+    ov.innerHTML ='<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : rs ? 'Set a new password' : 'Sign in') + '</h2>' +
+      (rs ? '' : '<div class="daSeg"><button type="button" data-da-mode="in" class="' + (up ? '' : 'on') + '">Sign in</button><button type="button" data-da-mode="up" class="' + (up ? 'on' : '') + '">Create account</button></div>') +
       (up ? '<label>Your name<input id="daName" autocomplete="name" maxlength="60"></label>' : '') +
-      '<label>Email' + (up ? '' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
-      '<label>' + (up ? 'Password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" autocomplete="' + (up ? 'new-password' : 'current-password') + '"></label>' +
+      '<label>Email' + (up ? '' : rs ? ' <span style="font-weight:400">(the email you signed up with)</span>' : ' <span style="font-weight:400">(friends: type the email you signed up with. Only the desk owner leaves it empty)</span>') + '<input id="daEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      (rs ? '<label>Reset code from the desk owner<input id="daReset" autocapitalize="off" spellcheck="false" autocomplete="off"></label>' : '') +
+      '<label>' + (up ? 'Password (at least 10 characters)' : rs ? 'New password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" autocomplete="' + (up || rs ? 'new-password' : 'current-password') + '"></label>' +
       (up ? '<label>Invite code<input id="daCode" autocapitalize="off" spellcheck="false" autocomplete="off"></label><div class="daNote">You need an invite code from the person who runs this desk. You get your own Paper Trade account, and you can add your own Delta API key in Settings.</div>' : '') +
       (err ? '<div class="daErr">' + esc(err) + '</div>' : '') +
-      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : 'Sign in') + '</button></div>';
+      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? 'Set new password' : 'Sign in') + '</button>' +
+      (rs ? '<button type="button" class="daLink" data-da-mode="in">Back to sign in</button><div class="daNote">Ask the desk owner for a reset code. It works once and expires in 60 minutes.</div>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password?</button>') + '</div>';
     for (const [id, val] of keep) { const el = D.getElementById(id); if (el && val) el.value = val; }
   }
 
@@ -60355,7 +60372,7 @@ document.addEventListener('click', function(e) {
     const ov = D.getElementById('daOv');
     if (!ov || ov.hidden) return;
     if (e.key === 'Escape') close();
-    else if (e.key === 'Enter' && e.target && /^da(Email|Pw|Name|Code)$/.test(e.target.id)) submit();
+    else if (e.key === 'Enter' && e.target && /^da(Email|Pw|Name|Code|Reset)$/.test(e.target.id)) submit();
   });
 
   /** The small "signed in as" chip (bottom left) with Log out. */

@@ -27,6 +27,16 @@ CREATE TABLE IF NOT EXISTS desk_invites (
   created_by uuid,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS desk_password_resets (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL,
+  code_hash text NOT NULL UNIQUE,
+  expires_at timestamptz NOT NULL,
+  used_at timestamptz,
+  created_by uuid,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS desk_password_resets_user_idx ON desk_password_resets (user_id);
 CREATE TABLE IF NOT EXISTS desk_delta_keys (
   user_id uuid PRIMARY KEY,
   key_enc text NOT NULL,
@@ -117,4 +127,31 @@ export async function createUser(email: string, passwordHash: string, displayNam
     if ((e as { code?: string }).code === '23505') return null; // the email is already registered
     throw e;
   }
+}
+
+/** How long a reset code works. */
+export const RESET_TTL_MIN = 60;
+
+/**
+ * A one-time password reset code for a friend, made by the owner (there is no email service to send a link). Only a hash is stored, the
+ * code is shown once, it works once, and it expires. A new code voids the earlier ones for the same person.
+ */
+export async function createResetCode(userId: string, createdBy: string): Promise<{ code: string; expiresAt: string }> {
+  await ensureAuthSchema();
+  await pool.query('UPDATE desk_password_resets SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [userId]);
+  const code = crypto.randomBytes(9).toString('base64url'); // 12 characters, 72 bits
+  const r = await pool.query(`INSERT INTO desk_password_resets (user_id, code_hash, expires_at, created_by) VALUES ($1,$2, now() + interval '${RESET_TTL_MIN} minutes', $3) RETURNING expires_at`, [userId, hashCode(code), createdBy]);
+  return { code, expiresAt: new Date((r.rows[0] as any).expires_at).toISOString() };
+}
+
+/** Use the code in one atomic statement: true only if it is this person's, unused and not expired. */
+export async function consumeResetCode(userId: string, code: string): Promise<boolean> {
+  await ensureAuthSchema();
+  const r = await pool.query('UPDATE desk_password_resets SET used_at = now() WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL AND expires_at > now() RETURNING id', [userId, hashCode(code)]);
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function setPasswordHash(userId: string, passwordHash: string): Promise<void> {
+  await ensureAuthSchema();
+  await pool.query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [userId, passwordHash]);
 }
