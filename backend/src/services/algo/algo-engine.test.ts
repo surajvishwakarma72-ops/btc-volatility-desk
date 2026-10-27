@@ -237,14 +237,38 @@ describe('AlgoEngine exit', () => {
     expect(r.closed[0]).toContain('a leg was stopped out');
   });
 
-  it('the desk closes a Live run itself when a sold leg reaches its 2x stop, even if Delta took no stop order', async () => {
+  it('the desk closes a Live run itself when a sold leg stays at its 2x stop for two ticks, even if Delta took no stop order', async () => {
     const r = await enter(defaultStrangle({ mode: 'live' }));
     r.status.legs = [{ symbol: 'C', side: 'sell', lots: 10, entry: 100, mark: 190, pnl: -9 }, { symbol: 'P', side: 'sell', lots: 10, entry: 80, mark: 60, pnl: 2 }];
     await r.engine.tick();
     expect(r.closed).toHaveLength(0); // 190 is still under 200
     r.status.legs[0]!.mark = 200;
     await r.engine.tick();
+    expect(r.closed).toHaveLength(0); // one tick over is not enough: a thin book can spike for a moment
+    await r.engine.tick();
     expect(r.closed[0]).toContain('C reached its 2x stop');
+  });
+
+  it('a one-tick spike past the stop does not close anything, and the count starts over', async () => {
+    const r = await enter(defaultStrangle({ mode: 'live' }));
+    r.status.legs = [{ symbol: 'C', side: 'sell', lots: 10, entry: 100, mark: 230, pnl: -13 }];
+    await r.engine.tick();
+    r.status.legs[0]!.mark = 120;
+    await r.engine.tick();
+    r.status.legs[0]!.mark = 230;
+    await r.engine.tick();
+    expect(r.closed).toHaveLength(0);
+  });
+
+  it('a Live run with its per-leg stop on still exits at the exit time when no leg is near its stop', async () => {
+    const r = await enter(defaultStrangle({ mode: 'live', exit: { ...defaultStrangle().exit, exitTime: '07:00' } }));
+    r.status.legs = [{ symbol: 'C', side: 'sell', lots: 10, entry: 100, mark: 90, pnl: 1 }];
+    r.now.t = at('2026-10-27', '06:59');
+    await r.engine.tick();
+    expect(r.closed).toHaveLength(0);
+    r.now.t = at('2026-10-27', '07:00');
+    await r.engine.tick();
+    expect(r.closed[0]).toContain('exit time 07:00');
   });
 
   it('keeps the other leg when the rule does not exit all on a leg stop', async () => {

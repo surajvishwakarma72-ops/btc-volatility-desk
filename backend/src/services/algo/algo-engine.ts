@@ -206,6 +206,8 @@ export class AlgoEngine {
     }
   }
   private lastWaiting = new Map<string, string>();
+  /** run id -> consecutive ticks a sold leg has been at or past its stop price */
+  private legBreach = new Map<string, number>();
 
   private async exitStep(r: RunRow): Promise<void> {
     const d = this.d, now = d.now();
@@ -218,14 +220,20 @@ export class AlgoEngine {
     if (!st.open) { await d.finishRun(r.id, 'exited', st.closedReason ?? 'the position is closed', st.netPnl); return; }
     const x = rule.exit;
     let why: string | null = null;
+    // the desk's own per-leg stop on a Live run, so the stop holds even if Delta took no stop order. The price is the book's mid, which a thin
+    // book can spike for a moment, so the breach must hold on two ticks in a row (about 10 s) before every leg is closed. Worked out here,
+    // outside the chain below, so that a run with no breach still reaches the exit-time and futures checks.
+    let legHit: LegStatus | undefined;
+    if (rule.mode === 'live' && x.legStopMultiple && x.exitAllOnLegStop) {
+      legHit = (st.legs ?? []).find((l) => l.side === 'sell' && l.entry > 0 && l.mark != null && l.mark >= l.entry * x.legStopMultiple!);
+      const n = legHit ? (this.legBreach.get(r.id) ?? 0) + 1 : 0;
+      if (n) this.legBreach.set(r.id, n); else this.legBreach.delete(r.id);
+      if (n < 2) legHit = undefined;
+    }
     if (x.netTargetUsd != null && st.netPnl != null && st.netPnl >= x.netTargetUsd) why = `net target reached (${st.netPnl.toFixed(2)} >= ${x.netTargetUsd})`;
     else if (x.netStopUsd != null && st.netPnl != null && st.netPnl <= -x.netStopUsd) why = `net stop reached (${st.netPnl.toFixed(2)} <= -${x.netStopUsd})`;
     else if (st.legGone && x.exitAllOnLegStop) why = 'a leg was stopped out, closing the rest';
-    // the desk's own per-leg stop on a Live run, so the stop holds even if Delta took no stop order (the mark here is the book's mid)
-    else if (rule.mode === 'live' && x.legStopMultiple && x.exitAllOnLegStop) {
-      const hit = (st.legs ?? []).find((l) => l.side === 'sell' && l.entry > 0 && l.mark != null && l.mark >= l.entry * x.legStopMultiple!);
-      if (hit) why = `${hit.symbol} reached its ${x.legStopMultiple}x stop (${hit.mark} >= ${(hit.entry * x.legStopMultiple!).toFixed(2)}), closing every leg`;
-    }
+    else if (legHit) why = `${legHit.symbol} reached its ${x.legStopMultiple}x stop (${legHit.mark} >= ${(legHit.entry * x.legStopMultiple!).toFixed(2)}), closing every leg`;
     else if (r.exitAt != null && now >= r.exitAt) why = `exit time ${x.exitTime} IST`;
     else if (st.future) {
       const { entry, mark, side } = st.future;
