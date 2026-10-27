@@ -42,7 +42,12 @@ const fmt = (v: number) => String(Number(v.toFixed(6)));
 interface Ref { symbols: string[]; stops?: Array<{ productId: number; id: number }> }
 const parseRef = (ref: string): Ref | null => { try { const r = JSON.parse(ref) as Ref; return Array.isArray(r.symbols) ? r : null; } catch { return null; } };
 
+/** After a real entry, no other real entry for the same user is accepted for this long: a double click, a repeated "ok" or a manual entry on top of a scheduled one would otherwise double the position. */
+export const ENTRY_COOLDOWN_MS = 60_000;
+
 export function makeLiveBroker(d: LiveEntryDeps): Broker {
+  const placing = new Set<string>();
+  const lastEntry = new Map<string, number>();
   /** Why live trading is not allowed right now, or null. */
   async function lock(userId: string): Promise<{ why: string } | { key: string; secret: string; dry: boolean }> {
     const cfg = await d.cfg(userId);
@@ -76,6 +81,19 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
           for (const o of orders) await d.log(userId, 'algo_entry_dry', `DRY RUN, nothing sent: would ${o.side} ${o.size} ${o.symbol} at limit ${o.limit} (immediate-or-cancel). Strategy: ${name}.`, { symbol: o.symbol, dryRun: true });
           return { ok: true, dry: true, ref: 'dry', detail: `DRY RUN: ${orders.length} orders were written to the event list, nothing was sent to Delta` };
         }
+        // one real entry at a time per user, and not again straight after one: this is what stops a second click from sending the same legs twice
+        if (placing.has(userId)) {
+          await d.log(userId, 'algo_entry_failed', `${name}: refused. Another entry is being placed right now, so this one was NOT sent (it would have doubled the legs).`, { dryRun: false });
+          return { ok: false, reason: 'another entry is being placed right now; nothing was sent. Check Delta before sending another.' };
+        }
+        const since = Date.now() - (lastEntry.get(userId) ?? 0);
+        if (since < ENTRY_COOLDOWN_MS) {
+          await d.log(userId, 'algo_entry_failed', `${name}: refused. A real entry was sent ${Math.round(since / 1000)} s ago, so this one was NOT sent (it would have doubled the legs).`, { dryRun: false });
+          return { ok: false, reason: `a real entry was sent ${Math.round(since / 1000)} s ago, so this one was not sent to avoid doubling your legs. Check Delta, then try again in a minute if you really want another.` };
+        }
+        placing.add(userId);
+        lastEntry.set(userId, Date.now());
+        try {
         const before = new Map((await d.positions(key, secret)).map((p) => [p.symbol, p.size]));
         await d.log(userId, 'algo_entry_order', `Entering ${name}: ${orders.length} legs.`, { dryRun: false });
         for (const o of orders) {
@@ -116,6 +134,7 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
         }
         const stopNote = !mult ? 'No per-leg stop in this rule, so none was sent to Delta.' : `Stop-loss on Delta: ${stops.length} of ${soldLegs.length} sold legs.${failed.length ? ` NOT placed: ${failed.join('; ')}.` : ''}`;
         return { ok: true, ref: JSON.stringify({ symbols: orders.map((o) => o.symbol), stops } satisfies Ref), detail: `${orders.length} legs filled. ${stopNote}` };
+        } finally { placing.delete(userId); }
       } catch (e) {
         await d.log(userId, 'algo_entry_failed', `${name}: ${(e as Error).message}. Check Delta for open positions.`, { dryRun: dry }).catch(() => undefined);
         return { ok: false, reason: (e as Error).message };

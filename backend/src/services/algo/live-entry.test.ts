@@ -110,6 +110,36 @@ describe('live entry orders', () => {
   });
 });
 
+describe('one real entry at a time', () => {
+  it('refuses a second real entry straight after the first, so the legs are not doubled', async () => {
+    const r = rig();
+    const first = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect(first.ok).toBe(true);
+    const sent = r.posts.length;
+    const second = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect(second.ok).toBe(false);
+    expect(second.ok === false && second.reason).toMatch(/not sent to avoid doubling/);
+    expect(r.posts.length).toBe(sent); // not one more order went out
+    expect(r.positions.reduce((n, x) => n + Math.abs(x.size), 0)).toBe(20); // two legs of 10, not four
+  });
+  it('refuses a second entry that arrives while the first is still being placed', async () => {
+    const r = rig();
+    const [a, b] = await Promise.all([r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x'), r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x')]);
+    expect([a.ok, b.ok].filter(Boolean)).toHaveLength(1);
+    expect(r.posts).toHaveLength(2);
+  });
+  it('another user is not held back by it', async () => {
+    const r = rig();
+    await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect((await r.broker.place('v', defaultStrangle({ mode: 'live' }), plan, 'x')).ok).toBe(true);
+  });
+  it('a dry-run entry does not start the cooldown', async () => {
+    const r = rig({ dry: true, enabled: false });
+    expect((await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x')).ok).toBe(true);
+    expect((await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x')).ok).toBe(true);
+  });
+});
+
 describe('exchange stop-loss orders', () => {
   it('puts a reduce-only stop-loss on Delta for every sold leg, at the stop multiple of its sell price, and says so', async () => {
     const r = rig();

@@ -68,10 +68,11 @@ describe('automatic 2x stop-loss on the trading account', () => {
     expect(r.events.filter((e) => e.kind === 'auto_stop_failed')).toHaveLength(1);
   });
 
-  it('places nothing when it cannot read the pending orders (it could double up otherwise)', async () => {
+  it('still places the stops when Delta will not list the pending orders, once per leg, and says so', async () => {
     const r = rig({ readFails: true });
     await r.twice([C, P]);
-    expect(r.posts).toHaveLength(0);
+    r.advance(31_000); await r.as.run('u', [C, P]);
+    expect(r.posts.map((p) => p.product_id).sort()).toEqual([11, 22]); // not placed again on the later rounds
     expect(r.events.some((e) => e.kind === 'auto_stop_failed')).toBe(true);
   });
 

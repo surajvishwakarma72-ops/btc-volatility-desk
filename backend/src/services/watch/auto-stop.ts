@@ -27,7 +27,7 @@ export interface AutoStopDeps {
 }
 
 export const STOP_PREFIX = 'desk-stop-';
-const EVERY_MS = 30_000, SETTLE_MS = 20_000, NOTE_MS = 10 * 60_000;
+const EVERY_MS = 30_000, SETTLE_MS = 20_000, NOTE_MS = 10 * 60_000, REPLACE_MS = 5 * 60_000;
 const roundUp = (price: number, tick: number): number => Math.ceil(price / tick - 1e-9) * tick;
 const fmt = (v: number): string => String(Number(v.toFixed(6)));
 
@@ -35,6 +35,7 @@ export class AutoStop {
   private lastRun = new Map<string, number>();
   private firstSeen = new Map<string, number>();
   private noted = new Map<string, number>();
+  private placedAt = new Map<string, number>();
   constructor(private readonly d: AutoStopDeps) {}
 
   /** `positions` are all the option positions of the TRADING account, as just read from Delta. */
@@ -49,21 +50,25 @@ export class AutoStop {
     const live = !cfg.dryRun && d.liveEnabled();
     const sold = positions.filter((p) => p.size < 0);
     for (const k of [...this.firstSeen.keys()]) if (k.startsWith(userId + '|') && !sold.some((p) => k === `${userId}|${p.symbol}`)) this.firstSeen.delete(k);
-    let pending: PendingStop[];
+    // If Delta will not list the pending orders, the stop is still placed: a leg with no stop is the worse mistake, and the desk remembers
+    // what it sent (placedAt below) so it does not repeat itself. A duplicate reduce-only stop cannot enlarge a position.
+    let pending: PendingStop[] = [];
     try { pending = await d.pendingStops(creds.key, creds.secret); }
-    catch (e) { await this.note(userId, 'read', 'auto_stop_failed', `Could not read the pending orders on Delta (${(e as Error).message}), so no stop was placed this round.`, undefined, live); return; }
+    catch (e) { await this.note(userId, 'read', 'auto_stop_failed', `Could not read the pending orders on Delta (${(e as Error).message}). Placing the stops anyway, so a leg is not left without one.`, undefined, live); }
 
     const covered = new Set(pending.filter((s) => s.side === 'buy' && s.reduceOnly).map((s) => s.productId));
     for (const p of sold) {
       const fk = `${userId}|${p.symbol}`, seen = this.firstSeen.get(fk) ?? now;
       this.firstSeen.set(fk, seen);
       if (covered.has(p.productId) || now - seen < SETTLE_MS) continue; // already has a stop, or only just appeared (an entry may still be placing its own)
+      if (now - (this.placedAt.get(fk) ?? 0) < REPLACE_MS) continue; // this desk sent one for this leg a moment ago
       if (!(p.entry > 0)) continue;
       const tick = d.tickOf(p.symbol) || 0.1, size = Math.abs(p.size);
       const stopPrice = roundUp(p.entry * cfg.stopMultiple, tick), limit = roundUp(Math.max(stopPrice * 1.25, stopPrice + 3 * tick), tick);
       const what = `buy ${size} ${p.symbol} when the mark reaches ${fmt(stopPrice)} (${cfg.stopMultiple}x the sell price ${p.entry}), limit ${fmt(limit)}`;
       if (!live) { await this.note(userId, p.symbol, 'auto_stop_dry', `DRY RUN, nothing sent: would place a stop-loss on Delta: ${what}.`, p.symbol, false); continue; }
       const r = await placeStop(d.post, creds.key, creds.secret, { productId: p.productId, size, stopPrice, limitPrice: limit, clientOrderId: `${STOP_PREFIX}${p.productId}-${Math.floor(now / 1000)}` });
+      if (r.ok) this.placedAt.set(fk, now);
       if (r.ok) await d.log(userId, 'auto_stop_order', `Stop-loss placed on Delta (${r.how}): ${what}.`, { symbol: p.symbol, dryRun: false });
       else await this.note(userId, p.symbol, 'auto_stop_failed', `Stop-loss NOT placed on Delta for ${p.symbol}. Delta said: ${r.errors.join(' | ')}.`, p.symbol, false);
     }
