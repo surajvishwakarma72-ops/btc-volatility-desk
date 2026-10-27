@@ -61689,10 +61689,18 @@ document.addEventListener('click', function(e) {
   const expiryText = (r, pv) => pv && pv.expiries && pv.expiries.length ? pv.expiries.join(' + ') : ({ current: 'current (0DTE)', nearest: 'current (0DTE)', next: 'next (1DTE)', n2n: 'next to next (2DTE)', b2b: 'current + next', fixed: r.expiry.code }[r.expiry.mode]);
   const entryText = (r, now) => now ? 'now, at market' : r.entry.kind === 'hard' ? r.entry.time + ' IST' : r.entry.from + ' to ' + r.entry.to + ' IST, when ' + (r.entry.conditions.length ? 'the conditions are met' : 'the window opens');
   const stopText = r => r.instrument === 'future' ? (r.exit.futStopUsd != null ? '$' + r.exit.futStopUsd + ' stop' : r.exit.futStopPct != null ? r.exit.futStopPct + '% stop' : 'no stop') + (r.exit.futTargetUsd != null ? ', $' + r.exit.futTargetUsd + ' target' : r.exit.futTargetPct != null ? ', ' + r.exit.futTargetPct + '% target' : '') : r.exit.legStopMultiple != null ? r.exit.legStopMultiple + 'x each sold leg' + (r.exit.exitAllOnLegStop ? ', everything closes if one leg stops' : '') : 'no per-leg stop';
+  /** The heading once a real order is in: it claims a stoploss only when Delta really took the stop orders (the server's detail line says how many). */
+  function stopHead(detail, rule) {
+    const m = /Stop-loss on Delta: (\d+) of (\d+)/.exec(detail || '');
+    if (rule && rule.mode !== 'live') return 'Congratulations, order placed with stoploss.';
+    if (m && +m[2] > 0 && m[1] === m[2]) return 'Congratulations, order placed with stoploss on Delta.';
+    if (m) return 'Order placed, but the stoploss is NOT fully on Delta (' + m[1] + ' of ' + m[2] + ' legs).';
+    return 'Order placed. No stoploss order was sent to Delta.';
+  }
   /** The reply once the order is in. */
   function congrats(rule, lots, pv, res, when) {
     const dry = res && res.dry;
-    const head = dry ? 'Dry run only: nothing was sent to Delta.' : (when === 'now' ? 'Congratulations, order placed with stoploss.' : 'Congratulations, strategy armed with stoploss.');
+    const head = dry ? 'Dry run only: nothing was sent to Delta.' : (when === 'now' ? stopHead(res && res.detail, rule) : 'Congratulations, strategy armed with stoploss.');
     const rows = [
       ['Strategy', rule.name + ' · ' + lots + ' lots' + (rule.mode === 'live' ? ' · LIVE' : ' · Paper')],
       ['Expiry', rule.instrument === 'future' ? 'perpetual (no expiry)' : expiryText(rule, pv)],
@@ -62609,7 +62617,7 @@ document.addEventListener('click', function(e) {
         const rule = JSON.parse(JSON.stringify(w.rule));
         const r = await post('/algo/enter-now', { rule, lots: w.lots });
         end(); if (window.algoPage) { window.algoPage.reset(); window.algoPage.refresh(); }
-        return { kind: 'wzdone', head: r.dry ? 'Dry run only: nothing was sent to Delta.' : 'Congratulations, order placed with stoploss.', text: r.detail || '', runId: r.run ? r.run.id : null, words: window.algoPage ? window.algoPage.words(rule, w.lots) : '' };
+        return { kind: 'wzdone', head: r.dry ? 'Dry run only: nothing was sent to Delta.' : (() => { const m = /Stop-loss on Delta: (\d+) of (\d+)/.exec(r.detail || ''); return rule.mode !== 'live' ? 'Congratulations, order placed with stoploss.' : m && +m[2] > 0 && m[1] === m[2] ? 'Congratulations, order placed with stoploss on Delta.' : m ? 'Order placed, but the stoploss is NOT fully on Delta (' + m[1] + ' of ' + m[2] + ' legs).' : 'Order placed. No stoploss order was sent to Delta.'; })(), text: r.detail || '', runId: r.run ? r.run.id : null, words: window.algoPage ? window.algoPage.words(rule, w.lots) : '' };
       }
       const sv = await post('/algo/strategies', { rule: w.rule, lots: w.lots });
       if (act === 'arm') await post('/algo/strategies/' + sv.strategy.id + '/arm', { armed: true });

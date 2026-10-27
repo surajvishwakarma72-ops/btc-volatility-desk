@@ -21,7 +21,7 @@ function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['
   const closed: string[] = [];
   const marks: Array<[string, number]> = [];
   const disarmed: string[] = [];
-  const status = { open: true, netPnl: 0 as number | null, closedReason: null as string | null };
+  const status = { open: true, netPnl: 0 as number | null, closedReason: null as string | null, legGone: false };
   const broker: Broker = {
     place: opts.place ?? (async (_u, _r, plan) => { placed.push(plan); return { ok: true, ref: 'basket-1', detail: 'ok' }; }),
     status: async () => ({ ...status }),
@@ -228,6 +228,20 @@ describe('AlgoEngine exit', () => {
     r.now.t = at('2026-10-27', '07:00');
     await r.engine.tick();
     expect(r.closed[0]).toContain('exit time 07:00');
+  });
+
+  it('closes the rest when one leg was stopped out and the rule says exit all on a leg stop', async () => {
+    const r = await enter(defaultStrangle());
+    r.status.legGone = true;
+    await r.engine.tick();
+    expect(r.closed[0]).toContain('a leg was stopped out');
+  });
+
+  it('keeps the other leg when the rule does not exit all on a leg stop', async () => {
+    const r = await enter(defaultStrangle({ exit: { ...defaultStrangle().exit, exitAllOnLegStop: false } }));
+    r.status.legGone = true;
+    await r.engine.tick();
+    expect(r.closed).toHaveLength(0);
   });
 
   it('records a position that its own stops already closed', async () => {

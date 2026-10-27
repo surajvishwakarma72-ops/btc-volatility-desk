@@ -32,7 +32,7 @@ export type EntryPlan = { kind: 'option'; legs: PlannedLeg[]; expiries: string[]
 
 export type PlaceResult = { ok: true; ref: string; dry?: boolean; detail: string } | { ok: false; reason: string };
 export interface LegStatus { symbol: string; side: 'buy' | 'sell'; lots: number; entry: number; mark: number | null; pnl: number | null }
-export interface BrokerStatus { open: boolean; netPnl: number | null; /** each leg's own PnL, before fees */ legs?: LegStatus[]; closedReason?: string | null; /** futures: entry, mark and side of the one position */ future?: { entry: number; mark: number; side: 'long' | 'short' } }
+export interface BrokerStatus { open: boolean; netPnl: number | null; /** some contracts of this run are gone while others remain (a leg's stop fired) */ legGone?: boolean; /** each leg's own PnL, before fees */ legs?: LegStatus[]; closedReason?: string | null; /** futures: entry, mark and side of the one position */ future?: { entry: number; mark: number; side: 'long' | 'short' } }
 
 export interface Broker {
   place(userId: string, rule: AlgoStrategy, plan: EntryPlan, name: string): Promise<PlaceResult>;
@@ -220,6 +220,7 @@ export class AlgoEngine {
     let why: string | null = null;
     if (x.netTargetUsd != null && st.netPnl != null && st.netPnl >= x.netTargetUsd) why = `net target reached (${st.netPnl.toFixed(2)} >= ${x.netTargetUsd})`;
     else if (x.netStopUsd != null && st.netPnl != null && st.netPnl <= -x.netStopUsd) why = `net stop reached (${st.netPnl.toFixed(2)} <= -${x.netStopUsd})`;
+    else if (st.legGone && x.exitAllOnLegStop) why = 'a leg was stopped out, closing the rest';
     else if (r.exitAt != null && now >= r.exitAt) why = `exit time ${x.exitTime} IST`;
     else if (st.future) {
       const { entry, mark, side } = st.future;

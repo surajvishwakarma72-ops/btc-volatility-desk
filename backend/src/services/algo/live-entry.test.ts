@@ -7,8 +7,10 @@ import type { OptionPosition } from '../watch/live-exit.js';
 const leg = (symbol: string, type: 'call' | 'put', side: 'sell' | 'buy' = 'sell') => ({ symbol, side, lots: 10, bid: 60, ask: 65, delta: 0.12, strike: 100_000, expiryCode: '271026', type });
 const plan: EntryPlan = { kind: 'option', legs: [leg('C-BTC-105000-271026', 'call'), leg('P-BTC-95000-271026', 'put')], expiries: ['271026'], spot: 100_000, premium: 1.2 };
 
-function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boolean; fill?: 'all' | 'none' | 'half' } = {}) {
+function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boolean; fill?: 'all' | 'none' | 'half'; stopFail?: boolean } = {}) {
   const posts: any[] = [];
+  const stopPosts: any[] = [];
+  const cancels: any[] = [];
   const events: string[] = [];
   let positions: OptionPosition[] = [];
   const d: LiveEntryDeps = {
@@ -19,7 +21,13 @@ function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boole
     book: async () => ({ bids: [[60, 100]], asks: [[65, 100]] }) as any,
     productId: async (s) => (s.startsWith('C') ? 11 : 22),
     tickOf: () => 0.5,
+    cancel: async (_k, _s, payload) => { cancels.push(payload); return { ok: true, status: 200, body: {}, errorText: '' }; },
     post: async (_k, _s, payload) => {
+      if (payload.stop_order_type) {
+        if (o.stopFail) return { ok: false, status: 400, body: null, errorText: 'stop_orders_not_allowed' };
+        stopPosts.push(payload);
+        return { ok: true, status: 200, body: { result: { id: 900 + stopPosts.length } }, errorText: '' };
+      }
       posts.push(payload);
       const sym = payload.product_id === 11 ? 'C-BTC-105000-271026' : 'P-BTC-95000-271026';
       const sign = payload.side === 'buy' ? 1 : -1;
@@ -32,7 +40,7 @@ function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boole
     log: async (_u, kind) => { events.push(kind); },
     sleep: async () => undefined,
   };
-  return { broker: makeLiveBroker(d), posts, events, get positions() { return positions; } };
+  return { broker: makeLiveBroker(d), posts, stopPosts, cancels, events, get positions() { return positions; } };
 }
 
 describe('live entry locks', () => {
@@ -99,6 +107,46 @@ describe('live entry orders', () => {
     const out = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
     expect(out.ok).toBe(false);
     expect(r.posts.filter((p) => p.reduce_only === true)).toHaveLength(0);
+  });
+});
+
+describe('exchange stop-loss orders', () => {
+  it('puts a reduce-only stop-loss on Delta for every sold leg, at the stop multiple of its sell price, and says so', async () => {
+    const r = rig();
+    const out = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect(out.ok).toBe(true);
+    expect(r.stopPosts).toHaveLength(2);
+    for (const p of r.stopPosts) {
+      expect(p).toMatchObject({ side: 'buy', stop_order_type: 'stop_loss_order', stop_trigger_method: 'mark_price', reduce_only: true, time_in_force: 'gtc', order_type: 'limit_order', size: 10, stop_price: '120' });
+      expect(Number(p.limit_price)).toBeGreaterThan(120);
+    }
+    expect(out.ok && out.detail).toMatch(/Stop-loss on Delta: 2 of 2 sold legs/);
+    expect(JSON.parse((out as any).ref).stops).toHaveLength(2);
+  });
+  it('reports honestly when Delta refuses the stops: the entry stays, the detail says none were placed', async () => {
+    const r = rig({ stopFail: true });
+    const out = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect(out.ok).toBe(true);
+    expect(out.ok && out.detail).toMatch(/Stop-loss on Delta: 0 of 2 sold legs. NOT placed/);
+    expect(r.events).toContain('algo_stop_failed');
+  });
+  it('sends no stop when the rule has no per-leg stop, and says so', async () => {
+    const r = rig();
+    const rule = defaultStrangle({ mode: 'live' }); rule.exit.legStopMultiple = null;
+    const out = await r.broker.place('u', rule, plan, 'x');
+    expect(r.stopPosts).toHaveLength(0);
+    expect(out.ok && out.detail).toMatch(/No per-leg stop/);
+  });
+  it('closeAll cancels the stop orders it placed, and status flags a leg that is gone', async () => {
+    const r = rig();
+    const placed = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    if (!placed.ok) throw new Error('setup');
+    r.positions.splice(0, 1); // one leg's stop fired
+    const st = await r.broker.status('u', placed.ref);
+    expect(st?.open).toBe(true);
+    expect(st?.legGone).toBe(true);
+    await r.broker.closeAll('u', placed.ref, 'leg stopped');
+    expect(r.cancels.map((c) => c.id).sort()).toEqual([901, 902]);
   });
 });
 

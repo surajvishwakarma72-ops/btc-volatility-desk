@@ -75,6 +75,26 @@ export async function deltaSignedPost(key: string, secret: string, path: string,
   }
 }
 
+/** One signed DELETE (cancel an order by id and product). Used only to remove the stop-loss orders the desk placed itself. */
+export async function deltaSignedDelete(key: string, secret: string, path: string, payload: unknown): Promise<{ ok: boolean; status: number; body: any; errorText: string }> {
+  const ts = String(Math.floor(Date.now() / 1000));
+  const body = JSON.stringify(payload);
+  const sig = signDelta(secret, 'DELETE', ts, path, '', body);
+  try {
+    const upstream = await fetch(`${DELTA_BASE}${path}`, {
+      method: 'DELETE',
+      headers: { 'api-key': key, timestamp: ts, signature: sig, Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': 'BTC-Volatility-Desk-Backend/1.0' },
+      body,
+      signal: AbortSignal.timeout(8_000),
+    });
+    const data = await upstream.json().catch(() => null);
+    const ok = upstream.ok && (data as any)?.success !== false;
+    return { ok, status: upstream.status, body: data, errorText: ok ? '' : String((data as any)?.error?.code ?? (data as any)?.error ?? upstream.status) };
+  } catch (err: any) {
+    return { ok: false, status: 502, body: null, errorText: err?.message || 'timeout' };
+  }
+}
+
 let cachedServerIp: string | null = null;
 let lastIpCheck = 0;
 

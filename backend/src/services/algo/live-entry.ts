@@ -1,6 +1,6 @@
 import { deltaGet } from '../bot/delta-public.js';
 import { fetchBook, type Book } from '../bot/delta-public.js';
-import { deltaSignedPost } from '../../routes/delta.js';
+import { deltaSignedDelete, deltaSignedPost } from '../../routes/delta.js';
 import { loadDeltaKey } from '../delta-keys.js';
 import { logWatchEvent, getWatchConfig } from '../watch/watch-store.js';
 import { buildClosingOrders, expiryOf, fetchOptionPositions, LiveExit, OPTION_EXPIRY, realLiveExitDeps, type OptionPosition } from '../watch/live-exit.js';
@@ -26,6 +26,8 @@ export interface LiveEntryDeps {
   productId(symbol: string): Promise<number>;
   tickOf(symbol: string): number;
   post(key: string, secret: string, payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: any; errorText: string }>;
+  /** Cancel one of the stop-loss orders this desk placed (by order id and product). */
+  cancel?(key: string, secret: string, payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: any; errorText: string }>;
   log(userId: string, kind: string, detail: string, o: { symbol?: string; dryRun: boolean }): Promise<void>;
   sleep(ms: number): Promise<void>;
 }
@@ -36,7 +38,7 @@ const roundTick = (price: number, tick: number, dir: 'up' | 'down') => {
 };
 const fmt = (v: number) => String(Number(v.toFixed(6)));
 
-interface Ref { symbols: string[] }
+interface Ref { symbols: string[]; stops?: Array<{ productId: number; id: number }> }
 const parseRef = (ref: string): Ref | null => { try { const r = JSON.parse(ref) as Ref; return Array.isArray(r.symbols) ? r : null; } catch { return null; } };
 
 export function makeLiveBroker(d: LiveEntryDeps): Broker {
@@ -51,7 +53,7 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
   }
 
   return {
-    async place(userId: string, _rule: AlgoStrategy, plan: EntryPlan, name: string): Promise<PlaceResult> {
+    async place(userId: string, rule: AlgoStrategy, plan: EntryPlan, name: string): Promise<PlaceResult> {
       if (plan.kind !== 'option') return { ok: false, reason: 'live futures orders are not built yet: run this strategy in Paper mode' };
       const l = await lock(userId);
       if ('why' in l) return { ok: false, reason: l.why };
@@ -92,7 +94,28 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
           return { ok: false, reason: `not every leg filled (${short.join('; ')}); the legs that filled were closed again` };
         }
         await d.log(userId, 'algo_entry_done', `${name}: every leg is filled.`, { dryRun: false });
-        return { ok: true, ref: JSON.stringify({ symbols: orders.map((o) => o.symbol) } satisfies Ref), detail: `${orders.length} legs filled` };
+        // the per-leg stop-loss, sent to Delta as a real stop order on each sold leg (a buy that closes it when the mark reaches the stop)
+        const mult = rule.exit.legStopMultiple, soldLegs = orders.filter((o) => o.side === 'sell');
+        const stops: NonNullable<Ref['stops']> = [], failed: string[] = [];
+        if (mult) {
+          for (const o of soldLegs) {
+            const pos = after.get(o.symbol), tick = d.tickOf(o.symbol) || 0.1;
+            if (!pos || !(pos.entry > 0)) { failed.push(`${o.symbol}: no entry price to work the stop from`); continue; }
+            const stopPrice = roundTick(pos.entry * mult, tick, 'up');
+            const limit = roundTick(Math.max(stopPrice * 1.25, stopPrice + 3 * tick), tick, 'up'); // options take limit orders only: the stop becomes a limit well through the trigger
+            const r = await d.post(key, secret, { product_id: o.payload.product_id, size: Math.abs(pos.size), side: 'buy', order_type: 'limit_order', limit_price: fmt(limit), stop_order_type: 'stop_loss_order', stop_price: fmt(stopPrice), stop_trigger_method: 'mark_price', time_in_force: 'gtc', reduce_only: true });
+            const id = Number(r.body?.result?.id);
+            if (r.ok && Number.isFinite(id)) {
+              stops.push({ productId: Number(o.payload.product_id), id });
+              await d.log(userId, 'algo_stop_order', `Stop-loss on Delta: buy ${Math.abs(pos.size)} ${o.symbol} when the mark reaches ${fmt(stopPrice)} (${mult}x the sell price ${pos.entry}), limit ${fmt(limit)}.`, { symbol: o.symbol, dryRun: false });
+            } else {
+              failed.push(`${o.symbol}: ${r.errorText || r.status}`);
+              await d.log(userId, 'algo_stop_failed', `Stop-loss NOT placed on Delta for ${o.symbol}: ${r.errorText || r.status}. This leg has no exchange stop.`, { symbol: o.symbol, dryRun: false });
+            }
+          }
+        }
+        const stopNote = !mult ? 'No per-leg stop in this rule, so none was sent to Delta.' : `Stop-loss on Delta: ${stops.length} of ${soldLegs.length} sold legs.${failed.length ? ` NOT placed: ${failed.join('; ')}.` : ''}`;
+        return { ok: true, ref: JSON.stringify({ symbols: orders.map((o) => o.symbol), stops } satisfies Ref), detail: `${orders.length} legs filled. ${stopNote}` };
       } catch (e) {
         await d.log(userId, 'algo_entry_failed', `${name}: ${(e as Error).message}. Check Delta for open positions.`, { dryRun: dry }).catch(() => undefined);
         return { ok: false, reason: (e as Error).message };
@@ -116,7 +139,8 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
           net += pnl;
           legs.push({ symbol: p.symbol, side: p.size < 0 ? 'sell' : 'buy', lots: Math.abs(p.size), entry: p.entry, mark: mid, pnl });
         }
-        return { open: true, netPnl: net, legs };
+        // some of this run's contracts are gone while others remain: a stop fired (or a leg was closed by hand)
+        return { open: true, netPnl: net, legs, legGone: mine.length < r.symbols.length };
       } catch {
         return null;
       }
@@ -140,6 +164,11 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
             const res = await d.post(l.key, l.secret, o.payload);
             await d.log(userId, res.ok ? 'algo_exit_order' : 'algo_exit_failed', `${reason}: ${o.side} ${o.size} ${o.symbol} at limit ${o.limitPrice}: ${res.ok ? 'accepted' : 'rejected: ' + (res.errorText || res.status)}`, { symbol: o.symbol, dryRun: false });
           }
+        }
+        // the exchange stops are no longer needed: take them off (a reduce-only stop on a flat position would do nothing, but do not leave them)
+        for (const s of r.stops ?? []) {
+          const c = await d.cancel?.(l.key, l.secret, { id: s.id, product_id: s.productId }).catch(() => null);
+          if (c && !c.ok) await d.log(userId, 'algo_stop_cancel_failed', `Could not cancel stop order ${s.id}: ${c.errorText || c.status} (it may already have fired).`, { dryRun: false });
         }
         return { ok: true };
       } catch (e) {
@@ -183,6 +212,7 @@ export const realLiveEntryDeps: LiveEntryDeps = {
   },
   tickOf: (s) => ticks.get(s) ?? 0.5,
   post: (key, secret, payload) => deltaSignedPost(key, secret, '/v2/orders', payload),
+  cancel: (key, secret, payload) => deltaSignedDelete(key, secret, '/v2/orders', payload),
   log: (uid, kind, detail, o) => logWatchEvent(uid, kind, detail, o),
   sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
