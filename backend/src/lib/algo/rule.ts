@@ -202,7 +202,8 @@ export function entryState(s: Pick<AlgoStrategy, 'entry' | 'days'>, nowMs: numbe
 /** When to close everything: the first exit time after the window starts, or null for no time exit. */
 export function exitAtMs(exit: ExitRule, window: EntryWindow, enteredAtMs: number): number | null {
   if (!exit.exitTime) return null;
-  const startMin = Math.floor(((window.startMs - IST_OFFSET_MS) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000);
+  // the IST clock time the window starts (the offset is ADDED: IST is ahead of UTC); a sign slip here once pushed a same-day exit to the next day
+  const startMin = Math.floor(((window.startMs + IST_OFFSET_MS) % 86_400_000 + 86_400_000) % 86_400_000 / 60_000);
   let m = minutesOf(exit.exitTime);
   if (m <= startMin) m += 1440;
   let at = istMidnightMs(window.dateKey) + m * 60_000;

@@ -288,6 +288,16 @@ describe('AlgoEngine exit', () => {
     expect(r.runs[0]!.exitReason).toBe('stop hit');
   });
 
+  it('a live entry skipped for news in the path is recorded as skipped, not failed, with the reason', async () => {
+    const now = { t: at(MON, '22:30') };
+    const r = rig(defaultStrangle({ mode: 'live' }), now, { place: async () => ({ ok: false, skip: true, reason: 'skipped, a news event is in the path of this trade: US CPI (High) at 27 Oct 18:00 IST' }) });
+    await r.engine.tick();
+    expect(r.runs).toHaveLength(1);
+    expect(r.runs[0]!.status).toBe('skipped');
+    expect(r.runs[0]!.reason).toContain('US CPI');
+    expect(r.runs[0]!.ref).toBeNull();
+  });
+
   it('keeps tracking when the account cannot be read this tick', async () => {
     const now = { t: at(MON, '22:30') };
     const r = rig(defaultStrangle({ exit: { ...defaultStrangle().exit, netTargetUsd: 5 } }), now);

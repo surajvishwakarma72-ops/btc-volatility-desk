@@ -56,6 +56,19 @@ describe('entry windows and days', () => {
     expect(exitAtMs(DEFAULT_EXIT, w, w.startMs)).toBeNull();
     void IST_OFFSET_MS;
   });
+  it('works the exit out from the IST clock time of the start, whatever that time is (a same-day exit must not slip to the next day)', () => {
+    const at = (startHhmm: string, exitHhmm: string, startDate = TUE, enteredHhmm?: string) => {
+      const start = ist(startDate, startHhmm);
+      const w = { dateKey: startDate, startMs: start, endMs: start + 3_600_000 };
+      return exitAtMs({ ...DEFAULT_EXIT, exitTime: exitHhmm }, w, enteredHhmm ? ist(startDate, enteredHhmm) : start);
+    };
+    expect(at('05:30', '13:30')).toBe(ist(TUE, '13:30'));   // the same morning, 8 hours later
+    expect(at('08:00', '13:00')).toBe(ist(TUE, '13:00'));   // 5 hours, not 29
+    expect(at('22:30', '07:00', MON)).toBe(ist(TUE, '07:00')); // the usual overnight hold
+    expect(at('22:30', '23:00', MON)).toBe(ist(MON, '23:00')); // later the same night
+    expect(at('10:00', '07:00')).toBe(ist('2026-10-28', '07:00')); // the exit time has passed today: tomorrow
+    expect(at('08:00', '13:00', TUE, '14:00')).toBe(ist('2026-10-28', '13:00')); // entered after that time: tomorrow
+  });
 });
 
 const bars = (closes: number[], step = 5): Bar[] => closes.map((c, i) => ({ t: i * step * 60_000, o: c, h: c + 5, l: c - 5, c, v: 1 }));

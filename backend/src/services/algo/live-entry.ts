@@ -2,6 +2,8 @@ import { deltaGet } from '../bot/delta-public.js';
 import { fetchBook, type Book } from '../bot/delta-public.js';
 import { deltaSignedDelete, deltaSignedGet, deltaSignedPost } from '../../routes/delta.js';
 import { placeStop, stopLimitPrice } from '../watch/stop-order.js';
+import { describeEvents, type PathEvent } from '../../lib/algo/event-path.js';
+import { eventsForTrade } from './event-guard.js';
 import { loadDeltaKey } from '../delta-keys.js';
 import { logWatchEvent, getWatchConfig } from '../watch/watch-store.js';
 import { buildClosingOrders, expiryOf, fetchOptionPositions, LiveExit, OPTION_EXPIRY, realLiveExitDeps, type OptionPosition } from '../watch/live-exit.js';
@@ -27,6 +29,8 @@ export interface LiveEntryDeps {
   productId(symbol: string): Promise<number>;
   tickOf(symbol: string): number;
   post(key: string, secret: string, payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: any; errorText: string }>;
+  /** The news events in the path of this trade (null when the calendar cannot be read). Absent: no event check. */
+  eventsInPath?(rule: AlgoStrategy, plan: EntryPlan): Promise<PathEvent[] | null>;
   /** Cancel one of the stop-loss orders this desk placed (by order id and product). */
   cancel?(key: string, secret: string, payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: any; errorText: string }>;
   log(userId: string, kind: string, detail: string, o: { symbol?: string; dryRun: boolean }): Promise<void>;
@@ -64,6 +68,13 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
       const l = await lock(userId);
       if ('why' in l) return { ok: false, reason: l.why };
       const { key, secret, dry } = l;
+      // a live entry is skipped when a US news release (CPI, FOMC, jobs...) falls between now and the planned exit
+      const evs = d.eventsInPath ? await d.eventsInPath(rule, plan).catch(() => null) : undefined;
+      if (evs && evs.length) {
+        await d.log(userId, 'algo_entry_skipped', `${name}: SKIPPED, nothing was sent. News in the path of this trade: ${describeEvents(evs)}.`, { dryRun: dry });
+        return { ok: false, skip: true, reason: `skipped, a news event is in the path of this trade: ${describeEvents(evs)}` };
+      }
+      if (evs === null) await d.log(userId, 'algo_event_check_unknown', `${name}: the news calendar could not be read, so this entry went ahead without an event check.`, { dryRun: dry });
       try {
         // hedges first (bought legs), then the sold legs, so margin is never worse than the finished structure
         const legs = [...plan.legs].sort((a, b) => (a.side === 'buy' ? 0 : 1) - (b.side === 'buy' ? 0 : 1));
@@ -222,6 +233,7 @@ export const realLiveEntryDeps: LiveEntryDeps = {
   liveEnabled: () => process.env.LIVE_TRADING_ENABLED === 'true',
   cfg: (uid) => getWatchConfig(uid, 0),
   tradeKey: (uid) => loadDeltaKey(uid, 'trade'),
+  eventsInPath: (rule, plan) => eventsForTrade(rule, plan),
   positions: fetchOptionPositions,
   book: (s) => fetchBook(s, 20),
   async productId(symbol) {

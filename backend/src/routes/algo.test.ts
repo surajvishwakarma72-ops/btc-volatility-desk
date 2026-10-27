@@ -24,6 +24,8 @@ vi.mock('../services/algo/algo-runtime.js', () => ({
   algoEngine: { checks: new Map(), errors: new Map([['66666666-6666-6666-6666-666666666666', 'secret strategy name: boom']]) },
   loadMarket: async () => ({ spot: 100_000, chain, expiries: [E1, E2, E3], dvol: 50, gateGo: true, gateReasons: [], bars5m: [] }),
 }));
+// no real calendar request in a unit test: the news guard sees a clear path here (its own behaviour is tested in event-guard.test.ts)
+vi.mock('../services/algo/event-guard.js', () => ({ eventsForTrade: async () => [], loadUsEvents: async () => [], holdEndMs: () => 0, resetEventFeed: () => undefined }));
 vi.mock('../services/algo/insights-service.js', () => ({
   loadInsights: async () => ({ at: 1, bars: 10, from: 1, to: 2, note: 'x', options: [], futures: [{ id: 'ema_9_21', label: 'EMA 9 vs EMA 21', n: 100, winRate: 0.55, avgPct: 0.1, score: 2, now: 1, long: null, short: null }] }),
   ownRunStats: async () => ({ finished: 0, wins: 0, totalPnl: 0, byCondition: [] }),

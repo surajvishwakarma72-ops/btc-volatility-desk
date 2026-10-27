@@ -15,6 +15,8 @@ import { speedVsIv } from '../../lib/algo/conditions.js';
 import { compareToAtm, decayToExitUsd, estimateProfit, thetaPerDayUsd, type ProfitEstimate } from '../../lib/algo/profit.js';
 import { defaultStrangle, entryState, exitAtMs, windowOn, type EntryWindow } from '../../lib/algo/rule.js';
 import { buildMarketReport, type MarketReport } from '../../lib/algo/market-report.js';
+import { describeEvents } from '../../lib/algo/event-path.js';
+import { eventsForTrade } from './event-guard.js';
 import { planOptionEntry } from '../../lib/algo/plan.js';
 import { deltaSignedGet } from '../../routes/delta.js';
 import { loadDeltaKey } from '../delta-keys.js';
@@ -102,7 +104,13 @@ export async function recommend(rule: AlgoStrategy, lots: number, m: Awaited<Ret
   const calm = ins?.options.filter((o) => o.now && o.calmerPct > 5).slice(0, 2) ?? [];
   if (calm.length) reasons.push(`Calm signs that held up recently and are true now: ${calm.map((c) => c.label).join('; ')}.`);
   else if (ins?.options.length) reasons.push('None of the recent calm signs is true right now.');
-  void plan;
+  // a live entry is skipped when a US news release falls between now and the planned exit: say so before it is placed
+  if (rule.mode === 'live') {
+    const evs = await eventsForTrade(rule, plan).catch(() => null);
+    if (evs && evs.length) { bad++; reasons.push(`A news event is in the path of this trade: ${describeEvents(evs)}. A live entry would be skipped.`); }
+    else if (evs === null) reasons.push('The news calendar could not be read, so events were not checked.');
+    else reasons.push('No US news event between now and the planned exit.');
+  }
   return { verdict: bad ? 'wait' : 'go', headline: bad ? 'Better to wait' : 'Conditions are acceptable for selling', reasons, suggest: { stopMultiple: 2, note: 'A 2x stop on each sold leg, with everything closing when one stops.' } };
 }
 

@@ -3,11 +3,12 @@ import { cancelPendingOrders, makeLiveBroker, type LiveEntryDeps, type OrderApi,
 import { defaultStrangle } from '../../lib/algo/rule.js';
 import type { EntryPlan } from './algo-engine.js';
 import type { OptionPosition } from '../watch/live-exit.js';
+import type { PathEvent } from '../../lib/algo/event-path.js';
 
 const leg = (symbol: string, type: 'call' | 'put', side: 'sell' | 'buy' = 'sell') => ({ symbol, side, lots: 10, bid: 60, ask: 65, delta: 0.12, strike: 100_000, expiryCode: '271026', type });
 const plan: EntryPlan = { kind: 'option', legs: [leg('C-BTC-105000-271026', 'call'), leg('P-BTC-95000-271026', 'put')], expiries: ['271026'], spot: 100_000, premium: 1.2 };
 
-function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boolean; fill?: 'all' | 'none' | 'half'; stopFail?: boolean } = {}) {
+function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boolean; fill?: 'all' | 'none' | 'half'; stopFail?: boolean; events?: PathEvent[] | null } = {}) {
   const posts: any[] = [];
   const stopPosts: any[] = [];
   const cancels: any[] = [];
@@ -17,6 +18,7 @@ function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boole
     liveEnabled: () => o.enabled ?? true,
     cfg: async () => ({ liveArmed: o.armed ?? true, dryRun: o.dry ?? false }),
     tradeKey: async () => (o.key === false ? null : { key: 'k', secret: 's' }),
+    ...('events' in o ? { eventsInPath: async () => o.events! } : {}),
     positions: async () => positions,
     book: async () => ({ bids: [[60, 100]], asks: [[65, 100]] }) as any,
     productId: async (s) => (s.startsWith('C') ? 11 : 22),
@@ -107,6 +109,57 @@ describe('live entry orders', () => {
     const out = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
     expect(out.ok).toBe(false);
     expect(r.posts.filter((p) => p.reduce_only === true)).toHaveLength(0);
+  });
+});
+
+describe('a live entry is skipped when news is in the path', () => {
+  const cpi: PathEvent[] = [{ title: 'US CPI', impact: 'High', timestamp: Date.UTC(2026, 9, 27, 12, 30) }];
+
+  it('sends nothing, says why, and marks the result as a deliberate skip', async () => {
+    const r = rig({ events: cpi });
+    const out = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.skip).toBe(true);
+    expect(out.ok === false && out.reason).toMatch(/news event is in the path.*US CPI \(High\) at 27 Oct 18:00 IST/);
+    expect(r.posts).toHaveLength(0);
+    expect(r.stopPosts).toHaveLength(0);
+    expect(r.events).toContain('algo_entry_skipped');
+  });
+
+  it('applies in dry-run too, so the dry run shows what a real entry would have done', async () => {
+    const r = rig({ dry: true, enabled: false, events: cpi });
+    const out = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect(out.ok === false && out.skip).toBe(true);
+    expect(r.events).toContain('algo_entry_skipped');
+    expect(r.events).not.toContain('algo_entry_dry');
+  });
+
+  it('goes ahead when the path is clear', async () => {
+    const r = rig({ events: [] });
+    expect((await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x')).ok).toBe(true);
+    expect(r.posts.length).toBeGreaterThan(0);
+  });
+
+  it('goes ahead, and says so, when the calendar cannot be read', async () => {
+    const r = rig({ events: null });
+    expect((await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x')).ok).toBe(true);
+    expect(r.events).toContain('algo_event_check_unknown');
+    expect(r.events).not.toContain('algo_entry_skipped');
+  });
+
+  it('a locked entry still reports the lock first, not the news', async () => {
+    const r = rig({ armed: false, events: cpi });
+    const out = await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    expect(out.ok === false && out.reason).toMatch(/not armed/);
+    expect(r.events).not.toContain('algo_entry_skipped');
+  });
+
+  it('a skipped entry does not start the 60 second cooldown, so a clear path a moment later can still go in', async () => {
+    const o: { events: PathEvent[] | null } = { events: cpi };
+    const r = rig(o);
+    await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x');
+    o.events = []; // the event has passed (or was a mistake): same broker, a moment later
+    expect((await r.broker.place('u', defaultStrangle({ mode: 'live' }), plan, 'x')).ok).toBe(true);
   });
 });
 

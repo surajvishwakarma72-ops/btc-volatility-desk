@@ -30,7 +30,7 @@ export interface MarketData {
 export interface FuturePlan { side: 'long' | 'short'; lots: number; spot: number }
 export type EntryPlan = { kind: 'option'; legs: PlannedLeg[]; expiries: string[]; spot: number; premium: number } | { kind: 'future'; future: FuturePlan };
 
-export type PlaceResult = { ok: true; ref: string; dry?: boolean; detail: string } | { ok: false; reason: string };
+export type PlaceResult = { ok: true; ref: string; dry?: boolean; detail: string } | { ok: false; reason: string; /** a deliberate skip (a news event is in the path), not a failure */ skip?: boolean };
 export interface LegStatus { symbol: string; side: 'buy' | 'sell'; lots: number; entry: number; mark: number | null; pnl: number | null }
 export interface BrokerStatus { open: boolean; netPnl: number | null; /** some contracts of this run are gone while others remain (a leg's stop fired) */ legGone?: boolean; /** each leg's own PnL, before fees */ legs?: LegStatus[]; closedReason?: string | null; /** futures: entry, mark and side of the one position */ future?: { entry: number; mark: number; side: 'long' | 'short' } }
 
@@ -170,7 +170,7 @@ export class AlgoEngine {
     const placed = await d.broker(rule.mode).place(s.userId, rule, plan, name);
     const base = { userId: s.userId, strategyId: s.id, name, dateKey: w.dateKey, mode: rule.mode, lots: plan.kind === 'option' ? Math.max(...plan.legs.map((l) => l.lots)) : plan.future.lots, plan: { rule, plan, why, conds: ev.results.map((x) => ({ label: x.label, ok: x.ok })) }, windowStart: w.startMs, enteredAt: now, exitAt: null as number | null };
     if (!placed.ok) {
-      await d.createRun({ ...base, status: 'failed', reason: placed.reason, ref: null, enteredAt: null });
+      await d.createRun({ ...base, status: placed.skip ? 'skipped' : 'failed', reason: placed.reason, ref: null, enteredAt: null });
       await this.finishOnce(s);
       return;
     }
