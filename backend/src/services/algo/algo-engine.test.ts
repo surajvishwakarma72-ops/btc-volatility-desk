@@ -21,7 +21,7 @@ function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['
   const closed: string[] = [];
   const marks: Array<[string, number]> = [];
   const disarmed: string[] = [];
-  const status = { open: true, netPnl: 0 as number | null, closedReason: null as string | null, legGone: false };
+  const status = { open: true, netPnl: 0 as number | null, closedReason: null as string | null, legGone: false, legs: [] as Array<{ symbol: string; side: 'buy' | 'sell'; lots: number; entry: number; mark: number | null; pnl: number | null }> };
   const broker: Broker = {
     place: opts.place ?? (async (_u, _r, plan) => { placed.push(plan); return { ok: true, ref: 'basket-1', detail: 'ok' }; }),
     status: async () => ({ ...status }),
@@ -235,6 +235,16 @@ describe('AlgoEngine exit', () => {
     r.status.legGone = true;
     await r.engine.tick();
     expect(r.closed[0]).toContain('a leg was stopped out');
+  });
+
+  it('the desk closes a Live run itself when a sold leg reaches its 2x stop, even if Delta took no stop order', async () => {
+    const r = await enter(defaultStrangle({ mode: 'live' }));
+    r.status.legs = [{ symbol: 'C', side: 'sell', lots: 10, entry: 100, mark: 190, pnl: -9 }, { symbol: 'P', side: 'sell', lots: 10, entry: 80, mark: 60, pnl: 2 }];
+    await r.engine.tick();
+    expect(r.closed).toHaveLength(0); // 190 is still under 200
+    r.status.legs[0]!.mark = 200;
+    await r.engine.tick();
+    expect(r.closed[0]).toContain('C reached its 2x stop');
   });
 
   it('keeps the other leg when the rule does not exit all on a leg stop', async () => {

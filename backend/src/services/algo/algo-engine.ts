@@ -221,6 +221,11 @@ export class AlgoEngine {
     if (x.netTargetUsd != null && st.netPnl != null && st.netPnl >= x.netTargetUsd) why = `net target reached (${st.netPnl.toFixed(2)} >= ${x.netTargetUsd})`;
     else if (x.netStopUsd != null && st.netPnl != null && st.netPnl <= -x.netStopUsd) why = `net stop reached (${st.netPnl.toFixed(2)} <= -${x.netStopUsd})`;
     else if (st.legGone && x.exitAllOnLegStop) why = 'a leg was stopped out, closing the rest';
+    // the desk's own per-leg stop on a Live run, so the stop holds even if Delta took no stop order (the mark here is the book's mid)
+    else if (rule.mode === 'live' && x.legStopMultiple && x.exitAllOnLegStop) {
+      const hit = (st.legs ?? []).find((l) => l.side === 'sell' && l.entry > 0 && l.mark != null && l.mark >= l.entry * x.legStopMultiple!);
+      if (hit) why = `${hit.symbol} reached its ${x.legStopMultiple}x stop (${hit.mark} >= ${(hit.entry * x.legStopMultiple!).toFixed(2)}), closing every leg`;
+    }
     else if (r.exitAt != null && now >= r.exitAt) why = `exit time ${x.exitTime} IST`;
     else if (st.future) {
       const { entry, mark, side } = st.future;

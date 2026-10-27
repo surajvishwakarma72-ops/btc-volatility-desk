@@ -2,6 +2,7 @@ import { deltaSignedDelete, deltaSignedGet, deltaSignedPost } from '../../routes
 import { loadDeltaKey } from '../delta-keys.js';
 import { getWatchConfig, logWatchEvent } from './watch-store.js';
 import type { OptionPosition } from './live-exit.js';
+import { placeStop } from './stop-order.js';
 
 /**
  * Automatic stop-loss on the trading account: every SOLD option leg gets a real stop order on Delta (a reduce-only buy, stop-limit,
@@ -62,9 +63,9 @@ export class AutoStop {
       const stopPrice = roundUp(p.entry * cfg.stopMultiple, tick), limit = roundUp(Math.max(stopPrice * 1.25, stopPrice + 3 * tick), tick);
       const what = `buy ${size} ${p.symbol} when the mark reaches ${fmt(stopPrice)} (${cfg.stopMultiple}x the sell price ${p.entry}), limit ${fmt(limit)}`;
       if (!live) { await this.note(userId, p.symbol, 'auto_stop_dry', `DRY RUN, nothing sent: would place a stop-loss on Delta: ${what}.`, p.symbol, false); continue; }
-      const r = await d.post(creds.key, creds.secret, { product_id: p.productId, size, side: 'buy', order_type: 'limit_order', limit_price: fmt(limit), stop_order_type: 'stop_loss_order', stop_price: fmt(stopPrice), stop_trigger_method: 'mark_price', time_in_force: 'gtc', reduce_only: true, client_order_id: `${STOP_PREFIX}${p.productId}-${Math.floor(now / 1000)}` });
-      if (r.ok) await d.log(userId, 'auto_stop_order', `Stop-loss placed on Delta: ${what}.`, { symbol: p.symbol, dryRun: false });
-      else await this.note(userId, p.symbol, 'auto_stop_failed', `Stop-loss NOT placed on Delta for ${p.symbol}: ${r.errorText || r.status}. This leg has no exchange stop.`, p.symbol, false);
+      const r = await placeStop(d.post, creds.key, creds.secret, { productId: p.productId, size, stopPrice, limitPrice: limit, clientOrderId: `${STOP_PREFIX}${p.productId}-${Math.floor(now / 1000)}` });
+      if (r.ok) await d.log(userId, 'auto_stop_order', `Stop-loss placed on Delta (${r.how}): ${what}.`, { symbol: p.symbol, dryRun: false });
+      else await this.note(userId, p.symbol, 'auto_stop_failed', `Stop-loss NOT placed on Delta for ${p.symbol}. Delta said: ${r.errors.join(' | ')}.`, p.symbol, false);
     }
 
     // stops this desk placed on legs that are no longer open

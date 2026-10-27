@@ -1,6 +1,7 @@
 import { deltaGet } from '../bot/delta-public.js';
 import { fetchBook, type Book } from '../bot/delta-public.js';
 import { deltaSignedDelete, deltaSignedPost } from '../../routes/delta.js';
+import { placeStop } from '../watch/stop-order.js';
 import { loadDeltaKey } from '../delta-keys.js';
 import { logWatchEvent, getWatchConfig } from '../watch/watch-store.js';
 import { buildClosingOrders, expiryOf, fetchOptionPositions, LiveExit, OPTION_EXPIRY, realLiveExitDeps, type OptionPosition } from '../watch/live-exit.js';
@@ -103,14 +104,13 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
             if (!pos || !(pos.entry > 0)) { failed.push(`${o.symbol}: no entry price to work the stop from`); continue; }
             const stopPrice = roundTick(pos.entry * mult, tick, 'up');
             const limit = roundTick(Math.max(stopPrice * 1.25, stopPrice + 3 * tick), tick, 'up'); // options take limit orders only: the stop becomes a limit well through the trigger
-            const r = await d.post(key, secret, { product_id: o.payload.product_id, size: Math.abs(pos.size), side: 'buy', order_type: 'limit_order', limit_price: fmt(limit), stop_order_type: 'stop_loss_order', stop_price: fmt(stopPrice), stop_trigger_method: 'mark_price', time_in_force: 'gtc', reduce_only: true });
-            const id = Number(r.body?.result?.id);
-            if (r.ok && Number.isFinite(id)) {
-              stops.push({ productId: Number(o.payload.product_id), id });
-              await d.log(userId, 'algo_stop_order', `Stop-loss on Delta: buy ${Math.abs(pos.size)} ${o.symbol} when the mark reaches ${fmt(stopPrice)} (${mult}x the sell price ${pos.entry}), limit ${fmt(limit)}.`, { symbol: o.symbol, dryRun: false });
+            const r = await placeStop(d.post, key, secret, { productId: Number(o.payload.product_id), size: Math.abs(pos.size), stopPrice, limitPrice: limit });
+            if (r.ok && r.id != null) {
+              stops.push({ productId: Number(o.payload.product_id), id: r.id });
+              await d.log(userId, 'algo_stop_order', `Stop-loss on Delta (${r.how}): buy ${Math.abs(pos.size)} ${o.symbol} when the price reaches ${fmt(stopPrice)} (${mult}x the sell price ${pos.entry}).`, { symbol: o.symbol, dryRun: false });
             } else {
-              failed.push(`${o.symbol}: ${r.errorText || r.status}`);
-              await d.log(userId, 'algo_stop_failed', `Stop-loss NOT placed on Delta for ${o.symbol}: ${r.errorText || r.status}. This leg has no exchange stop.`, { symbol: o.symbol, dryRun: false });
+              failed.push(`${o.symbol}: ${r.errors.join(' | ')}`);
+              await d.log(userId, 'algo_stop_failed', `Stop-loss NOT placed on Delta for ${o.symbol}. Delta said: ${r.errors.join(' | ')}. The desk's own ${mult}x check still closes the position.`, { symbol: o.symbol, dryRun: false });
             }
           }
         }

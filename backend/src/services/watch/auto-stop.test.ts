@@ -16,7 +16,7 @@ function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boole
     tradeKey: async () => (o.key === false ? null : { key: 'k', secret: 's' }),
     pendingStops: async () => { if (o.readFails) throw new Error('orders down'); return o.pending ?? []; },
     tickOf: () => 0.5,
-    post: async (_k, _s, p) => { posts.push(p); return o.postFails ? { ok: false, status: 400, body: null, errorText: 'stop_orders_not_allowed' } : { ok: true, status: 200, body: {}, errorText: '' }; },
+    post: async (_k, _s, p) => { posts.push(p); return o.postFails ? { ok: false, status: 400, body: null, errorText: 'stop_orders_not_allowed' } : { ok: true, status: 200, body: { result: { id: posts.length } }, errorText: '' }; },
     cancel: async (_k, _s, p) => { cancels.push(p); return { ok: true, status: 200, body: {}, errorText: '' }; },
     log: async (_u, kind, _d, x) => { events.push({ kind, dry: x.dryRun }); },
   };
