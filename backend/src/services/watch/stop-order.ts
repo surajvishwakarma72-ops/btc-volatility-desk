@@ -15,9 +15,9 @@ export interface StopResult { ok: boolean; id?: number; how?: string; errors: st
 const fmt = (v: number): string => String(Number(v.toFixed(6)));
 
 /** How far above the trigger a stop-limit's limit price sits: room to fill if the price jumps past the trigger, without paying far more than the stop. */
-export const STOP_LIMIT_BUFFER = 0.10;
+export const STOP_LIMIT_BUFFER = 0.05;
 
-/** The limit price for a stop-limit buy: 10% above the trigger, and never less than 3 ticks above it, rounded up to the tick. */
+/** The limit price for a stop-limit buy: 5% above the trigger (trigger 200, limit 210), and never less than 3 ticks above it, rounded up to the tick. */
 export function stopLimitPrice(stopPrice: number, tick: number): number {
   return Math.ceil(Math.max(stopPrice * (1 + STOP_LIMIT_BUFFER), stopPrice + 3 * tick) / tick - 1e-9) * tick;
 }

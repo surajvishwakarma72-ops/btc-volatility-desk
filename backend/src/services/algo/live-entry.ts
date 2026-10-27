@@ -121,7 +121,7 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
             const pos = after.get(o.symbol), tick = d.tickOf(o.symbol) || 0.1;
             if (!pos || !(pos.entry > 0)) { failed.push(`${o.symbol}: no entry price to work the stop from`); continue; }
             const stopPrice = roundTick(pos.entry * mult, tick, 'up');
-            const limit = stopLimitPrice(stopPrice, tick); // options take limit orders only: the stop becomes a limit 10% through the trigger
+            const limit = stopLimitPrice(stopPrice, tick); // options take limit orders only: the stop becomes a limit 5% through the trigger (200 -> 210)
             const r = await placeStop(d.post, key, secret, { productId: Number(o.payload.product_id), size: Math.abs(pos.size), stopPrice, limitPrice: limit });
             if (r.ok && r.id != null) {
               stops.push({ productId: Number(o.payload.product_id), id: r.id });

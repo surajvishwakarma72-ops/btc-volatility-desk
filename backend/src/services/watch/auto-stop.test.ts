@@ -35,8 +35,8 @@ describe('automatic 2x stop-loss on the trading account', () => {
     expect(r.posts.map((p) => p.product_id).sort()).toEqual([11, 22]);
     expect(r.posts.find((p) => p.product_id === 11)).toMatchObject({ side: 'buy', size: 10, stop_order_type: 'stop_loss_order', stop_trigger_method: 'mark_price', stop_price: '200', reduce_only: true, time_in_force: 'gtc', order_type: 'limit_order' });
     expect(r.posts.find((p) => p.product_id === 22)).toMatchObject({ stop_price: '160' });
-    expect(r.posts.find((p) => p.product_id === 11)!.limit_price).toBe('220'); // 10% above the 200 trigger
-    expect(r.posts.find((p) => p.product_id === 22)!.limit_price).toBe('176'); // 10% above the 160 trigger
+    expect(r.posts.find((p) => p.product_id === 11)!.limit_price).toBe('210'); // the 200 trigger, executed up to 210
+    expect(r.posts.find((p) => p.product_id === 22)!.limit_price).toBe('168'); // the 160 trigger, executed up to 168
     expect(String(r.posts[0].client_order_id).startsWith(STOP_PREFIX)).toBe(true);
     expect(r.events.filter((e) => e.kind === 'auto_stop_order')).toHaveLength(2);
   });
@@ -79,14 +79,15 @@ describe('automatic 2x stop-loss on the trading account', () => {
     expect(r.events.some((e) => e.kind === 'auto_stop_failed')).toBe(true);
   });
 
-  it('cancels a stop it placed on a leg that is no longer open, and never one it did not place', async () => {
+  it('cancels every reduce-only stop whose leg is no longer open, whoever placed it, and leaves the rest alone', async () => {
     const r = rig({ pending: [
-      { id: 7, productId: 11, symbol: C.symbol, side: 'buy', reduceOnly: true, clientOrderId: `${STOP_PREFIX}11-1` },
-      { id: 8, productId: 99, symbol: 'C-BTC-1-271026', side: 'buy', reduceOnly: true, clientOrderId: 'my-own-stop' },
+      { id: 7, productId: 11, symbol: C.symbol, side: 'buy', reduceOnly: true, clientOrderId: `${STOP_PREFIX}11-1` }, // its leg is gone: cancel
+      { id: 8, productId: 99, symbol: 'C-BTC-1-271026', side: 'buy', reduceOnly: true, clientOrderId: 'my-own-stop' }, // no position at all: cancel
+      { id: 9, productId: 22, symbol: P.symbol, side: 'buy', reduceOnly: true, clientOrderId: null }, // protects the open put: keep
+      { id: 10, productId: 55, symbol: 'C-BTC-2-271026', side: 'buy', reduceOnly: false, clientOrderId: null }, // an order to open a position: never touch
     ] });
     await r.twice([P]);
-    expect(r.cancels.length).toBeGreaterThan(0);
-    expect(r.cancels.every((c) => c.id === 7 && c.product_id === 11)).toBe(true); // the fake order list does not shrink, so a second round repeats it
+    expect([...new Set(r.cancels.map((c) => c.id))].sort()).toEqual([7, 8]);
   });
 });
 
@@ -97,7 +98,7 @@ describe('the two emergencies: a stop that jumped, and a naked leg', () => {
     const r = rig();
     await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 190, [P.symbol]: 70 })); // 190 is under the 200 trigger
     expect(r.closes).toHaveLength(0);
-    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 225, [P.symbol]: 70 })); // past the 220 limit: it jumped
+    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 215, [P.symbol]: 70 })); // past the 210 limit: it jumped
     expect(r.closes).toHaveLength(1);
     expect(r.closes[0]).toMatchObject({ expiry: '271026' });
     expect(r.closes[0]!.reason).toMatch(/stop jumped.*C-BTC-105000-271026/);
@@ -105,7 +106,7 @@ describe('the two emergencies: a stop that jumped, and a naked leg', () => {
 
   it('does not treat a price between the trigger and the limit as a jump, because the stop order can still fill there', async () => {
     const r = rig();
-    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 210, [P.symbol]: 70 }));
+    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 210, [P.symbol]: 70 })); // exactly at the 210 limit: the order can still fill
     expect(r.closes).toHaveLength(0);
   });
 
@@ -140,5 +141,47 @@ describe('the two emergencies: a stop that jumped, and a naked leg', () => {
     await r.as.guard('u', [C, P, C2], marksOf({}));
     await r.as.guard('u', [P, C2], marksOf({})); // the 271026 call is gone; 281026 is untouched
     expect(r.closes.map((c) => c.expiry)).toEqual(['271026']);
+  });
+});
+
+describe('nothing is left pending when a position closes', () => {
+  const marksOf = (m: Record<string, number>) => (s: string) => m[s] ?? null;
+  const stops: PendingStop[] = [
+    { id: 1, productId: 11, symbol: C.symbol, side: 'buy', reduceOnly: true, clientOrderId: null },
+    { id: 2, productId: 22, symbol: P.symbol, side: 'buy', reduceOnly: true, clientOrderId: null },
+  ];
+
+  it('takes both stops off Delta at once when the whole position is gone', async () => {
+    const r = rig({ pending: stops });
+    await r.as.guard('u', [C, P], marksOf({}));
+    expect(r.cancels).toHaveLength(0); // still open: the stops stay
+    await r.as.guard('u', [], marksOf({})); // closed by the desk, a stop, or by hand
+    expect(r.cancels.map((c) => c.id).sort()).toEqual([1, 2]);
+  });
+
+  it('when one leg goes: closes the other at market and takes the gone leg\'s stop off straight away', async () => {
+    const r = rig({ pending: stops });
+    await r.as.guard('u', [C, P], marksOf({}));
+    await r.as.guard('u', [P], marksOf({}));
+    expect(r.closes).toHaveLength(1);
+    expect([...new Set(r.cancels.map((c) => c.id))]).toEqual([1]); // the call's stop; the put's stop goes when the put is closed
+    await r.as.guard('u', [], marksOf({})); // the put is closed too
+    expect([...new Set(r.cancels.map((c) => c.id))].sort()).toEqual([1, 2]); // (the fake order list never shrinks, so a stop can be asked for twice)
+  });
+
+  it('cancels nothing in dry-run or without the server switch', async () => {
+    for (const o of [{ dry: true }, { enabled: false }]) {
+      const r = rig({ ...o, pending: stops });
+      await r.as.guard('u', [C, P], marksOf({}));
+      await r.as.guard('u', [], marksOf({}));
+      expect(r.cancels, JSON.stringify(o)).toHaveLength(0);
+    }
+  });
+
+  it('does not cancel anything when Delta will not list the pending orders (it tries again in its next round)', async () => {
+    const r = rig({ pending: stops, readFails: true });
+    await r.as.guard('u', [C, P], marksOf({}));
+    await r.as.guard('u', [], marksOf({}));
+    expect(r.cancels).toHaveLength(0);
   });
 });

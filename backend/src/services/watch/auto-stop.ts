@@ -55,21 +55,25 @@ export class AutoStop {
     if (!cfg.liveArmed) return;
     const byExpiry = new Map<string, OptionPosition[]>();
     for (const p of positions) (byExpiry.get(expiryOf(p.symbol)) ?? byExpiry.set(expiryOf(p.symbol), []).get(expiryOf(p.symbol))!).push(p);
-    for (const k of [...this.soldSeen.keys()]) if (k.startsWith(userId + '|') && !byExpiry.has(k.slice(userId.length + 1))) this.soldSeen.delete(k);
+    // a whole expiry that was open and is now gone (closed by the desk, by a stop, or by you): take its stops off Delta at once
+    let closedSomething = false;
+    for (const k of [...this.soldSeen.keys()]) if (k.startsWith(userId + '|') && !byExpiry.has(k.slice(userId.length + 1))) { this.soldSeen.delete(k); closedSomething = true; }
     for (const [expiry, list] of byExpiry) {
       const sold = list.filter((p) => p.size < 0), sk = `${userId}|${expiry}`, now = new Set(sold.map((p) => p.symbol)), before = this.soldSeen.get(sk);
       if (now.size) this.soldSeen.set(sk, new Set(now)); else this.soldSeen.delete(sk); // from here on, a leg missing from the next read is compared with this one
       const label = `Delta · expiry ${expiry}`;
-      const jumped = sold.find((p) => { const m = markOf(p.symbol); return m != null && p.entry > 0 && m >= stopLimitPrice(roundUp(p.entry * cfg.stopMultiple, d.tickOf(p.symbol) || 0.1), d.tickOf(p.symbol) || 0.1); });
+      const jumped = sold.find((p) => { const m = markOf(p.symbol); return m != null && p.entry > 0 && m > stopLimitPrice(roundUp(p.entry * cfg.stopMultiple, d.tickOf(p.symbol) || 0.1), d.tickOf(p.symbol) || 0.1); });
       if (jumped) {
         await d.closeGroup(userId, expiry, label, `stop jumped: ${jumped.symbol} is at ${markOf(jumped.symbol)}, past the stop-limit's limit price, so the stop cannot fill; closing every leg of this expiry at market`, cfg);
         continue;
       }
       const gone = before ? [...before].filter((s) => !now.has(s)) : [];
+      if (gone.length) closedSomething = true;
       if (gone.length && now.size) {
         await d.closeGroup(userId, expiry, label, `naked leg: ${gone.join(', ')} is no longer open while ${[...now].join(', ')} remains; closing the remaining leg at market`, cfg);
       }
     }
+    if (closedSomething) await this.cleanupNow(userId, positions);
   }
   constructor(private readonly d: AutoStopDeps) {}
 
@@ -108,13 +112,35 @@ export class AutoStop {
       else await this.note(userId, p.symbol, 'auto_stop_failed', `Stop-loss NOT placed on Delta for ${p.symbol}. Delta said: ${r.errors.join(' | ')}.`, p.symbol, false);
     }
 
-    // stops this desk placed on legs that are no longer open
-    if (!live) return;
+    // stops left behind on legs that are no longer open
+    if (live) await this.cancelOrphans(userId, creds, pending, positions);
+  }
+
+  /**
+   * Cancel every pending reduce-only stop that has nothing left to protect: a buy stop needs an open short in that contract, a sell stop an
+   * open long. They are cancelled the moment the position is gone, so none can sit on Delta and fire later. A stop that is not reduce-only
+   * (an order you placed to open a position) is never touched.
+   */
+  private async cancelOrphans(userId: string, creds: { key: string; secret: string }, pending: readonly PendingStop[], positions: readonly OptionPosition[]): Promise<void> {
+    const d = this.d;
     for (const s of pending) {
-      if (!s.clientOrderId?.startsWith(STOP_PREFIX) || sold.some((p) => p.productId === s.productId)) continue;
+      if (!s.reduceOnly) continue;
+      if (positions.some((p) => p.productId === s.productId && (s.side === 'buy' ? p.size < 0 : p.size > 0))) continue;
       const c = await d.cancel(creds.key, creds.secret, { id: s.id, product_id: s.productId }).catch(() => null);
       await d.log(userId, c?.ok ? 'auto_stop_cancelled' : 'auto_stop_failed', c?.ok ? `Cancelled the stop order on ${s.symbol}: the leg is no longer open.` : `Could not cancel the leftover stop order ${s.id} on ${s.symbol}${c ? `: ${c.errorText || c.status}` : ''}.`, { symbol: s.symbol, dryRun: false });
     }
+  }
+
+  /** Read Delta's pending stops and cancel the orphans now (called the moment a leg or a whole position is seen to be gone). */
+  private async cleanupNow(userId: string, positions: readonly OptionPosition[]): Promise<void> {
+    const d = this.d;
+    const cfg = await d.cfg(userId);
+    if (cfg.dryRun || !d.liveEnabled()) return;
+    const creds = await d.tradeKey(userId);
+    if (!creds) return;
+    let pending: PendingStop[];
+    try { pending = await d.pendingStops(creds.key, creds.secret); } catch { return; } // the 30 s round tries again
+    await this.cancelOrphans(userId, creds, pending, positions);
   }
 
   /** A line in the event list, at most once per ten minutes for the same thing, so a standing problem does not flood it. */
