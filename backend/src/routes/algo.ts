@@ -7,7 +7,7 @@ import { algoEngine, loadMarket } from '../services/algo/algo-runtime.js';
 import { chooseExpiries, expiryCodeOf } from '../lib/algo/plan.js';
 import { conditionsOf } from '../services/algo/algo-engine.js';
 import { clearPending, createRun, deleteStrategy, finishRun, getDefaults, getMarks, getRunById, getStrategy, listStrategies, recentRuns, saveDefaults, saveStrategy, setArmed } from '../services/algo/algo-store.js';
-import { enterNow, exitAll, liveState, previewEntry } from '../services/algo/algo-service.js';
+import { enterNow, exitAll, liveState, marketReport, previewEntry } from '../services/algo/algo-service.js';
 import { loadInsights, ownRunStats } from '../services/algo/insights-service.js';
 import { paperBroker } from '../services/algo/brokers.js';
 import { liveBroker } from '../services/algo/live-entry.js';
@@ -131,6 +131,15 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
       return r.ok ? { success: true, dry: r.dry, detail: r.detail, run: r.run } : bad(reply, r.reason, 422);
     } catch (e) {
       return bad(reply, (e as Error).message, 502);
+    }
+  });
+
+  // "Market condition" in Ask me: the whole market read for a short strangle seller (trend, patterns, indicators, IV and gamma, verdict).
+  fastify.get('/market-report', { ...auth, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (_req, reply) => {
+    try {
+      return { success: true, report: await marketReport() };
+    } catch (e) {
+      return bad(reply, `market data unavailable: ${(e as Error).message}`, 502);
     }
   });
 

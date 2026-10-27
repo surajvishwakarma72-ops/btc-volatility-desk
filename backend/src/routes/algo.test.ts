@@ -67,7 +67,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 describe('algo API', () => {
   it('needs a login on every route', async () => {
     const app = await build();
-    for (const [m, u] of [['GET', '/algo/state'], ['GET', '/algo/events'], ['POST', '/algo/strategies'], ['POST', '/algo/preview'], ['POST', '/algo/enter-now'], ['POST', '/algo/exit-all'], ['GET', '/algo/defaults'], ['PUT', '/algo/defaults'], ['POST', '/algo/adopt']] as const) {
+    for (const [m, u] of [['GET', '/algo/state'], ['GET', '/algo/events'], ['POST', '/algo/strategies'], ['POST', '/algo/preview'], ['POST', '/algo/enter-now'], ['POST', '/algo/exit-all'], ['GET', '/algo/market-report'], ['GET', '/algo/defaults'], ['PUT', '/algo/defaults'], ['POST', '/algo/adopt']] as const) {
       expect((await app.inject({ method: m, url: u })).statusCode, `${m} ${u}`).toBe(401);
     }
     await app.close();
@@ -250,6 +250,21 @@ describe('algo API', () => {
     expect(h.closed).toEqual([]); // paper untouched
     const odd = await app.inject({ method: 'POST', url: '/algo/exit-all', headers: tok(app, U), payload: { scope: 'nonsense' } });
     expect(odd.json()).toMatchObject({ scope: 'both', paperClosed: 1 });
+    await app.close();
+  });
+
+  it('market-report answers with the whole market read, and says plainly when there are no candles yet', async () => {
+    const app = await build();
+    const r = await app.inject({ method: 'GET', url: '/algo/market-report', headers: tok(app, U) });
+    expect(r.statusCode).toBe(200);
+    const rep = r.json().report;
+    expect(rep.spot).toBe(100_000);
+    expect(['go', 'wait', 'avoid']).toContain(rep.recommendation.verdict);
+    expect(rep.recommendation.verdict).toBe('wait'); // the mocked market has no candles
+    expect(rep.recommendation.reasons.join(' ')).toMatch(/not enough candles/i);
+    expect(rep.iv.atm).toBeTruthy(); // the ATM row comes from the mocked chain
+    expect(rep.iv.legs.length).toBe(2); // and the two short legs the default strangle would pick
+    expect(rep.tiles.some((t: { id: string }) => t.id === 'gate')).toBe(true);
     await app.close();
   });
 

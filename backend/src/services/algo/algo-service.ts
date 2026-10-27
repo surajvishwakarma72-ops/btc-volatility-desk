@@ -13,7 +13,9 @@ import { loadMarket } from './algo-runtime.js';
 import { loadInsights } from './insights-service.js';
 import { speedVsIv } from '../../lib/algo/conditions.js';
 import { compareToAtm, decayToExitUsd, estimateProfit, thetaPerDayUsd, type ProfitEstimate } from '../../lib/algo/profit.js';
-import { entryState, exitAtMs, windowOn, type EntryWindow } from '../../lib/algo/rule.js';
+import { defaultStrangle, entryState, exitAtMs, windowOn, type EntryWindow } from '../../lib/algo/rule.js';
+import { buildMarketReport, type MarketReport } from '../../lib/algo/market-report.js';
+import { planOptionEntry } from '../../lib/algo/plan.js';
 import { deltaSignedGet } from '../../routes/delta.js';
 import { loadDeltaKey } from '../delta-keys.js';
 import { DESK_USER_ID } from '../auth-store.js';
@@ -209,6 +211,37 @@ export async function enterNow(userId: string, rule: AlgoStrategy, lots: number,
     reason: placed.dry ? placed.detail : why, plan: { rule, plan, why }, ref: placed.ref, windowStart: now, enteredAt: placed.dry ? null : now, exitAt: null,
   });
   return { ok: true, run, dry: !!placed.dry, detail: placed.detail, plan, why };
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+let reportCache: { at: number; v: MarketReport } | null = null;
+
+/**
+ * "Market condition" in Ask me: the whole market read for a short strangle seller. Built from the same live candles, option chain,
+ * IV history and desk gate the entry conditions use. Cached for 20 s so a few people asking at once cost one read.
+ */
+export async function marketReport(): Promise<MarketReport> {
+  const now = Date.now();
+  if (reportCache && now - reportCache.at < 20_000) return reportCache.v;
+  const m = await loadMarket(true, true);
+  const rule = defaultStrangle();
+  const exps = m.expiries.filter((e) => e - now > 2 * 3_600_000).sort((a, b) => a - b);
+  const e = exps[0];
+  let atm: Parameters<typeof buildMarketReport>[0]['atm'] = null;
+  if (e != null) {
+    const row = m.chain.filter((o) => o.expiryMs === e);
+    if (row.length) {
+      const k = row.reduce((b, o) => (Math.abs(o.strike - m.spot) < Math.abs(b - m.spot) ? o.strike : b), row[0]!.strike);
+      const at = row.filter((o) => o.strike === k), avg = (xs: Array<number | undefined>) => { const v = xs.filter((x): x is number => x != null && Number.isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+      const call = at.find((o) => o.type === 'call'), put = at.find((o) => o.type === 'put'), d = new Date(e);
+      atm = { expiryLabel: `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`, hoursLeft: (e - now) / 3_600_000, strike: k, iv: avg(at.map((o) => o.iv)), gamma: avg(at.map((o) => o.gamma)), theta: avg(at.map((o) => o.theta)), straddle: call && put ? call.mark + put.mark : null };
+    }
+  }
+  const p = planOptionEntry(rule, m.chain, m.expiries, m.spot, 1, now);
+  const legs = p.ok ? p.legs.filter((l) => l.side === 'sell').map((l) => ({ type: l.type, strike: l.strike, delta: l.delta, gamma: l.gamma ?? null, iv: l.iv ?? null, price: l.bid })) : null;
+  const v = buildMarketReport({ nowMs: now, spot: m.spot, bars5m: m.bars5m, atmIv: atmIvOf(rule, m, now), dvol: m.dvol, gateGo: m.gateGo, gateReasons: m.gateReasons, hist: m.hist, clock: m.clock, atm, legs });
+  reportCache = { at: now, v };
+  return v;
 }
 
 /** Close everything: open paper strategies, loose paper positions, and (only if a trade key exists) real option positions. */

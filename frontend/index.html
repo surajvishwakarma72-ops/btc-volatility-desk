@@ -61673,6 +61673,8 @@ document.addEventListener('click', function(e) {
     if (/\b(day ?wise|day-wise|by day|per day|each day|weekday ?wise|by weekday|strategy ?wise|by strategy|which day)\b/.test(q) && /\b(pnl|p&l|profit|performance|results?|score|good|best|works?)\b/.test(q)) return { kind: 'dayscore' };
     if (/^(open |show )?(the )?score( page)?$/.test(q)) return { kind: 'dayscore' };
     if (/\b(indicators?|signals?)\b/.test(q) && /\b(futures?|options?|strangle|algo|trading|trade)\b/.test(q) && /\b(best|top|which|recommend\w*|suggest\w*|work\w*|learn\w*|use)\b/.test(q)) return { kind: 'insight', which: /\bfutures?\b/.test(q) && !/\boptions?\b/.test(q) ? 'future' : /\b(options?|strangle)\b/.test(q) && !/\bfutures?\b/.test(q) ? 'option' : 'both' };
+    // "market condition": the whole market as pictures, with a verdict for a short strangle
+    if (/^(?:please )?(?:(?:show|give|check|tell|open)(?: me)?\s+)?(?:what(?:'s| is| are)\s+)?(?:the\s+|my\s+)?(?:(?:current|today'?s?|btc|live|full)\s+)*market\s+(?:conditions?|view|status|summary|overview|check|picture|mood|report|read)(?:\s+(?:now|today|right now))?\s*\??$/.test(q) || /^(?:please )?how(?:'s| is) (?:the )?market(?: (?:now|today|looking))?\s*\??$/.test(q) || /^(?:please )?is (?:the )?market (?:good|ok|okay|fine|safe|suitable|right)(?: now| today)?(?: for (?:a )?(?:short )?(?:strangle|selling|sell|selling options))?\s*\??$/.test(q) || /^(?:please )?(?:should i|can i|shall i) (?:sell|enter|trade|short)(?: a)?(?: short)?(?: strangle| now| today)*\s*\??$/.test(q)) return { kind: 'market' };
     if ((m = /^(?:please )?(?:exit|exit all|close all|kill all|kill|square ?off(?: all)?|exit everything|close everything|exit all positions|close all positions|kill all positions)\s+(paper|live|real|delta)$/.exec(q))) return { kind: 'exitpick', mode: m[1] === 'paper' ? 'paper' : 'live' };
     if (/^(?:please )?(?:exit|exit all|close all|kill all|kill|hard exit|hard kill|square ?off|square off all|exit everything|close everything|exit all positions|close all positions|kill all positions)(?: now)?$/.test(q)) return { kind: 'exit' };
     // "entry" on its own starts the guided questions: capital, lots, option or future, paper or live, now or schedule
@@ -61771,6 +61773,7 @@ document.addEventListener('click', function(e) {
       if (T.stage === 'builder') return place();
       if (T.stage === 'exit') return askExit(); // "ok" is not enough here: it has to be said which one, Paper or Live
     }
+    if (cmd.kind === 'market') return marketView();
     if (cmd.kind === 'exit') return askExit();
     if (cmd.kind === 'exitpick') return killAll(cmd.mode);
     if (cmd.kind === 'default') {
@@ -61873,6 +61876,11 @@ document.addEventListener('click', function(e) {
       reset(); return msg('done', { c, runId: res && res.run ? res.run.id : null });
     } catch (e) { return msg('text', { text: 'The order was NOT placed: ' + e.message }); }
   }
+  /** "market condition": read the whole market (trend, patterns, every indicator, IV and gamma) and give the verdict for a short strangle. */
+  async function marketView() {
+    try { const d = await api('/market-report'); return msg('market', { rep: d.report }); }
+    catch (e) { return msg('text', { text: 'I could not read the market just now: ' + e.message + '. Try again in a moment.' }); }
+  }
   /** "exit": show what is open and ask which side to close, Paper or Live. */
   async function askExit() {
     let open = null; try { open = await api('/open-positions'); } catch (e) { open = null; }
@@ -61888,6 +61896,63 @@ document.addEventListener('click', function(e) {
   /* ---------- drawing ---------- */
   const words = r => (window.algoPage && window.algoPage.words) ? window.algoPage.words(r, 1) : r.name;
   function condList(list) { return list && list.length ? '<ul class="at-cl">' + list.map(c => '<li class="' + (c.ok ? 'ok' : 'no') + '">' + (c.ok ? '✓ ' : '✗ ') + esc(c.label) + ' <span>· ' + esc(c.now) + '</span></li>').join('') + '</ul>' : ''; }
+  /** "market condition": the whole market as pictures (trend meter, candles with EMAs and Bollinger, indicator tiles, IV against realised vol), then the verdict. Everything drawn comes from /algo/market-report. */
+  function marketCard(r) {
+    const POS = 'var(--down,#35BB7D)', NEG = 'var(--up,#EF5A5E)', AMB = '#d97706', MUT = 'var(--muted,#8fa3b5)'; // this desk's own green (--down) and red (--up), as the other chat cards use
+    const sigCol = s => s === 'calm' ? POS : s === 'caution' ? NEG : MUT;
+    const n1 = x => x == null || !isFinite(x) ? '–' : (+x).toFixed(1);
+    const rec = r.recommendation, vcol = rec.verdict === 'go' ? POS : rec.verdict === 'wait' ? AMB : NEG;
+    const vword = rec.verdict === 'go' ? 'GO' : rec.verdict === 'wait' ? 'WAIT' : 'AVOID';
+    const W = 320;
+    // 1. the trend meter
+    const tx = Math.max(8, Math.min(W - 8, (r.trend.score + 100) / 200 * W)), tcol = r.trend.label === 'bullish' ? POS : r.trend.label === 'bearish' ? NEG : AMB;
+    const meter = '<svg viewBox="0 0 ' + W + ' 54" width="100%" role="img" aria-label="Trend: ' + esc(r.trend.label) + '"><defs><linearGradient id="mrG" x1="0" x2="1"><stop offset="0" stop-color="#dc2626"/><stop offset="0.5" stop-color="#94a3b8" stop-opacity="0.6"/><stop offset="1" stop-color="#16a34a"/></linearGradient></defs>' +
+      '<rect x="0" y="22" width="' + W + '" height="12" rx="6" fill="url(#mrG)" opacity="0.9"/><polygon points="' + (tx - 7) + ',10 ' + (tx + 7) + ',10 ' + tx + ',22" fill="' + tcol + '"/><circle cx="' + tx + '" cy="28" r="7" fill="#fff" stroke="' + tcol + '" stroke-width="3"/>' +
+      '<text x="0" y="50" font-size="10" fill="' + MUT + '">Bearish</text><text x="' + (W / 2) + '" y="50" font-size="10" text-anchor="middle" fill="' + MUT + '">Sideways</text><text x="' + W + '" y="50" font-size="10" text-anchor="end" fill="' + MUT + '">Bullish</text></svg>';
+    // 2. the price picture: 15 minute closes, EMA 20 and 50, the Bollinger band and the day's VWAP
+    const c = r.chart, nC = c.closes.length;
+    let chart = '<div class="at-fine">Not enough candles to draw the chart yet.</div>';
+    if (nC > 2) {
+      const vals = c.closes.concat(c.upper.filter(x => x != null), c.lower.filter(x => x != null));
+      const lo = Math.min.apply(null, vals), hi = Math.max.apply(null, vals), H = 120, pad = (hi - lo) * 0.06 || 1;
+      const X = i => (i / (nC - 1) * W).toFixed(1), Y = v => (H - (v - lo + pad) / (hi - lo + 2 * pad) * H).toFixed(1);
+      const line = (arr, col, w, dash) => { const pts = arr.map((v, i) => v == null ? null : X(i) + ',' + Y(v)).filter(Boolean); return pts.length > 1 ? '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + col + '" stroke-width="' + w + '"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + ' stroke-linejoin="round"/>' : ''; };
+      const up = c.upper.map((v, i) => v == null ? null : X(i) + ',' + Y(v)).filter(Boolean), dn = c.lower.map((v, i) => v == null ? null : X(i) + ',' + Y(v)).filter(Boolean).reverse();
+      chart = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" role="img" aria-label="BTC price, last 16 hours">' +
+        (up.length > 1 ? '<polygon points="' + up.concat(dn).join(' ') + '" fill="#94a3b8" opacity="0.16"/>' : '') +
+        (c.vwap != null && c.vwap > lo - pad && c.vwap < hi + pad ? '<line x1="0" x2="' + W + '" y1="' + Y(c.vwap) + '" y2="' + Y(c.vwap) + '" stroke="#a855f7" stroke-width="1" stroke-dasharray="4 3"/>' : '') +
+        line(c.ema50, '#3b82f6', 1.2) + line(c.ema20, '#d97706', 1.2) + line(c.closes, 'currentColor', 1.8) +
+        '<circle cx="' + X(nC - 1) + '" cy="' + Y(c.closes[nC - 1]) + '" r="3.2" fill="' + tcol + '"/></svg>' +
+        '<div class="at-fine"><span style="color:#d97706">&#9632;</span> EMA 20 &nbsp;<span style="color:#3b82f6">&#9632;</span> EMA 50 &nbsp;<span style="color:#a855f7">&#9632;</span> VWAP (24h) &nbsp;<span style="opacity:.6">&#9632;</span> Bollinger band &nbsp;· last 16 hours, 15 minute candles · now ' + Math.round(r.spot) + '</div>';
+    }
+    // 3. every indicator as a coloured tile
+    const GN = { trend: 'Trend direction', strength: 'Trend strength', momentum: 'Momentum', volatility: 'Price volatility', iv: 'Implied volatility', gate: 'Desk gate' };
+    const tiles = Object.keys(GN).map(g => { const ts = r.tiles.filter(t => t.group === g); return ts.length ? '<div class="at-fine" style="margin:8px 0 3px;font-weight:600">' + GN[g] + '</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:5px">' + ts.map(t => '<div title="' + esc(t.note) + '" style="border-left:4px solid ' + sigCol(t.signal) + ';padding:3px 6px;background:rgba(127,127,127,.09);border-radius:4px"><div style="font-size:10.5px;opacity:.75">' + esc(t.label) + '</div><div style="font-weight:600;font-size:12px">' + esc(t.value) + '</div><div style="font-size:10px;opacity:.7">' + esc(t.note) + '</div></div>').join('') + '</div>' : ''; }).join('');
+    const tot = Math.max(1, r.counts.calm + r.counts.caution + r.counts.neutral), pw = k => (r.counts[k] / tot * W).toFixed(1);
+    const score = '<svg viewBox="0 0 ' + W + ' 30" width="100%" role="img" aria-label="Indicator scoreboard"><rect x="0" y="4" width="' + pw('calm') + '" height="14" fill="' + POS + '" rx="3"/><rect x="' + pw('calm') + '" y="4" width="' + pw('neutral') + '" height="14" fill="#94a3b8" opacity="0.6"/><rect x="' + (+pw('calm') + +pw('neutral')) + '" y="4" width="' + pw('caution') + '" height="14" fill="' + NEG + '" rx="3"/>' +
+      '<text x="0" y="29" font-size="10" fill="' + MUT + '">' + r.counts.calm + ' calm for a seller</text><text x="' + (W / 2) + '" y="29" font-size="10" text-anchor="middle" fill="' + MUT + '">' + r.counts.neutral + ' neutral</text><text x="' + W + '" y="29" font-size="10" text-anchor="end" fill="' + MUT + '">' + r.counts.caution + ' caution</text></svg>';
+    // 4. implied against realised volatility: the gamma and IV picture
+    const iv = r.iv, bars = [['ATM IV', iv.atmIv, '#7c3aed'], ['DVOL', iv.dvol, '#a78bfa'], ['Realised 24h', iv.rv24, '#0891b2'], ['Expected realised', iv.expectedRv, '#06b6d4']].filter(b => b[1] != null);
+    const mx = Math.max.apply(null, bars.map(b => b[1]).concat([1]));
+    const ivSvg = bars.length ? '<svg viewBox="0 0 ' + W + ' ' + (bars.length * 22 + 4) + '" width="100%" role="img" aria-label="Implied against realised volatility">' + bars.map((b, i) => '<text x="0" y="' + (i * 22 + 14) + '" font-size="10.5" fill="' + MUT + '">' + b[0] + '</text><rect x="104" y="' + (i * 22 + 4) + '" width="' + Math.max(2, b[1] / mx * (W - 150)).toFixed(1) + '" height="13" rx="3" fill="' + b[2] + '"/><text x="' + (108 + b[1] / mx * (W - 150)).toFixed(1) + '" y="' + (i * 22 + 14.5) + '" font-size="10.5" fill="currentColor">' + n1(b[1]) + '</text>').join('') + '</svg>' : '';
+    const edgeCol = iv.edge == null ? MUT : iv.edge >= 3 ? POS : iv.edge < 0 ? NEG : AMB;
+    const legs = iv.legs.length ? '<table style="width:100%;font-size:11.5px;border-collapse:collapse;margin-top:6px"><tr style="opacity:.7;text-align:left"><th>Short leg</th><th>Gamma vs ATM</th><th>IV vs ATM</th><th>From spot</th></tr>' + iv.legs.map(l => '<tr><td>' + esc(l.type) + ' ' + l.strike + ' (Δ ' + n1(l.delta * 100) + ')</td><td>' + (l.gammaPctOfAtm == null ? '–' : n1(l.gammaPctOfAtm) + '%') + '</td><td>' + (l.ivVsAtm == null ? '–' : (l.ivVsAtm >= 0 ? '+' : '') + n1(l.ivVsAtm)) + '</td><td>' + (l.distancePct >= 0 ? '+' : '') + n1(l.distancePct) + '%' + (l.sigmas24h == null ? '' : ' · ' + n1(l.sigmas24h) + 'σ') + '</td></tr>').join('') + '</table>' : '';
+    const li = a => '<ul class="at-ul">' + a.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+    return '<div class="at-card" style="max-width:100%">' +
+      '<div class="at-h" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span style="background:' + vcol + ';color:#fff;border-radius:6px;padding:2px 10px;font-weight:700">' + vword + '</span><span>' + esc(rec.headline) + '</span></div>' +
+      '<div class="at-sub" style="margin:6px 0">' + esc(r.summary) + '</div>' +
+      '<div class="at-fine" style="font-weight:600;margin-top:6px">Market direction: <span style="color:' + tcol + '">' + esc(r.trend.label.toUpperCase()) + '</span></div>' + meter + li(r.trend.why) +
+      '<div class="at-fine" style="font-weight:600;margin-top:8px">Price picture</div>' + chart +
+      (r.patterns.length ? '<div class="at-fine" style="font-weight:600;margin-top:8px">Patterns</div>' + li(r.patterns) : '<div class="at-fine" style="margin-top:6px">No clear pattern: no breakout, squeeze or one-way run.</div>') +
+      '<div class="at-fine" style="font-weight:600;margin-top:10px">All indicators</div>' + score + tiles +
+      '<div class="at-fine" style="font-weight:600;margin-top:12px">Implied vs realised volatility, and what that does to a strangle</div>' + ivSvg +
+      '<div class="at-sub" style="margin-top:4px">Edge: <b style="color:' + edgeCol + '">' + (iv.edge == null ? 'no data' : (iv.edge >= 0 ? '+' : '') + n1(iv.edge) + ' pts') + '</b>' + (iv.speed60 != null ? ' · price speed ' + iv.speed60.toFixed(2) + 'x what IV implies' : '') + (iv.sigma24hPct != null ? ' · IV implies a ±' + iv.sigma24hPct.toFixed(1) + '% one-day move' : '') + (iv.atm ? ' · ATM ' + iv.atm.strike + ' (' + esc(iv.atm.expiryLabel) + ')' + (iv.atm.straddle != null ? ', straddle ' + iv.atm.straddle.toFixed(0) : '') : '') + '</div>' + legs +
+      '<div class="at-sub" style="margin-top:6px"><b>Right now:</b> ' + esc(iv.drivers.now) + '</div>' +
+      '<div class="at-fine" style="margin-top:6px"><b style="color:' + POS + '">What gets a strangle to its target</b></div>' + li(iv.drivers.target) +
+      '<div class="at-fine"><b style="color:' + NEG + '">What gets it to its stop</b></div>' + li(iv.drivers.stop) +
+      '<div style="border:2px solid ' + vcol + ';border-radius:8px;padding:8px 10px;margin-top:10px"><div class="at-h" style="color:' + vcol + '">Final recommendation: ' + vword + ' for a short strangle</div>' + li(rec.reasons) + '<div class="at-fine">' + esc(rec.stopNote) + '</div></div>' +
+      '<div class="at-fine" style="margin-top:6px">A read of the conditions right now, not a forecast. Type "entry" to place a trade.</div></div>';
+  }
   /** The auto recommendation: a verdict, the reasons, and what it suggests for the order. */
   function recHtml(rc) {
     if (!rc) return '';
@@ -62096,6 +62161,7 @@ document.addEventListener('click', function(e) {
     if (m.kind === 'saved') {
       return '<div class="at-card"><div class="at-h">' + (m.shown ? 'Your saved default' : 'Saved as your default') + '</div><div class="at-sub">' + esc(words(m.rule)) + '</div><div class="at-fine">"entry 50" now uses this. Type "set default ..." to change it.</div></div>';
     }
+    if (m.kind === 'market') return marketCard(m.rep);
     if (m.kind === 'exit') {
       const o = m.open, p = o && o.paper ? o.paper : [], d = o && o.delta ? o.delta : [];
       return '<div class="at-card"><div class="at-h bad">Exit: Paper or Live?</div>' +
