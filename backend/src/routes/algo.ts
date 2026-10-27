@@ -138,7 +138,8 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post('/exit-all', limited, async (req, reply) => {
     try {
       await clearPending(userId(req));
-      return { success: true, ...(await exitAll(userId(req))) };
+      const scope = z.enum(['paper', 'live', 'both']).catch('both').parse((req.body as { scope?: unknown } | null)?.scope);
+      return { success: true, ...(await exitAll(userId(req), scope)) };
     } catch (e) {
       return bad(reply, (e as Error).message, 502);
     }

@@ -61666,12 +61666,14 @@ document.addEventListener('click', function(e) {
     if (pending === 'capital') { const v = parseCapital(q); if (v) return { kind: 'capital', inr: v }; }
     if (pending === 'lots') { const lm = /^(\d{1,6})(?:\s*lots?)?$/.exec(q); if (lm && Number(lm[1]) >= 1) return { kind: 'lotspick', lots: Number(lm[1]) }; }
     if (pending === 'mode') { if (/\blive\b/.test(q)) return { kind: 'modepick', mode: 'live' }; if (/\b(paper|test|demo)\b/.test(q)) return { kind: 'modepick', mode: 'paper' }; }
+    if (pending === 'exit') { if (/\b(live|real|delta)\b/.test(q)) return { kind: 'exitpick', mode: 'live' }; if (/\b(paper|test|demo)\b/.test(q)) return { kind: 'exitpick', mode: 'paper' }; }
     if (pending === 'when') { const c = parseWhen(q); if (c) return { kind: 'when', patch: Object.assign(parsePatch(q), c) }; }
     if (pending === 'choose') { const c = parseChoice(q); if (c) return { kind: 'choice', patch: Object.assign(parsePatch(q), c) }; }
     let m;
     if (/\b(day ?wise|day-wise|by day|per day|each day|weekday ?wise|by weekday|strategy ?wise|by strategy|which day)\b/.test(q) && /\b(pnl|p&l|profit|performance|results?|score|good|best|works?)\b/.test(q)) return { kind: 'dayscore' };
     if (/^(open |show )?(the )?score( page)?$/.test(q)) return { kind: 'dayscore' };
     if (/\b(indicators?|signals?)\b/.test(q) && /\b(futures?|options?|strangle|algo|trading|trade)\b/.test(q) && /\b(best|top|which|recommend\w*|suggest\w*|work\w*|learn\w*|use)\b/.test(q)) return { kind: 'insight', which: /\bfutures?\b/.test(q) && !/\boptions?\b/.test(q) ? 'future' : /\b(options?|strangle)\b/.test(q) && !/\bfutures?\b/.test(q) ? 'option' : 'both' };
+    if ((m = /^(?:please )?(?:exit|exit all|close all|kill all|kill|square ?off(?: all)?|exit everything|close everything|exit all positions|close all positions|kill all positions)\s+(paper|live|real|delta)$/.exec(q))) return { kind: 'exitpick', mode: m[1] === 'paper' ? 'paper' : 'live' };
     if (/^(?:please )?(?:exit|exit all|close all|kill all|kill|hard exit|hard kill|square ?off|square off all|exit everything|close everything|exit all positions|close all positions|kill all positions)(?: now)?$/.test(q)) return { kind: 'exit' };
     // "entry" on its own starts the guided questions: capital, lots, option or future, paper or live, now or schedule
     if ((m = /^(?:please )?(?:entry|enter|entre|new trade|place (?:a )?trade|start (?:a )?trade)(?:\s+((?:option|options|future|futures|perp|now|schedule\w*|paper|live|strangle|straddle|long|short)\b.*))?$/.exec(q))) return { kind: 'entry', lots: null, patch: Object.assign(parsePatch(m[1] || ''), /\blive\b/.test(m[1] || '') ? { mode: 'live' } : /\bpaper\b/.test(m[1] || '') ? { mode: 'paper' } : {}) };
@@ -61767,12 +61769,10 @@ document.addEventListener('click', function(e) {
     if (cmd.kind === 'ok') {
       if (T.stage === 'summary') { T.stage = 'builder'; return msg('builder', { snap: snap() }); }
       if (T.stage === 'builder') return place();
-      if (T.stage === 'exit') return killAll();
+      if (T.stage === 'exit') return askExit(); // "ok" is not enough here: it has to be said which one, Paper or Live
     }
-    if (cmd.kind === 'exit') {
-      let open = null; try { open = await api('/open-positions'); } catch (e) { open = null; }
-      T.stage = 'exit'; return msg('exit', { open });
-    }
+    if (cmd.kind === 'exit') return askExit();
+    if (cmd.kind === 'exitpick') return killAll(cmd.mode);
     if (cmd.kind === 'default') {
       if (!hasAny(cmd.patch)) return msg('text', { text: 'Tell me what to save, for example: set default delta 0.10, expiry current, stop 2x, entry 22:30, exit 07:00, days mon tue wed thu fri.' });
       const base = await loadDefaults(); const next = applyPatch(base, cmd.patch);
@@ -61873,9 +61873,14 @@ document.addEventListener('click', function(e) {
       reset(); return msg('done', { c, runId: res && res.run ? res.run.id : null });
     } catch (e) { return msg('text', { text: 'The order was NOT placed: ' + e.message }); }
   }
-  async function killAll() {
+  /** "exit": show what is open and ask which side to close, Paper or Live. */
+  async function askExit() {
+    let open = null; try { open = await api('/open-positions'); } catch (e) { open = null; }
+    T.stage = 'exit'; return msg('exit', { open });
+  }
+  async function killAll(scope) {
     try {
-      const r = await post('/exit-all'); reset();
+      const r = await post('/exit-all', { scope: scope === 'live' ? 'live' : 'paper' }); reset();
       return msg('killed', { r });
     } catch (e) { return msg('text', { text: 'Exit failed: ' + e.message + '. Check Delta and the Paper page.' }); }
   }
@@ -62093,14 +62098,17 @@ document.addEventListener('click', function(e) {
     }
     if (m.kind === 'exit') {
       const o = m.open, p = o && o.paper ? o.paper : [], d = o && o.delta ? o.delta : [];
-      return '<div class="at-card"><div class="at-h bad">Exit everything?</div>' +
-        '<ul class="at-ul">' + (p.length ? p.map(x => '<li>Paper · ' + esc(x.name) + '</li>').join('') : '<li>No open paper strategies</li>') + (d.length ? d.map(x => '<li>Delta · ' + esc(x.symbol) + ' ' + x.size + '</li>').join('') : '') + '</ul>' +
-        '<div class="at-fine">This closes every open paper strategy and position. Real Delta positions are closed only if a trading key is saved, live trading is armed and dry-run is off; otherwise they are listed in the order log and left alone.</div>' +
-        '<div class="at-act"><button type="button" class="at-btn bad" data-at="ok">Yes, kill all positions</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div></div>';
+      return '<div class="at-card"><div class="at-h bad">Exit: Paper or Live?</div>' +
+        '<ul class="at-ul">' + (p.length ? p.map(x => '<li>Paper · ' + esc(x.name) + '</li>').join('') : '<li>No open paper strategies</li>') + (d.length ? d.map(x => '<li>Delta · ' + esc(x.symbol) + ' ' + x.size + '</li>').join('') : '<li>No open Delta option positions</li>') + '</ul>' +
+        '<div class="at-fine"><b>Paper</b> closes every open paper strategy and position. <b>Live</b> closes every real Delta option position at market and cancels every pending order on Delta, the stop-losses included. Live sends real orders only if a trading key is saved, live trading is armed, dry-run is off and the server switch is on; otherwise nothing is sent and it says so.</div>' +
+        '<div class="at-act"><button type="button" class="at-btn" data-at="say" data-v="exit paper">Paper</button><button type="button" class="at-btn bad" data-at="say" data-v="exit live">Live: close all and cancel all orders</button><button type="button" class="at-btn" data-at="cancel">Cancel</button></div></div>';
     }
     if (m.kind === 'killed') {
       const r = m.r;
-      return '<div class="at-card done"><div class="at-h ok">All positions killed</div><div class="at-kv"><span>Paper strategies closed</span><b>' + r.paperClosed + '</b><span>Loose paper positions closed</span><b>' + r.paperPositions + '</b>' + (r.live ? '<span>Real Delta</span><b>' + esc(r.live.message) + '</b>' : '') + '</div></div>';
+      const liveOnly = r.scope === 'live', sent = r.live && r.live.sent;
+      return '<div class="at-card done"><div class="at-h ' + (liveOnly && !sent ? 'bad' : 'ok') + '">' + (liveOnly ? (sent ? 'Live: positions closed and orders cancelled' : 'Live: nothing was closed') : 'Paper positions closed') + '</div><div class="at-kv">' +
+        (liveOnly ? '' : '<span>Paper strategies closed</span><b>' + r.paperClosed + '</b><span>Loose paper positions closed</span><b>' + r.paperPositions + '</b>') +
+        (r.live ? '<span>Real Delta</span><b>' + esc(r.live.message) + '</b>' : '') + (r.live && r.live.cancelled != null ? '<span>Pending orders cancelled</span><b>' + r.live.cancelled + '</b>' : '') + '</div></div>';
     }
     return '';
   }

@@ -212,7 +212,14 @@ export async function enterNow(userId: string, rule: AlgoStrategy, lots: number,
 }
 
 /** Close everything: open paper strategies, loose paper positions, and (only if a trade key exists) real option positions. */
-export async function exitAll(userId: string): Promise<{ paperClosed: number; paperPositions: number; live: { sent: boolean; message: string } | null }> {
+export type ExitScope = 'paper' | 'live' | 'both';
+
+/** scope: 'paper' closes only the paper side, 'live' closes the real Delta positions at market and cancels every pending order, 'both' is the older all-in-one exit. */
+export async function exitAll(userId: string, scope: ExitScope = 'both'): Promise<{ scope: ExitScope; paperClosed: number; paperPositions: number; live: { sent: boolean; message: string; cancelled?: number } | null }> {
+  if (scope === 'live') {
+    const live = await killAllLive(userId, { market: true, cancelPending: true }).catch((e: Error) => ({ sent: false, message: `Could not reach Delta (${e.message}). Close the real positions and cancel the orders on Delta yourself.` }));
+    return { scope, paperClosed: 0, paperPositions: 0, live };
+  }
   const t = paperFor(userId);
   const strategies = await t.strategies(0);
   let paperClosed = 0;
@@ -228,10 +235,10 @@ export async function exitAll(userId: string): Promise<{ paperClosed: number; pa
     await t.place({ symbol: p.symbol, side: p.lots > 0 ? 'sell' : 'buy', type: 'market', lots: Math.abs(p.lots), reduceOnly: true });
     paperPositions++;
   }
-  let live: { sent: boolean; message: string } | null = null;
-  if ((await deltaKeyStatus(userId, 'trade')).connected) {
+  let live: { sent: boolean; message: string; cancelled?: number } | null = null;
+  if (scope === 'both' && (await deltaKeyStatus(userId, 'trade')).connected) {
     // the paper side is already closed; a Delta problem must be reported, not hide that
     live = await killAllLive(userId).catch((e: Error) => ({ sent: false, message: `Could not reach Delta (${e.message}). Close the real positions on Delta yourself.` }));
   }
-  return { paperClosed, paperPositions, live };
+  return { scope, paperClosed, paperPositions, live };
 }

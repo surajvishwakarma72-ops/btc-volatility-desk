@@ -226,6 +226,33 @@ describe('algo API', () => {
     await app.close();
   });
 
+  it("exit-all with scope 'paper' closes paper only and never touches Delta", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const app = await build();
+    h.strategiesOpen = [{ id: 's-9' }];
+    h.closed = [];
+    const r = await app.inject({ method: 'POST', url: '/algo/exit-all', headers: tok(app, U), payload: { scope: 'paper' } });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({ scope: 'paper', paperClosed: 1, live: null });
+    expect(h.closed).toEqual(['s-9']);
+    await app.close();
+  });
+
+  it("exit-all with scope 'live' leaves paper alone and reports Delta, and an unknown scope falls back to the older both", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    const app = await build();
+    h.strategiesOpen = [{ id: 's-8' }];
+    h.closed = [];
+    const live = await app.inject({ method: 'POST', url: '/algo/exit-all', headers: tok(app, U), payload: { scope: 'live' } });
+    expect(live.statusCode).toBe(200);
+    expect(live.json()).toMatchObject({ scope: 'live', paperClosed: 0 });
+    expect(live.json().live).toBeTruthy();
+    expect(h.closed).toEqual([]); // paper untouched
+    const odd = await app.inject({ method: 'POST', url: '/algo/exit-all', headers: tok(app, U), payload: { scope: 'nonsense' } });
+    expect(odd.json()).toMatchObject({ scope: 'both', paperClosed: 1 });
+    await app.close();
+  });
+
   it('adopts an open paper strategy and refuses unknown ones', async () => {
     const app = await build();
     const exit = defaultStrangle().exit;

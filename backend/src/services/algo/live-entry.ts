@@ -1,6 +1,6 @@
 import { deltaGet } from '../bot/delta-public.js';
 import { fetchBook, type Book } from '../bot/delta-public.js';
-import { deltaSignedDelete, deltaSignedPost } from '../../routes/delta.js';
+import { deltaSignedDelete, deltaSignedGet, deltaSignedPost } from '../../routes/delta.js';
 import { placeStop, stopLimitPrice } from '../watch/stop-order.js';
 import { loadDeltaKey } from '../delta-keys.js';
 import { logWatchEvent, getWatchConfig } from '../watch/watch-store.js';
@@ -250,20 +250,71 @@ export const liveBroker = makeLiveBroker(realLiveEntryDeps);
 
 /** "exit" in Ask me for real positions: close every BTC option position, expiry by expiry, through the hard-exit path and its locks. */
 const killer = new LiveExit(realLiveExitDeps((s) => ticks.get(s) ?? 0.5));
-export async function killAllLive(userId: string): Promise<{ sent: boolean; message: string }> {
+
+export interface PendingOrder { id: number; productId: number; symbol: string; state: string; reduceOnly: boolean; stop: boolean }
+export interface OrderApi {
+  list(key: string, secret: string): Promise<PendingOrder[]>;
+  cancel(key: string, secret: string, o: PendingOrder): Promise<{ ok: boolean; errorText: string }>;
+  log(userId: string, kind: string, detail: string): Promise<void>;
+}
+const realOrderApi: OrderApi = {
+  async list(key, secret) {
+    const r = await deltaSignedGet(key, secret, '/v2/orders', 'states=open,pending&contract_types=call_options,put_options');
+    if (!r.ok) throw new Error(r.errorText || String(r.status));
+    return (((r.body as any)?.result ?? []) as any[]).map((o) => ({ id: Number(o.id), productId: Number(o.product_id), symbol: String(o.product_symbol ?? ''), state: String(o.state ?? ''), reduceOnly: !!o.reduce_only, stop: !!o.stop_order_type }));
+  },
+  async cancel(key, secret, o) {
+    const r = await deltaSignedDelete(key, secret, '/v2/orders', { id: o.id, product_id: o.productId });
+    return { ok: r.ok, errorText: r.errorText || String(r.status) };
+  },
+  log: (userId, kind, detail) => logWatchEvent(userId, kind, detail, { dryRun: false }),
+};
+
+/**
+ * Cancel the user's pending BTC option orders on Delta. 'resting' = the limit orders sitting in the book (anything that could still add to
+ * or change a position), done BEFORE the positions are closed; 'all' = everything left, the stop orders included, done AFTER. Returns how many
+ * were cancelled. Only called with the locks open.
+ */
+export async function cancelPendingOrders(userId: string, creds: { key: string; secret: string }, which: 'resting' | 'all', api: OrderApi = realOrderApi): Promise<number> {
+  const orders = (await api.list(creds.key, creds.secret)).filter((o) => which === 'all' || (o.state === 'open' && !(o.stop && o.reduceOnly)));
+  let n = 0;
+  for (const o of orders) {
+    const r = await api.cancel(creds.key, creds.secret, o).catch((e: Error) => ({ ok: false, errorText: e.message }));
+    if (r.ok) n++;
+    await api.log(userId, r.ok ? 'exit_cancel_order' : 'exit_cancel_failed', r.ok ? `Exit: cancelled the ${o.stop ? 'stop' : 'pending'} order ${o.id} on ${o.symbol}.` : `Exit: could not cancel order ${o.id} on ${o.symbol}: ${r.errorText}.`).catch(() => undefined);
+  }
+  return n;
+}
+
+export async function killAllLive(userId: string, opts: { market?: boolean; cancelPending?: boolean } = {}, api: OrderApi = realOrderApi): Promise<{ sent: boolean; message: string; cancelled?: number }> {
   const cfg = await getWatchConfig(userId, 0);
   const creds = await loadDeltaKey(userId, 'trade');
   if (!creds) return { sent: false, message: 'No trading key is saved, so no real position can be closed from here.' };
   await refreshTicks().catch(() => undefined);
   const positions = await fetchOptionPositions(creds.key, creds.secret);
   const expiries = [...new Set(positions.map((p) => expiryOf(p.symbol)))];
-  if (!expiries.length) return { sent: false, message: 'There are no open BTC option positions on Delta.' };
+  const unlocked = cfg.liveArmed && !cfg.dryRun && process.env.LIVE_TRADING_ENABLED === 'true';
+  const cancelling = !!opts.cancelPending && unlocked;
+  let cancelled = 0;
+  // orders that are resting in the book go first, so none of them can fill and change the position while it is being closed
+  if (cancelling) cancelled += await cancelPendingOrders(userId, creds, 'resting', api).catch(() => 0);
+  if (!expiries.length) {
+    if (cancelling) cancelled += await cancelPendingOrders(userId, creds, 'all', api).catch(() => 0);
+    return { sent: cancelled > 0, cancelled: cancelling ? cancelled : undefined, message: cancelling ? `There are no open BTC option positions on Delta. Cancelled ${cancelled} pending order${cancelled === 1 ? '' : 's'}.` : 'There are no open BTC option positions on Delta.' };
+  }
   const results: string[] = [];
   for (const ex of expiries) {
-    const r = await killer.run(userId, { group: ex, label: `Ask me exit, expiry ${ex}`, legs: [] }, { liveArmed: cfg.liveArmed, dryRun: cfg.dryRun });
+    const r = await killer.run(userId, { group: ex, label: `Ask me exit, expiry ${ex}`, legs: [] }, { liveArmed: cfg.liveArmed, dryRun: cfg.dryRun }, { market: opts.market, reason: opts.market ? 'Ask me exit (live): closing everything at market' : undefined });
     results.push(`${ex}: ${r}`);
   }
   const blocked = results.some((x) => x.endsWith('blocked'));
   const dry = results.some((x) => x.endsWith('dry'));
-  return { sent: !blocked && !dry, message: blocked ? 'Live trading is locked (arm it in Settings first), so nothing was sent.' : dry ? 'Dry-run is on: the closing orders were written to the event list but NOT sent.' : `Closing orders sent (${results.join(', ')}).` };
+  // the positions are closed (or were being): now the stops and anything else still pending
+  if (cancelling && !blocked && !dry) cancelled += await cancelPendingOrders(userId, creds, 'all', api).catch(() => 0);
+  const still = results.filter((x) => !/(done|flat)$/.test(x));
+  const tail = cancelling && !blocked && !dry ? ` Cancelled ${cancelled} pending order${cancelled === 1 ? '' : 's'}.` : '';
+  return {
+    sent: !blocked && !dry, cancelled: cancelling && !blocked && !dry ? cancelled : undefined,
+    message: blocked ? 'Live trading is locked (arm it in Settings first), so nothing was sent.' : dry ? 'Dry-run is on: the closing orders were written to the event list but NOT sent.' : `${still.length ? `Closing orders sent (${results.join(', ')}); check Delta, some may still be open.` : `Every option position is closed (${results.join(', ')}).`}${tail}`,
+  };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { makeLiveBroker, type LiveEntryDeps } from './live-entry.js';
+import { cancelPendingOrders, makeLiveBroker, type LiveEntryDeps, type OrderApi, type PendingOrder } from './live-entry.js';
 import { defaultStrangle } from '../../lib/algo/rule.js';
 import type { EntryPlan } from './algo-engine.js';
 import type { OptionPosition } from '../watch/live-exit.js';
@@ -206,5 +206,45 @@ describe('live status and close', () => {
     const r = rig();
     const st = await r.broker.status('u', JSON.stringify({ symbols: ['C-BTC-105000-271026'] }));
     expect(st?.open).toBe(false);
+  });
+});
+
+describe('exit live: cancelling the pending orders', () => {
+  const orders: PendingOrder[] = [
+    { id: 1, productId: 11, symbol: 'C-BTC-1-271026', state: 'open', reduceOnly: false, stop: false },   // a limit order resting in the book
+    { id: 2, productId: 22, symbol: 'P-BTC-1-271026', state: 'pending', reduceOnly: true, stop: true },    // a stop-loss waiting for its trigger
+    { id: 3, productId: 33, symbol: 'C-BTC-2-271026', state: 'pending', reduceOnly: false, stop: true },   // an entry stop
+    { id: 4, productId: 44, symbol: 'P-BTC-2-271026', state: 'open', reduceOnly: true, stop: false },      // a resting closing order
+  ];
+  const api = (fail: number[] = []) => {
+    const cancelled: number[] = [], events: Array<{ kind: string; detail: string }> = [];
+    const a: OrderApi = {
+      list: async () => orders,
+      cancel: async (_k, _s, o) => { cancelled.push(o.id); return fail.includes(o.id) ? { ok: false, errorText: 'already_filled' } : { ok: true, errorText: '' }; },
+      log: async (_u, kind, detail) => { events.push({ kind, detail }); },
+    };
+    return { a, cancelled, events };
+  };
+  const creds = { key: 'k', secret: 's' };
+
+  it("'resting' takes the orders sitting in the book off first and leaves the stop-losses for after the close", async () => {
+    const r = api();
+    expect(await cancelPendingOrders('u', creds, 'resting', r.a)).toBe(2);
+    expect(r.cancelled.sort()).toEqual([1, 4]);
+  });
+  it("'all' cancels every pending order, stops included", async () => {
+    const r = api();
+    expect(await cancelPendingOrders('u', creds, 'all', r.a)).toBe(4);
+    expect(r.cancelled.sort()).toEqual([1, 2, 3, 4]);
+    expect(r.events.every((e) => e.kind === 'exit_cancel_order')).toBe(true);
+  });
+  it('counts only the ones Delta really cancelled and says which failed', async () => {
+    const r = api([2]);
+    expect(await cancelPendingOrders('u', creds, 'all', r.a)).toBe(3);
+    expect(r.events.find((e) => e.kind === 'exit_cancel_failed')?.detail).toMatch(/order 2.*already_filled/);
+  });
+  it('a failing list call throws, so the caller can report it instead of claiming success', async () => {
+    const a: OrderApi = { list: async () => { throw new Error('orders down'); }, cancel: async () => ({ ok: true, errorText: '' }), log: async () => undefined };
+    await expect(cancelPendingOrders('u', creds, 'all', a)).rejects.toThrow('orders down');
   });
 });

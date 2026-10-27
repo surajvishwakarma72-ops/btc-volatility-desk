@@ -24,6 +24,23 @@ const T = new Function(`${html.slice(a, b)}\nreturn { parseTrade, parsePatch, ap
 const base = () => JSON.parse(JSON.stringify(defaultStrangle()));
 const valid = (r: unknown) => strategySchema.safeParse(r).success;
 
+describe('exit asks Paper or Live', () => {
+  it('plain "exit" still opens the question', () => {
+    for (const q of ['exit', 'Exit all', 'kill all', 'close all positions', 'square off']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'exit' });
+  });
+  it('"exit live" and "exit paper" answer it straight away', () => {
+    for (const q of ['exit live', 'Exit live', 'kill all live', 'close all positions live', 'exit real', 'please exit delta']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'exitpick', mode: 'live' });
+    for (const q of ['exit paper', 'Exit Paper', 'close all paper']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'exitpick', mode: 'paper' });
+  });
+  it('once asked, a one-word answer picks the side', () => {
+    for (const q of ['live', 'Live', 'real', 'delta']) expect(T.parseTrade(q, 'exit'), q).toMatchObject({ kind: 'exitpick', mode: 'live' });
+    for (const q of ['paper', 'Paper', 'test']) expect(T.parseTrade(q, 'exit'), q).toMatchObject({ kind: 'exitpick', mode: 'paper' });
+  });
+  it('a bare "live" with no question open does not exit anything', () => {
+    expect(T.parseTrade('live')?.kind).not.toBe('exitpick');
+  });
+});
+
 describe('trade commands', () => {
   it('"entry 50" means 50 lots', () => {
     for (const q of ['entry 50', 'Entry 50', 'enter 50 lots', 'sell 50', 'please entry 50.']) expect(T.parseTrade(q), q).toMatchObject({ kind: 'entry', lots: 50 });
