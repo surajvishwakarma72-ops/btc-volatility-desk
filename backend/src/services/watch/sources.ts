@@ -4,6 +4,7 @@ import { DESK_USER_ID } from '../auth-store.js';
 import { loadDeltaKey, usersWithDeltaKey } from '../delta-keys.js';
 import { activePaperIds, marketFeed, peekPaper } from '../paper/paper-terminal.js';
 import { expiryOf, fetchOptionPositions, LiveExit, realLiveExitDeps, type OptionPosition } from './live-exit.js';
+import { AutoStop, realAutoStopDeps } from './auto-stop.js';
 import { observeReal } from './real-tracker.js';
 import { getWatchConfig } from './watch-store.js';
 import { WatchService, type WatchSources } from './watch.js';
@@ -55,7 +56,11 @@ async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[
   for (const r of snap.rows) ticks.set(r.symbol, r.tick);
   // live PnL of these real positions, recorded for the PnL analysis panel (also closes a run when its position is gone)
   const markOf = (s: string): number | null => { const m = by.get(s)?.mark; return m != null && m > 0 ? m : null; };
-  for (const l of lists) await observeReal(userId, l.account, l.list, markOf);
+  for (const l of lists) {
+    await observeReal(userId, l.account, l.list, markOf);
+    // the trading account's sold legs get a real 2x stop-loss on Delta; the read-only account is never touched
+    if (!l.watchOnly) await autoStop.run(userId, l.list).catch(() => undefined);
+  }
   if (!lists.some((l) => l.list.length)) return [];
   const out: WatchLeg[] = [];
   for (const { list, watchOnly } of lists) {
@@ -69,6 +74,7 @@ async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[
   return out;
 }
 
+const autoStop = new AutoStop(realAutoStopDeps((s) => ticks.get(s) ?? 0.5));
 const liveExit = new LiveExit(realLiveExitDeps((s) => ticks.get(s) ?? 0.5));
 
 export const realSources: WatchSources = {
