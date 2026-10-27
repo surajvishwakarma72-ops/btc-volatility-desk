@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { pool } from '../db/index.js';
+import { noteSessionReset } from './session-guard.js';
 
 /**
  * Accounts, invite codes and each user's stored Delta key. Created idempotently like the paper and bot tables, so a
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at timestamptz;
 CREATE TABLE IF NOT EXISTS desk_invites (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   code_hash text NOT NULL UNIQUE,
@@ -153,5 +155,7 @@ export async function consumeResetCode(userId: string, code: string): Promise<bo
 
 export async function setPasswordHash(userId: string, passwordHash: string): Promise<void> {
   await ensureAuthSchema();
-  await pool.query('UPDATE users SET password_hash = $2, updated_at = now() WHERE id = $1', [userId, passwordHash]);
+  const r = await pool.query('UPDATE users SET password_hash = $2, updated_at = now(), password_changed_at = now() WHERE id = $1 RETURNING password_changed_at', [userId, passwordHash]);
+  // every token issued before this moment stops working (see session-guard.ts)
+  noteSessionReset(userId, r.rows[0] ? new Date((r.rows[0] as any).password_changed_at).getTime() : Date.now());
 }

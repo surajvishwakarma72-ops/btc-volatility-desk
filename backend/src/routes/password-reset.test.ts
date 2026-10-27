@@ -19,6 +19,8 @@ vi.mock('../db/index.js', () => ({
 }));
 
 const { authRoutes } = await import('./auth.js');
+const { authenticate } = await import('../lib/authenticate.js');
+const { requireAdmin } = await import('../lib/guards.js');
 const { ensureAuthSchema, createUser } = await import('../services/auth-store.js');
 const { pool } = await import('../db/index.js');
 const { hashPassword, verifyPassword } = await import('../lib/password.js');
@@ -27,7 +29,7 @@ const OWNER = '00000000-0000-0000-0000-000000000001';
 async function build() {
   const app = Fastify();
   await app.register(jwt, { secret: 'test-secret' });
-  app.decorate('authenticate', async (req: any, reply: any) => { try { await req.jwtVerify(); } catch { return reply.status(401).send({ success: false, error: 'Unauthorized' }); } });
+  app.decorate('authenticate', authenticate); // the server's own check, not a copy of it
   await app.register(authRoutes, { prefix: '/auth' });
   return app;
 }
@@ -166,6 +168,60 @@ describe('the wrong-password message', () => {
     const r = await app.inject({ method: 'POST', url: '/auth/login', payload: { password: 'old-password-123' } });
     expect(r.statusCode).toBe(401);
     expect(r.json().error).toMatch(/friend account.*type your email/i);
+    await app.close();
+  });
+});
+
+describe('a password reset ends the earlier sign-ins of that account', () => {
+  const me = (app: any, token: string) => app.inject({ method: 'GET', url: '/auth/me', headers: bearer(token) });
+
+  it('a token made before the reset stops working, the one the reset hands back works, and nobody else is touched', async () => {
+    const app = await build();
+    const id = (await createUser('victim@example.com', await hashPassword('victim-password-1'), 'Victim'))!.id;
+    const now = Math.floor(Date.now() / 1000);
+    const old = app.jwt.sign({ sub: id, role: 'trader', email: 'victim@example.com', iat: now - 120 }); // signed in two minutes ago, on another device
+    expect((await me(app, old)).statusCode).toBe(200); // before the reset it works
+    const code = (await issue(app, 'victim@example.com')).json().code;
+    const r = await reset(app, { email: 'victim@example.com', code, newPassword: 'a-brand-new-password' });
+    expect(r.statusCode).toBe(200);
+    const stale = await me(app, old);
+    expect(stale.statusCode).toBe(401);
+    expect(stale.json().error).toMatch(/password was changed/);
+    expect((await me(app, r.json().token)).statusCode).toBe(200); // the new sign-in is fine
+    const bystander = (await createUser('bystander@example.com', await hashPassword('bystander-password-1'), 'Bystander'))!.id; // a friend who never reset
+    const other = app.jwt.sign({ sub: bystander, role: 'trader', email: 'bystander@example.com', iat: now - 120 });
+    expect((await me(app, other)).statusCode).toBe(200); // another friend, signed in earlier, is not affected
+    expect((await me(app, app.jwt.sign({ sub: OWNER, role: 'admin', email: 'desk@example.com', iat: now - 120 }))).statusCode).toBe(200); // nor is the owner
+    await app.close();
+  });
+
+  it('logging in again with the new password gives a working token too', async () => {
+    const app = await build();
+    const l = await login(app, 'victim@example.com', 'a-brand-new-password');
+    expect(l.statusCode).toBe(200);
+    expect((await me(app, l.json().token)).statusCode).toBe(200);
+    await app.close();
+  });
+
+  it('the owner-only routes refuse the old token as well', async () => {
+    const app = await build();
+    app.get('/admin-only', { preHandler: requireAdmin }, async () => ({ ok: true }));
+    const now = Math.floor(Date.now() / 1000);
+    // an admin account that changes its password (a second owner-role user): its old token must stop working on admin routes
+    const adminId = (await createUser('boss@example.com', await hashPassword('boss-password-123'), 'Boss'))!.id;
+    await pool.query("UPDATE users SET role = 'admin' WHERE id = $1", [adminId]);
+    const old = app.jwt.sign({ sub: adminId, role: 'admin', email: 'boss@example.com', iat: now - 120 });
+    expect((await app.inject({ method: 'GET', url: '/admin-only', headers: bearer(old) })).statusCode).toBe(200);
+    const { code } = (await issue(app, 'boss@example.com')).json();
+    expect((await reset(app, { email: 'boss@example.com', code, newPassword: 'boss-new-password-1' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/admin-only', headers: bearer(old) })).statusCode).toBe(401);
+    await app.close();
+  });
+
+  it('a token without a password change on record, and one with no issue time, are left alone', async () => {
+    const app = await build();
+    const id = (await createUser('calm@example.com', await hashPassword('calm-password-123'), 'Calm'))!.id;
+    expect((await me(app, app.jwt.sign({ sub: id, role: 'trader', email: 'calm@example.com', iat: Math.floor(Date.now() / 1000) - 3600 }))).statusCode).toBe(200);
     await app.close();
   });
 });

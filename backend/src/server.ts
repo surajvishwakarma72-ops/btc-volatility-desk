@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { serializerCompiler, validatorCompiler, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 import { apiV1Routes } from './routes/index.js';
 import { calRoutes } from './routes/cal.js';
+import { authenticate } from './lib/authenticate.js';
 
 declare module 'fastify' { interface FastifyInstance { authenticate: any } }
 
@@ -64,10 +65,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     throw new Error('JWT_SECRET must be set in production');
   }
   await app.register(jwt, { secret: process.env.JWT_SECRET || 'dev-insecure-change-me' });
-  app.decorate('authenticate', async function (request: any, reply: any) {
-    try { await request.jwtVerify(); }
-    catch { return reply.status(401).send({ success: false, error: 'Unauthorized' }); }
-  });
+  app.decorate('authenticate', authenticate);
 
   app.setErrorHandler((err: any, req, reply) => {
     if (hasZodFastifySchemaValidationErrors(err) || err.validation) {
