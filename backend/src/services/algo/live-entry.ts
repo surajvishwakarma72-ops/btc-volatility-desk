@@ -180,6 +180,10 @@ export function makeLiveBroker(d: LiveEntryDeps): Broker {
           const { orders, problems } = buildClosingOrders(positions, books, d.tickOf, ex, 0);
           for (const pr of problems) await d.log(userId, 'algo_exit_failed', pr, { dryRun: false });
           for (const o of orders) {
+            // at market first (a reduce-only market order); the marketable limit only if Delta refuses it
+            const mk = await d.post(l.key, l.secret, { product_id: o.productId, size: o.size, side: o.side, order_type: 'market_order', reduce_only: true });
+            await d.log(userId, mk.ok ? 'algo_exit_order' : 'algo_exit_failed', `${reason}: MARKET ${o.side} ${o.size} ${o.symbol}: ${mk.ok ? 'accepted' : 'rejected: ' + (mk.errorText || mk.status) + ', sending it as a marketable limit instead'}`, { symbol: o.symbol, dryRun: false });
+            if (mk.ok) continue;
             const res = await d.post(l.key, l.secret, o.payload);
             await d.log(userId, res.ok ? 'algo_exit_order' : 'algo_exit_failed', `${reason}: ${o.side} ${o.size} ${o.symbol} at limit ${o.limitPrice}: ${res.ok ? 'accepted' : 'rejected: ' + (res.errorText || res.status)}`, { symbol: o.symbol, dryRun: false });
           }

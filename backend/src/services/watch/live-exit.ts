@@ -78,7 +78,7 @@ export interface LiveExitDeps {
   positions(key: string, secret: string): Promise<OptionPosition[]>;
   book(symbol: string): Promise<Book>;
   tickOf(symbol: string): number;
-  post(key: string, secret: string, payload: ClosingOrder['payload']): Promise<{ ok: boolean; status: number; body: any; errorText: string }>;
+  post(key: string, secret: string, payload: Record<string, unknown>): Promise<{ ok: boolean; status: number; body: any; errorText: string }>;
   log(userId: string, kind: string, detail: string, opts: { symbol?: string; dryRun: boolean }): Promise<void>;
   sleep(ms: number): Promise<void>;
   now(): number;
@@ -92,10 +92,11 @@ export class LiveExit {
 
   constructor(private readonly d: LiveExitDeps) {}
 
-  async run(userId: string, group: Pick<WatchGroup, 'group' | 'label' | 'legs'>, cfg: { liveArmed: boolean; dryRun: boolean }): Promise<ExitResult> {
+  /** `opts.market`: close at market (a reduce-only market order first, the marketable limit if Delta refuses it). Used for emergencies: a stop that jumped, or a naked leg. */
+  async run(userId: string, group: Pick<WatchGroup, 'group' | 'label' | 'legs'>, cfg: { liveArmed: boolean; dryRun: boolean }, opts: { market?: boolean; reason?: string } = {}): Promise<ExitResult> {
     const d = this.d, expiry = group.group, gk = `${userId}|${expiry}`, now = d.now();
     if (!OPTION_EXPIRY.test(expiry)) { await d.log(userId, 'hard_exit_failed', `${group.label}: the position group "${expiry}" is not an expiry code, so nothing was sent. This is a bug: close the position on Delta yourself.`, { dryRun: cfg.dryRun }); return 'failed'; }
-    const trigger = group.legs.filter((l) => l.level === 'hard' || l.level === 'breach').map((l) => `${l.symbol} at ${l.mark} (stop ${l.stop}, ${l.pointsLeft == null ? '?' : l.pointsLeft.toFixed(1)} points left)`).join('; ');
+    const trigger = opts.reason ?? group.legs.filter((l) => l.level === 'hard' || l.level === 'breach').map((l) => `${l.symbol} at ${l.mark} (stop ${l.stop}, ${l.pointsLeft == null ? '?' : l.pointsLeft.toFixed(1)} points left)`).join('; ');
 
     // the locks: armed, a trading key, and for a real order also dry-run off and the server switch on
     const why = !cfg.liveArmed ? 'live exit is not armed' : !cfg.dryRun && !d.liveEnabled() ? 'dry-run is off but LIVE_TRADING_ENABLED is not set on the server' : null;
@@ -131,11 +132,16 @@ export class LiveExit {
         for (const pr of problems) await d.log(userId, 'hard_exit_failed', pr, { dryRun: dry });
         if (!orders.length) return 'failed';
         if (dry) {
-          for (const o of orders) await d.log(userId, 'hard_exit_dry', `DRY RUN, nothing sent: would ${o.side} ${o.size} ${o.symbol} at limit ${o.payload.limit_price} (reduce-only, immediate-or-cancel). Trigger: ${trigger}.`, { symbol: o.symbol, dryRun: true });
+          for (const o of orders) await d.log(userId, 'hard_exit_dry', `DRY RUN, nothing sent: would ${o.side} ${o.size} ${o.symbol} ${opts.market ? 'at market (a marketable limit of ' + o.payload.limit_price + ' if Delta refuses market)' : 'at limit ' + o.payload.limit_price} (reduce-only). Trigger: ${trigger}.`, { symbol: o.symbol, dryRun: true });
           return 'dry';
         }
         await d.log(userId, 'hard_exit_order', `Hard exit for ${group.label} (attempt ${attempt + 1}). Trigger: ${trigger}.`, { dryRun: false });
         for (const o of orders) {
+          if (opts.market && attempt === 0) {
+            const m = await d.post(key, secret, { product_id: o.productId, size: o.size, side: o.side, order_type: 'market_order', reduce_only: true });
+            await d.log(userId, m.ok ? 'hard_exit_order' : 'hard_exit_failed', `MARKET ${o.side} ${o.size} ${o.symbol}: ${m.ok ? 'accepted by Delta' : 'rejected: ' + (m.errorText || m.status) + ', sending it as a marketable limit instead'}`, { symbol: o.symbol, dryRun: false });
+            if (m.ok) continue;
+          }
           const r = await d.post(key, secret, o.payload);
           await d.log(userId, r.ok ? 'hard_exit_order' : 'hard_exit_failed', `${o.side} ${o.size} ${o.symbol} at limit ${o.payload.limit_price}: ${r.ok ? 'accepted by Delta' : 'rejected: ' + (r.errorText || r.status)}`, { symbol: o.symbol, dryRun: false });
         }

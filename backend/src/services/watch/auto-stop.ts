@@ -1,7 +1,7 @@
 import { deltaSignedDelete, deltaSignedGet, deltaSignedPost } from '../../routes/delta.js';
 import { loadDeltaKey } from '../delta-keys.js';
 import { getWatchConfig, logWatchEvent } from './watch-store.js';
-import type { OptionPosition } from './live-exit.js';
+import { expiryOf, type OptionPosition } from './live-exit.js';
 import { placeStop, stopLimitPrice } from './stop-order.js';
 
 /**
@@ -24,6 +24,8 @@ export interface AutoStopDeps {
   post(key: string, secret: string, payload: Record<string, unknown>): Promise<Reply>;
   cancel(key: string, secret: string, payload: Record<string, unknown>): Promise<Reply>;
   log(userId: string, kind: string, detail: string, o: { symbol?: string; dryRun: boolean }): Promise<void>;
+  /** Close every option position in one expiry at market (the hard exit's closer, with its locks, retries and event log). */
+  closeGroup(userId: string, expiry: string, label: string, reason: string, cfg: { liveArmed: boolean; dryRun: boolean }): Promise<void>;
 }
 
 export const STOP_PREFIX = 'desk-stop-';
@@ -36,6 +38,39 @@ export class AutoStop {
   private firstSeen = new Map<string, number>();
   private noted = new Map<string, number>();
   private placedAt = new Map<string, number>();
+  /** user|expiry -> the sold contracts seen open there, to notice when one of them is gone */
+  private soldSeen = new Map<string, Set<string>>();
+
+  /**
+   * The two emergencies, checked on every position read (about every 5 s) for the trading account, only while armed:
+   *  1. a stop that JUMPED: a sold leg's mark is already past the stop-limit's limit price while the leg is still open, so the stop order
+   *     cannot fill. Everything in that expiry is closed at market.
+   *  2. a naked leg: a sold leg that was open is gone (its stop fired, or it was closed) while another sold leg in the same expiry remains.
+   *     The remaining leg is closed at market.
+   * The closer itself refuses unless dry-run is off and the server switch is on, and then only writes what it would do.
+   */
+  async guard(userId: string, positions: readonly OptionPosition[], markOf: (symbol: string) => number | null): Promise<void> {
+    const d = this.d;
+    const cfg = await d.cfg(userId);
+    if (!cfg.liveArmed) return;
+    const byExpiry = new Map<string, OptionPosition[]>();
+    for (const p of positions) (byExpiry.get(expiryOf(p.symbol)) ?? byExpiry.set(expiryOf(p.symbol), []).get(expiryOf(p.symbol))!).push(p);
+    for (const k of [...this.soldSeen.keys()]) if (k.startsWith(userId + '|') && !byExpiry.has(k.slice(userId.length + 1))) this.soldSeen.delete(k);
+    for (const [expiry, list] of byExpiry) {
+      const sold = list.filter((p) => p.size < 0), sk = `${userId}|${expiry}`, now = new Set(sold.map((p) => p.symbol)), before = this.soldSeen.get(sk);
+      if (now.size) this.soldSeen.set(sk, new Set(now)); else this.soldSeen.delete(sk); // from here on, a leg missing from the next read is compared with this one
+      const label = `Delta · expiry ${expiry}`;
+      const jumped = sold.find((p) => { const m = markOf(p.symbol); return m != null && p.entry > 0 && m >= stopLimitPrice(roundUp(p.entry * cfg.stopMultiple, d.tickOf(p.symbol) || 0.1), d.tickOf(p.symbol) || 0.1); });
+      if (jumped) {
+        await d.closeGroup(userId, expiry, label, `stop jumped: ${jumped.symbol} is at ${markOf(jumped.symbol)}, past the stop-limit's limit price, so the stop cannot fill; closing every leg of this expiry at market`, cfg);
+        continue;
+      }
+      const gone = before ? [...before].filter((s) => !now.has(s)) : [];
+      if (gone.length && now.size) {
+        await d.closeGroup(userId, expiry, label, `naked leg: ${gone.join(', ')} is no longer open while ${[...now].join(', ')} remains; closing the remaining leg at market`, cfg);
+      }
+    }
+  }
   constructor(private readonly d: AutoStopDeps) {}
 
   /** `positions` are all the option positions of the TRADING account, as just read from Delta. */
@@ -91,7 +126,7 @@ export class AutoStop {
   }
 }
 
-export const realAutoStopDeps = (tickOf: (s: string) => number): AutoStopDeps => ({
+export const realAutoStopDeps = (tickOf: (s: string) => number, closeGroup?: AutoStopDeps['closeGroup']): AutoStopDeps => ({
   now: () => Date.now(),
   liveEnabled: () => process.env.LIVE_TRADING_ENABLED === 'true',
   cfg: (uid) => getWatchConfig(uid, 0),
@@ -105,4 +140,5 @@ export const realAutoStopDeps = (tickOf: (s: string) => number): AutoStopDeps =>
   post: (key, secret, payload) => deltaSignedPost(key, secret, '/v2/orders', payload),
   cancel: (key, secret, payload) => deltaSignedDelete(key, secret, '/v2/orders', payload),
   log: (uid, kind, detail, o) => logWatchEvent(uid, kind, detail, o),
+  closeGroup: closeGroup ?? (async () => undefined),
 });

@@ -8,7 +8,7 @@ const HEDGE: OptionPosition = { productId: 33, symbol: 'P-BTC-90000-271026', siz
 
 function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boolean; pending?: PendingStop[]; readFails?: boolean; postFails?: boolean } = {}) {
   let t = 1_000_000;
-  const posts: any[] = [], cancels: any[] = [], events: Array<{ kind: string; dry: boolean }> = [];
+  const posts: any[] = [], cancels: any[] = [], closes: Array<{ expiry: string; reason: string }> = [], events: Array<{ kind: string; dry: boolean }> = [];
   const d: AutoStopDeps = {
     now: () => t,
     liveEnabled: () => o.enabled ?? true,
@@ -19,11 +19,12 @@ function rig(o: { armed?: boolean; dry?: boolean; enabled?: boolean; key?: boole
     post: async (_k, _s, p) => { posts.push(p); return o.postFails ? { ok: false, status: 400, body: null, errorText: 'stop_orders_not_allowed' } : { ok: true, status: 200, body: { result: { id: posts.length } }, errorText: '' }; },
     cancel: async (_k, _s, p) => { cancels.push(p); return { ok: true, status: 200, body: {}, errorText: '' }; },
     log: async (_u, kind, _d, x) => { events.push({ kind, dry: x.dryRun }); },
+    closeGroup: async (_u, expiry, _l, reason) => { closes.push({ expiry, reason }); },
   };
   const as = new AutoStop(d);
   /** a first look, then one after the 20 s settle time and the 30 s throttle */
   const twice = async (list: OptionPosition[]) => { await as.run('u', list); t += 31_000; await as.run('u', list); };
-  return { as, twice, posts, cancels, events, advance: (ms: number) => { t += ms; } };
+  return { as, twice, posts, cancels, closes, events, advance: (ms: number) => { t += ms; } };
 }
 
 describe('automatic 2x stop-loss on the trading account', () => {
@@ -86,5 +87,58 @@ describe('automatic 2x stop-loss on the trading account', () => {
     await r.twice([P]);
     expect(r.cancels.length).toBeGreaterThan(0);
     expect(r.cancels.every((c) => c.id === 7 && c.product_id === 11)).toBe(true); // the fake order list does not shrink, so a second round repeats it
+  });
+});
+
+describe('the two emergencies: a stop that jumped, and a naked leg', () => {
+  const marksOf = (m: Record<string, number>) => (s: string) => m[s] ?? null;
+
+  it('closes the whole expiry at market when a sold leg is already past the stop-limit price (the stop cannot fill)', async () => {
+    const r = rig();
+    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 190, [P.symbol]: 70 })); // 190 is under the 200 trigger
+    expect(r.closes).toHaveLength(0);
+    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 225, [P.symbol]: 70 })); // past the 220 limit: it jumped
+    expect(r.closes).toHaveLength(1);
+    expect(r.closes[0]).toMatchObject({ expiry: '271026' });
+    expect(r.closes[0]!.reason).toMatch(/stop jumped.*C-BTC-105000-271026/);
+  });
+
+  it('does not treat a price between the trigger and the limit as a jump, because the stop order can still fill there', async () => {
+    const r = rig();
+    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 210, [P.symbol]: 70 }));
+    expect(r.closes).toHaveLength(0);
+  });
+
+  it('closes the remaining leg at market when one sold leg disappears, and only once', async () => {
+    const r = rig();
+    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 100, [P.symbol]: 80 }));
+    expect(r.closes).toHaveLength(0);
+    await r.as.guard('u', [P], marksOf({ [P.symbol]: 80 })); // the call leg is gone
+    expect(r.closes).toHaveLength(1);
+    expect(r.closes[0]!.reason).toMatch(/naked leg: C-BTC-105000-271026 is no longer open while P-BTC-95000-271026 remains/);
+    await r.as.guard('u', [P], marksOf({ [P.symbol]: 80 }));
+    expect(r.closes).toHaveLength(1); // not again for the same missing leg
+  });
+
+  it('does nothing when both legs close together, or when the desk has only just started and sees one leg', async () => {
+    const r = rig();
+    await r.as.guard('u', [P], marksOf({ [P.symbol]: 80 })); // first look: nothing to compare with
+    await r.as.guard('u', [C, P], marksOf({}));
+    await r.as.guard('u', [], marksOf({})); // both gone
+    expect(r.closes).toHaveLength(0);
+  });
+
+  it('only acts while the hard exit is armed', async () => {
+    const r = rig({ armed: false });
+    await r.as.guard('u', [C, P], marksOf({ [C.symbol]: 300 }));
+    expect(r.closes).toHaveLength(0);
+  });
+
+  it('a different expiry is judged on its own', async () => {
+    const r = rig();
+    const C2: OptionPosition = { productId: 44, symbol: 'C-BTC-110000-281026', size: -10, entry: 50 };
+    await r.as.guard('u', [C, P, C2], marksOf({}));
+    await r.as.guard('u', [P, C2], marksOf({})); // the 271026 call is gone; 281026 is untouched
+    expect(r.closes.map((c) => c.expiry)).toEqual(['271026']);
   });
 });

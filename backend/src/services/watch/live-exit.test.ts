@@ -76,6 +76,40 @@ function harness(over: Partial<{ live: boolean; key: boolean; positions: Array<O
 }
 const group = { group: EXP, label: 'Delta · 27 Oct expiry', legs: [{ symbol: C, side: 'sold' as const, lots: 100, entry: 100, mark: 196, stop: 200, pointsLeft: 4, level: 'hard' as const }, { symbol: P, side: 'sold' as const, lots: 100, entry: 120, mark: 130, stop: 240, pointsLeft: 110, level: 'safe' as const }] };
 
+describe('live exit at market (a stop that jumped, a naked leg)', () => {
+  const armed = { liveArmed: true, dryRun: false };
+  it('sends a reduce-only MARKET order for every leg, and nothing else when Delta takes them', async () => {
+    const h = harness();
+    const r = await new LiveExit(h.d).run('u', group, armed, { market: true, reason: 'stop jumped: test' });
+    expect(r).toBe('done');
+    expect(h.posts).toHaveLength(2);
+    for (const o of h.posts) expect(o).toMatchObject({ order_type: 'market_order', reduce_only: true, side: 'buy', size: 100 });
+    expect(h.posts.map((o) => o.product_id).sort()).toEqual([1, 2]);
+    expect(h.log.some((l) => l.detail.includes('stop jumped: test'))).toBe(true);
+  });
+  it('falls back to the marketable limit for a leg when Delta refuses the market order', async () => {
+    const h = harness();
+    const post = h.d.post;
+    h.d.post = async (k, sec, payload) => (payload.order_type === 'market_order' ? (h.posts.push(payload), { ok: false, status: 400, body: null, errorText: 'market_orders_not_allowed' }) : post(k, sec, payload));
+    await new LiveExit(h.d).run('u', group, armed, { market: true });
+    const limits = h.posts.filter((o) => o.order_type === 'limit_order');
+    expect(limits).toHaveLength(2);
+    for (const o of limits) expect(o).toMatchObject({ reduce_only: true, time_in_force: 'ioc', side: 'buy' });
+    expect(h.log.some((l) => l.detail.includes('market_orders_not_allowed') && l.detail.includes('marketable limit'))).toBe(true);
+  });
+  it('still sends nothing in dry-run, and says it would do it at market', async () => {
+    const h = harness();
+    expect(await new LiveExit(h.d).run('u', group, { liveArmed: true, dryRun: true }, { market: true })).toBe('dry');
+    expect(h.posts).toHaveLength(0);
+    expect(h.log.filter((l) => l.kind === 'hard_exit_dry').every((l) => l.detail.includes('at market'))).toBe(true);
+  });
+  it('the normal hard exit is unchanged: marketable limits only, no market orders', async () => {
+    const h = harness();
+    await new LiveExit(h.d).run('u', group, armed);
+    expect(h.posts.every((o) => o.order_type === 'limit_order')).toBe(true);
+  });
+});
+
 describe('live exit: the locks', () => {
   it('sends nothing and says why when it is not armed', async () => {
     const h = harness();

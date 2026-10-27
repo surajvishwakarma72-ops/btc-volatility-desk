@@ -59,7 +59,10 @@ async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[
   for (const l of lists) {
     await observeReal(userId, l.account, l.list, markOf);
     // the trading account's sold legs get a real 2x stop-loss on Delta; the read-only account is never touched
-    if (!l.watchOnly) await autoStop.run(userId, l.list).catch(() => undefined);
+    if (!l.watchOnly) {
+      await autoStop.guard(userId, l.list, markOf).catch(() => undefined);
+      await autoStop.run(userId, l.list).catch(() => undefined);
+    }
   }
   if (!lists.some((l) => l.list.length)) return [];
   const out: WatchLeg[] = [];
@@ -74,8 +77,8 @@ async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[
   return out;
 }
 
-const autoStop = new AutoStop(realAutoStopDeps((s) => ticks.get(s) ?? 0.5));
 const liveExit = new LiveExit(realLiveExitDeps((s) => ticks.get(s) ?? 0.5));
+const autoStop = new AutoStop(realAutoStopDeps((s) => ticks.get(s) ?? 0.5, async (userId, expiry, label, reason, cfg) => { await liveExit.run(userId, { group: expiry, label, legs: [] }, cfg, { market: true, reason }); }));
 
 export const realSources: WatchSources = {
   async users() {

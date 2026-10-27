@@ -202,11 +202,10 @@ export const botRoutes: FastifyPluginAsync = async (fastify) => {
     ]);
     if (!run.rowCount) {
       // not a bot run: it may be one of the algo runs (Paper or Live), whose minutes are recorded in algo_run_marks
-      const a = await getRunById(userId(req), id);
+      const a = await getRunById(userId(req), id).catch(() => null); // a lookup that cannot run (for instance a user id that is not a uuid) means "not found"
       if (!a) {
         // or one of the user's own real Delta positions (main account / sub-account), recorded in real_runs
-        await ensureAlgoSchema();
-        const rr = (await pool.query('SELECT * FROM real_runs WHERE id = $1 AND user_id = $2', [id, userId(req)])).rows[0] as any;
+        const rr = (await (async () => { await ensureAlgoSchema(); return (await pool.query('SELECT * FROM real_runs WHERE id = $1 AND user_id = $2', [id, userId(req)])).rows[0]; })().catch(() => undefined)) as any;
         if (!rr) return reply.code(404).send({ success: false, error: 'run not found' });
         const m = await getMarks(rr.id);
         const pts: SeriesPoint[] = m.t.map((t, i) => ({ t, net: m.net[i]!, gross: m.net[i]!, spot: null, pct: null }));
