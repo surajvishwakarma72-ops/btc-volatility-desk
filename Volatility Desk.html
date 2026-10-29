@@ -14640,7 +14640,7 @@ Signs follow Settings → Dealer positioning.`;
   }
   function kick(){for(const ms of [30,250,900]){setTimeout(()=>{try{window.dispatchEvent(new Event('resize'));window.paRefit&&window.paRefit();}catch(e){}},ms);}}
   document.querySelectorAll('#nav button,#tabbar button[data-page]:not(#moreTab),#moreSheet button[data-page]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.page)));
-  $('moreTab')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const s=$('moreSheet');if(s){const willOpen=s.hidden||s.style.display==='none';s.hidden=!willOpen;s.style.display=willOpen?'flex':'none';}});   $('moreTheme')?.addEventListener('click',()=>{const s=$('moreSheet');if(s){s.hidden=true;s.style.display='none';}});   $('moreLock')?.addEventListener('click',()=>{const s=$('moreSheet');if(s){s.hidden=true;s.style.display='none';}});   document.addEventListener('click',e=>{const s=$('moreSheet');if(s&&!s.hidden&&!e.target.closest('#moreSheet,#moreTab')){s.hidden=true;s.style.display='none';}});;});
+  $('moreTab')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const s=$('moreSheet');if(s){const willOpen=s.hidden||s.style.display==='none';s.hidden=!willOpen;s.style.display=willOpen?'flex':'none';}});   $('moreTheme')?.addEventListener('click',()=>{const s=$('moreSheet');if(s){s.hidden=true;s.style.display='none';}});   $('moreLock')?.addEventListener('click',()=>{const s=$('moreSheet');if(s){s.hidden=true;s.style.display='none';}});   document.addEventListener('click',e=>{const s=$('moreSheet');if(s&&!s.hidden&&!e.target.closest('#moreSheet,#moreTab')){s.hidden=true;s.style.display='none';}});
   // shims for engine blocks that still call the old window manager
   window.wmShow=function(id){const el=$(id);if(!el)return;const pg=el.closest('.page');if(pg)show(pg.id);else if(id==='paneG')show('pgDesk');};
   window.wmSetTitle=function(){};
@@ -28664,6 +28664,8 @@ document.addEventListener('click', function(e) {
   border-radius: 8px;
   overflow: hidden;
   user-select: none;
+  touch-action: none !important;
+  cursor: crosshair !important;
 }
 #vLivePnlTick .v-chart-svg {
   width: 100%;
@@ -28674,17 +28676,49 @@ document.addEventListener('click', function(e) {
   position: absolute;
   pointer-events: none;
   background: #181d27;
-  border: 1px solid rgba(255,255,255,0.2);
-  border-radius: 6px;
-  padding: 6px 10px;
-  font-size: 11px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11.5px;
   font-family: var(--mono, monospace);
   color: #fff;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
   transform: translate(-50%, -115%);
   white-space: nowrap;
   display: none;
   z-index: 25;
+}
+
+/* Bottom bar & page isolation fixes: ensure #tabbar and #moreSheet are always clickable */
+html body #tabbar,
+html body .tabbar {
+  z-index: 9998 !important;
+  pointer-events: auto !important;
+}
+html body #tabbar button,
+html body .tabbar button {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+}
+html body #moreSheet,
+html body .more-sheet {
+  z-index: 10000 !important;
+  pointer-events: auto !important;
+}
+#pgPnl {
+  padding-bottom: calc(var(--tab-h, 60px) + 50px) !important;
+  box-sizing: border-box;
+}
+@media (max-width: 760px) {
+  #askFab {
+    bottom: calc(var(--tab-h, 60px) + 16px + env(safe-area-inset-bottom)) !important;
+  }
+  #vUniversalFloatingPnl {
+    bottom: calc(var(--tab-h, 60px) + 16px + env(safe-area-inset-bottom)) !important;
+  }
+  #daChip {
+    bottom: calc(var(--tab-h, 60px) + 16px + env(safe-area-inset-bottom)) !important;
+  }
 }
 
 /* Floating P&L Widget - ONLY VISIBLE WHEN TRADE IS OPEN */
@@ -28788,14 +28822,26 @@ document.addEventListener('click', function(e) {
   };
 
   function parseSym(s) {
-    const m = /^([CP])-BTC-(d+(?:.d+)?)-(d{2})(d{2})(d{2})$/i.exec(String(s || ''));
-    return m ? { type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3], rawExp: m[3] + m[4] + m[5] } : null;
+    const str = String(s || '').trim();
+    const m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(str);
+    if (m) {
+      return { type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3], rawExp: m[3] + m[4] + m[5] };
+    }
+    const m2 = /^(?:([CP])-)?BTC-(?:(\d{2}[A-Za-z]{3}\d{2})-)?(\d+)(?:-([CP]))?$/i.exec(str);
+    if (m2) {
+      return { type: (m2[1] || m2[4] || '').toUpperCase(), K: +m2[3], exp: m2[2] || 'unknown', rawExp: m2[2] || 'unknown' };
+    }
+    return null;
   }
 
   function getJwt() {
     try {
-      const v = localStorage.getItem('desk_jwt');
-      return v ? (typeof v === 'string' && v.startsWith('"') ? JSON.parse(v) : v) : null;
+      const v = localStorage.getItem('desk_jwt') || localStorage.getItem('jwt') || localStorage.getItem('token');
+      if (!v) return null;
+      if (typeof v === 'string' && (v.startsWith('"') || v.startsWith('{'))) {
+        try { return JSON.parse(v); } catch { return v; }
+      }
+      return v;
     } catch {
       return null;
     }
@@ -28993,8 +29039,16 @@ document.addEventListener('click', function(e) {
         totalPnl += (+p.unrealized_pnl || 0);
         totalSize = Math.max(totalSize, Math.abs(+p.size || 0));
       });
-      const call = list.find(p => p.product_symbol && p.product_symbol.endsWith('-C'));
-      const put = list.find(p => p.product_symbol && p.product_symbol.endsWith('-P'));
+      const call = list.find(p => {
+        const sym = p.product_symbol || p.symbol;
+        const parsed = parseSym(sym);
+        return (parsed && parsed.type === 'C') || (sym && (sym.startsWith('C-') || sym.endsWith('-C')));
+      });
+      const put = list.find(p => {
+        const sym = p.product_symbol || p.symbol;
+        const parsed = parseSym(sym);
+        return (parsed && parsed.type === 'P') || (sym && (sym.startsWith('P-') || sym.endsWith('-P')));
+      });
       return {
         open: true,
         kind: 'readonly',
@@ -29018,8 +29072,16 @@ document.addEventListener('click', function(e) {
         totalPnl += (+p.unrealized_pnl || 0);
         totalSize = Math.max(totalSize, Math.abs(+p.size || 0));
       });
-      const call = list.find(p => p.product_symbol && p.product_symbol.endsWith('-C'));
-      const put = list.find(p => p.product_symbol && p.product_symbol.endsWith('-P'));
+      const call = list.find(p => {
+        const sym = p.product_symbol || p.symbol;
+        const parsed = parseSym(sym);
+        return (parsed && parsed.type === 'C') || (sym && (sym.startsWith('C-') || sym.endsWith('-C')));
+      });
+      const put = list.find(p => {
+        const sym = p.product_symbol || p.symbol;
+        const parsed = parseSym(sym);
+        return (parsed && parsed.type === 'P') || (sym && (sym.startsWith('P-') || sym.endsWith('-P')));
+      });
       return {
         open: true,
         kind: 'readtrade',
@@ -29131,21 +29193,21 @@ document.addEventListener('click', function(e) {
       }
     }
 
-    // Oct 28 Strangle Real Delta fills
+    // Oct 28-29 Strangle Real Delta fills (User Real Live Trade)
     return {
       id: 'oct28-strangle-dex',
       source: 'delta-fills',
       mode: 'readtrade',
-      exp: '2026-10-30',
-      pnl: -0.01,
-      callPnl: -0.002,
-      putPnl: -0.006,
-      fee: 0.002,
-      Kc: 84000,
-      Kp: 78500,
-      openedAt: new Date('2026-10-28T05:03:37Z').getTime(),
-      closedAt: new Date('2026-10-28T05:06:49Z').getTime(),
-      lots: 1
+      exp: '2026-10-31',
+      pnl: 0.25,
+      callPnl: 0.14,
+      putPnl: 0.11,
+      fee: 0.10,
+      Kc: 83600,
+      Kp: 78400,
+      openedAt: new Date('2026-10-28T19:00:08Z').getTime(),
+      closedAt: new Date('2026-10-29T01:30:09Z').getTime(),
+      lots: 5
     };
   }
 
@@ -29442,17 +29504,17 @@ document.addEventListener('click', function(e) {
 
             '<!-- Continuous SVG Crosshair Hairline -->' +
             '<g id="vChartHairG" style="display:none; pointer-events:none;">' +
-              '<line id="vHairV" x1="0" y1="0" x2="0" y2="' + Ht + '" stroke="rgba(255,255,255,0.6)" stroke-width="1.2"/>' +
-              '<line id="vHairH" x1="0" y1="0" x2="' + Wd + '" y2="0" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>' +
-              '<circle id="vHairDot" cx="0" cy="0" r="5.5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
-              '<rect id="vHairPillY" x="4" y="0" width="48" height="18" rx="4" fill="' + strokeCol + '"/>' +
-              '<text id="vHairTxtY" x="28" y="0" font-size="10" fill="#fff" font-weight="700" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">$0.00</text>' +
-              '<rect id="vHairPillX" x="0" y="' + (Ht - B + 4) + '" width="56" height="18" rx="4" fill="#222733" stroke="rgba(255,255,255,0.2)"/>' +
-              '<text id="vHairTxtX" x="0" y="' + (Ht - B + 13) + '" font-size="9.5" fill="#bbb" font-weight="600" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">--:--</text>' +
+              '<line id="vHairV" x1="0" y1="0" x2="0" y2="' + Ht + '" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>' +
+              '<line id="vHairH" x1="0" y1="0" x2="' + Wd + '" y2="0" stroke="rgba(255,255,255,0.75)" stroke-width="1.2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>' +
+              '<circle id="vHairDot" cx="0" cy="0" r="6" fill="' + strokeCol + '" stroke="#ffffff" stroke-width="2.5"/>' +
+              '<rect id="vHairPillY" x="4" y="0" width="58" height="20" rx="5" fill="' + strokeCol + '"/>' +
+              '<text id="vHairTxtY" x="33" y="0" font-size="10.5" fill="#fff" font-weight="800" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">$0.00</text>' +
+              '<rect id="vHairPillX" x="0" y="' + (Ht - B + 2) + '" width="70" height="20" rx="5" fill="#18202f" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>' +
+              '<text id="vHairTxtX" x="0" y="' + (Ht - B + 12) + '" font-size="10" fill="#38bdf8" font-weight="700" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">--:--</text>' +
             '</g>' +
 
             '<!-- Event capture overlay spanning full plot area -->' +
-            '<rect id="vChartEventsRect" x="0" y="0" width="' + Wd + '" height="' + Ht + '" fill="transparent" style="cursor:crosshair; pointer-events:all;"/>' +
+            '<rect id="vChartEventsRect" x="0" y="0" width="' + Wd + '" height="' + Ht + '" fill="rgba(0,0,0,0.001)" style="cursor:crosshair; pointer-events:all;"/>' +
           '</svg>' +
           '<div class="v-tooltip" id="vChartTip"></div>' +
         '</div>';
@@ -29561,17 +29623,17 @@ document.addEventListener('click', function(e) {
 
             '<!-- Continuous SVG Crosshair Hairline running uninterrupted from start to end -->' +
             '<g id="vChartHairG" style="display:none; pointer-events:none;">' +
-              '<line id="vHairV" x1="0" y1="0" x2="0" y2="' + Ht + '" stroke="rgba(255,255,255,0.6)" stroke-width="1.2"/>' +
-              '<line id="vHairH" x1="0" y1="0" x2="' + Wd + '" y2="0" stroke="rgba(255,255,255,0.4)" stroke-width="1"/>' +
-              '<circle id="vHairDot" cx="0" cy="0" r="5.5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
-              '<rect id="vHairPillY" x="4" y="0" width="48" height="18" rx="4" fill="' + strokeCol + '"/>' +
-              '<text id="vHairTxtY" x="28" y="0" font-size="10" fill="#fff" font-weight="700" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">$0.00</text>' +
-              '<rect id="vHairPillX" x="0" y="' + (Ht - B + 4) + '" width="56" height="18" rx="4" fill="#222733" stroke="rgba(255,255,255,0.2)"/>' +
-              '<text id="vHairTxtX" x="0" y="' + (Ht - B + 13) + '" font-size="9.5" fill="#bbb" font-weight="600" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">--:--</text>' +
+              '<line id="vHairV" x1="0" y1="0" x2="0" y2="' + Ht + '" stroke="#38bdf8" stroke-width="1.5" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>' +
+              '<line id="vHairH" x1="0" y1="0" x2="' + Wd + '" y2="0" stroke="rgba(255,255,255,0.75)" stroke-width="1.2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>' +
+              '<circle id="vHairDot" cx="0" cy="0" r="6" fill="' + strokeCol + '" stroke="#ffffff" stroke-width="2.5"/>' +
+              '<rect id="vHairPillY" x="4" y="0" width="58" height="20" rx="5" fill="' + strokeCol + '"/>' +
+              '<text id="vHairTxtY" x="33" y="0" font-size="10.5" fill="#fff" font-weight="800" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">$0.00</text>' +
+              '<rect id="vHairPillX" x="0" y="' + (Ht - B + 2) + '" width="70" height="20" rx="5" fill="#18202f" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>' +
+              '<text id="vHairTxtX" x="0" y="' + (Ht - B + 12) + '" font-size="10" fill="#38bdf8" font-weight="700" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">--:--</text>' +
             '</g>' +
 
             '<!-- Event capture overlay spanning full plot area -->' +
-            '<rect id="vChartEventsRect" x="0" y="0" width="' + Wd + '" height="' + Ht + '" fill="transparent" style="cursor:crosshair; pointer-events:all;"/>' +
+            '<rect id="vChartEventsRect" x="0" y="0" width="' + Wd + '" height="' + Ht + '" fill="rgba(0,0,0,0.001)" style="cursor:crosshair; pointer-events:all;"/>' +
           '</svg>' +
           '<div class="v-tooltip" id="vChartTip"></div>' +
         '</div>';
@@ -29843,13 +29905,37 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  // Global click interceptor for P&L navigation
+  // Universal Navigation & Bottom Tabbar Interceptor (Trade, Flow, Events, More, P&L)
   D.addEventListener('click', e => {
-    const b = e.target && e.target.closest && e.target.closest('[data-page="pgPnl"], #nav [data-page="pgPnl"], #tabbar [data-page="pgPnl"], #moreSheet [data-page="pgPnl"]');
-    if (b) {
-      setTimeout(() => {
-        navigateToPnl();
-      }, 10);
+    const b = e.target && e.target.closest && e.target.closest('#tabbar button, #nav button, #moreSheet button');
+    if (!b) return;
+
+    // Handle More button: let moreTab's primary listener handle toggle without double-toggling
+    if (b.id === 'moreTab' || b.dataset.page === 'more') {
+      return;
+    }
+
+    const targetPage = b.dataset.page;
+    if (targetPage && targetPage !== 'more') {
+      if (targetPage === 'pgPnl') {
+        setTimeout(navigateToPnl, 10);
+        return;
+      }
+
+      // Switching away from pgPnl to Trade, Flow, Events, etc.
+      const pnl = $('pgPnl');
+      if (pnl && targetPage !== 'pgPnl') pnl.classList.remove('on');
+      const dec = $('pgDecision');
+      if (dec && targetPage !== 'pgDecision') dec.classList.remove('on');
+
+      if (W.v80Layout && typeof W.v80Layout.show === 'function') W.v80Layout.show(targetPage);
+      if (W.v132 && typeof W.v132.go === 'function') W.v132.go(targetPage);
+
+      D.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === targetPage));
+      D.querySelectorAll('#nav button, #tabbar button').forEach(btn => btn.classList.toggle('on', btn.dataset.page === targetPage));
+      D.body.dataset.page = targetPage;
+      const ms = $('moreSheet');
+      if (ms) { ms.hidden = true; ms.style.display = 'none'; }
     }
   }, true);
 

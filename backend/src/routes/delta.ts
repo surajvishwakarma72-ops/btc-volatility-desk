@@ -196,8 +196,14 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
     config: { rateLimit: { max: 120, timeWindow: '1 minute' } }
   }, async (request, reply) => {
     const qp = (request.query || {}) as { path?: string; query?: string; kind?: 'read' | 'trade' };
-    const path = qp.path;
-    const query = qp.query || '';
+    let path = qp.path || '';
+    let query = qp.query || '';
+    if (path.includes('?')) {
+      const parts = path.split('?');
+      path = parts[0];
+      const embeddedQuery = parts.slice(1).join('?');
+      query = query ? `${query}&${embeddedQuery}` : embeddedQuery;
+    }
     if (!path || !SIGNED_PATHS.has(path)) {
       return reply.status(400).send({ success: false, error: `path must be one of: ${[...SIGNED_PATHS].join(', ')}` });
     }
