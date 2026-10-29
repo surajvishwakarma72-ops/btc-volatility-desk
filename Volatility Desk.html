@@ -30451,68 +30451,20 @@ document.addEventListener('click', function(e) {
     });
   }
 
-  // Intercept navigation & mode switching
+  // Only install a lightweight pgPnl observer — do NOT intercept global clicks
   let hooksInstalled = false;
   function installHooks() {
     if (hooksInstalled) return;
     hooksInstalled = true;
 
-    // Observe tabbar clicks to keep PnL host intact
+    // Passively observe pgPnl nav button clicks only — no stopPropagation, no capture phase
     D.addEventListener('click', e => {
       const btn = e.target && e.target.closest && e.target.closest('[data-page="pgPnl"]');
       if (btn) {
         setTimeout(navigateToPnl, 10);
       }
-    }, true);
+    }); // bubble phase only — does NOT intercept any other clicks
   }
-
-  D.addEventListener('click', e => {
-    const btn = e.target && e.target.closest && e.target.closest('.v-acc-btn, [data-mode]');
-    if (btn && btn.dataset && btn.dataset.mode) {
-      e.preventDefault();
-      e.stopPropagation();
-      switchPnlAccountMode(btn.dataset.mode);
-      return;
-    }
-    const thBtn = e.target && e.target.closest && e.target.closest('#vPnlThemeBtn');
-    if (thBtn) {
-      e.preventDefault();
-      e.stopPropagation();
-      togglePnlTheme();
-    }
-  }, true);
-
-  // Universal Navigation & Bottom Tabbar Interceptor (Trade, Flow, Events, More, P&L)
-  D.addEventListener('click', e => {
-    const b = e.target && e.target.closest && e.target.closest('#tabbar button, #nav button, #moreSheet button');
-    if (!b) return;
-
-    if (b.id === 'moreTab' || b.dataset.page === 'more') {
-      return;
-    }
-
-    const targetPage = b.dataset.page;
-    if (targetPage && targetPage !== 'more') {
-      if (targetPage === 'pgPnl') {
-        setTimeout(navigateToPnl, 10);
-        return;
-      }
-
-      const pnl = $('pgPnl');
-      if (pnl && targetPage !== 'pgPnl') pnl.classList.remove('on');
-      const dec = $('pgDecision');
-      if (dec && targetPage !== 'pgDecision') dec.classList.remove('on');
-
-      if (W.v80Layout && typeof W.v80Layout.show === 'function') W.v80Layout.show(targetPage);
-      if (W.v132 && typeof W.v132.go === 'function') W.v132.go(targetPage);
-
-      D.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === targetPage));
-      D.querySelectorAll('#nav button, #tabbar button').forEach(btn => btn.classList.toggle('on', btn.dataset.page === targetPage));
-      D.body.dataset.page = targetPage;
-      const ms = $('moreSheet');
-      if (ms) { ms.hidden = true; ms.style.display = 'none'; }
-    }
-  }, true);
 
   // MutationObserver to auto-draw when pgPnl becomes visible
   try {
