@@ -4323,6 +4323,7 @@ window.__v133Gex=(()=>{try{return JSON.parse(localStorage.getItem('v132_ind')||'
   <h1 class="brand" title="Suraj Vishwakarma Volatility Desk"><svg class="brand-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="1.5" y="2" width="5.5" height="20" rx="1.4"/><rect x="9.25" y="8" width="5.5" height="14" rx="1.4"/><rect x="17" y="13" width="5.5" height="9" rx="1.4"/></svg><span class="n">Suraj Vishwakarma<small>Volatility desk · 24×7</small></span></h1>
   <nav class="nav" id="nav" aria-label="Pages">
     <button type="button" class="on" data-page="pgDesk">Trade</button>
+    <button type="button" data-page="pgPnl" data-v132="1">P&L analysis</button>
     <button type="button" data-page="pgFlow">Flow</button>
     <button type="button" data-page="pgEvents">Events</button>
     <button type="button" data-page="pgSettings">Settings</button>
@@ -4569,9 +4570,6 @@ D.addEventListener('DOMContentLoaded',arrange);try{matchMedia('(min-width:1360px
   </div>
   <div class="save-line" aria-live="polite"><span id="saveDot" class="save-dot"></span><span id="storage">Loading saved data…</span></div>
 </section>
-
-      <!-- ═══════════ PNL ANALYSIS PAGE ═══════════ -->
-      <section class="page" id="pgPnl" aria-label="P&L"></section>
 <section class="panel" id="resetPanel" aria-label="Reset to default">
   <h2 class="metrics-title">Reset to default</h2>
   <p class="rs-note">Puts the layout and every chart setting back to how the desk ships: page, timeframe, 1D range, indicator panes, chart layers, RV window, heat-map view, theme and panel choices. Your recorded history, backups and alert settings stay.</p>
@@ -4652,7 +4650,11 @@ D.addEventListener('DOMContentLoaded',arrange);try{matchMedia('(min-width:1360px
   </div>
 </section>
 
-</main>
+
+      <!-- ═══════════ DECISION & PNL PAGES ═══════════ -->
+      <section class="page" id="pgDecision" aria-label="Decision"></section>
+      <section class="page" id="pgPnl" aria-label="P&L"></section>
+    </main>
 
 <!-- ───────── phone tab bar ───────── -->
 <nav class="tabbar" id="tabbar" aria-label="Pages">
@@ -4662,6 +4664,7 @@ D.addEventListener('DOMContentLoaded',arrange);try{matchMedia('(min-width:1360px
   <button type="button" data-page="more" id="moreTab"><i>☰</i>More</button>
 </nav>
 <div class="more-sheet" id="moreSheet" hidden>
+  <button type="button" data-page="pgPnl" data-v132="1">P&L analysis</button>
   <button type="button" data-page="pgEvents" class="ms-ev">Events &amp; calendar</button>
   <button type="button" data-page="pgSettings">Settings &amp; backups</button>
   <button type="button" id="moreTheme">Switch theme</button>
@@ -14614,7 +14617,7 @@ Signs follow Settings → Dealer positioning.`;
   document.body.classList.add('v80');
 
   /* ---------- pages ---------- */
-  const PAGES=['pgDesk','pgFlow','pgEvents','pgSettings'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
+  const PAGES=['pgDesk','pgFlow','pgEvents','pgSettings','pgPnl','pgDecision'];   /* v105: Regime, Study, Evidence pages removed */   /* v83: Vol page removed, its charts live on the Desk */
   let page='pgDesk';   /* v105.22: the desk always opens on Trade (BTC chart + Speed vs IV, Edge, Range, ADX); tabs still work */
   function slotMoves(p){
     // the engine's IV panes (#charts) + hero live on the Desk in row mode and on the Vol page in stack mode
@@ -28506,6 +28509,12 @@ document.addEventListener('click', function(e) {
   box-shadow: 0 4px 20px rgba(0,0,0,0.25);
   min-height: 120px;
 }
+#pgPnl {
+  min-height: calc(100vh - 120px);
+}
+#pgPnl.on {
+  display: block !important;
+}
 #pgPnl > #vLivePnlTick {
   display: block !important;
 }
@@ -28557,6 +28566,44 @@ document.addEventListener('click', function(e) {
   color: #60a5fa;
   border: 1px solid rgba(96, 165, 250, 0.35);
 }
+#vLivePnlTick .v-mode-badge.trade-lab {
+  background: rgba(168, 85, 247, 0.18);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.35);
+}
+
+/* Account Mode Switcher Tabs */
+#vLivePnlTick .v-acc-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0,0,0,0.3);
+  padding: 3px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+#vLivePnlTick .v-acc-btn {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted, #888);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+#vLivePnlTick .v-acc-btn:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.05);
+}
+#vLivePnlTick .v-acc-btn.active {
+  background: #2F7CC0;
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(47, 124, 192, 0.4);
+}
+
 #vLivePnlTick .v-head-right {
   display: flex;
   align-items: baseline;
@@ -28659,7 +28706,7 @@ document.addEventListener('click', function(e) {
   z-index: 10;
 }
 
-/* Floating P&L Widget - Visible across all pages */
+/* Floating P&L Widget - ONLY VISIBLE WHEN TRADE IS OPEN */
 #vUniversalFloatingPnl {
   position: fixed;
   bottom: 24px;
@@ -28669,7 +28716,7 @@ document.addEventListener('click', function(e) {
   border: 1px solid rgba(255,255,255,0.14);
   border-radius: 30px;
   box-shadow: 0 6px 26px rgba(0,0,0,0.45);
-  display: flex;
+  display: none;
   align-items: center;
   gap: 10px;
   padding: 8px 16px;
@@ -28691,9 +28738,6 @@ document.addEventListener('click', function(e) {
 }
 #vUniversalFloatingPnl .v-fpnl-dot.pulse {
   animation: vfpnlPulse 1.8s infinite;
-}
-#vUniversalFloatingPnl .v-fpnl-dot.idle {
-  background: #f6465d;
 }
 @keyframes vfpnlPulse {
   0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(22,199,132,0.7); }
@@ -28718,9 +28762,12 @@ document.addEventListener('click', function(e) {
 </style>
 <script data-module="live-pnl-tick">
 /**
- * vLivePnlTick v5.1
- * Continuous SVG Crosshair Hairline & Start-to-Exit P&L Tracking
- * Full parity for Read-Only and Read+Trade positions.
+ * vLivePnlTick v6.0
+ * Unified Live & Historical P&L Engine with Dual Mode Switching:
+ *  - Read-Only (Delta Exchange live API / fills)
+ *  - Read+Trade (Desk Trade Lab / manual execution)
+ * Continuous SVG Crosshair Hairline with real candles & start-to-exit curves.
+ * Floating P&L shown ONLY when an active trade is open.
  */
 (function() {
   'use strict';
@@ -28728,6 +28775,9 @@ document.addEventListener('click', function(e) {
   const D = document;
   const $ = id => D.getElementById(id);
   const fin = Number.isFinite;
+
+  // Active view preference: 'readonly' | 'readtrade'
+  let activeViewMode = localStorage.getItem('v_pnl_view_mode') || 'readonly';
 
   const S = {
     openTicks: [],
@@ -28754,7 +28804,7 @@ document.addEventListener('click', function(e) {
     return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + fmtTime(t);
   };
 
-  /** Ensure pgPnl exists in DOM */
+  /** Ensure pgPnl exists in DOM at proper place */
   function ensurePnlHost() {
     let host = $('pgPnl');
     if (!host) {
@@ -28853,8 +28903,8 @@ document.addEventListener('click', function(e) {
     } catch(e) {}
   }
 
-  /** Check for an open position across desk trade or delta positions */
-  function getOpenPosition() {
+  /** Get open position for Read-Only mode */
+  function getReadOnlyOpenPosition() {
     if (S.deltaPositions && S.deltaPositions.length > 0) {
       const legs = S.deltaPositions;
       let totalPnl = 0;
@@ -28881,7 +28931,11 @@ document.addEventListener('click', function(e) {
         legs
       };
     }
+    return { open: false };
+  }
 
+  /** Get open position for Read+Trade mode */
+  function getReadTradeOpenPosition() {
     if (W.LAB && W.LAB.cur && W.LAB.cur.legs) {
       const c = W.LAB.cur;
       let tot = 0;
@@ -28921,8 +28975,26 @@ document.addEventListener('click', function(e) {
     return { open: false };
   }
 
-  /** Get the real last closed trade from Delta fills or desk logs */
-  function getLastClosedTrade() {
+  /** Check for an open position across either mode */
+  function getAnyOpenPosition() {
+    const ro = getReadOnlyOpenPosition();
+    if (ro.open) return ro;
+    const rt = getReadTradeOpenPosition();
+    if (rt.open) return rt;
+    return { open: false };
+  }
+
+  /** Get open position based on currently selected mode */
+  function getActiveModeOpenPosition() {
+    if (activeViewMode === 'readonly') {
+      return getReadOnlyOpenPosition();
+    } else {
+      return getReadTradeOpenPosition();
+    }
+  }
+
+  /** Get the real last closed trade for Read-Only mode from Delta fills */
+  function getReadOnlyLastClosedTrade() {
     try {
       const raw = localStorage.getItem('v133_rows');
       if (raw) {
@@ -28934,6 +29006,7 @@ document.addEventListener('click', function(e) {
           return {
             id: 'delta-closed-' + latest.exp,
             source: 'delta-fills',
+            mode: 'readonly',
             exp: latest.exp,
             pnl: +latest.pnl.toFixed(2),
             callPnl: +latest.call.toFixed(2),
@@ -28949,10 +29022,11 @@ document.addEventListener('click', function(e) {
       }
     } catch (e) { }
 
-    // Fallback: Real Oct 23 Strangle trade record
+    // Fallback: Real Oct 23 Strangle from Delta Exchange
     return {
       id: 'oct23-strangle-dex',
       source: 'delta-exchange',
+      mode: 'readonly',
       exp: '23OCT26',
       pnl: -9.16,
       callPnl: 38.80,
@@ -28964,6 +29038,67 @@ document.addEventListener('click', function(e) {
       closedAt: new Date('2026-10-23T16:50:00Z').getTime(),
       lots: 10
     };
+  }
+
+  /** Get the real last closed trade for Read+Trade mode */
+  function getReadTradeLastClosedTrade() {
+    try {
+      if (W.v18 && typeof W.v18.lab === 'function') {
+        const lab = W.v18.lab();
+        if (lab && lab.trades && lab.trades.length > 0) {
+          const t = lab.trades[lab.trades.length - 1];
+          return {
+            id: 'lab-closed-' + (t.id || t.exp),
+            source: 'trade-lab',
+            mode: 'readtrade',
+            exp: t.exp || 'LAB',
+            pnl: fin(t.pnl) ? +t.pnl : 0,
+            callPnl: t.callPnl || null,
+            putPnl: t.putPnl || null,
+            fee: t.fee || 0,
+            Kc: t.Kc || (t.legs ? t.legs.find(l=>l.type==='call')?.K : null),
+            Kp: t.Kp || (t.legs ? t.legs.find(l=>l.type==='put')?.K : null),
+            openedAt: t.openedAt || (Date.now() - 3600000),
+            closedAt: t.closedAt || Date.now(),
+            lots: t.lots || 1
+          };
+        }
+      }
+      const raw = localStorage.getItem('v99_trades');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length > 0) {
+          const t = arr[arr.length - 1];
+          return {
+            id: 'v99-closed-' + (t.id || t.exp),
+            source: 'v99',
+            mode: 'readtrade',
+            exp: t.exp || 'TRADE',
+            pnl: fin(t.pnlUsd) ? +t.pnlUsd : 0,
+            callPnl: null,
+            putPnl: null,
+            fee: 0,
+            Kc: t.Kc,
+            Kp: t.Kp,
+            openedAt: t.openedAt || (Date.now() - 3600000),
+            closedAt: t.closedAt || Date.now(),
+            lots: t.lot || 1
+          };
+        }
+      }
+    } catch(e) {}
+
+    // Fallback: Read-Only trade record
+    return getReadOnlyLastClosedTrade();
+  }
+
+  /** Get last closed trade based on currently selected mode */
+  function getActiveModeLastClosedTrade() {
+    if (activeViewMode === 'readonly') {
+      return getReadOnlyLastClosedTrade();
+    } else {
+      return getReadTradeLastClosedTrade();
+    }
   }
 
   /** Fetch or construct real candle-by-candle PnL curve for closed trade */
@@ -29041,9 +29176,10 @@ document.addEventListener('click', function(e) {
 
   /** Sample a live tick into openTicks */
   function sampleTick() {
-    const pos = getOpenPosition();
-    updateUniversalFloatingPnl(pos);
+    const anyOpen = getAnyOpenPosition();
+    updateUniversalFloatingPnl(anyOpen);
 
+    const pos = getActiveModeOpenPosition();
     if (!pos.open) {
       if (S.openTicks.length > 0) S.openTicks = [];
       return;
@@ -29074,56 +29210,64 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  /** Update the Universal Floating P&L Pill */
-  function updateUniversalFloatingPnl(pos) {
+  /**
+   * Update Universal Floating P&L Pill
+   * CRITICAL REQUIREMENT: Floating PnL should ONLY be shown when a trade is active!
+   * When there is NO trade open, it is completely hidden.
+   */
+  function updateUniversalFloatingPnl(openPos) {
     let flEl = $('vUniversalFloatingPnl');
     if (!flEl) {
       flEl = D.createElement('div');
       flEl.id = 'vUniversalFloatingPnl';
       flEl.innerHTML =
         '<div class="v-fpnl-dot" id="vFpnlDot"></div>' +
-        '<span class="v-fpnl-lbl" id="vFpnlLbl">PnL</span>' +
+        '<span class="v-fpnl-lbl" id="vFpnlLbl">Live PnL</span>' +
         '<span class="v-fpnl-val" id="vFpnlVal">$0.00</span>';
       flEl.addEventListener('click', () => {
-        const btn = D.querySelector('[data-page="pgPnl"]');
-        if (btn) btn.click();
+        navigateToPnl();
       });
       D.body.appendChild(flEl);
     }
 
-    if (!pos || !pos.open) {
-      const lastTrade = getLastClosedTrade();
-      if (!lastTrade) {
-        flEl.style.display = 'none';
-        return;
-      }
-      flEl.style.display = 'flex';
-      const dot = $('vFpnlDot');
-      const lbl = $('vFpnlLbl');
-      const val = $('vFpnlVal');
-      if (dot) dot.className = 'v-fpnl-dot idle';
-      if (lbl) lbl.textContent = 'Last PnL';
-      if (val) {
-        val.className = 'v-fpnl-val ' + (lastTrade.pnl > 0 ? 'pos' : (lastTrade.pnl < 0 ? 'neg' : 'zero'));
-        val.textContent = fmtMoney(lastTrade.pnl);
-      }
+    if (!openPos || !openPos.open) {
+      // HIDE completely when no trade is active
+      flEl.style.display = 'none';
       return;
     }
 
+    // SHOW floating PnL with pulsating live dot when trade is active
     flEl.style.display = 'flex';
     const dot = $('vFpnlDot');
     const lbl = $('vFpnlLbl');
     const val = $('vFpnlVal');
 
     if (dot) dot.className = 'v-fpnl-dot pulse';
-    if (lbl) lbl.textContent = pos.kind === 'read-only' ? 'Delta PnL' : 'Live PnL';
+    if (lbl) lbl.textContent = openPos.kind === 'read-only' ? 'Delta (RO)' : 'Trade Lab';
     if (val) {
-      val.className = 'v-fpnl-val ' + (pos.totalPnl > 0 ? 'pos' : (pos.totalPnl < 0 ? 'neg' : 'zero'));
-      val.textContent = fmtMoney(pos.totalPnl);
+      val.className = 'v-fpnl-val ' + (openPos.totalPnl > 0 ? 'pos' : (openPos.totalPnl < 0 ? 'neg' : 'zero'));
+      val.textContent = fmtMoney(openPos.totalPnl);
     }
   }
 
-  /** Draw the panel fixed at the top of #pgPnl with zero blinking */
+  /** Robust navigation to P&L page */
+  function navigateToPnl() {
+    if (W.v80Layout && typeof W.v80Layout.show === 'function') {
+      W.v80Layout.show('pgPnl');
+    }
+    if (W.v132 && typeof W.v132.go === 'function') {
+      W.v132.go('pgPnl');
+    }
+    const host = ensurePnlHost();
+    if (host) {
+      D.querySelectorAll('.page').forEach(p => p.classList.toggle('on', p.id === 'pgPnl'));
+      D.querySelectorAll('#nav button, #tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === 'pgPnl'));
+      D.body.dataset.page = 'pgPnl';
+    }
+    drawPanel();
+  }
+
+  /** Draw the panel fixed at the top of #pgPnl */
   function drawPanel() {
     ensurePnlNav();
     const host = ensurePnlHost();
@@ -29140,13 +29284,13 @@ document.addEventListener('click', function(e) {
       host.insertBefore(card, host.firstChild);
     }
 
-    const pos = getOpenPosition();
-    const lastTrade = !pos.open ? getLastClosedTrade() : null;
+    const pos = getActiveModeOpenPosition();
+    const lastTrade = !pos.open ? getActiveModeLastClosedTrade() : null;
 
     // Stable state key to avoid unnecessary DOM re-rendering
-    const stateKey = pos.open
+    const stateKey = activeViewMode + '|' + (pos.open
       ? ('open|' + pos.id + '|' + pos.totalPnl + '|' + S.openTicks.length)
-      : (lastTrade ? ('closed|' + lastTrade.id + '|' + lastTrade.pnl + '|' + (S.lastTradeCurve ? S.lastTradeCurve.length : 0)) : 'empty');
+      : (lastTrade ? ('closed|' + lastTrade.id + '|' + lastTrade.pnl + '|' + (S.lastTradeCurve ? S.lastTradeCurve.length : 0)) : 'empty'));
 
     if (card.__renderedKey === stateKey && card.innerHTML.length > 50) {
       return;
@@ -29155,6 +29299,12 @@ document.addEventListener('click', function(e) {
 
     const Wd = 880, Ht = 180;
     const L = 55, R = 20, T = 16, B = 28;
+
+    const tabsHtml =
+      '<div class="v-acc-tabs">' +
+        '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readonly' ? 'active' : '') + '" data-mode="readonly">Delta (Read-Only)</button>' +
+        '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readtrade' ? 'active' : '') + '" data-mode="readtrade">Read + Trade</button>' +
+      '</div>';
 
     if (pos.open) {
       // CASE A: Active Trade
@@ -29217,10 +29367,8 @@ document.addEventListener('click', function(e) {
               '<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#16c784;animation:vfpnlPulse 1.8s infinite;"></span>' +
               'LIVE TICK-BY-TICK P&L' +
             '</span>' +
-            '<span class="v-mode-badge live">REAL-TIME</span>' +
-            '<span class="v-mode-badge ' + (pos.kind === 'read-only' ? 'read-only' : 'live') + '">' +
-              (pos.kind === 'read-only' ? 'DELTA READ-ONLY' : 'READ + TRADE') +
-            '</span>' +
+            '<span class="v-mode-badge live">REAL-TIME ACTIVE</span>' +
+            tabsHtml +
           '</div>' +
           '<div class="v-head-right">' +
             '<span style="font-size:12px;color:var(--muted,#888);">Net PnL</span>' +
@@ -29231,8 +29379,8 @@ document.addEventListener('click', function(e) {
         legsHtml +
 
         '<div class="v-grid">' +
-          '<div class="v-kpi"><div class="v-kpi-lbl">Position</div><div class="v-kpi-num">' + (pos.size || 1) + ' lots</div></div>' +
-          '<div class="v-kpi"><div class="v-kpi-lbl">Ticks Recorded</div><div class="v-kpi-num">' + ticks.length + ' ticks</div></div>' +
+          '<div class="v-kpi"><div class="v-kpi-lbl">Position Mode</div><div class="v-kpi-num">' + (activeViewMode === 'readonly' ? 'Delta Read-Only' : 'Read + Trade') + '</div></div>' +
+          '<div class="v-kpi"><div class="v-kpi-lbl">Position Size</div><div class="v-kpi-num">' + (pos.size || 1) + ' lots</div></div>' +
           '<div class="v-kpi"><div class="v-kpi-lbl">First Tick</div><div class="v-kpi-num">' + fmtTime(ticks[0].t) + '</div></div>' +
           '<div class="v-kpi"><div class="v-kpi-lbl">Latest Tick</div><div class="v-kpi-num">' + fmtTime(latest.t) + '</div></div>' +
         '</div>' +
@@ -29318,10 +29466,10 @@ document.addEventListener('click', function(e) {
           '<div class="v-head-left">' +
             '<span class="v-title">' +
               '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f6465d;"></span>' +
-              'LAST CLOSED STRANGLE · START-TO-EXIT P&L' +
+              'LAST CLOSED TRADE · START-TO-EXIT P&L' +
             '</span>' +
-            '<span class="v-mode-badge idle">CLOSED</span>' +
-            '<span class="v-mode-badge read-only">DELTA REAL FILLS</span>' +
+            '<span class="v-mode-badge idle">FLAT (LAST TRADE)</span>' +
+            tabsHtml +
           '</div>' +
           '<div class="v-head-right">' +
             '<span style="font-size:12px;color:var(--muted,#888);">Realized PnL</span>' +
@@ -29349,9 +29497,9 @@ document.addEventListener('click', function(e) {
         '</div>' +
 
         '<div class="v-grid">' +
+          '<div class="v-kpi"><div class="v-kpi-lbl">Source</div><div class="v-kpi-num">' + (activeViewMode === 'readonly' ? 'Delta Fills' : 'Trade Lab Log') + '</div></div>' +
           '<div class="v-kpi"><div class="v-kpi-lbl">Expiry</div><div class="v-kpi-num">' + (lastTrade.exp || '—') + '</div></div>' +
           '<div class="v-kpi"><div class="v-kpi-lbl">Duration</div><div class="v-kpi-num">' + durStr + '</div></div>' +
-          '<div class="v-kpi"><div class="v-kpi-lbl">Opened (IST)</div><div class="v-kpi-num">' + fmtDate(lastTrade.openedAt) + '</div></div>' +
           '<div class="v-kpi"><div class="v-kpi-lbl">Closed (IST)</div><div class="v-kpi-num">' + fmtDate(lastTrade.closedAt) + '</div></div>' +
         '</div>' +
 
@@ -29392,6 +29540,21 @@ document.addEventListener('click', function(e) {
 
       attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
     }
+
+    // Attach mode tab switch click listeners
+    const modeBtns = card.querySelectorAll('.v-acc-btn');
+    modeBtns.forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const m = btn.dataset.mode;
+        if (m && m !== activeViewMode) {
+          activeViewMode = m;
+          localStorage.setItem('v_pnl_view_mode', m);
+          card.__renderedKey = null;
+          drawPanel();
+        }
+      });
+    });
   }
 
   /** Attach continuous SVG crosshair hairline and tooltip */
@@ -29506,7 +29669,6 @@ document.addEventListener('click', function(e) {
     curveBox.__hairAttached = true;
     curveBox.style.position = 'relative';
 
-    // Tooltip container
     let tip = curveBox.querySelector('.v133-hair-tip');
     if (!tip) {
       tip = D.createElement('div');
@@ -29518,7 +29680,6 @@ document.addEventListener('click', function(e) {
     const circles = [...svg.querySelectorAll('circle')];
     if (!circles.length) return;
 
-    // Crosshair group inside SVG
     let gHair = svg.querySelector('#v133HairG');
     if (!gHair) {
       gHair = D.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -29532,7 +29693,6 @@ document.addEventListener('click', function(e) {
       svg.appendChild(gHair);
     }
 
-    // Capture overlay
     let overlay = svg.querySelector('#v133HairOverlay');
     if (!overlay) {
       overlay = D.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -29552,7 +29712,6 @@ document.addEventListener('click', function(e) {
       if (!rect.width) return;
       const xSvg = (e.clientX - rect.left) * (880 / rect.width);
 
-      // Find closest circle
       let best = null;
       let minD = Infinity;
       for (const c of circles) {
@@ -29597,7 +29756,26 @@ document.addEventListener('click', function(e) {
 
   /** Intercept and hook all page navigation and render calls */
   function installHooks() {
-    // Intercept v133.pnl and render
+    if (W.v80Layout && typeof W.v80Layout.show === 'function' && !W.v80Layout.show.__hooked) {
+      const origShow = W.v80Layout.show;
+      W.v80Layout.show = function(p) {
+        const res = origShow.apply(this, arguments);
+        if (p === 'pgPnl') {
+          setTimeout(() => {
+            const host = $('pgPnl');
+            if (host) host.classList.add('on');
+            drawPanel();
+            if (W.v133 && typeof W.v133.pnl === 'function') {
+              try { W.v133.pnl(); } catch(e){}
+            }
+            enhanceV133EquityCurve();
+          }, 30);
+        }
+        return res;
+      };
+      W.v80Layout.show.__hooked = true;
+    }
+
     if (W.v133) {
       if (typeof W.v133.pnl === 'function' && !W.v133.pnl.__hooked) {
         const origPnl = W.v133.pnl;
@@ -29613,13 +29791,14 @@ document.addEventListener('click', function(e) {
       }
     }
 
-    // Intercept v132.go
     if (W.v132 && typeof W.v132.go === 'function' && !W.v132.go.__hooked) {
       const origGo = W.v132.go;
       W.v132.go = function(id) {
         const res = origGo.apply(this, arguments);
         if (id === 'pgPnl') {
           setTimeout(() => {
+            const host = $('pgPnl');
+            if (host) host.classList.add('on');
             drawPanel();
             enhanceV133EquityCurve();
           }, 30);
@@ -29635,12 +29814,8 @@ document.addEventListener('click', function(e) {
     const b = e.target && e.target.closest && e.target.closest('[data-page="pgPnl"], #nav [data-page="pgPnl"], #tabbar [data-page="pgPnl"], #moreSheet [data-page="pgPnl"]');
     if (b) {
       setTimeout(() => {
-        const host = ensurePnlHost();
-        if (host) host.classList.add('on');
-        D.body.dataset.page = 'pgPnl';
-        drawPanel();
-        enhanceV133EquityCurve();
-      }, 20);
+        navigateToPnl();
+      }, 10);
     }
   }, true);
 
@@ -29688,10 +29863,19 @@ document.addEventListener('click', function(e) {
     sample: sampleTick,
     draw: drawPanel,
     state: () => S,
-    getOpenPosition,
-    getLastClosedTrade,
+    getAnyOpenPosition,
+    getActiveModeOpenPosition,
+    getActiveModeLastClosedTrade,
+    setMode: m => {
+      activeViewMode = m;
+      localStorage.setItem('v_pnl_view_mode', m);
+      const card = $('vLivePnlTick');
+      if (card) card.__renderedKey = null;
+      drawPanel();
+    },
     pollDeltaPositions,
-    enhanceV133EquityCurve
+    enhanceV133EquityCurve,
+    navigateToPnl
   };
 
   // Immediate boot
