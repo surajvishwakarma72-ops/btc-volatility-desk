@@ -41044,15 +41044,16 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         const A = W.v100 && W.v100.api; const pos = A && A.last && Array.isArray(A.last.positions) ? A.last.positions : null; if (!pos) return null;
         const L = []; for (const p of pos) {
           const sym = String(p.product_symbol || (p.product && p.product.symbol) || p.symbol || ''), m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(sym); if (!m) continue;
-          const size = N(p.size); if (!(size < 0)) continue; L.push({ sym, type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3], n: -size, cv: N(p.contract_value) || N(p.product && p.product.contract_value) || 0.001, entry: N(p.entry_price) });
+          const size = N(p.size); if (!size) continue; L.push({ sym, type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3], n: Math.abs(size), side: size < 0 ? 'sell' : 'buy', cv: N(p.contract_value) || N(p.product && p.product.contract_value) || 0.001, entry: N(p.entry_price) });
         }
         return L;
       }
       function strangleNow() {
         const T = (() => { try { return JSON.parse(localStorage.getItem('v99_trade') || 'null'); } catch (e) { return null; } })();
-        const L = legsNow(); if (!T || T.src !== 'api' || !L) return null;
-        const legs = L.filter(x => x.exp === T.exp && ((x.type === 'P' && x.K === T.Kp) || (x.type === 'C' && x.K === T.Kc))); if (!legs.some(x => x.type === 'P') && !legs.some(x => x.type === 'C')) return null;
-        return { id: T.id, exp: T.exp, Kp: T.Kp, Kc: T.Kc, openedAt: T.openedAt || Date.now(), legs };
+        const L = legsNow(); if (!L || !L.length) return null;
+        if (T && T.src === 'api') { const legs = L.filter(x => x.exp === T.exp && ((x.type === 'P' && x.K === T.Kp) || (x.type === 'C' && x.K === T.Kc))); if (legs.length > 0) return { id: T.id, exp: T.exp, Kp: T.Kp, Kc: T.Kc, openedAt: T.openedAt || Date.now(), legs }; }
+        const exp = L[0].exp, puts = L.filter(x => x.type === 'P'), calls = L.filter(x => x.type === 'C');
+        return { id: 'api_' + exp + '_' + (puts.length ? puts[0].K : 0) + '_' + (calls.length ? calls[0].K : 0), exp, Kp: puts.length ? puts[0].K : null, Kc: calls.length ? calls[0].K : null, openedAt: Date.now(), legs: L };
       }
       async function priceLegs(S) {
         const rows = await W.getChain(S.exp); const now = Date.now(), st = settle(S.exp); if (!st || st <= now) return null; const T = (st - now) / YEAR;
@@ -41457,7 +41458,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         if (UI.unconf && pill && !FP.open) return `<i style="width:7px;height:7px;border-radius:50%;background:var(--amber,#E3AE45);flex:none"></i><b style="color:var(--muted)">${usd(tot, true)}</b><span class="am">not confirmed · tap</span>`;
         if (pill && !FP.open) return `<i style="width:7px;height:7px;border-radius:50%;background:var(--pos);flex:none"></i><b class="${tot >= 0 ? 'pos' : 'neg'}">${usd(tot, true)}</b><span>${usedTxt} of stop</span>${(() => { const k = legSkew(s); return k && k.r >= 2 ? `<span class="${k.r >= 3 ? 'neg' : 'am'}">${k.hi[0]} ${k.r.toFixed(1)}×</span>` : ''; })()}${worst && worst[1] < 0 ? `<span class="neg">${worst[0]} ${usd(worst[1])}</span>` : ''}${w ? '<span class="am">⚠</span>' : ''}`;
         const canPop = !pill && 'documentPictureInPicture' in W && !FP.pip;
-        return `${unconfHtml()}<div class="fh"><i${UI.unconf ? ' style="background:var(--amber,#E3AE45)"' : ''}></i><span>${UI.unconf ? 'LAST SEEN' : 'LIVE'} P&amp;L · ${esc(head)}</span>${pill ? '' : `<button type="button" data-fp="mini" title="${FP.mini ? 'Show the causes' : 'Only the total'}">${FP.mini ? '+' : '–'}</button>`}${canPop ? '<button type="button" data-fp="pop" title="Pop out: a small window that stays on top of other apps">⧉</button>' : ''}</div>
+        return `${unconfHtml()}<div class="fh"><i${UI.unconf ? ' style="background:var(--amber,#E3AE45)"' : ''}></i><span>${UI.unconf ? 'LAST SEEN' : 'LIVE'} P&amp;L · ${esc(head)}<span class="f-badge ${(W.v100 && W.v100.api && (W.v100.api.keyKind === 'trade' || W.v100.api.tradeKey)) ? 'trade' : 'read-only'}">[${(W.v100 && W.v100.api && (W.v100.api.keyKind === 'trade' || W.v100.api.tradeKey)) ? 'READ+TRADE' : 'READ-ONLY'}]</span></span>${pill ? '' : `<button type="button" data-fp="mini" title="${FP.mini ? 'Show the causes' : 'Only the total'}">${FP.mini ? '+' : '–'}</button>`}${canPop ? '<button type="button" data-fp="pop" title="Pop out: a small window that stays on top of other apps">⧉</button>' : ''}</div>
     <div class="fbig"><b class="${tot >= 0 ? 'pos' : 'neg'}">${usd(tot, true)}</b><div><small>Delta P&amp;L · stop ${cr > 0 ? usd(-cr) : '—'}</small><em class="${used != null && used > 0.5 ? 'neg' : used > 0 ? 'am' : ''}">${usedTxt} used</em></div></div>
     <div class="fbar"><u style="width:${used != null ? Math.min(100, used * 100) : 0}%;${used > 0.5 ? 'background:var(--neg)' : ''}"></u></div>${skewBar(s)}${rows}
     ${w ? `<div class="fw">⚠ ${esc(w.x)}</div>` : ''}`;
@@ -62929,6 +62930,619 @@ document.addEventListener('click', function(e) {
     else if (e.key === 'Enter') { if (e.target.id === 'akIn') { const v = e.target.value; e.target.value = ''; ask(v); } else if (e.target.id === 'akPw') login(); }
   });
 })();
-</script></body>
+</script>
+<style id="vLivePnlTickCss">
+/* vLivePnlTick · Live Tick-by-Tick P&L Graph & Universal Floating P&L */
+#vLivePnlTick {
+  margin: 0 auto 16px;
+  max-width: var(--page-max, 1800px);
+  background: var(--panel, #181c24);
+  border: 1px solid var(--line2, rgba(255,255,255,0.08));
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-sizing: border-box;
+  color: var(--text, #eee);
+  font-family: var(--font, system-ui, sans-serif);
+  display: block !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+}
+#pgPnl.v158-deep > #vLivePnlTick {
+  display: block !important;
+}
+#vLivePnlTick .v-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+#vLivePnlTick .v-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#vLivePnlTick .v-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--pos, #16c784);
+  box-shadow: 0 0 10px var(--pos, #16c784);
+  display: inline-block;
+  animation: vTickPulse 1.8s infinite ease-in-out;
+}
+@keyframes vTickPulse {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.35); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.7; }
+}
+#vLivePnlTick .v-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+  background: color-mix(in srgb, var(--panel) 50%, #2f7cc0);
+  color: #fff;
+  border: 1px solid rgba(47,124,192,0.4);
+}
+#vLivePnlTick .v-badge.read-only {
+  background: rgba(22,199,132,0.18);
+  color: var(--pos, #16c784);
+  border-color: rgba(22,199,132,0.45);
+}
+#vLivePnlTick .v-badge.trade {
+  background: rgba(227,174,69,0.18);
+  color: var(--amber, #e3ae45);
+  border-color: rgba(227,174,69,0.45);
+}
+#vLivePnlTick .v-stat-strip {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+#vLivePnlTick .v-big-pnl {
+  font-size: 30px;
+  font-weight: 800;
+  font-family: var(--mono, monospace);
+  line-height: 1.1;
+}
+#vLivePnlTick .v-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin: 14px 0;
+}
+#vLivePnlTick .v-kpi-box {
+  background: color-mix(in srgb, var(--bg, #0b0e14) 40%, var(--panel, #181c24));
+  border: 1px solid var(--line, rgba(255,255,255,0.06));
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+#vLivePnlTick .v-kpi-lbl {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+#vLivePnlTick .v-kpi-val {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--mono, monospace);
+  margin-top: 3px;
+}
+#vLivePnlTick .v-chart-wrap {
+  position: relative;
+  width: 100%;
+  height: 240px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg, #0b0e14) 75%, var(--panel, #181c24));
+  border: 1px solid var(--line, rgba(255,255,255,0.06));
+  overflow: hidden;
+  margin-top: 10px;
+  user-select: none;
+  touch-action: none;
+}
+#vLivePnlTick .v-chart-wrap svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+#vLivePnlTick .v-hairline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255,255,255,0.5);
+  pointer-events: none;
+  display: none;
+}
+#vLivePnlTick .v-tooltip {
+  position: absolute;
+  top: 10px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  background: rgba(18,22,30,0.92);
+  border: 1px solid rgba(255,255,255,0.2);
+  font: 11px var(--mono, monospace);
+  color: #fff;
+  pointer-events: none;
+  display: none;
+  white-space: nowrap;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+#vLivePnlTick .v-legs-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 14px;
+  font-size: 12px;
+}
+#vLivePnlTick .v-legs-table th {
+  text-align: left;
+  padding: 6px 10px;
+  color: var(--muted, #888);
+  font-weight: 600;
+  border-bottom: 1px solid var(--line, rgba(255,255,255,0.08));
+}
+#vLivePnlTick .v-legs-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line, rgba(255,255,255,0.04));
+  font-family: var(--mono, monospace);
+}
+#vLivePnlTick .pos { color: var(--pos, #16c784) !important; }
+#vLivePnlTick .neg { color: var(--neg, #f6465d) !important; }
+#vLivePnlTick .am { color: var(--amber, #e3ae45) !important; }
+#vLivePnlTick .v-act-btn {
+  background: color-mix(in srgb, var(--panel, #181c24) 70%, #fff);
+  border: 1px solid var(--line2, #444);
+  color: var(--text, #eee);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+#vLivePnlTick .v-act-btn:hover {
+  background: color-mix(in srgb, var(--panel, #181c24) 50%, #2f7cc0);
+  border-color: #2f7cc0;
+}
+/* Ensure floating live P&L card always floats on screen above everything */
+#v18Float {
+  z-index: 99999 !important;
+}
+#v18Float .f-badge {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+  letter-spacing: 0.04em;
+  vertical-align: middle;
+}
+#v18Float .f-badge.read-only {
+  background: rgba(22,199,132,0.2);
+  color: var(--pos, #16c784);
+}
+#v18Float .f-badge.trade {
+  background: rgba(227,174,69,0.2);
+  color: var(--amber, #e3ae45);
+}
+</style>
+
+<script data-module="live-pnl-tick">
+/* live-pnl-tick · Tick-by-tick real-time P&L graph in P&L analysis panel & universal floating P&L card */
+(function initLivePnlTick() {
+  'use strict';
+  const W = window, D = document, $ = id => D.getElementById(id);
+  const STORAGE_KEY = 'v_live_pnl_ticks';
+  const MAX_TICKS = 2500;
+  const IST = 19800000;
+
+  const fin = n => typeof n === 'number' && Number.isFinite(n);
+  const usd = (v, sign) => {
+    if (!fin(v)) return '—';
+    const s = Math.abs(v) >= 1000 ? Math.round(Math.abs(v)).toLocaleString('en-US') : Math.abs(v).toFixed(2);
+    return (v < 0 ? '−$' : (sign && v > 0 ? '+$' : '$')) + s;
+  };
+  const hm = ms => {
+    const d = new Date(ms + IST);
+    return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ':' + String(d.getUTCSeconds()).padStart(2, '0');
+  };
+  const hmShort = ms => {
+    const d = new Date(ms + IST);
+    return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
+  };
+  const dur = ms => {
+    if (!ms || ms < 0) return '0m';
+    const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60);
+    return h > 0 ? h + 'h ' + (m % 60) + 'm' : m + 'm ' + (s % 60) + 's';
+  };
+
+  // State
+  const S = {
+    ticks: [],
+    simulating: false,
+    simTimer: null,
+    peak: null,
+    dip: null,
+    startTime: null,
+    lastPnl: 0,
+    hoverIdx: -1,
+    activeLegs: []
+  };
+
+  // Restore stored ticks
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const arr = JSON.parse(saved);
+      if (Array.isArray(arr) && arr.length > 0) {
+        const cut = Date.now() - 86400000;
+        S.ticks = arr.filter(x => x && x.t >= cut);
+        if (S.ticks.length) {
+          S.startTime = S.ticks[0].t;
+          const vals = S.ticks.map(x => x.pnl);
+          S.peak = Math.max(...vals);
+          S.dip = Math.min(...vals);
+          S.lastPnl = S.ticks[S.ticks.length - 1].pnl;
+        }
+      }
+    }
+  } catch (e) { }
+
+  function saveTicks() {
+    try {
+      if (S.ticks.length > MAX_TICKS) S.ticks = S.ticks.slice(-MAX_TICKS);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(S.ticks));
+    } catch (e) { }
+  }
+
+  /** Read open positions from Delta API (read-only or read+trade) or Paper trade */
+  function getOpenPosition() {
+    const A = W.v100 && W.v100.api;
+    const pos = A && A.last && Array.isArray(A.last.positions) ? A.last.positions : null;
+    let kind = 'read-only';
+    if (A && (A.keyKind === 'trade' || A.tradeKey)) kind = 'trade';
+
+    const legs = [];
+    let spot = null;
+    try {
+      if (typeof W.spotNow === 'function') spot = W.spotNow();
+      else if (typeof liveSpot !== 'undefined' && liveSpot > 1000) spot = liveSpot;
+    } catch (e) { }
+
+    if (pos && pos.length > 0) {
+      for (const p of pos) {
+        const size = Number(p.size);
+        if (!size || isNaN(size)) continue;
+        const sym = String(p.product_symbol || (p.product && p.product.symbol) || p.symbol || '');
+        const entry = Number(p.entry_price || 0);
+        const mark = Number(p.mark_price || (p.quotes && p.quotes.mark_price) || entry);
+        const cv = Number(p.contract_value || (p.product && p.product.contract_value) || 0.001);
+        const unPnl = Number(p.unrealized_pnl);
+        const calcPnl = fin(unPnl) ? unPnl : (size < 0 ? (entry - mark) * Math.abs(size) * cv : (mark - entry) * size * cv);
+        const m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(sym);
+        legs.push({
+          sym,
+          type: m ? m[1].toUpperCase() : (sym.includes('BTC') ? 'FUT' : 'OPT'),
+          strike: m ? +m[2] : null,
+          exp: m ? '20' + m[5] + '-' + m[4] + '-' + m[3] : '',
+          size: Math.abs(size),
+          side: size < 0 ? 'sell' : 'buy',
+          entry,
+          mark,
+          cv,
+          pnl: calcPnl
+        });
+      }
+    }
+
+    const cur = W.LAB && W.LAB.cur;
+    if (cur && cur.last && cur.last.legs && !legs.length) {
+      const snap = cur.last;
+      if (snap.S) spot = snap.S;
+      for (const l of snap.legs) {
+        const pnl = fin(l.entry) && fin(l.mark) ? (l.entry - l.mark) * l.n * (l.cv || 0.001) : 0;
+        legs.push({
+          sym: l.sym || (l.type + '-' + l.K),
+          type: l.type,
+          strike: l.K,
+          exp: cur.exp,
+          size: l.n,
+          side: 'sell',
+          entry: l.entry,
+          mark: l.mark,
+          cv: l.cv || 0.001,
+          pnl
+        });
+      }
+    }
+
+    if (legs.length > 0) {
+      const totalPnl = legs.reduce((acc, x) => acc + (x.pnl || 0), 0);
+      return { open: true, kind, legs, totalPnl, spot, openedAt: S.startTime || Date.now() };
+    }
+
+    if (S.simulating && S.ticks.length > 0) {
+      return {
+        open: true,
+        kind: 'read-only',
+        sim: true,
+        legs: S.activeLegs.length ? S.activeLegs : [
+          { sym: 'P-BTC-96000', type: 'P', strike: 96000, size: 200, side: 'sell', entry: 430, mark: 310, pnl: 24.0 },
+          { sym: 'C-BTC-104000', type: 'C', strike: 104000, size: 200, side: 'sell', entry: 460, mark: 320, pnl: 28.0 }
+        ],
+        totalPnl: S.lastPnl,
+        spot: spot || 94500,
+        openedAt: S.startTime || (Date.now() - 3600000)
+      };
+    }
+
+    return { open: false, kind, legs: [], totalPnl: 0, spot, openedAt: null };
+  }
+
+  /** Sample a new live tick */
+  function sampleTick() {
+    const pos = getOpenPosition();
+    if (!pos.open) return;
+    const now = Date.now();
+    if (!S.startTime) S.startTime = now;
+
+    const pnl = +pos.totalPnl.toFixed(2);
+    S.lastPnl = pnl;
+    S.peak = S.peak == null ? pnl : Math.max(S.peak, pnl);
+    S.dip = S.dip == null ? pnl : Math.min(S.dip, pnl);
+    S.activeLegs = pos.legs;
+
+    const lastTk = S.ticks[S.ticks.length - 1];
+    if (lastTk && Math.abs(lastTk.pnl - pnl) < 0.005 && now - lastTk.t < 4000) {
+      return;
+    }
+
+    S.ticks.push({ t: now, pnl, spot: pos.spot || (lastTk ? lastTk.spot : null) });
+    saveTicks();
+    drawPanel();
+
+    // Also trigger floating card update
+    try {
+      if (W.v18 && W.v18.floatRender) W.v18.floatRender();
+      else if (W.floatRender) W.floatRender();
+    } catch (e) { }
+  }
+
+  /** Simulation tick engine for testing */
+  function toggleSim() {
+    S.simulating = !S.simulating;
+    if (S.simulating) {
+      if (!S.ticks.length) {
+        S.ticks = [];
+        S.startTime = Date.now() - 30 * 60 * 1000;
+        let v = 0;
+        for (let i = 0; i < 30; i++) {
+          v += (Math.random() - 0.44) * 12;
+          S.ticks.push({ t: S.startTime + i * 60000, pnl: +v.toFixed(2), spot: 94200 + (Math.random() - 0.5) * 150 });
+        }
+        S.lastPnl = v;
+        S.peak = Math.max(...S.ticks.map(x => x.pnl));
+        S.dip = Math.min(...S.ticks.map(x => x.pnl));
+      }
+      if (!S.simTimer) {
+        S.simTimer = setInterval(() => {
+          if (!S.simulating) return;
+          S.lastPnl += (Math.random() - 0.45) * 4;
+          S.ticks.push({ t: Date.now(), pnl: +S.lastPnl.toFixed(2), spot: 94250 + (Math.random() - 0.5) * 50 });
+          S.peak = Math.max(S.peak, S.lastPnl);
+          S.dip = Math.min(S.dip, S.lastPnl);
+          saveTicks();
+          drawPanel();
+        }, 2500);
+      }
+    } else {
+      if (S.simTimer) { clearInterval(S.simTimer); S.simTimer = null; }
+    }
+    drawPanel();
+  }
+
+  /** Draw the Tick-by-Tick Live Graph Panel inside #pgPnl */
+  function drawPanel() {
+    const host = $('pgPnl');
+    if (!host) return;
+    let card = $('vLivePnlTick');
+    if (!card) {
+      card = D.createElement('div');
+      card.id = 'vLivePnlTick';
+      host.insertBefore(card, host.firstChild);
+      card.addEventListener('click', e => {
+        const b = e.target.closest('[data-v-act]');
+        if (!b) return;
+        const act = b.dataset.vAct;
+        if (act === 'sim') toggleSim();
+        else if (act === 'clear') {
+          S.ticks = [];
+          S.peak = S.dip = null;
+          S.startTime = null;
+          saveTicks();
+          drawPanel();
+        }
+      });
+    } else if (host.firstChild !== card) {
+      host.insertBefore(card, host.firstChild);
+    }
+
+    const pos = getOpenPosition();
+    const hasData = S.ticks.length >= 2;
+    const curPnl = pos.open ? pos.totalPnl : S.lastPnl;
+    const kindClass = pos.kind === 'trade' ? 'trade' : 'read-only';
+    const kindLabel = pos.kind === 'trade' ? 'READ+TRADE' : 'READ-ONLY (DELTA)';
+
+    // SVG calculation
+    const Wd = 880, Ht = 240, L = 55, R = 20, T = 22, B = 30;
+    let svgContent = '';
+    if (hasData) {
+      const pnls = S.ticks.map(x => x.pnl);
+      let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
+      const span = (hi - lo) || 10;
+      const pad = span * 0.16;
+      lo -= pad; hi += pad;
+
+      const t0 = S.ticks[0].t, t1 = S.ticks[S.ticks.length - 1].t || t0 + 1;
+      const spanT = Math.max(1000, t1 - t0);
+
+      const X = t => L + (t - t0) / spanT * (Wd - L - R);
+      const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
+      const zeroY = Y(0);
+
+      const pathPts = S.ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
+      const latest = S.ticks[S.ticks.length - 1];
+      const lx = X(latest.t).toFixed(1), ly = Y(latest.pnl).toFixed(1);
+      const zeroStr = zeroY.toFixed(1);
+
+      // Area under curve
+      const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
+
+      // Peak & Dip markers
+      const maxVal = Math.max(...pnls), minVal = Math.min(...pnls);
+      const maxTk = S.ticks.find(x => x.pnl === maxVal) || latest;
+      const minTk = S.ticks.find(x => x.pnl === minVal) || latest;
+      const mxX = X(maxTk.t).toFixed(1), mxY = Y(maxVal).toFixed(1);
+      const mnX = X(minTk.t).toFixed(1), mnY = Y(minVal).toFixed(1);
+
+      // Time markers
+      const timeLabels = [0, 0.33, 0.66, 1].map(frac => {
+        const t = t0 + frac * spanT;
+        return '<text x="' + X(t).toFixed(1) + '" y="' + (Ht - 8) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="middle" font-family="var(--mono,monospace)">' + hmShort(t) + '</text>';
+      }).join('');
+
+      let hairlineSvg = '';
+      if (S.hoverIdx >= 0 && S.hoverIdx < S.ticks.length) {
+        const hk = S.ticks[S.hoverIdx];
+        const hx = X(hk.t).toFixed(1), hy = Y(hk.pnl).toFixed(1);
+        hairlineSvg = '<line x1="' + hx + '" y1="' + T + '" x2="' + hx + '" y2="' + (Ht - B) + '" stroke="rgba(255,255,255,0.4)" stroke-dasharray="3 3"/>' +
+          '<circle cx="' + hx + '" cy="' + hy + '" r="5" fill="#fff" stroke="' + (hk.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2"/>';
+      }
+
+      svgContent = '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img" aria-label="Live PnL Tick Graph">' +
+        '<defs>' +
+          '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
+          '<linearGradient id="vPnlGradNeg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#f6465d" stop-opacity="0.38"/><stop offset="100%" stop-color="#f6465d" stop-opacity="0.02"/></linearGradient>' +
+        '</defs>' +
+        '<line x1="' + L + '" y1="' + zeroStr + '" x2="' + (Wd - R) + '" y2="' + zeroStr + '" stroke="var(--line2, rgba(255,255,255,0.2))" stroke-dasharray="4 4"/>' +
+        '<text x="' + (L - 8) + '" y="' + (+zeroStr + 4) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="end" font-family="var(--mono,monospace)">$0</text>' +
+        '<path d="' + areaD + '" fill="url(#' + (latest.pnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg') + ')"/>' +
+        '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+        '<circle cx="' + mxX + '" cy="' + mxY + '" r="4" fill="var(--pos,#16c784)" stroke="#fff" stroke-width="1.2"/>' +
+        '<text x="' + mxX + '" y="' + Math.max(T + 10, +mxY - 8) + '" font-size="10" font-weight="700" fill="var(--pos,#16c784)" text-anchor="middle" font-family="var(--mono,monospace)">▲ ' + usd(maxVal) + '</text>' +
+        (minVal < 0 ? '<circle cx="' + mnX + '" cy="' + mnY + '" r="4" fill="var(--neg,#f6465d)" stroke="#fff" stroke-width="1.2"/><text x="' + mnX + '" y="' + Math.min(Ht - B - 4, +mnY + 14) + '" font-size="10" font-weight="700" fill="var(--neg,#f6465d)" text-anchor="middle" font-family="var(--mono,monospace)">▼ ' + usd(minVal) + '</text>' : '') +
+        '<circle cx="' + lx + '" cy="' + ly + '" r="6" fill="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '">' +
+          '<animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite"/>' +
+          '<animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>' +
+        '</circle>' +
+        '<circle cx="' + lx + '" cy="' + ly + '" r="3" fill="#fff"/>' +
+        timeLabels + hairlineSvg +
+      '</svg>';
+    } else {
+      svgContent = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted,#888);gap:8px">' +
+        '<span>No live ticks recorded yet. Ticks stream automatically when an option position is open on Delta.</span>' +
+        '<button type="button" class="v-act-btn" data-v-act="sim">Test / Preview Live Tick Stream</button>' +
+      '</div>';
+    }
+
+    let legsHtml = '';
+    if (pos.legs && pos.legs.length > 0) {
+      legsHtml = '<table class="v-legs-table">' +
+        '<thead><tr><th>LEG / STRIKE</th><th>SIDE</th><th>LOTS</th><th>ENTRY</th><th>LIVE MARK</th><th>LEG P&amp;L</th></tr></thead>' +
+        '<tbody>' +
+          pos.legs.map(l => '<tr>' +
+            '<td><b>' + (l.sym || (l.type + ' ' + (l.strike || ''))) + '</b></td>' +
+            '<td><span class="' + (l.side === 'sell' ? 'am' : 'pos') + '">' + l.side.toUpperCase() + '</span></td>' +
+            '<td>' + l.size + '</td>' +
+            '<td>$' + Number(l.entry || 0).toFixed(1) + '</td>' +
+            '<td>$' + Number(l.mark || 0).toFixed(1) + '</td>' +
+            '<td class="' + (l.pnl >= 0 ? 'pos' : 'neg') + '"><b>' + usd(l.pnl, true) + '</b></td>' +
+          '</tr>').join('') +
+        '</tbody>' +
+      '</table>';
+    }
+
+    card.innerHTML = '<div class="v-head">' +
+      '<div class="v-title-row">' +
+        '<span class="v-live-dot"></span>' +
+        '<h3 style="margin:0;font-size:16px;font-weight:700">TICK-BY-TICK P&amp;L STREAM</h3>' +
+        '<span class="v-badge ' + kindClass + '">' + kindLabel + '</span>' +
+        (S.simulating ? '<span class="v-badge am">SIMULATION ACTIVE</span>' : '') +
+      '</div>' +
+      '<div class="v-stat-strip">' +
+        '<div class="v-big-pnl ' + (curPnl >= 0 ? 'pos' : 'neg') + '">' + usd(curPnl, true) + '</div>' +
+        '<button type="button" class="v-act-btn" data-v-act="sim">' + (S.simulating ? 'Stop Test' : 'Test Stream') + '</button>' +
+        (S.ticks.length ? '<button type="button" class="v-act-btn" data-v-act="clear">Clear</button>' : '') +
+      '</div>' +
+    '</div>' +
+    '<div class="v-kpi-grid">' +
+      '<div class="v-kpi-box"><div class="v-kpi-lbl">PEAK (HIGH WATER)</div><div class="v-kpi-val pos">' + usd(S.peak, true) + '</div></div>' +
+      '<div class="v-kpi-box"><div class="v-kpi-lbl">MAX DIP</div><div class="v-kpi-val neg">' + usd(S.dip, true) + '</div></div>' +
+      '<div class="v-kpi-box"><div class="v-kpi-lbl">DURATION</div><div class="v-kpi-val">' + dur(Date.now() - (S.startTime || Date.now())) + '</div></div>' +
+      '<div class="v-kpi-box"><div class="v-kpi-lbl">TICKS RECORDED</div><div class="v-kpi-val">' + S.ticks.length + '</div></div>' +
+      '<div class="v-kpi-box"><div class="v-kpi-lbl">BTC SPOT</div><div class="v-kpi-val">$' + Number(pos.spot || 0).toLocaleString() + '</div></div>' +
+    '</div>' +
+    '<div class="v-chart-wrap" id="vLiveChartWrap">' +
+      svgContent +
+      '<div class="v-hairline" id="vChartHair"></div>' +
+      '<div class="v-tooltip" id="vChartTip"></div>' +
+    '</div>' +
+    legsHtml;
+
+    const wrap = $('vLiveChartWrap');
+    if (wrap && hasData) {
+      wrap.addEventListener('pointermove', e => {
+        const rect = wrap.getBoundingClientRect();
+        const rx = e.clientX - rect.left;
+        const frac = Math.max(0, Math.min(1, (rx - L) / (Wd - L - R)));
+        const idx = Math.round(frac * (S.ticks.length - 1));
+        if (idx >= 0 && idx < S.ticks.length) {
+          S.hoverIdx = idx;
+          const tk = S.ticks[idx];
+          const tip = $('vChartTip'), hair = $('vChartHair');
+          if (tip && hair) {
+            hair.style.display = 'block';
+            hair.style.left = rx + 'px';
+            tip.style.display = 'block';
+            tip.style.left = Math.min(rect.width - 120, Math.max(10, rx - 50)) + 'px';
+            tip.innerHTML = '<b>' + hm(tk.t) + '</b> &middot; <span class="' + (tk.pnl >= 0 ? 'pos' : 'neg') + '">' + usd(tk.pnl, true) + '</span>';
+          }
+        }
+      });
+      wrap.addEventListener('pointerleave', () => {
+        S.hoverIdx = -1;
+        const tip = $('vChartTip'), hair = $('vChartHair');
+        if (tip) tip.style.display = 'none';
+        if (hair) hair.style.display = 'none';
+      });
+    }
+  }
+
+  setInterval(sampleTick, 2500);
+
+  D.addEventListener('click', e => {
+    if (e.target.closest && e.target.closest('#nav [data-page="pgPnl"], #tabbar [data-page="pgPnl"], [data-page="pgPnl"]')) {
+      setTimeout(drawPanel, 80);
+    }
+  });
+
+  W.deskLivePnlTick = {
+    sample: sampleTick,
+    draw: drawPanel,
+    toggleSim,
+    state: () => S,
+    getOpenPosition
+  };
+
+  setTimeout(drawPanel, 1200);
+})();
+</script>
+</body>
 
 </html>

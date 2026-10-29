@@ -193,18 +193,36 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
     }
     const uid = userId(request);
     let creds: { key: string; secret: string } | null = null;
-    try { creds = await loadDeltaKey(uid); } catch { return reply.status(500).send({ success: false, error: 'Could not read your saved Delta key' }); }
+    let usedKind: 'read' | 'trade' = 'read';
+    try {
+      creds = await loadDeltaKey(uid, 'read');
+      if (!creds) {
+        creds = await loadDeltaKey(uid, 'trade');
+        if (creds) usedKind = 'trade';
+      }
+    } catch { return reply.status(500).send({ success: false, error: 'Could not read your saved Delta key' }); }
     if (!creds && isOwner(request) && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET) creds = { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET };
     if (!creds) return reply.status(409).send({ success: false, error: 'no_delta_key', message: 'Save your Delta API key in Settings first' });
     const r = await deltaSignedGet(creds.key, creds.secret, path, query);
-    if (!r.ok) void noteDeltaResult(uid, false, r.errorText);
-    else void noteDeltaResult(uid, true, null);
+    if (!r.ok) void noteDeltaResult(uid, false, r.errorText, usedKind);
+    else void noteDeltaResult(uid, true, null, usedKind);
     return reply.status(r.status).send(r.body);
   });
 
   // Save, check and remove the caller's own Delta key. The secret is only ever sent in (never returned) and is stored encrypted.
   const authOnly = { preHandler: (fastify as any).authenticate };
-  fastify.get('/credentials', authOnly, async (request) => ({ success: true, encryptionReady: masterKeyConfigured(), ...(await deltaKeyStatus(userId(request))) }));
+  fastify.get('/credentials', authOnly, async (request) => {
+    const uid = userId(request);
+    const read = await deltaKeyStatus(uid, 'read');
+    if (read.connected) {
+      return { success: true, encryptionReady: masterKeyConfigured(), keyKind: 'read', ...read };
+    }
+    const trade = await deltaKeyStatus(uid, 'trade');
+    if (trade.connected) {
+      return { success: true, encryptionReady: masterKeyConfigured(), keyKind: 'trade', ...trade };
+    }
+    return { success: true, encryptionReady: masterKeyConfigured(), connected: false };
+  });
 
   fastify.put('/credentials', { ...authOnly, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
     const b = z.object({ apiKey: z.string().trim().min(8).max(200), apiSecret: z.string().trim().min(8).max(400) }).safeParse(request.body);
