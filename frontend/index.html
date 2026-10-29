@@ -31663,7 +31663,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
         if (!PAGES.includes(p)) return; page = p; LS('v80_page', p);
         for (const id of PAGES) { const el = $(id); if (el) el.classList.toggle('on', id === p); }
         document.querySelectorAll('#nav button,#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.page === p || (b.id === 'moreTab' && (p === 'pgBot' || p === 'pgPaper' || p === 'pgAlgo' || p === 'pgScore' || p === 'pgStudy' || p === 'pgSettings' || p === 'pgEvidence' || (p === 'pgEvents' && !document.body.classList.contains('reg-off'))))));
-        $('moreSheet') && ($('moreSheet').hidden = true);
+        const _ms = $('moreSheet'); if (_ms) { _ms.hidden = true; _ms.style.display = 'none'; }
         slotMoves(p);
         document.body.dataset.page = p;
         kick();
@@ -31671,10 +31671,26 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
       }
       function kick() { for (const ms of [30, 250, 900]) { setTimeout(() => { try { window.dispatchEvent(new Event('resize')); window.paRefit && window.paRefit(); } catch (e) { } }, ms); } }
       document.querySelectorAll('#nav button,#tabbar button[data-page]:not(#moreTab),#moreSheet button[data-page]').forEach(b => b.addEventListener('click', () => show(b.dataset.page)));
-      $('moreTab')?.addEventListener('click', () => { const s = $('moreSheet'); if (s) s.hidden = !s.hidden; });
-      $('moreTheme')?.addEventListener('click', () => { $('themeBtn')?.click(); $('moreSheet').hidden = true; });
+      // Fixed moreTab toggle and document click to prevent blinking/instant closure
+      $('moreTab')?.addEventListener('click', e => {
+        e.preventDefault();
+        e.stopPropagation();
+        const s = $('moreSheet');
+        if (s) {
+          const willOpen = s.hidden || s.style.display === 'none';
+          s.hidden = !willOpen;
+          s.style.display = willOpen ? 'flex' : 'none';
+        }
+      });
+      $('moreTheme')?.addEventListener('click', () => { $('themeBtn')?.click(); const s = $('moreSheet'); if (s) { s.hidden = true; s.style.display = 'none'; } });
       $('moreLock')?.addEventListener('click', () => { $('lockBtn')?.click(); });
-      document.addEventListener('click', e => { const s = $('moreSheet'); if (s && !s.hidden && !e.target.closest('#moreSheet,#moreTab')) s.hidden = true; });
+      document.addEventListener('click', e => {
+        const s = $('moreSheet');
+        if (s && !s.hidden && !e.target.closest('#moreSheet, #moreTab')) {
+          s.hidden = true;
+          s.style.display = 'none';
+        }
+      });
       // shims for engine blocks that still call the old window manager
       window.wmShow = function (id) { const el = $(id); if (!el) return; const pg = el.closest('.page'); if (pg) show(pg.id); else if (id === 'paneG') show('pgDesk'); };
       window.wmSetTitle = function () { };
@@ -50282,7 +50298,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const GR = '#15803D', GL = '#34A06B', RD = '#C53030', RL = '#E05252', AM = '#D69E2E', BL = '#2B6CB0', GY = '#9AA7B4';
       let mode = LSg(MODE, 'deep'), range = LSg(RNG, '90'); const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
       const css = D.createElement('style'); css.textContent = `
-        #pgPnl.v158-deep > :not(#v158Deep){display:none!important}
+        #pgPnl.v158-deep > :not(#v158Deep):not(#vLivePnlTick){display:none!important}
         #v158Deep .bar{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
         #v158Deep .bar button{font:700 12px var(--font);padding:7px 11px;border-radius:999px;border:1px solid var(--line2,var(--line,#ddd));background:var(--panel,#fff);color:var(--text,#111);cursor:pointer;margin-left:4px}
         #v158Deep .bar button.on{background:#2F7CC0;border-color:#2F7CC0;color:#fff}

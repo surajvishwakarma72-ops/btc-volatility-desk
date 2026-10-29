@@ -14640,10 +14640,7 @@ Signs follow Settings → Dealer positioning.`;
   }
   function kick(){for(const ms of [30,250,900]){setTimeout(()=>{try{window.dispatchEvent(new Event('resize'));window.paRefit&&window.paRefit();}catch(e){}},ms);}}
   document.querySelectorAll('#nav button,#tabbar button[data-page]:not(#moreTab),#moreSheet button[data-page]').forEach(b=>b.addEventListener('click',()=>show(b.dataset.page)));
-  $('moreTab')?.addEventListener('click',()=>{const s=$('moreSheet');if(s)s.hidden=!s.hidden;});
-  $('moreTheme')?.addEventListener('click',()=>{$('themeBtn')?.click();$('moreSheet').hidden=true;});
-  $('moreLock')?.addEventListener('click',()=>{$('lockBtn')?.click();});
-  document.addEventListener('click',e=>{const s=$('moreSheet');if(s&&!s.hidden&&!e.target.closest('#moreSheet,#moreTab'))s.hidden=true;});
+  $('moreTab')?.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();const s=$('moreSheet');if(s){const willOpen=s.hidden||s.style.display==='none';s.hidden=!willOpen;s.style.display=willOpen?'flex':'none';}});   $('moreTheme')?.addEventListener('click',()=>{const s=$('moreSheet');if(s){s.hidden=true;s.style.display='none';}});   $('moreLock')?.addEventListener('click',()=>{const s=$('moreSheet');if(s){s.hidden=true;s.style.display='none';}});   document.addEventListener('click',e=>{const s=$('moreSheet');if(s&&!s.hidden&&!e.target.closest('#moreSheet,#moreTab')){s.hidden=true;s.style.display='none';}});;});
   // shims for engine blocks that still call the old window manager
   window.wmShow=function(id){const el=$(id);if(!el)return;const pg=el.closest('.page');if(pg)show(pg.id);else if(id==='paneG')show('pgDesk');};
   window.wmSetTitle=function(){};
