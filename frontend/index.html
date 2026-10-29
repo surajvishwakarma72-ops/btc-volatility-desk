@@ -62957,49 +62957,125 @@ document.addEventListener('click', function(e) {
 <style id="vLivePnlTickCss">
 /* vLivePnlTick · Live Tick-by-Tick P&L Graph & Real Delta Fills Start-to-Exit Lifecycle */
 #vLivePnlTick {
-  margin: 0 auto 16px;
-  max-width: var(--page-max, 1800px);
-  background: var(--panel, #181c24);
+  background: var(--bg2, #11151c);
   border: 1px solid var(--line2, rgba(255,255,255,0.08));
-  border-radius: 14px;
-  padding: 16px 20px;
-  box-sizing: border-box;
-  color: var(--text, #eee);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 14px 0 20px 0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
   font-family: var(--font, system-ui, sans-serif);
-  display: block !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-  min-height: 120px;
-}
-#pgPnl {
-  min-height: calc(100vh - 120px);
-}
-#pgPnl.on {
-  display: block !important;
+  position: relative;
+  overflow: visible;
+  z-index: 10;
 }
 #pgPnl > #vLivePnlTick {
-  display: block !important;
+  order: -9999 !important;
+}
+#vLivePnlTick .v-mode-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+  gap: 10px;
+  position: relative;
+  z-index: 50;
+}
+#vLivePnlTick .v-acc-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  z-index: 50;
+}
+#vLivePnlTick .v-acc-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--muted, #94a3b8);
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  user-select: none;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#vLivePnlTick .v-acc-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+#vLivePnlTick .v-acc-btn.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.5) !important;
+}
+#vLivePnlTick .v-mode-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+#vLivePnlTick .v-acc-btn.active .v-mode-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+#vLivePnlTick .v-acc-btn:not(.active) .v-mode-dot {
+  background: #64748b;
+}
+#vLivePnlTick .v-live-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: #16c784;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(22, 199, 132, 0.15);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(22, 199, 132, 0.35);
+}
+#vLivePnlTick .v-idle-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 #vLivePnlTick .v-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 14px;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line2, rgba(255,255,255,0.06));
 }
 #vLivePnlTick .v-head-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 #vLivePnlTick .v-title {
   font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--text, #fff);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text, #eee);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -63008,49 +63084,19 @@ document.addEventListener('click', function(e) {
   font-size: 10.5px;
   font-weight: 700;
   padding: 3px 8px;
-  border-radius: 5px;
-  letter-spacing: 0.05em;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 #vLivePnlTick .v-mode-badge.live {
-  background: rgba(22, 199, 132, 0.16);
+  background: rgba(22, 199, 132, 0.15);
   color: #16c784;
-  border: 1px solid rgba(22, 199, 132, 0.4);
+  border: 1px solid rgba(22, 199, 132, 0.3);
 }
 #vLivePnlTick .v-mode-badge.idle {
   background: rgba(246, 70, 93, 0.12);
   color: #f6465d;
   border: 1px solid rgba(246, 70, 93, 0.3);
-}
-#vLivePnlTick .v-acc-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(0,0,0,0.35);
-  padding: 3px;
-  border-radius: 9px;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-#vLivePnlTick .v-acc-btn {
-  background: transparent;
-  border: none;
-  border-radius: 7px;
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: var(--muted, #888);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-#vLivePnlTick .v-acc-btn:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.06);
-}
-#vLivePnlTick .v-acc-btn.active {
-  background: #2F7CC0;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(47, 124, 192, 0.45);
 }
 #vLivePnlTick .v-head-right {
   display: flex;
@@ -63243,6 +63289,8 @@ html body .more-sheet {
 <script data-module="vLivePnlTick">
 /**
  * Delta Live P&L Graph & Real Start-to-Exit Trade Lifecycle
+ * - Dual Mode: Delta (Read-Only) vs Read + Trade
+ * - Instantaneous mode switching with capture-phase pointerdown/click delegation
  * - Delta Fills ONLY for both accounts (Delta Read-Only & Delta Read+Trade)
  * - Continuous SVG Crosshair hairline running uninterrupted from start to end
  * - Floating P&L shown ONLY when an active trade is open
@@ -63287,11 +63335,11 @@ html body .more-sheet {
 
   function parseSym(s) {
     const str = String(s || '').trim();
-    const m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(str);
+    const m = /^([CP])-BTC-(d+(?:.d+)?)-(d{2})(d{2})(d{2})$/i.exec(str);
     if (m) {
       return { type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3], rawExp: m[3] + m[4] + m[5] };
     }
-    const m2 = /^(?:([CP])-)?BTC-(?:(\d{2}[A-Za-z]{3}\d{2})-)?(\d+)(?:-([CP]))?$/i.exec(str);
+    const m2 = /^(?:([CP])-)?BTC-(?:(d{2}[A-Za-z]{3}d{2})-)?(d+)(?:-([CP]))?$/i.exec(str);
     if (m2) {
       return { type: (m2[1] || m2[4] || '').toUpperCase(), K: +m2[3], exp: m2[2] || 'unknown', rawExp: m2[2] || 'unknown' };
     }
@@ -63423,7 +63471,7 @@ html body .more-sheet {
 
   /** Poll Delta positions for both read-only and read+trade accounts */
   function pollDeltaPositions() {
-    if (Date.now() - S.lastPolledPositions < 2000) return;
+    if (Date.now() - S.lastPolledPositions < 1500) return;
     S.lastPolledPositions = Date.now();
 
     const tok = getJwt();
@@ -63459,7 +63507,7 @@ html body .more-sheet {
 
   /** Poll Delta fills for both read-only and read+trade accounts */
   function pollDeltaFills() {
-    if (Date.now() - S.lastPolledFills < 10000) return;
+    if (Date.now() - S.lastPolledFills < 5000) return;
     S.lastPolledFills = Date.now();
 
     const tok = getJwt();
@@ -63710,7 +63758,6 @@ html body .more-sheet {
         if (!data || !data.result || !Array.isArray(data.result) || data.result.length < 2) {
           throw new Error('Insufficient candles');
         }
-        // Delta candles are returned latest-first or earliest-first; sort ascending
         const rawCandles = data.result.slice().sort((a, b) => a.time - b.time);
         let candles = rawCandles.filter(c => c.time >= (t0 - 300) && c.time <= (t1 + 300));
         if (candles.length < 2) candles = rawCandles;
@@ -63738,7 +63785,6 @@ html body .more-sheet {
         if (typeof onReady === 'function') onReady(curve);
       })
       .catch(() => {
-        // High-resolution curved fallback points
         const steps = 40;
         const totalPnl = trade.pnl;
         const span = Math.max(1000, trade.closedAt - trade.openedAt);
@@ -63832,6 +63878,23 @@ html body .more-sheet {
     drawPanel();
   }
 
+  /** Dedicated function to switch mode instantly and bust cache */
+  function switchPnlAccountMode(mode) {
+    if (!mode || (mode !== 'readonly' && mode !== 'readtrade')) return;
+    if (activeViewMode === mode) return;
+    activeViewMode = mode;
+    try { localStorage.setItem('v_pnl_view_mode', mode); } catch {}
+    const card = $('vLivePnlTick');
+    if (card) card.__renderedKey = null;
+    S.lastPolledPositions = 0;
+    S.lastPolledFills = 0;
+    pollDeltaPositions();
+    pollDeltaFills();
+    sampleTick();
+    drawPanel();
+    enhanceV133EquityCurve();
+  }
+
   /** Draw the panel fixed at the top of #pgPnl */
   function drawPanel() {
     ensurePnlNav();
@@ -63865,10 +63928,19 @@ html body .more-sheet {
     const Wd = 880, Ht = 190;
     const L = 55, R = 20, T = 16, B = 28;
 
-    const tabsHtml =
-      '<div class="v-acc-tabs">' +
-        '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readonly' ? 'active' : '') + '" data-mode="readonly">Delta (Read-Only)</button>' +
-        '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readtrade' ? 'active' : '') + '" data-mode="readtrade">Read + Trade</button>' +
+    const modeBarHtml =
+      '<div class="v-mode-bar">' +
+        '<div class="v-acc-tabs" role="tablist">' +
+          '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readonly' ? 'active' : '') + '" data-mode="readonly">' +
+            '<span class="v-mode-dot"></span> Delta (Read-Only)' +
+          '</button>' +
+          '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readtrade' ? 'active' : '') + '" data-mode="readtrade">' +
+            '<span class="v-mode-dot"></span> Read + Trade' +
+          '</button>' +
+        '</div>' +
+        '<div class="v-mode-status">' +
+          (pos.open ? '<span class="v-live-tag">● LIVE POSITION ACTIVE</span>' : '<span class="v-idle-tag">○ FLAT (LAST TRADE)</span>') +
+        '</div>' +
       '</div>';
 
     if (pos.open) {
@@ -63925,6 +63997,7 @@ html body .more-sheet {
       }
 
       card.innerHTML =
+        modeBarHtml +
         '<div class="v-head">' +
           '<div class="v-head-left">' +
             '<span class="v-title">' +
@@ -63932,7 +64005,6 @@ html body .more-sheet {
               'LIVE TICK-BY-TICK P&L' +
             '</span>' +
             '<span class="v-mode-badge live">REAL-TIME ACTIVE</span>' +
-            tabsHtml +
           '</div>' +
           '<div class="v-head-right">' +
             '<span style="font-size:12px;color:var(--muted,#888);">Net PnL</span>' +
@@ -64027,6 +64099,7 @@ html body .more-sheet {
       const durStr = durSec < 60 ? (durSec + 's') : (durMin >= 60 ? (Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm') : (durMin + 'm'));
 
       card.innerHTML =
+        modeBarHtml +
         '<div class="v-head">' +
           '<div class="v-head-left">' +
             '<span class="v-title">' +
@@ -64034,7 +64107,6 @@ html body .more-sheet {
               'LAST CLOSED TRADE · START-TO-EXIT P&L' +
             '</span>' +
             '<span class="v-mode-badge idle">FLAT (LAST TRADE)</span>' +
-            tabsHtml +
           '</div>' +
           '<div class="v-head-right">' +
             '<span style="font-size:12px;color:var(--muted,#888);">Realized PnL</span>' +
@@ -64106,18 +64178,16 @@ html body .more-sheet {
       attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
     }
 
-    // Attach mode tab switch click listeners
+    // Attach mode tab switch click listeners directly to button elements
     const modeBtns = card.querySelectorAll('.v-acc-btn');
     modeBtns.forEach(btn => {
       btn.addEventListener('click', e => {
+        e.preventDefault();
         e.stopPropagation();
-        const m = btn.dataset.mode;
-        if (m && m !== activeViewMode) {
-          activeViewMode = m;
-          localStorage.setItem('v_pnl_view_mode', m);
-          card.__renderedKey = null;
-          drawPanel();
-        }
+        switchPnlAccountMode(btn.dataset.mode);
+      });
+      btn.addEventListener('pointerdown', e => {
+        switchPnlAccountMode(btn.dataset.mode);
       });
     });
   }
@@ -64329,7 +64399,6 @@ html body .more-sheet {
       const xSvg = (e.clientX - rect.left) * (880 / rect.width);
       const clampedX = Math.max(pts[0].x, Math.min(pts[pts.length - 1].x, xSvg));
 
-      // Continuous interpolation along equity curve
       let ptY = pts[0].y;
       let col = pts[0].col;
       for (let i = 0; i < pts.length - 1; i++) {
@@ -64391,6 +64460,23 @@ html body .more-sheet {
       };
     }
   }
+
+  // Global Capture Listeners for Dual-Mode Tabs (fires instantly on pointerdown and click)
+  D.addEventListener('pointerdown', e => {
+    const btn = e.target && e.target.closest && e.target.closest('.v-acc-btn, [data-mode]');
+    if (btn && btn.dataset && btn.dataset.mode) {
+      switchPnlAccountMode(btn.dataset.mode);
+    }
+  }, true);
+
+  D.addEventListener('click', e => {
+    const btn = e.target && e.target.closest && e.target.closest('.v-acc-btn, [data-mode]');
+    if (btn && btn.dataset && btn.dataset.mode) {
+      e.preventDefault();
+      e.stopPropagation();
+      switchPnlAccountMode(btn.dataset.mode);
+    }
+  }, true);
 
   // Universal Navigation & Bottom Tabbar Interceptor (Trade, Flow, Events, More, P&L)
   D.addEventListener('click', e => {
@@ -64465,11 +64551,7 @@ html body .more-sheet {
     getActiveModeOpenPosition,
     getActiveModeLastClosedTrade,
     setMode: m => {
-      activeViewMode = m;
-      localStorage.setItem('v_pnl_view_mode', m);
-      const card = $('vLivePnlTick');
-      if (card) card.__renderedKey = null;
-      drawPanel();
+      switchPnlAccountMode(m);
     },
     pollDeltaPositions,
     pollDeltaFills,

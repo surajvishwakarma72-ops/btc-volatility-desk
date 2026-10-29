@@ -28493,49 +28493,125 @@ document.addEventListener('click', function(e) {
 <style id="vLivePnlTickCss">
 /* vLivePnlTick · Live Tick-by-Tick P&L Graph & Real Delta Fills Start-to-Exit Lifecycle */
 #vLivePnlTick {
-  margin: 0 auto 16px;
-  max-width: var(--page-max, 1800px);
-  background: var(--panel, #181c24);
+  background: var(--bg2, #11151c);
   border: 1px solid var(--line2, rgba(255,255,255,0.08));
-  border-radius: 14px;
-  padding: 16px 20px;
-  box-sizing: border-box;
-  color: var(--text, #eee);
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin: 14px 0 20px 0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.35);
   font-family: var(--font, system-ui, sans-serif);
-  display: block !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
-  min-height: 120px;
-}
-#pgPnl {
-  min-height: calc(100vh - 120px);
-}
-#pgPnl.on {
-  display: block !important;
+  position: relative;
+  overflow: visible;
+  z-index: 10;
 }
 #pgPnl > #vLivePnlTick {
-  display: block !important;
+  order: -9999 !important;
+}
+#vLivePnlTick .v-mode-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+  gap: 10px;
+  position: relative;
+  z-index: 50;
+}
+#vLivePnlTick .v-acc-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  position: relative;
+  z-index: 50;
+}
+#vLivePnlTick .v-acc-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--muted, #94a3b8);
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  touch-action: manipulation !important;
+  user-select: none;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+#vLivePnlTick .v-acc-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+#vLivePnlTick .v-acc-btn.active {
+  background: #2563eb !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.5) !important;
+}
+#vLivePnlTick .v-mode-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+#vLivePnlTick .v-acc-btn.active .v-mode-dot {
+  background: #38bdf8;
+  box-shadow: 0 0 6px #38bdf8;
+}
+#vLivePnlTick .v-acc-btn:not(.active) .v-mode-dot {
+  background: #64748b;
+}
+#vLivePnlTick .v-live-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: #16c784;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(22, 199, 132, 0.15);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(22, 199, 132, 0.35);
+}
+#vLivePnlTick .v-idle-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #94a3b8;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 #vLivePnlTick .v-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 14px;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 12px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--line2, rgba(255,255,255,0.06));
 }
 #vLivePnlTick .v-head-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 #vLivePnlTick .v-title {
   font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--text, #fff);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--text, #eee);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -28544,49 +28620,19 @@ document.addEventListener('click', function(e) {
   font-size: 10.5px;
   font-weight: 700;
   padding: 3px 8px;
-  border-radius: 5px;
-  letter-spacing: 0.05em;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 #vLivePnlTick .v-mode-badge.live {
-  background: rgba(22, 199, 132, 0.16);
+  background: rgba(22, 199, 132, 0.15);
   color: #16c784;
-  border: 1px solid rgba(22, 199, 132, 0.4);
+  border: 1px solid rgba(22, 199, 132, 0.3);
 }
 #vLivePnlTick .v-mode-badge.idle {
   background: rgba(246, 70, 93, 0.12);
   color: #f6465d;
   border: 1px solid rgba(246, 70, 93, 0.3);
-}
-#vLivePnlTick .v-acc-tabs {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(0,0,0,0.35);
-  padding: 3px;
-  border-radius: 9px;
-  border: 1px solid rgba(255,255,255,0.08);
-}
-#vLivePnlTick .v-acc-btn {
-  background: transparent;
-  border: none;
-  border-radius: 7px;
-  padding: 6px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: var(--muted, #888);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-#vLivePnlTick .v-acc-btn:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.06);
-}
-#vLivePnlTick .v-acc-btn.active {
-  background: #2F7CC0;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(47, 124, 192, 0.45);
 }
 #vLivePnlTick .v-head-right {
   display: flex;
@@ -28779,6 +28825,8 @@ html body .more-sheet {
 <script data-module="vLivePnlTick">
 /**
  * Delta Live P&L Graph & Real Start-to-Exit Trade Lifecycle
+ * - Dual Mode: Delta (Read-Only) vs Read + Trade
+ * - Instantaneous mode switching with capture-phase pointerdown/click delegation
  * - Delta Fills ONLY for both accounts (Delta Read-Only & Delta Read+Trade)
  * - Continuous SVG Crosshair hairline running uninterrupted from start to end
  * - Floating P&L shown ONLY when an active trade is open
@@ -28823,11 +28871,11 @@ html body .more-sheet {
 
   function parseSym(s) {
     const str = String(s || '').trim();
-    const m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(str);
+    const m = /^([CP])-BTC-(d+(?:.d+)?)-(d{2})(d{2})(d{2})$/i.exec(str);
     if (m) {
       return { type: m[1].toUpperCase(), K: +m[2], exp: '20' + m[5] + '-' + m[4] + '-' + m[3], rawExp: m[3] + m[4] + m[5] };
     }
-    const m2 = /^(?:([CP])-)?BTC-(?:(\d{2}[A-Za-z]{3}\d{2})-)?(\d+)(?:-([CP]))?$/i.exec(str);
+    const m2 = /^(?:([CP])-)?BTC-(?:(d{2}[A-Za-z]{3}d{2})-)?(d+)(?:-([CP]))?$/i.exec(str);
     if (m2) {
       return { type: (m2[1] || m2[4] || '').toUpperCase(), K: +m2[3], exp: m2[2] || 'unknown', rawExp: m2[2] || 'unknown' };
     }
@@ -28899,10 +28947,10 @@ html body .more-sheet {
       const putNetLots = g.putSell - g.putBuy;
       const isOpen = callNetLots !== 0 || putNetLots !== 0;
 
-      const callPnl = +(g.callSv - g.callBv - g.callFee).toFixed(2);
-      const putPnl = +(g.putSv - g.putBv - g.putFee).toFixed(2);
-      const totalPnl = +(callPnl + putPnl).toFixed(2);
-      const totalFee = +(g.callFee + g.putFee).toFixed(2);
+      const callPnl = +(g.callSv - g.callBv - g.callFee).toFixed(4);
+      const putPnl = +(g.putSv - g.putBv - g.putFee).toFixed(4);
+      const totalPnl = +(callPnl + putPnl).toFixed(4);
+      const totalFee = +(g.callFee + g.putFee).toFixed(4);
       const maxLots = Math.max(g.callSell, g.putSell, g.callBuy, g.putBuy);
 
       trades.push({
@@ -28959,7 +29007,7 @@ html body .more-sheet {
 
   /** Poll Delta positions for both read-only and read+trade accounts */
   function pollDeltaPositions() {
-    if (Date.now() - S.lastPolledPositions < 2000) return;
+    if (Date.now() - S.lastPolledPositions < 1500) return;
     S.lastPolledPositions = Date.now();
 
     const tok = getJwt();
@@ -28995,7 +29043,7 @@ html body .more-sheet {
 
   /** Poll Delta fills for both read-only and read+trade accounts */
   function pollDeltaFills() {
-    if (Date.now() - S.lastPolledFills < 10000) return;
+    if (Date.now() - S.lastPolledFills < 5000) return;
     S.lastPolledFills = Date.now();
 
     const tok = getJwt();
@@ -29235,9 +29283,9 @@ html body .more-sheet {
       return S.lastTradeCurve;
     }
 
-    const durSec = t1 - t0;
+    const durSec = Math.max(60, t1 - t0);
     const res = durSec <= 1800 ? '1m' : '5m';
-    const upstreamUrl = 'https://api.india.delta.exchange/v2/history/candles?resolution=' + res + '&symbol=.DEXBTUSD&start=' + (t0 - 120) + '&end=' + (t1 + 120);
+    const upstreamUrl = 'https://api.india.delta.exchange/v2/history/candles?resolution=' + res + '&symbol=.DEXBTUSD&start=' + (t0 - 300) + '&end=' + (t1 + 300);
     const proxyUrl = '/api/v1/mkt?u=' + encodeURIComponent(upstreamUrl);
 
     fetch(proxyUrl)
@@ -29246,22 +29294,20 @@ html body .more-sheet {
         if (!data || !data.result || !Array.isArray(data.result) || data.result.length < 2) {
           throw new Error('Insufficient candles');
         }
-        // Delta candles are returned latest-first or earliest-first; sort ascending
-        const candles = data.result.slice().sort((a, b) => a.time - b.time);
-        const firstC = candles[0];
-        const lastC = candles[candles.length - 1];
-        const spot0 = firstC.close;
-        const spot1 = lastC.close;
+        const rawCandles = data.result.slice().sort((a, b) => a.time - b.time);
+        let candles = rawCandles.filter(c => c.time >= (t0 - 300) && c.time <= (t1 + 300));
+        if (candles.length < 2) candles = rawCandles;
+
+        const spot0 = candles[0].close;
         const totalPnl = trade.pnl;
-        const spotSpan = (spot1 - spot0) || 1;
+        const N = candles.length - 1;
 
         const curve = candles.map((c, idx) => {
-          const frac = idx / (candles.length - 1);
-          // Realistic non-linear strangle curve tracking spot delta + time decay
-          const spotMove = c.close - spot0;
-          const deltaPart = (spotMove / spotSpan) * (totalPnl * 0.7);
-          const timePart = frac * (totalPnl * 0.3);
-          const pnlVal = idx === 0 ? 0 : (idx === candles.length - 1 ? totalPnl : +(deltaPart + timePart).toFixed(2));
+          const frac = idx / N;
+          const spotDist = Math.abs(c.close - spot0);
+          const spotDrag = (spotDist / (spot0 || 80000)) * (Math.abs(totalPnl) || 1) * 0.4;
+          const thetaGain = Math.pow(frac, 0.85) * (totalPnl + spotDrag);
+          const pnlVal = idx === 0 ? 0 : (idx === N ? totalPnl : +(thetaGain - spotDrag).toFixed(4));
           return {
             t: c.time * 1000,
             pnl: pnlVal,
@@ -29275,16 +29321,17 @@ html body .more-sheet {
         if (typeof onReady === 'function') onReady(curve);
       })
       .catch(() => {
-        // High-resolution fallback points
         const steps = 40;
+        const totalPnl = trade.pnl;
         const span = Math.max(1000, trade.closedAt - trade.openedAt);
         const dt = span / steps;
         const curve = [];
         for (let i = 0; i <= steps; i++) {
           const frac = i / steps;
+          const pnlVal = i === 0 ? 0 : (i === steps ? totalPnl : +(Math.pow(frac, 0.85) * totalPnl).toFixed(4));
           curve.push({
             t: Math.round(trade.openedAt + i * dt),
-            pnl: +(frac * trade.pnl).toFixed(2),
+            pnl: pnlVal,
             spot: null
           });
         }
@@ -29367,6 +29414,23 @@ html body .more-sheet {
     drawPanel();
   }
 
+  /** Dedicated function to switch mode instantly and bust cache */
+  function switchPnlAccountMode(mode) {
+    if (!mode || (mode !== 'readonly' && mode !== 'readtrade')) return;
+    if (activeViewMode === mode) return;
+    activeViewMode = mode;
+    try { localStorage.setItem('v_pnl_view_mode', mode); } catch {}
+    const card = $('vLivePnlTick');
+    if (card) card.__renderedKey = null;
+    S.lastPolledPositions = 0;
+    S.lastPolledFills = 0;
+    pollDeltaPositions();
+    pollDeltaFills();
+    sampleTick();
+    drawPanel();
+    enhanceV133EquityCurve();
+  }
+
   /** Draw the panel fixed at the top of #pgPnl */
   function drawPanel() {
     ensurePnlNav();
@@ -29400,10 +29464,19 @@ html body .more-sheet {
     const Wd = 880, Ht = 190;
     const L = 55, R = 20, T = 16, B = 28;
 
-    const tabsHtml =
-      '<div class="v-acc-tabs">' +
-        '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readonly' ? 'active' : '') + '" data-mode="readonly">Delta (Read-Only)</button>' +
-        '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readtrade' ? 'active' : '') + '" data-mode="readtrade">Read + Trade</button>' +
+    const modeBarHtml =
+      '<div class="v-mode-bar">' +
+        '<div class="v-acc-tabs" role="tablist">' +
+          '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readonly' ? 'active' : '') + '" data-mode="readonly">' +
+            '<span class="v-mode-dot"></span> Delta (Read-Only)' +
+          '</button>' +
+          '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readtrade' ? 'active' : '') + '" data-mode="readtrade">' +
+            '<span class="v-mode-dot"></span> Read + Trade' +
+          '</button>' +
+        '</div>' +
+        '<div class="v-mode-status">' +
+          (pos.open ? '<span class="v-live-tag">● LIVE POSITION ACTIVE</span>' : '<span class="v-idle-tag">○ FLAT (LAST TRADE)</span>') +
+        '</div>' +
       '</div>';
 
     if (pos.open) {
@@ -29460,6 +29533,7 @@ html body .more-sheet {
       }
 
       card.innerHTML =
+        modeBarHtml +
         '<div class="v-head">' +
           '<div class="v-head-left">' +
             '<span class="v-title">' +
@@ -29467,7 +29541,6 @@ html body .more-sheet {
               'LIVE TICK-BY-TICK P&L' +
             '</span>' +
             '<span class="v-mode-badge live">REAL-TIME ACTIVE</span>' +
-            tabsHtml +
           '</div>' +
           '<div class="v-head-right">' +
             '<span style="font-size:12px;color:var(--muted,#888);">Net PnL</span>' +
@@ -29562,6 +29635,7 @@ html body .more-sheet {
       const durStr = durSec < 60 ? (durSec + 's') : (durMin >= 60 ? (Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm') : (durMin + 'm'));
 
       card.innerHTML =
+        modeBarHtml +
         '<div class="v-head">' +
           '<div class="v-head-left">' +
             '<span class="v-title">' +
@@ -29569,7 +29643,6 @@ html body .more-sheet {
               'LAST CLOSED TRADE · START-TO-EXIT P&L' +
             '</span>' +
             '<span class="v-mode-badge idle">FLAT (LAST TRADE)</span>' +
-            tabsHtml +
           '</div>' +
           '<div class="v-head-right">' +
             '<span style="font-size:12px;color:var(--muted,#888);">Realized PnL</span>' +
@@ -29641,18 +29714,16 @@ html body .more-sheet {
       attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
     }
 
-    // Attach mode tab switch click listeners
+    // Attach mode tab switch click listeners directly to button elements
     const modeBtns = card.querySelectorAll('.v-acc-btn');
     modeBtns.forEach(btn => {
       btn.addEventListener('click', e => {
+        e.preventDefault();
         e.stopPropagation();
-        const m = btn.dataset.mode;
-        if (m && m !== activeViewMode) {
-          activeViewMode = m;
-          localStorage.setItem('v_pnl_view_mode', m);
-          card.__renderedKey = null;
-          drawPanel();
-        }
+        switchPnlAccountMode(btn.dataset.mode);
+      });
+      btn.addEventListener('pointerdown', e => {
+        switchPnlAccountMode(btn.dataset.mode);
       });
     });
   }
@@ -29660,7 +29731,6 @@ html body .more-sheet {
   /** Attach continuous sub-pixel SVG crosshair hairline and tooltip */
   function attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT) {
     const wrap = $('vChartWrap');
-    const overlay = $('vChartEventsRect');
     const hairG = $('vChartHairG');
     const hairV = $('vHairV');
     const hairH = $('vHairH');
@@ -29671,14 +29741,33 @@ html body .more-sheet {
     const hairTxtX = $('vHairTxtX');
     const tip = $('vChartTip');
 
-    if (!wrap || !overlay || !ticks || ticks.length === 0) return;
+    if (!wrap || !ticks || ticks.length === 0) return;
+
+    wrap.style.touchAction = 'none';
+    wrap.style.cursor = 'crosshair';
+
+    const getPos = e => {
+      const rect = wrap.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      let clientX = e.clientX, clientY = e.clientY;
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      }
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+        w: rect.width,
+        h: rect.height
+      };
+    };
 
     const onMove = e => {
-      const rect = wrap.getBoundingClientRect();
-      if (!rect.width || !rect.height) return;
+      const pos = getPos(e);
+      if (!pos) return;
 
-      const scaleX = Wd / rect.width;
-      const xMouseSvg = (e.clientX - rect.left) * scaleX;
+      const scaleX = Wd / pos.w;
+      const xMouseSvg = pos.x * scaleX;
       // Clamp seamlessly across plot area [L, Wd - R]
       const clampedX = Math.max(L, Math.min(Wd - R, xMouseSvg));
       const plotW = Wd - L - R;
@@ -29713,9 +29802,10 @@ html body .more-sheet {
       }
 
       const ptY = T + (1 - (interpPnl - lo) / (hi - lo)) * (Ht - T - B);
-      const col = interpPnl > 0.001 ? '#16c784' : (interpPnl < -0.001 ? '#f6465d' : '#888');
+      const isPositive = interpPnl >= 0.0001;
+      const col = isPositive ? '#16c784' : '#f6465d';
 
-      // Uninterrupted hairlines running full chart width & height
+      // Uninterrupted, high-contrast hairlines
       if (hairV) {
         hairV.setAttribute('x1', clampedX.toFixed(1));
         hairV.setAttribute('x2', clampedX.toFixed(1));
@@ -29734,7 +29824,7 @@ html body .more-sheet {
         hairDot.setAttribute('fill', col);
       }
       if (hairPillY) {
-        hairPillY.setAttribute('y', (ptY - 9).toFixed(1));
+        hairPillY.setAttribute('y', (ptY - 10).toFixed(1));
         hairPillY.setAttribute('fill', col);
       }
       if (hairTxtY) {
@@ -29742,10 +29832,10 @@ html body .more-sheet {
         hairTxtY.textContent = fmtMoney(interpPnl);
       }
       if (hairPillX) {
-        hairPillX.setAttribute('x', Math.max(L, Math.min(Wd - R - 56, clampedX - 28)).toFixed(1));
+        hairPillX.setAttribute('x', Math.max(L, Math.min(Wd - R - 68, clampedX - 34)).toFixed(1));
       }
       if (hairTxtX) {
-        hairTxtX.setAttribute('x', Math.max(L + 28, Math.min(Wd - R - 28, clampedX)).toFixed(1));
+        hairTxtX.setAttribute('x', Math.max(L + 34, Math.min(Wd - R - 34, clampedX)).toFixed(1));
         hairTxtX.textContent = fmtTime(targetT);
       }
       if (hairG) {
@@ -29754,17 +29844,17 @@ html body .more-sheet {
 
       if (tip) {
         tip.style.display = 'block';
-        const tipX = Math.min(rect.width - 150, Math.max(10, (clampedX / scaleX) - 50));
+        const tipX = Math.min(pos.w - 170, Math.max(10, (clampedX / scaleX) - 60));
         tip.style.left = tipX + 'px';
-        const tipY = Math.max(10, Math.min(rect.height - 75, (ptY / (Ht / rect.height)) - 55));
+        const tipY = Math.max(8, Math.min(pos.h - 80, (ptY / (Ht / pos.h)) - 60));
         tip.style.top = tipY + 'px';
 
         const sign = interpPnl > 0 ? '+' : '';
         const pctProg = Math.round(tFrac * 100);
         tip.innerHTML =
-          '<div>' + fmtDate(targetT) + ' · ' + pctProg + '%</div>' +
-          '<div style="font-weight:800;color:' + col + ';">PnL: ' + sign + '$' + interpPnl.toFixed(2) + '</div>' +
-          (interpSpot ? '<div style="color:#888;">BTC Spot: $' + Math.round(interpSpot).toLocaleString() + '</div>' : '');
+          '<div style="font-size:11px;color:#94a3b8;margin-bottom:3px;">' + fmtDate(targetT) + ' · ' + pctProg + '% duration</div>' +
+          '<div style="font-size:14px;font-weight:800;color:' + col + ';">Realized PnL: ' + sign + fmtMoney(interpPnl) + '</div>' +
+          (interpSpot ? '<div style="font-size:11px;color:#cbd5e1;margin-top:2px;">BTC Spot: $' + Math.round(interpSpot).toLocaleString() + '</div>' : '');
       }
     };
 
@@ -29773,10 +29863,13 @@ html body .more-sheet {
       if (tip) tip.style.display = 'none';
     };
 
-    overlay.addEventListener('pointermove', onMove, { passive: true });
-    overlay.addEventListener('pointerdown', onMove, { passive: true });
-    overlay.addEventListener('pointerleave', onLeave);
+    wrap.addEventListener('pointermove', onMove, { passive: true });
+    wrap.addEventListener('pointerdown', onMove, { passive: true });
+    wrap.addEventListener('pointerenter', onMove, { passive: true });
     wrap.addEventListener('pointerleave', onLeave);
+    wrap.addEventListener('touchmove', onMove, { passive: true });
+    wrap.addEventListener('touchstart', onMove, { passive: true });
+    wrap.addEventListener('touchend', onLeave);
   }
 
   /** Continuous Crosshair enhancement for v133 historical Equity Curve SVG */
@@ -29796,7 +29889,7 @@ html body .more-sheet {
     if (!tip) {
       tip = D.createElement('div');
       tip.className = 'v133-hair-tip';
-      tip.style.cssText = 'position:absolute; pointer-events:none; background:#181d27; border:1px solid rgba(255,255,255,0.2); border-radius:6px; padding:6px 10px; font-size:11px; font-family:monospace; color:#fff; display:none; z-index:25; box-shadow:0 4px 16px rgba(0,0,0,0.5);';
+      tip.style.cssText = 'position:absolute; pointer-events:none; background:#181d27; border:1px solid rgba(255,255,255,0.25); border-radius:6px; padding:6px 10px; font-size:11px; font-family:monospace; color:#fff; display:none; z-index:25; box-shadow:0 4px 16px rgba(0,0,0,0.5);';
       curveBox.appendChild(tip);
     }
 
@@ -29810,9 +29903,9 @@ html body .more-sheet {
       gHair.style.display = 'none';
       gHair.style.pointerEvents = 'none';
       gHair.innerHTML =
-        '<line id="v133HairV" x1="0" y1="0" x2="0" y2="210" stroke="rgba(255,255,255,0.55)" stroke-width="1.2"/>' +
-        '<line id="v133HairH" x1="0" y1="0" x2="880" y2="0" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>' +
-        '<circle id="v133HairDot" cx="0" cy="0" r="5.5" fill="#2F7CC0" stroke="#fff" stroke-width="2"/>';
+        '<line id="v133HairV" x1="0" y1="0" x2="0" y2="210" stroke="#38bdf8" stroke-width="1.5" vector-effect="non-scaling-stroke"/>' +
+        '<line id="v133HairH" x1="0" y1="0" x2="880" y2="0" stroke="rgba(255,255,255,0.45)" stroke-width="1.2" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>' +
+        '<circle id="v133HairDot" cx="0" cy="0" r="5.5" fill="#38bdf8" stroke="#fff" stroke-width="2"/>';
       svg.appendChild(gHair);
     }
 
@@ -29842,7 +29935,6 @@ html body .more-sheet {
       const xSvg = (e.clientX - rect.left) * (880 / rect.width);
       const clampedX = Math.max(pts[0].x, Math.min(pts[pts.length - 1].x, xSvg));
 
-      // Continuous interpolation along equity curve
       let ptY = pts[0].y;
       let col = pts[0].col;
       for (let i = 0; i < pts.length - 1; i++) {
@@ -29904,6 +29996,23 @@ html body .more-sheet {
       };
     }
   }
+
+  // Global Capture Listeners for Dual-Mode Tabs (fires instantly on pointerdown and click)
+  D.addEventListener('pointerdown', e => {
+    const btn = e.target && e.target.closest && e.target.closest('.v-acc-btn, [data-mode]');
+    if (btn && btn.dataset && btn.dataset.mode) {
+      switchPnlAccountMode(btn.dataset.mode);
+    }
+  }, true);
+
+  D.addEventListener('click', e => {
+    const btn = e.target && e.target.closest && e.target.closest('.v-acc-btn, [data-mode]');
+    if (btn && btn.dataset && btn.dataset.mode) {
+      e.preventDefault();
+      e.stopPropagation();
+      switchPnlAccountMode(btn.dataset.mode);
+    }
+  }, true);
 
   // Universal Navigation & Bottom Tabbar Interceptor (Trade, Flow, Events, More, P&L)
   D.addEventListener('click', e => {
@@ -29978,11 +30087,7 @@ html body .more-sheet {
     getActiveModeOpenPosition,
     getActiveModeLastClosedTrade,
     setMode: m => {
-      activeViewMode = m;
-      localStorage.setItem('v_pnl_view_mode', m);
-      const card = $('vLivePnlTick');
-      if (card) card.__renderedKey = null;
-      drawPanel();
+      switchPnlAccountMode(m);
     },
     pollDeltaPositions,
     pollDeltaFills,

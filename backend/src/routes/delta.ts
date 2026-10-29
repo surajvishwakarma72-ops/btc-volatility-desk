@@ -213,7 +213,7 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
     let usedKind: 'read' | 'trade' = reqKind;
     try {
       creds = await loadDeltaKey(uid, reqKind);
-      if (!creds) {
+      if (!creds && !qp.kind) {
         const altKind: 'read' | 'trade' = reqKind === 'read' ? 'trade' : 'read';
         creds = await loadDeltaKey(uid, altKind);
         if (creds) usedKind = altKind;
