@@ -29256,7 +29256,7 @@ document.addEventListener('click', function(e) {
         if (!data || !data.result) return;
         const res = Array.isArray(data.result) ? data.result : (data.result.positions || []);
         S.deltaPositionsReadOnly = res.filter(p => Math.abs(+p.size || 0) > 0);
-        drawPanel();
+        scheduleRedraw(); // debounced — safe
       })
       .catch(() => {});
 
@@ -29268,7 +29268,7 @@ document.addEventListener('click', function(e) {
         if (!data || !data.result) return;
         const res = Array.isArray(data.result) ? data.result : (data.result.positions || []);
         S.deltaPositionsReadTrade = res.filter(p => Math.abs(+p.size || 0) > 0);
-        drawPanel();
+        scheduleRedraw(); // debounced — safe
       })
       .catch(() => {});
   }
@@ -29290,7 +29290,7 @@ document.addEventListener('click', function(e) {
         if (data && data.result && Array.isArray(data.result) && data.result.length > 0) {
           S.deltaFillsReadOnly = data.result;
           try { localStorage.setItem('v_delta_fills_readonly', JSON.stringify(data.result)); } catch {}
-          drawPanel();
+          scheduleRedraw(); // debounced — safe
         }
       })
       .catch(() => {});
@@ -29303,7 +29303,7 @@ document.addEventListener('click', function(e) {
         if (data && data.result && Array.isArray(data.result) && data.result.length > 0) {
           S.deltaFillsReadTrade = data.result;
           try { localStorage.setItem('v_delta_fills_readtrade', JSON.stringify(data.result)); } catch {}
-          drawPanel();
+          scheduleRedraw(); // debounced — safe
         }
       })
       .catch(() => {});
@@ -29983,7 +29983,7 @@ document.addEventListener('click', function(e) {
       // Fetch 100% real option candles from Delta
       const curve = fetchRealTradeCurve(pos, () => {
         card.__renderedKey = null;
-        drawPanel();
+        scheduleRedraw();
       });
 
       const isPos = pos.totalPnl > 0.001;
@@ -30103,7 +30103,7 @@ document.addEventListener('click', function(e) {
       // Real Closed Trade Curve from Delta Candles
       const curve = fetchRealTradeCurve(lastTrade, () => {
         card.__renderedKey = null;
-        drawPanel();
+        scheduleRedraw();
       });
 
       const isPos = lastTrade.pnl > 0.001;
@@ -30466,38 +30466,62 @@ document.addEventListener('click', function(e) {
     }); // bubble phase only — does NOT intercept any other clicks
   }
 
-  // MutationObserver to auto-draw when pgPnl becomes visible
+  // Observe ONLY pgPnl element class changes — never the whole subtree
   try {
-    const observer = new MutationObserver(() => {
+    const pnlEl = ensurePnlHost();
+    if (pnlEl) {
+      let wasVisible = false;
+      const observer = new MutationObserver(() => {
+        const isVisible = pnlEl.classList.contains('on') || D.body.dataset.page === 'pgPnl';
+        if (isVisible && !wasVisible) {
+          // Only redraw when pgPnl just became visible (transition on → not running every mutation)
+          wasVisible = true;
+          scheduleRedraw();
+        } else if (!isVisible) {
+          wasVisible = false;
+        }
+      });
+      // Observe ONLY the pgPnl element itself for class changes — NOT subtree
+      observer.observe(pnlEl, { attributes: true, attributeFilter: ['class'] });
+      // Also watch body.dataset.page changes
+      observer.observe(D.body, { attributes: true, attributeFilter: ['data-page'] });
+    }
+  } catch {}
+
+  // Single debounced redraw — prevents multiple rapid drawPanel() calls
+  let _redrawTimer = null;
+  function scheduleRedraw() {
+    if (_redrawTimer) return;
+    _redrawTimer = setTimeout(() => {
+      _redrawTimer = null;
       const pnl = $('pgPnl');
       if (pnl && (pnl.classList.contains('on') || D.body.dataset.page === 'pgPnl')) {
         drawPanel();
-        enhanceV133EquityCurve();
       }
-    });
-    const mainEl = D.querySelector('main') || D.body;
-    if (mainEl) observer.observe(mainEl, { attributes: true, subtree: true, attributeFilter: ['class', 'style', 'hidden'] });
-  } catch {}
+    }, 80);
+  }
 
-  // Periodic polling for positions, fills, and navigation integrity
+  // Poll positions every 5s — only redraw if pgPnl is visible
   setInterval(() => {
     pollDeltaPositions();
-  }, 4000);
+  }, 5000);
 
+  // Poll fills every 15s — only redraw if pgPnl is visible
   setInterval(() => {
     pollDeltaFills();
-  }, 12000);
+  }, 15000);
 
-  // Periodic maintenance for pgPnl
+  // Update floating pill every 6s regardless of page
+  setInterval(() => {
+    const anyOpen = getAnyOpenPosition();
+    updateFloatingPnl(anyOpen);
+  }, 6000);
+
+  // Light maintenance — just ensure nav button exists, no DOM rebuild
   setInterval(() => {
     installHooks();
     ensurePnlNav();
-    const pnl = $('pgPnl');
-    if (pnl && (pnl.classList.contains('on') || D.body.dataset.page === 'pgPnl')) {
-      drawPanel();
-      enhanceV133EquityCurve();
-    }
-  }, 1000);
+  }, 5000);
 
   // Export to window
   W.vLivePnl = {
