@@ -155,6 +155,15 @@ export async function consumeResetCode(userId: string, code: string): Promise<bo
 
 export async function setPasswordHash(userId: string, passwordHash: string): Promise<void> {
   await ensureAuthSchema();
+  if (userId === DESK_USER_ID) {
+    await pool.query(`
+      INSERT INTO users (id, email, password_hash, display_name, role)
+      VALUES ($1, 'desk@local', $2, 'Desk', 'admin')
+      ON CONFLICT (id) DO UPDATE SET password_hash = $2, updated_at = now(), password_changed_at = now()
+    `, [userId, passwordHash]);
+    noteSessionReset(userId, Date.now());
+    return;
+  }
   const r = await pool.query('UPDATE users SET password_hash = $2, updated_at = now(), password_changed_at = now() WHERE id = $1 RETURNING password_changed_at', [userId, passwordHash]);
   // every token issued before this moment stops working (see session-guard.ts)
   noteSessionReset(userId, r.rows[0] ? new Date((r.rows[0] as any).password_changed_at).getTime() : Date.now());

@@ -18329,7 +18329,7 @@ function onConn(e){const b=e.target.closest('[data-v100]');if(!b)return;const a=
     deskLogin(pw).then(()=>{try{W.v99&&W.v99.closeForm&&W.v99.closeForm();}catch(x){}API.err=null;API.at=0;API.last=null;apiPoll(true);try{W.v99&&W.v99.render();}catch(x){}})
       .catch(e=>{if(m)m.innerHTML='<b class="neg">'+(e.status===401?'Wrong password.':(e.status===503?'Login not set up on the server yet.':'Login failed.'))+'</b>';});
     return;}
-  else if(a==='off'){deskLogout();const cur=LS.get('v99_trade',null);if(cur&&cur.src==='api')LS.del('v99_trade');try{W.v99&&W.v99.render();}catch(x){}}
+  else if(a==='off'){try{if(window.deskAuth){window.deskAuth.logout();return;}}catch(x){}deskLogout();const cur=LS.get('v99_trade',null);if(cur&&cur.src==='api')LS.del('v99_trade');try{W.v99&&W.v99.render();}catch(x){}}
   else if(a==='check'){API.err=null;apiPoll(true);}
   else if(a==='toggleRoute'){API.route=API.route==='proxy'?'direct':'proxy';LS.set('v100_droute',API.route);API.err=null;apiPoll(true);try{W.v18&&W.v18.render&&W.v18.render();}catch(x){}}
   else if(a==='useProxy'){API.route='proxy';LS.set('v100_droute','proxy');API.err=null;apiPoll(true);try{W.v18&&W.v18.render&&W.v18.render();}catch(x){}}}
@@ -20326,8 +20326,7 @@ D.addEventListener('click',e=>{const b=e.target.closest&&e.target.closest('[data
 function keyCard(){const A=W.v100&&W.v100.api;if(!A)return '';const on=A.on(),k=(()=>{try{return A.key()||{};}catch(e){return {};}})(),S=strangleNow();
   if(!on)return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Connect Delta (read-only)</h3></div>
     <p>Log in to view your live Delta positions &amp; P&amp;L. The desk only reads your positions and fills — it cannot place orders or withdraw. Your password is not stored in this browser.</p>
-    <label class="v18f">Desk password<input id="v100Key" type="password" autocomplete="current-password" spellcheck="false" autocapitalize="off" placeholder="Desk password"></label>
-    <div class="v18btns"><button type="button" class="v18btn pri" data-v100="save">Unlock</button></div></section>`;
+    <div class="v18btns"><button type="button" class="v18btn pri" data-da-open>Sign in</button><button type="button" class="v18btn" data-da-open="reset">Forgot password? (Instant reset)</button></div></section>`;
   const st=A.err?`<span class="v118st r">✕ ${esc(A.err)}</span>`:A.at?`<span class="v118st g">✓ Connected · read only · synced ${hm(A.at)}</span>`:'<span class="v118st a">Connecting…</span>';
   const pos=A.err?'':S?`<span class="pos">✓ Open position: ${esc(day(settle(S.exp)))} strangle · ${S.legs.map(l=>(l.type==='P'?'put ':'call ')+Math.round(l.K)).join(' / ')}</span>`:A.at?'No short strangle open on Delta right now. It is picked up within 30 s of your first fill.':'';
   return `<section class="v18c v18" id="v100Conn"><div class="v18h"><h3>Connect Delta (read-only)</h3><span class="r">key ${esc(String(k.key||'').slice(0,4))}…</span></div>
@@ -28322,5 +28321,168 @@ document.addEventListener('click', function(e) {
     }
   }
 }, true);
-</script></body>
+</script><script data-block="desk-auth">
+/* Accounts: one sign-in / create-account window for the whole desk, plus the small "signed in as" chip.
+   Friends join with an invite code from the owner and then use their own Delta key and their own Paper account.
+   The owner keeps signing in with just the desk password (leave the email empty). */
+(function deskAuth() {
+  'use strict';
+  const D = document, W = window, TOK = 'desk_jwt', USER = 'desk_user';
+  const jget = k => { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } };
+  const jset = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const user = () => jget(USER);
+  const token = () => jget(TOK);
+  const admin = () => { const u = user(); return !u || u.role === 'admin'; }; // an older owner token has no saved user yet; the server decides anyway
+  let mode = 'in', busy = false, err = '';
+
+  /** What a different person must never see on a shared phone or PC: the previous user's positions, fills and trade state. */
+  function clearPersonal() {
+    try {
+      const del = [];
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && /^(v99_|v18_|v104_|v118_okip|v100_anchor_)/.test(k)) del.push(k); }
+      del.forEach(k => localStorage.removeItem(k));
+    } catch (e) { }
+    try { indexedDB.deleteDatabase('v146fut'); } catch (e) { }
+  }
+
+  async function post(path, body) {
+    const r = await fetch('/api/v1/auth/' + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j || !j.token) throw new Error((j && j.error) || (r.status === 429 ? 'Too many tries, wait a minute' : 'HTTP ' + r.status));
+    return j;
+  }
+
+  async function submit() {
+    if (busy) return; busy = true; err = ''; paint();
+    const v = id => ((D.getElementById(id) || {}).value || '').trim();
+    try {
+      let j;
+      if (mode === 'in') {
+        const email = v('daEmail'), password = (D.getElementById('daPw') || {}).value || '';
+        if (!password) throw new Error('Please enter your password.');
+        j = await post('login', email ? { email, password } : { password });
+      } else if (mode === 'reset') {
+        const newPassword = (D.getElementById('daPw') || {}).value || '';
+        const confirmPw = (D.getElementById('daPwConfirm') || {}).value || '';
+        if (!newPassword) throw new Error('Please enter a new password.');
+        if (newPassword.length < 10) throw new Error('The new password needs at least 10 characters.');
+        if (confirmPw && newPassword !== confirmPw) throw new Error('Passwords do not match. Please re-enter.');
+        const email = v('daEmail');
+        j = await post('reset-password', { email, newPassword }); // instant reset: signs in at once
+      } else {
+        const email = v('daEmail'), password = (D.getElementById('daPw') || {}).value || '';
+        if (!email) throw new Error('Please enter your email.');
+        if (!password) throw new Error('Please enter a password.');
+        j = await post('signup', { email, password, displayName: v('daName'), inviteCode: v('daCode') });
+      }
+      const prev = user();
+      if (!prev || prev.id !== j.user.id) clearPersonal();
+      jset(TOK, j.token);
+      jset(USER, { id: j.user.id, email: j.user.email, name: j.user.displayName || j.user.email, role: j.user.role });
+      location.reload(); // every page starts fresh as the new user
+    } catch (e) { err = e.message; busy = false; paint(); }
+  }
+
+  function logout() {
+    clearPersonal();
+    try { localStorage.removeItem(TOK); localStorage.removeItem(USER); } catch (e) { }
+    location.reload();
+  }
+
+  const css = D.createElement('style');
+  css.textContent = [
+    '#daOv{position:fixed;inset:0;z-index:100000;background:rgba(10,14,20,.55);display:flex;align-items:center;justify-content:center;padding:16px}',
+    '#daOv[hidden]{display:none}',
+    '#daOv .da{background:var(--panel,#fff);color:var(--text,#111);border:1px solid var(--line2,#d0d5dd);border-radius:14px;padding:18px 18px 14px;width:min(400px,100%);box-shadow:0 20px 60px rgba(0,0,0,.35);font-family:var(--font,system-ui)}',
+    '#daOv h2{margin:0 0 4px;font-size:18px}',
+    '#daOv .daSeg{display:flex;gap:6px;margin:10px 0}',
+    '#daOv .daSeg button{flex:1;padding:8px;border-radius:8px;border:1px solid var(--line2,#ccc);background:var(--panel2,#f4f5f7);color:var(--text,#111);font:700 13px var(--font,system-ui);cursor:pointer}',
+    '#daOv .daSeg button.on{background:#2F7CC0;border-color:#2F7CC0;color:#fff}',
+    '#daOv label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted,#667085);margin:8px 0}',
+    '#daOv input{background:var(--panel2,#f4f5f7);color:var(--text,#111);border:1px solid var(--line2,#ccc);border-radius:8px;padding:9px 10px;font:600 15px var(--font,system-ui);width:100%;box-sizing:border-box}',
+    '#daOv .daGo{width:100%;margin-top:6px;padding:11px;border:0;border-radius:9px;background:#2F7CC0;color:#fff;font:800 14px var(--font,system-ui);cursor:pointer}',
+    '#daOv .daGo:disabled{opacity:.6}',
+    '#daOv .daErr{color:#C53030;font-size:13px;margin:8px 0 0}',
+    '#daOv .daLink{display:block;margin:10px auto 0;background:none;border:0;color:#2F7CC0;font:700 13px var(--font,system-ui);cursor:pointer;padding:2px 4px}',
+    '#daOv .daNote{font-size:12px;color:var(--muted,#667085);line-height:1.45;margin:6px 0 0}',
+    '#daOv .daX{float:right;background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:var(--muted,#667085)}',
+    '#daChip{position:fixed;left:10px;bottom:10px;z-index:9000;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
+    '#daChip button{background:none;border:0;color:#2F7CC0;font:700 12px var(--font,system-ui);cursor:pointer;padding:0}',
+    '@media (max-width:760px){#daChip{bottom:64px}}',
+  ].join('\n');
+  D.head.appendChild(css);
+
+  function paint() {
+    let ov = D.getElementById('daOv');
+    if (!ov) { ov = D.createElement('div'); ov.id = 'daOv'; ov.hidden = true; D.body.appendChild(ov); }
+    const keep = ['daEmail', 'daPw', 'daPwConfirm', 'daName', 'daCode'].map(id => [id, (D.getElementById(id) || {}).value]);
+    const up = mode === 'up', rs = mode === 'reset';
+    ov.innerHTML = '<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : rs ? 'Reset password' : 'Sign in') + '</h2>' +
+      (rs ? '' : '<div class="daSeg"><button type="button" data-da-mode="in" class="' + (up ? '' : 'on') + '">Sign in</button><button type="button" data-da-mode="up" class="' + (up ? 'on' : '') + '">Create account</button></div>') +
+      (rs ? '<div class="daNote" style="margin:4px 0 10px;padding:8px 10px;background:rgba(47,124,192,.08);border-left:3px solid #2F7CC0;border-radius:4px;color:var(--text,#111);font-size:12px;line-height:1.4"><b>⚡ Instant Reset:</b> Enter your registered email (or leave empty for desk owner) and choose a new password. You will be reset and signed in immediately.</div>' : '') +
+      (up ? '<label>Your name<input id="daName" autocomplete="name" maxlength="60" placeholder="Your name"></label>' : '') +
+      '<label>Email' + (up ? '' : rs ? ' <span style="font-weight:400">(leave empty for desk owner)</span>' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" placeholder="you@example.com (or empty for owner)" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      '<label>' + (up ? 'Password (at least 10 characters)' : rs ? 'New password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" placeholder="' + (rs ? 'New password' : 'Password') + '" autocomplete="' + (up || rs ? 'new-password' : 'current-password') + '"></label>' +
+      (rs ? '<label>Confirm new password<input id="daPwConfirm" type="password" placeholder="Confirm new password" autocomplete="new-password"></label>' : '') +
+      (up ? '<label>Invite code<input id="daCode" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Invite code"></label><div class="daNote">You need an invite code from the person who runs this desk. You get your own Paper Trade account, and you can add your own Delta API key in Settings.</div>' : '') +
+      (err ? '<div class="daErr">' + esc(err) + '</div>' : '') +
+      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? '⚡ Reset & Sign In' : 'Sign in') + '</button>' +
+      (rs ? '<button type="button" class="daLink" data-da-mode="in">← Back to sign in</button>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password? (Instant reset)</button>') + '</div>';
+    for (const [id, val] of keep) { const el = D.getElementById(id); if (el && val) el.value = val; }
+  }
+
+  function open(m) {
+    if (m) mode = m;
+    err = ''; paint();
+    const ov = D.getElementById('daOv'); ov.hidden = false;
+    setTimeout(() => { const f = D.getElementById(mode === 'up' ? 'daName' : 'daEmail'); if (f) f.focus(); }, 50);
+  }
+  const close = () => { const ov = D.getElementById('daOv'); if (ov) ov.hidden = true; };
+
+  D.addEventListener('click', e => {
+    const t = e.target.closest && e.target.closest('[data-da-open],[data-da-close],[data-da-mode],[data-da-go],[data-da-logout]');
+    if (!t) { if (e.target && e.target.id === 'daOv') close(); return; }
+    if ('daOpen' in t.dataset) { open(t.dataset.daOpen === 'up' ? 'up' : 'in'); return; }
+    if ('daClose' in t.dataset) { close(); return; }
+    if (t.dataset.daMode) { mode = t.dataset.daMode; err = ''; paint(); return; }
+    if ('daGo' in t.dataset) { submit(); return; }
+    if ('daLogout' in t.dataset) logout();
+  });
+  D.addEventListener('keydown', e => {
+    const ov = D.getElementById('daOv');
+    if (!ov || ov.hidden) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'Enter' && e.target && /^da(Email|Pw|PwConfirm|Name|Code|Reset)$/.test(e.target.id)) submit();
+  });
+
+  /** The small "signed in as" chip (bottom left) with Log out or Sign in. */
+  function chip() {
+    let c = D.getElementById('daChip');
+    if (!token()) {
+      if (!c) { c = D.createElement('div'); c.id = 'daChip'; D.body.appendChild(c); }
+      const html = '<span>Not signed in</span><button type="button" data-da-open>Sign in</button>';
+      if (c.innerHTML !== html) c.innerHTML = html;
+      return;
+    }
+    const u = user();
+    if (!c) { c = D.createElement('div'); c.id = 'daChip'; D.body.appendChild(c); }
+    const html = '<span>' + (u ? esc(u.name || u.email) + (u.role === 'admin' ? ' · owner' : '') : 'Signed in') + '</span><button type="button" data-da-logout>Log out</button>';
+    if (c.innerHTML !== html) c.innerHTML = html;
+  }
+  // a token from before accounts existed has no saved user: fetch it once
+  async function ensureUser() {
+    if (!token() || user()) return;
+    try {
+      const r = await fetch('/api/v1/auth/me', { headers: { Authorization: 'Bearer ' + token() }, cache: 'no-store' });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j && j.data) { jset(USER, { id: j.data.id, email: j.data.email, name: j.data.displayName || j.data.email, role: j.data.role }); chip(); }
+    } catch (e) { }
+  }
+  setInterval(chip, 2000); setTimeout(() => { chip(); ensureUser(); }, 1500);
+
+  W.deskAuth = { open, logout, user, admin, token, clearPersonal };
+})();
+</script>
+</body>
 </html>

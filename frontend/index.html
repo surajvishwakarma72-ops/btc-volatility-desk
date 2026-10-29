@@ -60309,14 +60309,22 @@ document.addEventListener('click', function(e) {
     try {
       let j;
       if (mode === 'in') {
-        const email = v('daEmail'), password = D.getElementById('daPw').value;
+        const email = v('daEmail'), password = (D.getElementById('daPw') || {}).value || '';
+        if (!password) throw new Error('Please enter your password.');
         j = await post('login', email ? { email, password } : { password });
       } else if (mode === 'reset') {
-        const newPassword = D.getElementById('daPw').value;
+        const newPassword = (D.getElementById('daPw') || {}).value || '';
+        const confirmPw = (D.getElementById('daPwConfirm') || {}).value || '';
+        if (!newPassword) throw new Error('Please enter a new password.');
         if (newPassword.length < 10) throw new Error('The new password needs at least 10 characters.');
-        j = await post('reset-password', { email: v('daEmail'), code: v('daReset'), newPassword }); // signs the friend in with the new password
+        if (confirmPw && newPassword !== confirmPw) throw new Error('Passwords do not match. Please re-enter.');
+        const email = v('daEmail');
+        j = await post('reset-password', { email, newPassword }); // instant reset: signs in at once
       } else {
-        j = await post('signup', { email: v('daEmail'), password: D.getElementById('daPw').value, displayName: v('daName'), inviteCode: v('daCode') });
+        const email = v('daEmail'), password = (D.getElementById('daPw') || {}).value || '';
+        if (!email) throw new Error('Please enter your email.');
+        if (!password) throw new Error('Please enter a password.');
+        j = await post('signup', { email, password, displayName: v('daName'), inviteCode: v('daCode') });
       }
       const prev = user();
       if (!prev || prev.id !== j.user.id) clearPersonal();
@@ -60358,18 +60366,19 @@ document.addEventListener('click', function(e) {
   function paint() {
     let ov = D.getElementById('daOv');
     if (!ov) { ov = D.createElement('div'); ov.id = 'daOv'; ov.hidden = true; D.body.appendChild(ov); }
-    const keep = ['daEmail', 'daPw', 'daName', 'daCode', 'daReset'].map(id => [id, (D.getElementById(id) || {}).value]);
+    const keep = ['daEmail', 'daPw', 'daPwConfirm', 'daName', 'daCode'].map(id => [id, (D.getElementById(id) || {}).value]);
     const up = mode === 'up', rs = mode === 'reset';
-    ov.innerHTML ='<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : rs ? 'Set a new password' : 'Sign in') + '</h2>' +
+    ov.innerHTML = '<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : rs ? 'Reset password' : 'Sign in') + '</h2>' +
       (rs ? '' : '<div class="daSeg"><button type="button" data-da-mode="in" class="' + (up ? '' : 'on') + '">Sign in</button><button type="button" data-da-mode="up" class="' + (up ? 'on' : '') + '">Create account</button></div>') +
-      (up ? '<label>Your name<input id="daName" autocomplete="name" maxlength="60"></label>' : '') +
-      '<label>Email' + (up ? '' : rs ? ' <span style="font-weight:400">(the email you signed up with)</span>' : ' <span style="font-weight:400">(friends: type the email you signed up with. Only the desk owner leaves it empty)</span>') + '<input id="daEmail" type="email" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
-      (rs ? '<label>Reset code from the desk owner<input id="daReset" autocapitalize="off" spellcheck="false" autocomplete="off"></label>' : '') +
-      '<label>' + (up ? 'Password (at least 10 characters)' : rs ? 'New password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" autocomplete="' + (up || rs ? 'new-password' : 'current-password') + '"></label>' +
-      (up ? '<label>Invite code<input id="daCode" autocapitalize="off" spellcheck="false" autocomplete="off"></label><div class="daNote">You need an invite code from the person who runs this desk. You get your own Paper Trade account, and you can add your own Delta API key in Settings.</div>' : '') +
+      (rs ? '<div class="daNote" style="margin:4px 0 10px;padding:8px 10px;background:rgba(47,124,192,.08);border-left:3px solid #2F7CC0;border-radius:4px;color:var(--text,#111);font-size:12px;line-height:1.4"><b>⚡ Instant Reset:</b> Enter your registered email (or leave empty for desk owner) and choose a new password. You will be reset and signed in immediately.</div>' : '') +
+      (up ? '<label>Your name<input id="daName" autocomplete="name" maxlength="60" placeholder="Your name"></label>' : '') +
+      '<label>Email' + (up ? '' : rs ? ' <span style="font-weight:400">(leave empty for desk owner)</span>' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" placeholder="you@example.com (or empty for owner)" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      '<label>' + (up ? 'Password (at least 10 characters)' : rs ? 'New password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" placeholder="' + (rs ? 'New password' : 'Password') + '" autocomplete="' + (up || rs ? 'new-password' : 'current-password') + '"></label>' +
+      (rs ? '<label>Confirm new password<input id="daPwConfirm" type="password" placeholder="Confirm new password" autocomplete="new-password"></label>' : '') +
+      (up ? '<label>Invite code<input id="daCode" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Invite code"></label><div class="daNote">You need an invite code from the person who runs this desk. You get your own Paper Trade account, and you can add your own Delta API key in Settings.</div>' : '') +
       (err ? '<div class="daErr">' + esc(err) + '</div>' : '') +
-      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? 'Set new password' : 'Sign in') + '</button>' +
-      (rs ? '<button type="button" class="daLink" data-da-mode="in">Back to sign in</button><div class="daNote">Ask the desk owner for a reset code. It works once and expires in 60 minutes.</div>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password?</button>') + '</div>';
+      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? '⚡ Reset & Sign In' : 'Sign in') + '</button>' +
+      (rs ? '<button type="button" class="daLink" data-da-mode="in">← Back to sign in</button>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password? (Instant reset)</button>') + '</div>';
     for (const [id, val] of keep) { const el = D.getElementById(id); if (el && val) el.value = val; }
   }
 
@@ -60394,13 +60403,18 @@ document.addEventListener('click', function(e) {
     const ov = D.getElementById('daOv');
     if (!ov || ov.hidden) return;
     if (e.key === 'Escape') close();
-    else if (e.key === 'Enter' && e.target && /^da(Email|Pw|Name|Code|Reset)$/.test(e.target.id)) submit();
+    else if (e.key === 'Enter' && e.target && /^da(Email|Pw|PwConfirm|Name|Code|Reset)$/.test(e.target.id)) submit();
   });
 
-  /** The small "signed in as" chip (bottom left) with Log out. */
+  /** The small "signed in as" chip (bottom left) with Log out or Sign in. */
   function chip() {
     let c = D.getElementById('daChip');
-    if (!token()) { if (c) c.remove(); return; }
+    if (!token()) {
+      if (!c) { c = D.createElement('div'); c.id = 'daChip'; D.body.appendChild(c); }
+      const html = '<span>Not signed in</span><button type="button" data-da-open>Sign in</button>';
+      if (c.innerHTML !== html) c.innerHTML = html;
+      return;
+    }
     const u = user();
     if (!c) { c = D.createElement('div'); c.id = 'daChip'; D.body.appendChild(c); }
     const html = '<span>' + (u ? esc(u.name || u.email) + (u.role === 'admin' ? ' · owner' : '') : 'Signed in') + '</span><button type="button" data-da-logout>Log out</button>';

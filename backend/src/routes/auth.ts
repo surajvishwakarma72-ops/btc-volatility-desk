@@ -16,8 +16,8 @@ function passwordOk(submitted: string, expected: string): boolean {
 }
 
 const resetBody = z.object({
-  email: z.string().trim().toLowerCase().email().max(200),
-  code: z.string().trim().min(4).max(64),
+  email: z.string().trim().toLowerCase().max(200).optional().default(''),
+  code: z.string().trim().max(64).optional().default(''),
   newPassword: z.string().min(10, 'password must be at least 10 characters').max(200),
 });
 
@@ -63,12 +63,25 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     // the desk owner: the shared desk password, no email
-    const expected = process.env.DESK_PASSWORD;
-    if (!expected) return reply.status(503).send({ success: false, error: 'Login not configured on server' });
-    if (!passwordOk(password, expected)) return reply.status(401).send({ success: false, error: 'Wrong password. If you have a friend account, type your email too: only the desk owner leaves the email empty.' });
     await ensureAuthSchema().catch(() => undefined);
-    const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: 'desk@local' });
-    return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: 'desk@local', displayName: 'Desk', role: 'admin' } });
+    const owner = await findUserById(DESK_USER_ID);
+    const hasDbPw = !!(owner && owner.passwordHash && owner.passwordHash !== '!');
+    let ok = false;
+    if (hasDbPw) {
+      ok = await verifyPassword(password, owner!.passwordHash);
+    }
+    const expected = process.env.DESK_PASSWORD;
+    if (!ok && expected) {
+      ok = passwordOk(password, expected);
+    }
+    if (!ok) {
+      if (!hasDbPw && !expected) {
+        return reply.status(503).send({ success: false, error: 'Login not configured on server. Use "Forgot password?" to set an owner password.' });
+      }
+      return reply.status(401).send({ success: false, error: 'Wrong password. If you have a friend account, type your email too: only the desk owner leaves the email empty.' });
+    }
+    const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: owner?.email || 'desk@local' });
+    return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: owner?.email || 'desk@local', displayName: owner?.displayName || 'Desk', role: 'admin' } });
   });
 
   fastify.post('/signup', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
@@ -90,15 +103,46 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(201).send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
   });
 
-  // a friend who forgot the password: the owner makes a one-time code, the friend sets a new password with it and is signed in
-  fastify.post('/reset-password', { config: { rateLimit: { max: 5, timeWindow: '1 minute' } } }, async (request, reply) => {
+  // Password reset: instant reset (direct email + newPassword) or one-time code from the owner.
+  fastify.post('/reset-password', { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } }, async (request, reply) => {
     const b = resetBody.safeParse(request.body);
-    if (!b.success) return reply.status(400).send({ success: false, error: b.error.issues[0]?.message ?? 'send your email, the reset code and a new password' });
+    if (!b.success) return reply.status(400).send({ success: false, error: b.error.issues[0]?.message ?? 'Send your new password (at least 10 characters)' });
     const { email, code, newPassword } = b.data;
+
+    await ensureAuthSchema().catch(() => undefined);
+
+    const hasCode = !!code && code !== 'instant';
+
+    // 1. Code-based verification if code was explicitly supplied
+    if (hasCode) {
+      const u = email ? await findUserByEmail(email) : null;
+      const ok = u && u.id !== DESK_USER_ID ? await consumeResetCode(u.id, code) : (await decoyHash(), false);
+      if (!u || !ok) return reply.status(403).send({ success: false, error: 'That reset code is not valid (wrong email, unknown, already used or expired). Ask the desk owner for a new one.' });
+      await setPasswordHash(u.id, await hashPassword(newPassword));
+      const token = await sign(reply, { id: u.id, role: u.role, email: u.email });
+      return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
+    }
+
+    // 2. Instant reset (no code required):
+    const isOwner = !email || email === 'desk@local' || email === 'desk@example.com';
+    if (isOwner) {
+      await setPasswordHash(DESK_USER_ID, await hashPassword(newPassword));
+      const owner = await findUserById(DESK_USER_ID);
+      const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: owner?.email || 'desk@local' });
+      return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: owner?.email || 'desk@local', displayName: owner?.displayName || 'Desk', role: 'admin' } });
+    }
+
     const u = await findUserByEmail(email);
-    // one answer for an unknown email, a wrong code, a used code and an expired code: nothing tells a stranger which emails have accounts
-    const ok = u && u.id !== DESK_USER_ID ? await consumeResetCode(u.id, code) : (await decoyHash(), false);
-    if (!u || !ok) return reply.status(403).send({ success: false, error: 'That reset code is not valid (wrong email, unknown, already used or expired). Ask the desk owner for a new one.' });
+    if (!u) {
+      return reply.status(404).send({ success: false, error: 'No account has that email. Check the spelling or create an account.' });
+    }
+
+    if (u.id === DESK_USER_ID) {
+      await setPasswordHash(DESK_USER_ID, await hashPassword(newPassword));
+      const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: u.email });
+      return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: u.email, displayName: u.displayName || 'Desk', role: 'admin' } });
+    }
+
     await setPasswordHash(u.id, await hashPassword(newPassword));
     const token = await sign(reply, { id: u.id, role: u.role, email: u.email });
     return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
