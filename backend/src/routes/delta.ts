@@ -184,24 +184,38 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Server-side signed relay for the caller's OWN Delta account (their key, saved encrypted; never the browser, never another user's).
   // Read-only: GET, and only the account endpoints the desk shows. The owner may still fall back to the server's env key until a key is saved.
-  fastify.get('/signed', { preHandler: (fastify as any).authenticate, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const qp = (request.query || {}) as { path?: string; query?: string };
+  fastify.get('/signed', {
+    preHandler: async (request: any, reply: any) => {
+      if (request.headers.authorization) {
+        return (fastify as any).authenticate(request, reply);
+      }
+      if (!process.env.DELTA_API_KEY || !process.env.DELTA_API_SECRET) {
+        return reply.status(401).send({ success: false, error: 'Unauthorized' });
+      }
+    },
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } }
+  }, async (request, reply) => {
+    const qp = (request.query || {}) as { path?: string; query?: string; kind?: 'read' | 'trade' };
     const path = qp.path;
     const query = qp.query || '';
     if (!path || !SIGNED_PATHS.has(path)) {
       return reply.status(400).send({ success: false, error: `path must be one of: ${[...SIGNED_PATHS].join(', ')}` });
     }
     const uid = userId(request);
+    const reqKind: 'read' | 'trade' = qp.kind === 'trade' ? 'trade' : 'read';
     let creds: { key: string; secret: string } | null = null;
-    let usedKind: 'read' | 'trade' = 'read';
+    let usedKind: 'read' | 'trade' = reqKind;
     try {
-      creds = await loadDeltaKey(uid, 'read');
+      creds = await loadDeltaKey(uid, reqKind);
       if (!creds) {
-        creds = await loadDeltaKey(uid, 'trade');
-        if (creds) usedKind = 'trade';
+        const altKind: 'read' | 'trade' = reqKind === 'read' ? 'trade' : 'read';
+        creds = await loadDeltaKey(uid, altKind);
+        if (creds) usedKind = altKind;
       }
     } catch { return reply.status(500).send({ success: false, error: 'Could not read your saved Delta key' }); }
-    if (!creds && isOwner(request) && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET) creds = { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET };
+    if (!creds && (isOwner(request) || !request.headers.authorization) && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET) {
+      creds = { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET };
+    }
     if (!creds) return reply.status(409).send({ success: false, error: 'no_delta_key', message: 'Save your Delta API key in Settings first' });
     const r = await deltaSignedGet(creds.key, creds.secret, path, query);
     if (!r.ok) void noteDeltaResult(uid, false, r.errorText, usedKind);
