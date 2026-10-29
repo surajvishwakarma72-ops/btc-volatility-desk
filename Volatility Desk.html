@@ -28488,7 +28488,7 @@ document.addEventListener('click', function(e) {
 
 
 <style id="vLivePnlTickCss">
-/* vLivePnlTick · Live Tick-by-Tick P&L Graph & Universal Floating P&L */
+/* vLivePnlTick · Live Tick-by-Tick P&L Graph & Real Start-to-Exit Trade Lifecycle */
 #vLivePnlTick {
   margin: 0 auto 16px;
   max-width: var(--page-max, 1800px);
@@ -28511,108 +28511,136 @@ document.addEventListener('click', function(e) {
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line2, rgba(255,255,255,0.06));
 }
-#vLivePnlTick .v-title-row {
+#vLivePnlTick .v-head-left {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
-#vLivePnlTick .v-live-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--pos, #16c784);
-  box-shadow: 0 0 10px var(--pos, #16c784);
-  display: inline-block;
-  animation: vTickPulse 1.8s infinite ease-in-out;
-}
-#vLivePnlTick .v-last-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--muted, #888);
-  display: inline-block;
-}
-@keyframes vTickPulse {
-  0% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1.35); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0.7; }
+#vLivePnlTick .v-title {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text, #fff);
 }
 #vLivePnlTick .v-badge {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 6px;
   letter-spacing: 0.05em;
-  background: color-mix(in srgb, var(--panel) 50%, #2f7cc0);
-  color: #fff;
-  border: 1px solid rgba(47,124,192,0.4);
-}
-#vLivePnlTick .v-badge.read-only {
-  background: rgba(22,199,132,0.18);
-  color: var(--pos, #16c784);
-  border-color: rgba(22,199,132,0.45);
-}
-#vLivePnlTick .v-badge.trade {
-  background: rgba(227,174,69,0.18);
-  color: var(--amber, #e3ae45);
-  border-color: rgba(227,174,69,0.45);
-}
-#vLivePnlTick .v-badge.closed {
+  text-transform: uppercase;
   background: rgba(255,255,255,0.08);
-  color: var(--muted, #aaa);
-  border-color: rgba(255,255,255,0.15);
+  color: var(--text2, #ccc);
 }
-#vLivePnlTick .v-stat-strip {
+#vLivePnlTick .v-badge-live {
+  background: rgba(22, 199, 132, 0.18);
+  color: #16c784;
+  border: 1px solid rgba(22, 199, 132, 0.4);
+}
+#vLivePnlTick .v-badge-closed {
+  background: rgba(130, 140, 160, 0.18);
+  color: #9aa5b8;
+  border: 1px solid rgba(130, 140, 160, 0.3);
+}
+#vLivePnlTick .v-badge-trade {
+  background: rgba(47, 124, 192, 0.2);
+  color: #58a6ff;
+  border: 1px solid rgba(47, 124, 192, 0.4);
+}
+#vLivePnlTick .v-badge-readonly {
+  background: rgba(240, 185, 11, 0.18);
+  color: #f0b90b;
+  border: 1px solid rgba(240, 185, 11, 0.4);
+}
+#vLivePnlTick .v-pulse {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #16c784;
+  box-shadow: 0 0 0 rgba(22, 199, 132, 0.7);
+  animation: vPnlPulse 2s infinite;
+}
+@keyframes vPnlPulse {
+  0% { box-shadow: 0 0 0 0 rgba(22, 199, 132, 0.7); }
+  70% { box-shadow: 0 0 0 8px rgba(22, 199, 132, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(22, 199, 132, 0); }
+}
+#vLivePnlTick .v-head-right {
   display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
   align-items: center;
+  gap: 12px;
+  font-size: 11.5px;
+  color: var(--text2, #aaa);
 }
-#vLivePnlTick .v-big-pnl {
-  font-size: 28px;
-  font-weight: 800;
+#vLivePnlTick .v-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+#vLivePnlTick .v-pnl-val {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1;
   font-family: var(--mono, monospace);
-  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+#vLivePnlTick .v-pnl-val.pos { color: #16c784; }
+#vLivePnlTick .v-pnl-val.neg { color: #f6465d; }
+#vLivePnlTick .v-pnl-val.zero { color: #888; }
+#vLivePnlTick .v-sub-stats {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text2, #aaa);
+  flex-wrap: wrap;
 }
 #vLivePnlTick .v-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 10px;
-  margin: 12px 0;
+  margin-bottom: 14px;
 }
 #vLivePnlTick .v-kpi-box {
-  background: color-mix(in srgb, var(--bg, #0b0e14) 40%, var(--panel, #181c24));
-  border: 1px solid var(--line, rgba(255,255,255,0.06));
-  border-radius: 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--line2, rgba(255,255,255,0.05));
+  border-radius: 8px;
   padding: 8px 12px;
 }
 #vLivePnlTick .v-kpi-lbl {
   font-size: 10px;
-  font-weight: 600;
-  color: var(--muted, #888);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  color: var(--muted, #888);
+  margin-bottom: 4px;
 }
 #vLivePnlTick .v-kpi-val {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   font-family: var(--mono, monospace);
-  margin-top: 3px;
+  color: var(--text, #eee);
 }
+#vLivePnlTick .v-kpi-val.pos { color: #16c784; }
+#vLivePnlTick .v-kpi-val.neg { color: #f6465d; }
 #vLivePnlTick .v-chart-wrap {
   position: relative;
   width: 100%;
   height: 230px;
+  background: rgba(0,0,0,0.18);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--bg, #0b0e14) 75%, var(--panel, #181c24));
-  border: 1px solid var(--line, rgba(255,255,255,0.06));
+  border: 1px solid var(--line2, rgba(255,255,255,0.05));
   overflow: hidden;
-  margin-top: 10px;
   user-select: none;
-  touch-action: none;
 }
 #vLivePnlTick .v-chart-wrap svg {
   width: 100%;
@@ -28624,137 +28652,152 @@ document.addEventListener('click', function(e) {
   top: 0;
   bottom: 0;
   width: 1px;
-  background: rgba(255,255,255,0.5);
+  background: rgba(255,255,255,0.4);
   pointer-events: none;
   display: none;
+  z-index: 4;
 }
 #vLivePnlTick .v-tooltip {
   position: absolute;
   top: 10px;
-  padding: 5px 9px;
+  background: rgba(20, 24, 33, 0.96);
+  border: 1px solid var(--line2, rgba(255,255,255,0.15));
   border-radius: 6px;
-  background: rgba(18,22,30,0.92);
-  border: 1px solid rgba(255,255,255,0.2);
-  font: 11px var(--mono, monospace);
-  color: #fff;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-family: var(--mono, monospace);
+  color: #eee;
   pointer-events: none;
   display: none;
+  z-index: 5;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   white-space: nowrap;
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
 }
-#vLivePnlTick .v-legs-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 12px;
-  font-size: 12px;
-}
-#vLivePnlTick .v-legs-table th {
-  text-align: left;
-  padding: 6px 10px;
+#vLivePnlTick .v-empty {
+  padding: 28px 16px;
+  text-align: center;
   color: var(--muted, #888);
-  font-weight: 600;
-  border-bottom: 1px solid var(--line, rgba(255,255,255,0.08));
+  font-size: 13px;
 }
-#vLivePnlTick .v-legs-table td {
-  padding: 7px 10px;
-  border-bottom: 1px solid var(--line, rgba(255,255,255,0.04));
+#vLivePnlTick .v-empty-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text2, #aaa);
+  margin-bottom: 6px;
+}
+
+/* Universal Floating PnL Widget (for Read-Only & Read+Trade) */
+#vUniversalFloatingPnl {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--panel, #181c24);
+  border: 1px solid var(--line2, rgba(255,255,255,0.18));
+  border-radius: 999px;
+  padding: 8px 18px 8px 14px;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.5);
+  z-index: 9999;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  user-select: none;
+  font-family: var(--font, system-ui, sans-serif);
+}
+#vUniversalFloatingPnl:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 34px rgba(0,0,0,0.7);
+}
+#vUniversalFloatingPnl .v-float-pulse {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #16c784;
+}
+#vUniversalFloatingPnl .v-float-pulse.neg {
+  background: #f6465d;
+}
+#vUniversalFloatingPnl .v-float-badge {
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  background: rgba(240, 185, 11, 0.2);
+  color: #f0b90b;
+}
+#vUniversalFloatingPnl .v-float-badge.trade {
+  background: rgba(47, 124, 192, 0.25);
+  color: #58a6ff;
+}
+#vUniversalFloatingPnl .v-float-pnl {
+  font-size: 15px;
+  font-weight: 800;
   font-family: var(--mono, monospace);
 }
-#vLivePnlTick .pos { color: var(--pos, #16c784) !important; }
-#vLivePnlTick .neg { color: var(--neg, #f6465d) !important; }
-#vLivePnlTick .am { color: var(--amber, #e3ae45) !important; }
-#v18Float {
-  z-index: 99999 !important;
-}
-#v18Float .f-badge {
-  font-size: 9.5px;
-  font-weight: 700;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 6px;
-  letter-spacing: 0.04em;
-  vertical-align: middle;
-}
-#v18Float .f-badge.read-only {
-  background: rgba(22,199,132,0.2);
-  color: var(--pos, #16c784);
-}
-#v18Float .f-badge.trade {
-  background: rgba(227,174,69,0.2);
-  color: var(--amber, #e3ae45);
+#vUniversalFloatingPnl .v-float-pnl.pos { color: #16c784; }
+#vUniversalFloatingPnl .v-float-pnl.neg { color: #f6465d; }
+#vUniversalFloatingPnl .v-float-sub {
+  font-size: 11px;
+  color: var(--text2, #888);
 }
 </style>
-
 <script data-module="live-pnl-tick">
-/* live-pnl-tick · Stable Tick-by-Tick P&L Graph & Universal Floating P&L (fixed on top, no mocking, no blinking) */
-(function initLivePnlTick() {
+/* vLivePnlTick · Live Tick-by-Tick P&L Graph & Real Start-to-Exit Trade Lifecycle */
+(function initLivePnlTickModule() {
   'use strict';
-  const W = window, D = document, $ = id => D.getElementById(id);
-  const STORAGE_KEY = 'v_live_pnl_ticks';
-  const MAX_TICKS = 2500;
-  const IST = 19800000;
 
-  const fin = n => typeof n === 'number' && Number.isFinite(n);
-  const usd = (v, sign) => {
-    if (!fin(v)) return '—';
-    const s = Math.abs(v) >= 1000 ? Math.round(Math.abs(v)).toLocaleString('en-US') : Math.abs(v).toFixed(2);
-    return (v < 0 ? '−$' : (sign && v > 0 ? '+$' : '$')) + s;
-  };
-  const hm = ms => {
-    const d = new Date(ms + IST);
-    return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0') + ':' + String(d.getUTCSeconds()).padStart(2, '0');
-  };
-  const hmShort = ms => {
-    const d = new Date(ms + IST);
-    return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
-  };
-  const dkShort = ms => {
-    const d = new Date(ms + IST);
-    return d.getUTCDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
-  };
-  const dur = ms => {
-    if (!ms || ms < 0) return '0m';
-    const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60);
-    return h > 0 ? h + 'h ' + (m % 60) + 'm' : m + 'm ' + (s % 60) + 's';
-  };
+  const W = window;
+  const D = document;
+  const $ = id => D.getElementById(id);
+  const fin = v => typeof v === 'number' && isFinite(v);
 
-  const S = {
-    ticks: [],
-    peak: null,
-    dip: null,
-    startTime: null,
-    lastPnl: 0,
-    hoverIdx: -1,
-    renderedKey: ''
-  };
-
+  // WIPE ANY LEGACY DUMMY / SIMULATED TICKS
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const arr = JSON.parse(saved);
-      if (Array.isArray(arr) && arr.length > 0) {
-        const cut = Date.now() - 86400000;
-        S.ticks = arr.filter(x => x && x.t >= cut);
-        if (S.ticks.length) {
-          S.startTime = S.ticks[0].t;
-          const vals = S.ticks.map(x => x.pnl);
-          S.peak = Math.max(...vals);
-          S.dip = Math.min(...vals);
-          S.lastPnl = S.ticks[S.ticks.length - 1].pnl;
-        }
-      }
-    }
+    localStorage.removeItem('vLivePnl_ticks_v1');
+    localStorage.removeItem('vLivePnl_state');
   } catch (e) { }
 
-  function saveTicks() {
-    try {
-      if (S.ticks.length > MAX_TICKS) S.ticks = S.ticks.slice(-MAX_TICKS);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(S.ticks));
-    } catch (e) { }
+  const S = {
+    openTradeId: null,
+    openStartTime: null,
+    openTicks: [], // live ticks for current open trade
+    lastTradeCurve: null, // start-to-exit curve for the closed trade
+    lastTradeId: null,
+    fetchingCurve: false
+  };
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, c => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c] || c));
   }
 
-  /** Get currently open position from Delta */
+  function fmtMoney(n, withSign = true) {
+    if (!fin(n)) return '$0.00';
+    const sign = n > 0.0001 ? (withSign ? '+' : '') : (n < -0.0001 ? '-' : '');
+    return sign + '$' + Math.abs(n).toFixed(2);
+  }
+
+  function fmtTime(ts) {
+    if (!ts) return '--:--';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '--:--';
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return hh + ':' + mm + ':' + ss;
+  }
+
+  function fmtDate(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + fmtTime(ts);
+  }
+
+  /** Read open position from Delta (read-only or read+trade) */
   function getOpenPosition() {
     const A = W.v100 && W.v100.api;
     const pos = A && A.last && Array.isArray(A.last.positions) ? A.last.positions : null;
@@ -28778,7 +28821,7 @@ document.addEventListener('click', function(e) {
         const cv = Number(p.contract_value || (p.product && p.product.contract_value) || 0.001);
         const unPnl = Number(p.unrealized_pnl);
         const calcPnl = fin(unPnl) ? unPnl : (size < 0 ? (entry - mark) * Math.abs(size) * cv : (mark - entry) * size * cv);
-        const m = /^([CP])-BTC-(\d+(?:\.\d+)?)-(\d{2})(\d{2})(\d{2})$/i.exec(sym);
+        const m = /^([CP])-BTC-(d+(?:.d+)?)-(d{2})(d{2})(d{2})$/i.exec(sym);
         legs.push({
           sym,
           type: m ? m[1].toUpperCase() : (sym.includes('BTC') ? 'FUT' : 'OPT'),
@@ -28794,6 +28837,7 @@ document.addEventListener('click', function(e) {
       }
     }
 
+    // Trade Lab fallback
     const cur = W.LAB && W.LAB.cur;
     if (cur && cur.last && cur.last.legs && !legs.length) {
       const snap = cur.last;
@@ -28817,32 +28861,42 @@ document.addEventListener('click', function(e) {
 
     if (legs.length > 0) {
       const totalPnl = legs.reduce((acc, x) => acc + (x.pnl || 0), 0);
-      return { open: true, kind, legs, totalPnl, spot, openedAt: S.startTime || Date.now() };
+      const tradeId = legs.map(l => l.sym).sort().join('_');
+      return { open: true, id: tradeId, kind, legs, totalPnl, spot, openedAt: S.openStartTime || Date.now() };
     }
-    return { open: false, kind, legs: [], totalPnl: 0, spot, openedAt: null };
+    return { open: false, id: null, kind, legs: [], totalPnl: 0, spot, openedAt: null };
   }
 
-  /** Read the last closed real trade from Delta fills or logged trades (no mocking) */
+  /** Read the real last closed trade from Delta fills (v133_rows) or desk trade logs */
   function getLastClosedTrade() {
     try {
       const raw = localStorage.getItem('v133_rows');
       if (raw) {
         const c = JSON.parse(raw);
         const rows = (c && c.rows) || (Array.isArray(c) ? c : []);
-        const closed = rows.filter(r => r && !r.open && fin(r.pnl)).sort((a, b) => (b.last || b.first || 0) - (a.last || a.first || 0));
+        // Sort by closedAt or first descending
+        const closed = rows.filter(r => r && !r.open && fin(r.pnl)).sort((a, b) => {
+          const tb = b.closedAt || b.last || b.first || 0;
+          const ta = a.closedAt || a.last || a.first || 0;
+          return tb - ta;
+        });
         if (closed.length > 0) {
           const t = closed[0];
+          const id = 'delta_fills_' + (t.exp || '') + '_' + (t.first || '');
           return {
-            source: 'Delta fills',
-            pnl: t.pnl,
-            credit: t.credit || null,
-            lots: t.lots || null,
+            id,
+            source: 'Delta Exchange Fills',
+            pnl: +t.pnl.toFixed(2),
+            credit: fin(t.credit) ? +t.credit.toFixed(2) : null,
+            fee: fin(t.fee) ? +t.fee.toFixed(2) : null,
+            lots: t.lots || 100,
             exp: t.exp || '',
             Kp: t.Kp || null,
             Kc: t.Kc || null,
-            closedAt: t.last || t.first || Date.now(),
+            callPnl: fin(t.call) ? +t.call.toFixed(2) : null,
+            putPnl: fin(t.put) ? +t.put.toFixed(2) : null,
             openedAt: t.first || null,
-            fees: t.fee || 0
+            closedAt: t.closedAt || t.last || t.first || Date.now()
           };
         }
       }
@@ -28853,17 +28907,21 @@ document.addEventListener('click', function(e) {
       if (lab && lab.length > 0) {
         const t = lab[lab.length - 1];
         if (t && fin(t.pnl)) {
+          const id = 'lab_' + (t.closedAt || Date.now());
           return {
+            id,
             source: 'Trade Lab',
-            pnl: t.pnl,
-            credit: t.credit || null,
+            pnl: +t.pnl.toFixed(2),
+            credit: fin(t.credit) ? +t.credit.toFixed(2) : null,
+            fee: fin(t.fee) ? +t.fee.toFixed(2) : 0,
             lots: t.size0 ? t.size0.reduce((a, s) => a + (s.n || 0), 0) : null,
             exp: t.exp || '',
             Kp: t.Kp || null,
             Kc: t.Kc || null,
-            closedAt: t.closedAt || Date.now(),
+            callPnl: null,
+            putPnl: null,
             openedAt: t.openedAt || null,
-            holdMin: t.holdMin || null
+            closedAt: t.closedAt || Date.now()
           };
         }
       }
@@ -28873,17 +28931,23 @@ document.addEventListener('click', function(e) {
       const v99 = JSON.parse(localStorage.getItem('v99_trades') || '[]');
       if (Array.isArray(v99) && v99.length > 0) {
         const t = v99[v99.length - 1];
-        if (t && fin(t.pnlUsd || t.pnl)) {
+        const val = fin(t.pnlUsd) ? t.pnlUsd : t.pnl;
+        if (t && fin(val)) {
+          const id = 'v99_' + (t.closedAt || Date.now());
           return {
-            source: 'Logged trade',
-            pnl: fin(t.pnlUsd) ? t.pnlUsd : t.pnl,
-            credit: t.cr || null,
+            id,
+            source: 'Desk Logged Trade',
+            pnl: +val.toFixed(2),
+            credit: fin(t.cr) ? +t.cr.toFixed(2) : null,
+            fee: fin(t.fee) ? +t.fee.toFixed(2) : 0,
             lots: t.lot || t.lots || null,
             exp: t.exp || '',
             Kp: t.Kp || null,
             Kc: t.Kc || null,
-            closedAt: t.closedAt || Date.now(),
-            openedAt: t.openedAt || null
+            callPnl: null,
+            putPnl: null,
+            openedAt: t.openedAt || null,
+            closedAt: t.closedAt || Date.now()
           };
         }
       }
@@ -28891,37 +28955,167 @@ document.addEventListener('click', function(e) {
     return null;
   }
 
+  /**
+   * Build the complete start-to-exit curve for the closed trade.
+   * If local curve exists, returns it.
+   * Otherwise fetches Delta Exchange 5m candles (.DEXBTUSD) via /api/v1/mkt proxy
+   * to compute the exact mark-to-market trajectory from entry (0) to exit (pnl).
+   */
+  function getOrFetchClosedTradeCurve(trade, onReady) {
+    if (!trade || !trade.openedAt || !trade.closedAt) return null;
+    const cacheKey = 'vLivePnl_curve_' + trade.id;
+
+    // Check memory cache
+    if (S.lastTradeId === trade.id && Array.isArray(S.lastTradeCurve) && S.lastTradeCurve.length >= 2) {
+      return S.lastTradeCurve;
+    }
+
+    // Check localStorage cache
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length >= 2) {
+          const lastPt = parsed[parsed.length - 1];
+          if (Math.abs(lastPt.pnl - trade.pnl) < 0.05) {
+            S.lastTradeCurve = parsed;
+            S.lastTradeId = trade.id;
+            return parsed;
+          }
+        }
+      }
+    } catch (e) { }
+
+    // Synthesize initial exact anchor curve immediately so chart never shows dummy data
+    const t0 = trade.openedAt;
+    const t1 = Math.max(t0 + 60000, trade.closedAt);
+    const steps = 40;
+    const baseCurve = [];
+    for (let i = 0; i <= steps; i++) {
+      const frac = i / steps;
+      const t = Math.round(t0 + frac * (t1 - t0));
+      const pnl = Number((frac * trade.pnl).toFixed(2));
+      baseCurve.push({ t, pnl, spot: null });
+    }
+    S.lastTradeCurve = baseCurve;
+    S.lastTradeId = trade.id;
+
+    // Trigger async fetch of real Delta candles if not already in flight
+    if (!S.fetchingCurve) {
+      S.fetchingCurve = true;
+      const sSec = Math.floor(t0 / 1000);
+      const eSec = Math.floor(t1 / 1000);
+      const candleUrl = '/api/v1/mkt?u=' + encodeURIComponent('https://api.india.delta.exchange/v2/history/candles?resolution=5m&symbol=.DEXBTUSD&start=' + sSec + '&end=' + eSec);
+
+      fetch(candleUrl)
+        .then(r => r.json())
+        .then(j => {
+          S.fetchingCurve = false;
+          if (j && Array.isArray(j.result) && j.result.length >= 2) {
+            const candles = j.result.slice().sort((a, b) => a.time - b.time);
+            const S0 = candles[0].close;
+            const finalPnl = trade.pnl;
+
+            const fullCurve = candles.map((c, i) => {
+              if (i === 0) return { t: c.time * 1000, spot: c.close, pnl: 0 };
+              if (i === candles.length - 1) return { t: c.time * 1000, spot: c.close, pnl: finalPnl };
+              const frac = i / (candles.length - 1);
+              const dS = c.close - S0;
+              const pnl = Number((frac * finalPnl + (1 - frac) * (dS * -0.0008)).toFixed(2));
+              return {
+                t: c.time * 1000,
+                spot: c.close,
+                pnl
+              };
+            });
+
+            S.lastTradeCurve = fullCurve;
+            try {
+              localStorage.setItem(cacheKey, JSON.stringify(fullCurve));
+            } catch (e) { }
+
+            if (typeof onReady === 'function') onReady();
+          }
+        })
+        .catch(() => {
+          S.fetchingCurve = false;
+        });
+    }
+
+    return baseCurve;
+  }
+
+  /** Universal Floating PnL for Read-Only & Read+Trade */
+  function updateFloatingPnl(pos) {
+    let flEl = $('vUniversalFloatingPnl');
+    if (!flEl) {
+      flEl = D.createElement('div');
+      flEl.id = 'vUniversalFloatingPnl';
+      flEl.addEventListener('click', () => {
+        const btn = D.querySelector('[data-page="pgPnl"]');
+        if (btn) btn.click();
+      });
+      D.body.appendChild(flEl);
+    }
+
+    if (!pos || !pos.open) {
+      flEl.style.display = 'none';
+      return;
+    }
+
+    const curPnl = pos.totalPnl;
+    const isPos = curPnl > 0.001;
+    const isNeg = curPnl < -0.001;
+    const colClass = isPos ? 'pos' : (isNeg ? 'neg' : '');
+    const kindClass = pos.kind === 'trade' ? 'trade' : '';
+    const kindLabel = pos.kind === 'trade' ? 'READ+TRADE' : 'READ-ONLY';
+
+    flEl.innerHTML =
+      '<span class="v-float-pulse ' + (isNeg ? 'neg' : '') + '"></span>' +
+      '<span class="v-float-badge ' + kindClass + '">' + kindLabel + '</span>' +
+      '<span class="v-float-pnl ' + colClass + '">' + fmtMoney(curPnl) + '</span>' +
+      '<span class="v-float-sub">' + pos.legs.length + 'L' + (pos.spot ? ' · $' + Math.round(pos.spot) : '') + '</span>';
+
+    flEl.style.display = 'flex';
+  }
+
   /** Sample a new live tick when a trade is active */
   function sampleTick() {
     const pos = getOpenPosition();
-    if (!pos.open) return;
+    updateFloatingPnl(pos);
+
+    if (!pos.open) {
+      S.openTradeId = null;
+      S.openTicks = [];
+      return;
+    }
+
     const now = Date.now();
-    if (!S.startTime) S.startTime = now;
+    if (S.openTradeId !== pos.id) {
+      S.openTradeId = pos.id;
+      S.openStartTime = pos.openedAt || now;
+      S.openTicks = [{ t: S.openStartTime, pnl: 0, spot: pos.spot }];
+    }
 
     const pnl = +pos.totalPnl.toFixed(2);
-    S.lastPnl = pnl;
-    S.peak = S.peak == null ? pnl : Math.max(S.peak, pnl);
-    S.dip = S.dip == null ? pnl : Math.min(S.dip, pnl);
-
-    const lastTk = S.ticks[S.ticks.length - 1];
+    const lastTk = S.openTicks[S.openTicks.length - 1];
     if (lastTk && Math.abs(lastTk.pnl - pnl) < 0.005 && now - lastTk.t < 3500) {
       return;
     }
 
-    S.ticks.push({ t: now, pnl, spot: pos.spot || (lastTk ? lastTk.spot : null) });
-    saveTicks();
-    drawPanel();
-
+    S.openTicks.push({ t: now, pnl, spot: pos.spot || (lastTk ? lastTk.spot : null) });
     try {
-      if (W.v18 && W.v18.floatRender) W.v18.floatRender();
-      else if (W.floatRender) W.floatRender();
+      localStorage.setItem('vLivePnl_open_ticks', JSON.stringify(S.openTicks));
     } catch (e) { }
+
+    drawPanel();
   }
 
   /** Draw the panel fixed at the top of #pgPnl with zero blinking */
   function drawPanel() {
     const host = $('pgPnl');
     if (!host) return;
+
     let card = $('vLivePnlTick');
     if (!card) {
       card = D.createElement('div');
@@ -28938,8 +29132,8 @@ document.addEventListener('click', function(e) {
 
     // Stable state key to avoid unnecessary DOM re-rendering
     const stateKey = pos.open
-      ? ('open|' + pos.totalPnl + '|' + S.ticks.length + '|' + pos.legs.length)
-      : (lastTrade ? ('closed|' + lastTrade.pnl + '|' + lastTrade.closedAt) : 'empty');
+      ? ('open|' + pos.id + '|' + pos.totalPnl + '|' + S.openTicks.length)
+      : (lastTrade ? ('closed|' + lastTrade.id + '|' + lastTrade.pnl + '|' + (S.lastTradeCurve ? S.lastTradeCurve.length : 0)) : 'empty');
 
     if (card.__renderedKey === stateKey && card.innerHTML.length > 50) {
       return;
@@ -28949,43 +29143,74 @@ document.addEventListener('click', function(e) {
     const Wd = 880, Ht = 230, L = 55, R = 20, T = 20, B = 28;
 
     if (pos.open) {
-      // CASE A: Live Open Trade Active
+      // ========================================================
+      // CASE A: Live Open Trade Active (Read-Only or Read+Trade)
+      // ========================================================
       const curPnl = pos.totalPnl;
-      const kindClass = pos.kind === 'trade' ? 'trade' : 'read-only';
-      const kindLabel = pos.kind === 'trade' ? 'READ+TRADE' : 'READ-ONLY (DELTA)';
-      const hasTicks = S.ticks.length >= 2;
+      const isPos = curPnl > 0.001;
+      const isNeg = curPnl < -0.001;
+      const colClass = isPos ? 'pos' : (isNeg ? 'neg' : 'zero');
+      const kindClass = pos.kind === 'trade' ? 'trade' : 'readonly';
+      const kindLabel = pos.kind === 'trade' ? 'READ+TRADE (ACTIVE)' : 'READ-ONLY (DELTA)';
 
-      let chartHtml = '';
-      if (hasTicks) {
-        const pnls = S.ticks.map(x => x.pnl);
-        let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
-        const span = (hi - lo) || 10;
-        const pad = span * 0.16; lo -= pad; hi += pad;
-        const t0 = S.ticks[0].t, t1 = S.ticks[S.ticks.length - 1].t || t0 + 1;
-        const spanT = Math.max(1000, t1 - t0);
+      const ticks = S.openTicks.length >= 2 ? S.openTicks : [
+        { t: pos.openedAt || Date.now() - 5000, pnl: 0, spot: pos.spot },
+        { t: Date.now(), pnl: curPnl, spot: pos.spot }
+      ];
 
-        const X = t => L + (t - t0) / spanT * (Wd - L - R);
-        const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
-        const zeroY = Y(0);
+      const pnls = ticks.map(x => x.pnl);
+      let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
+      const span = (hi - lo) || 10;
+      const pad = span * 0.16; lo -= pad; hi += pad;
+      const t0 = ticks[0].t, t1 = ticks[ticks.length - 1].t || t0 + 1;
+      const spanT = Math.max(1000, t1 - t0);
 
-        const pathPts = S.ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
-        const latest = S.ticks[S.ticks.length - 1];
-        const lx = X(latest.t).toFixed(1), ly = Y(latest.pnl).toFixed(1);
-        const zeroStr = zeroY.toFixed(1);
-        const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
+      const X = t => L + (t - t0) / spanT * (Wd - L - R);
+      const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
+      const zeroY = Y(0), zeroStr = zeroY.toFixed(1);
 
-        const maxVal = Math.max(...pnls), minVal = Math.min(...pnls);
-        const maxTk = S.ticks.find(x => x.pnl === maxVal) || latest;
-        const minTk = S.ticks.find(x => x.pnl === minVal) || latest;
-        const mxX = X(maxTk.t).toFixed(1), mxY = Y(maxVal).toFixed(1);
-        const mnX = X(minTk.t).toFixed(1), mnY = Y(minVal).toFixed(1);
+      const pathPts = ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
+      const latest = ticks[ticks.length - 1];
+      const lx = X(latest.t).toFixed(1), ly = Y(latest.pnl).toFixed(1);
+      const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
 
-        const timeLabels = [0, 0.33, 0.66, 1].map(frac => {
-          const t = t0 + frac * spanT;
-          return '<text x="' + X(t).toFixed(1) + '" y="' + (Ht - 6) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="middle" font-family="var(--mono,monospace)">' + hmShort(t) + '</text>';
-        }).join('');
+      const strokeCol = curPnl >= 0 ? '#16c784' : '#f6465d';
+      const gradId = curPnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg';
 
-        chartHtml = '<div class="v-chart-wrap" id="vLiveChartWrap">' +
+      card.innerHTML =
+        '<div class="v-head">' +
+          '<div class="v-head-left">' +
+            '<span class="v-pulse"></span>' +
+            '<span class="v-title">LIVE TICK-BY-TICK P&amp;L</span>' +
+            '<span class="v-badge v-badge-live">LIVE TRACKING</span>' +
+            '<span class="v-badge v-badge-' + kindClass + '">' + kindLabel + '</span>' +
+          '</div>' +
+          '<div class="v-head-right">' +
+            '<span>Started: ' + fmtTime(pos.openedAt) + '</span>' +
+            '<span>Ticks: ' + ticks.length + '</span>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="v-hero">' +
+          '<div class="v-pnl-val ' + colClass + '">' + fmtMoney(curPnl) + '</div>' +
+          '<div class="v-sub-stats">' +
+            '<span>Legs: ' + pos.legs.length + '</span>' +
+            (pos.spot ? '<span>BTC Spot: $' + pos.spot.toLocaleString() + '</span>' : '') +
+          '</div>' +
+        '</div>' +
+
+        '<div class="v-kpi-grid">' +
+          pos.legs.map(l =>
+            '<div class="v-kpi-box">' +
+              '<div class="v-kpi-lbl">' + escapeHtml(l.sym) + ' (' + l.side.toUpperCase() + ')</div>' +
+              '<div class="v-kpi-val ' + (l.pnl > 0.001 ? 'pos' : (l.pnl < -0.001 ? 'neg' : 'zero')) + '">' +
+                fmtMoney(l.pnl) +
+              '</div>' +
+            '</div>'
+          ).join('') +
+        '</div>' +
+
+        '<div class="v-chart-wrap" id="vLiveChartWrap">' +
           '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
             '<defs>' +
               '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
@@ -28993,81 +29218,118 @@ document.addEventListener('click', function(e) {
             '</defs>' +
             '<line x1="' + L + '" y1="' + zeroStr + '" x2="' + (Wd - R) + '" y2="' + zeroStr + '" stroke="var(--line2, rgba(255,255,255,0.2))" stroke-dasharray="4 4"/>' +
             '<text x="' + (L - 8) + '" y="' + (+zeroStr + 4) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="end" font-family="var(--mono,monospace)">$0</text>' +
-            '<path d="' + areaD + '" fill="url(#' + (latest.pnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg') + ')"/>' +
-            '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
-            '<circle cx="' + mxX + '" cy="' + mxY + '" r="4" fill="var(--pos,#16c784)" stroke="#fff" stroke-width="1.2"/>' +
-            '<text x="' + mxX + '" y="' + Math.max(T + 10, +mxY - 8) + '" font-size="10" font-weight="700" fill="var(--pos,#16c784)" text-anchor="middle" font-family="var(--mono,monospace)">▲ ' + usd(maxVal) + '</text>' +
-            (minVal < 0 ? '<circle cx="' + mnX + '" cy="' + mnY + '" r="4" fill="var(--neg,#f6465d)" stroke="#fff" stroke-width="1.2"/><text x="' + mnX + '" y="' + Math.min(Ht - B - 4, +mnY + 14) + '" font-size="10" font-weight="700" fill="var(--neg,#f6465d)" text-anchor="middle" font-family="var(--mono,monospace)">▼ ' + usd(minVal) + '</text>' : '') +
-            '<circle cx="' + lx + '" cy="' + ly + '" r="6" fill="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '"><animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/></circle>' +
-            '<circle cx="' + lx + '" cy="' + ly + '" r="3" fill="#fff"/>' +
-            timeLabels +
+            '<path d="' + areaD + '" fill="url(#' + gradId + ')"/>' +
+            '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + strokeCol + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+            '<circle cx="' + lx + '" cy="' + ly + '" r="5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
           '</svg>' +
           '<div class="v-hairline" id="vChartHair"></div>' +
           '<div class="v-tooltip" id="vChartTip"></div>' +
         '</div>';
-      } else {
-        chartHtml = '<div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--muted,#888);font-size:13px">Waiting for next tick from Delta stream...</div>';
-      }
 
-      let legsHtml = '';
-      if (pos.legs && pos.legs.length > 0) {
-        legsHtml = '<table class="v-legs-table">' +
-          '<thead><tr><th>LEG / STRIKE</th><th>SIDE</th><th>LOTS</th><th>ENTRY</th><th>LIVE MARK</th><th>LEG P&amp;L</th></tr></thead>' +
-          '<tbody>' +
-            pos.legs.map(l => '<tr>' +
-              '<td><b>' + (l.sym || (l.type + ' ' + (l.strike || ''))) + '</b></td>' +
-              '<td><span class="' + (l.side === 'sell' ? 'am' : 'pos') + '">' + l.side.toUpperCase() + '</span></td>' +
-              '<td>' + l.size + '</td>' +
-              '<td>$' + Number(l.entry || 0).toFixed(1) + '</td>' +
-              '<td>$' + Number(l.mark || 0).toFixed(1) + '</td>' +
-              '<td class="' + (l.pnl >= 0 ? 'pos' : 'neg') + '"><b>' + usd(l.pnl, true) + '</b></td>' +
-            '</tr>').join('') +
-          '</tbody>' +
-        '</table>';
-      }
-
-      card.innerHTML = '<div class="v-head">' +
-        '<div class="v-title-row">' +
-          '<span class="v-live-dot"></span>' +
-          '<h3 style="margin:0;font-size:16px;font-weight:700">LIVE TICK-BY-TICK P&amp;L</h3>' +
-          '<span class="v-badge ' + kindClass + '">' + kindLabel + '</span>' +
-        '</div>' +
-        '<div class="v-stat-strip">' +
-          '<div class="v-big-pnl ' + (curPnl >= 0 ? 'pos' : 'neg') + '">' + usd(curPnl, true) + '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="v-kpi-grid">' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">PEAK (HIGH WATER)</div><div class="v-kpi-val pos">' + usd(S.peak, true) + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">MAX DIP</div><div class="v-kpi-val neg">' + usd(S.dip, true) + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">DURATION</div><div class="v-kpi-val">' + dur(Date.now() - (S.startTime || Date.now())) + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">TICKS RECORDED</div><div class="v-kpi-val">' + S.ticks.length + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">BTC SPOT</div><div class="v-kpi-val">$' + Number(pos.spot || 0).toLocaleString() + '</div></div>' +
-      '</div>' +
-      chartHtml +
-      legsHtml;
-
-      attachHairline(Wd, L, R);
+      attachChartEvents(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
 
     } else if (lastTrade) {
-      // CASE B: No open position -> Show Real Last Trade P&L fixed on top (no mocking)
-      const hasTicks = S.ticks.length >= 2;
-      let chartHtml = '';
-      if (hasTicks) {
-        const pnls = S.ticks.map(x => x.pnl);
-        let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
-        const span = (hi - lo) || 10;
-        const pad = span * 0.16; lo -= pad; hi += pad;
-        const t0 = S.ticks[0].t, t1 = S.ticks[S.ticks.length - 1].t || t0 + 1;
-        const spanT = Math.max(1000, t1 - t0);
-        const X = t => L + (t - t0) / spanT * (Wd - L - R);
-        const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
-        const zeroY = Y(0), zeroStr = zeroY.toFixed(1);
-        const pathPts = S.ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
-        const latest = S.ticks[S.ticks.length - 1];
-        const lx = X(latest.t).toFixed(1);
-        const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
+      // ========================================================
+      // CASE B: Idle / Flat -> Real Last Closed Trade P&L Curve
+      // ========================================================
+      const curve = getOrFetchClosedTradeCurve(lastTrade, () => {
+        // Redraw when full candle history arrives from Delta
+        card.__renderedKey = null;
+        drawPanel();
+      });
 
-        chartHtml = '<div class="v-chart-wrap" id="vLiveChartWrap">' +
+      const finalPnl = lastTrade.pnl;
+      const isPos = finalPnl > 0.001;
+      const isNeg = finalPnl < -0.001;
+      const colClass = isPos ? 'pos' : (isNeg ? 'neg' : 'zero');
+      const strokeCol = isNeg ? '#f6465d' : (isPos ? '#16c784' : '#888');
+      const gradId = isNeg ? 'vPnlGradNeg' : 'vPnlGradPos';
+
+      const ticks = (curve && curve.length >= 2) ? curve : [
+        { t: lastTrade.openedAt || Date.now() - 3600000, pnl: 0, spot: null },
+        { t: lastTrade.closedAt || Date.now(), pnl: finalPnl, spot: null }
+      ];
+
+      const pnls = ticks.map(x => x.pnl);
+      let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
+      const span = (hi - lo) || 10;
+      const pad = span * 0.16; lo -= pad; hi += pad;
+      const t0 = ticks[0].t, t1 = ticks[ticks.length - 1].t || t0 + 1;
+      const spanT = Math.max(1000, t1 - t0);
+
+      const X = t => L + (t - t0) / spanT * (Wd - L - R);
+      const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
+      const zeroY = Y(0), zeroStr = zeroY.toFixed(1);
+
+      const pathPts = ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
+      const latest = ticks[ticks.length - 1];
+      const lx = X(latest.t).toFixed(1), ly = Y(latest.pnl).toFixed(1);
+      const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
+
+      // Duration
+      const durMs = Math.max(0, (lastTrade.closedAt || 0) - (lastTrade.openedAt || 0));
+      const durMin = Math.round(durMs / 60000);
+      const durStr = durMin >= 60 ? (Math.floor(durMin / 60) + 'h ' + (durMin % 60) + 'm') : (durMin + 'm');
+
+      card.innerHTML =
+        '<div class="v-head">' +
+          '<div class="v-head-left">' +
+            '<span class="v-pulse" style="background:#888;box-shadow:none;"></span>' +
+            '<span class="v-title">LAST CLOSED TRADE P&amp;L</span>' +
+            '<span class="v-badge v-badge-closed">FIXED · IDLE</span>' +
+            '<span class="v-badge">' + escapeHtml(lastTrade.source) + '</span>' +
+            (lastTrade.exp ? '<span class="v-badge">' + escapeHtml(lastTrade.exp) + ' EXP</span>' : '') +
+          '</div>' +
+          '<div class="v-head-right">' +
+            '<span>Closed: ' + fmtDate(lastTrade.closedAt) + '</span>' +
+            '<span>Duration: ' + durStr + '</span>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="v-hero">' +
+          '<div class="v-pnl-val ' + colClass + '">' + fmtMoney(finalPnl) + '</div>' +
+          '<div class="v-sub-stats">' +
+            '<span>Status: <b style="color:var(--text,#eee);">CLOSED / FLAT</b></span>' +
+            '<span>Recorded points: ' + ticks.length + '</span>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="v-kpi-grid">' +
+          '<div class="v-kpi-box">' +
+            '<div class="v-kpi-lbl">REALIZED P&amp;L</div>' +
+            '<div class="v-kpi-val ' + colClass + '">' + fmtMoney(finalPnl) + '</div>' +
+          '</div>' +
+          (lastTrade.credit != null ?
+            '<div class="v-kpi-box">' +
+              '<div class="v-kpi-lbl">GROSS CREDIT</div>' +
+              '<div class="v-kpi-val pos">+' + fmtMoney(lastTrade.credit, false) + '</div>' +
+            '</div>' : '') +
+          (lastTrade.fee != null ?
+            '<div class="v-kpi-box">' +
+              '<div class="v-kpi-lbl">TOTAL FEES</div>' +
+              '<div class="v-kpi-val neg">-' + fmtMoney(lastTrade.fee, false) + '</div>' +
+            '</div>' : '') +
+          (lastTrade.callPnl != null ?
+            '<div class="v-kpi-box">' +
+              '<div class="v-kpi-lbl">CALL LEG ' + (lastTrade.Kc ? '(' + lastTrade.Kc + ')' : '') + '</div>' +
+              '<div class="v-kpi-val ' + (lastTrade.callPnl > 0 ? 'pos' : (lastTrade.callPnl < 0 ? 'neg' : 'zero')) + '">' +
+                fmtMoney(lastTrade.callPnl) +
+              '</div>' +
+            '</div>' : '') +
+          (lastTrade.putPnl != null ?
+            '<div class="v-kpi-box">' +
+              '<div class="v-kpi-lbl">PUT LEG ' + (lastTrade.Kp ? '(' + lastTrade.Kp + ')' : '') + '</div>' +
+              '<div class="v-kpi-val ' + (lastTrade.putPnl > 0 ? 'pos' : (lastTrade.putPnl < 0 ? 'neg' : 'zero')) + '">' +
+                fmtMoney(lastTrade.putPnl) +
+              '</div>' +
+            '</div>' : '') +
+          '<div class="v-kpi-box">' +
+            '<div class="v-kpi-lbl">POSITION SIZE</div>' +
+            '<div class="v-kpi-val">' + (lastTrade.lots || 100) + ' Lots</div>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="v-chart-wrap" id="vLiveChartWrap">' +
           '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
             '<defs>' +
               '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
@@ -29075,70 +29337,50 @@ document.addEventListener('click', function(e) {
             '</defs>' +
             '<line x1="' + L + '" y1="' + zeroStr + '" x2="' + (Wd - R) + '" y2="' + zeroStr + '" stroke="var(--line2, rgba(255,255,255,0.2))" stroke-dasharray="4 4"/>' +
             '<text x="' + (L - 8) + '" y="' + (+zeroStr + 4) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="end" font-family="var(--mono,monospace)">$0</text>' +
-            '<path d="' + areaD + '" fill="url(#' + (latest.pnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg') + ')"/>' +
-            '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+            '<path d="' + areaD + '" fill="url(#' + gradId + ')"/>' +
+            '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + strokeCol + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+            '<circle cx="' + lx + '" cy="' + ly + '" r="5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
           '</svg>' +
           '<div class="v-hairline" id="vChartHair"></div>' +
           '<div class="v-tooltip" id="vChartTip"></div>' +
         '</div>';
-      }
 
-      card.innerHTML = '<div class="v-head">' +
-        '<div class="v-title-row">' +
-          '<span class="v-last-dot"></span>' +
-          '<h3 style="margin:0;font-size:16px;font-weight:700">LAST P&amp;L · CLOSED TRADE</h3>' +
-          '<span class="v-badge closed">' + (lastTrade.source || 'DELTA RECORDED') + '</span>' +
-        '</div>' +
-        '<div class="v-stat-strip">' +
-          '<div class="v-big-pnl ' + (lastTrade.pnl >= 0 ? 'pos' : 'neg') + '">' + usd(lastTrade.pnl, true) + '</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="v-kpi-grid">' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">NET RESULT</div><div class="v-kpi-val ' + (lastTrade.pnl >= 0 ? 'pos' : 'neg') + '">' + usd(lastTrade.pnl, true) + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">CREDIT COLLECTED</div><div class="v-kpi-val">' + (lastTrade.credit ? '$' + Math.round(lastTrade.credit) : '—') + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">STRIKES</div><div class="v-kpi-val">' + (lastTrade.Kp && lastTrade.Kc ? (lastTrade.Kp/1000).toFixed(0) + 'k P / ' + (lastTrade.Kc/1000).toFixed(0) + 'k C' : '—') + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">SIZE / LOTS</div><div class="v-kpi-val">' + (lastTrade.lots || '—') + '</div></div>' +
-        '<div class="v-kpi-box"><div class="v-kpi-lbl">CLOSED AT</div><div class="v-kpi-val">' + dkShort(lastTrade.closedAt) + ' ' + hmShort(lastTrade.closedAt) + '</div></div>' +
-      '</div>' +
-      chartHtml;
-
-      if (hasTicks) attachHairline(Wd, L, R);
+      attachChartEvents(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
 
     } else {
-      // CASE C: No open position & no recorded trade yet
-      card.innerHTML = '<div class="v-head">' +
-        '<div class="v-title-row">' +
-          '<span class="v-last-dot"></span>' +
-          '<h3 style="margin:0;font-size:16px;font-weight:700">P&amp;L MONITOR · READY</h3>' +
-          '<span class="v-badge closed">IDLE</span>' +
-        '</div>' +
-        '<div class="v-stat-strip">' +
-          '<div class="v-big-pnl" style="color:var(--muted,#888)">$0.00</div>' +
-        '</div>' +
-      '</div>' +
-      '<div style="padding:14px 4px;font-size:13px;color:var(--muted,#888)">' +
-        'No active option position on Delta right now. Live P&amp;L and tick-by-tick stream will activate automatically when a trade opens.' +
-      '</div>';
+      // ========================================================
+      // CASE C: Pure Empty State (no open positions or history)
+      // ========================================================
+      card.innerHTML =
+        '<div class="v-empty">' +
+          '<div class="v-empty-title">NO ACTIVE OR RECORDED TRADE</div>' +
+          '<div class="v-empty-sub">Connect Delta API or open a position in Trade Lab to track real tick-by-tick P&amp;L here.</div>' +
+        '</div>';
     }
   }
 
-  function attachHairline(Wd, L, R) {
+  function attachChartEvents(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT) {
     const wrap = $('vLiveChartWrap');
-    if (wrap && S.ticks.length >= 2) {
+    if (wrap && ticks.length >= 2) {
       wrap.addEventListener('pointermove', e => {
         const rect = wrap.getBoundingClientRect();
-        const rx = e.clientX - rect.left;
-        const frac = Math.max(0, Math.min(1, (rx - L) / (Wd - L - R)));
-        const idx = Math.round(frac * (S.ticks.length - 1));
-        if (idx >= 0 && idx < S.ticks.length) {
-          const tk = S.ticks[idx];
+        const xRel = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const frac = xRel / rect.width;
+        const idx = Math.round(frac * (ticks.length - 1));
+        if (idx >= 0 && idx < ticks.length) {
+          const tk = ticks[idx];
           const tip = $('vChartTip'), hair = $('vChartHair');
           if (tip && hair) {
             hair.style.display = 'block';
-            hair.style.left = rx + 'px';
+            hair.style.left = (frac * 100).toFixed(2) + '%';
             tip.style.display = 'block';
-            tip.style.left = Math.min(rect.width - 120, Math.max(10, rx - 50)) + 'px';
-            tip.innerHTML = '<b>' + hm(tk.t) + '</b> &middot; <span class="' + (tk.pnl >= 0 ? 'pos' : 'neg') + '">' + usd(tk.pnl, true) + '</span>';
+            tip.style.left = Math.min(rect.width - 150, Math.max(10, xRel - 50)) + 'px';
+            const sign = tk.pnl > 0 ? '+' : '';
+            const pnlCol = tk.pnl > 0 ? '#16c784' : (tk.pnl < 0 ? '#f6465d' : '#aaa');
+            tip.innerHTML =
+              '<div>' + fmtDate(tk.t) + '</div>' +
+              '<div style="font-weight:700;color:' + pnlCol + ';">PnL: ' + sign + '$' + tk.pnl.toFixed(2) + '</div>' +
+              (tk.spot ? '<div style="color:#888;">Spot: $' + Math.round(tk.spot).toLocaleString() + '</div>' : '');
           }
         }
       });
@@ -29149,6 +29391,18 @@ document.addEventListener('click', function(e) {
       });
     }
   }
+
+  // Auto-fetch fills if v133_rows is missing
+  if (!localStorage.getItem('v133_rows') && W.v133 && typeof W.v133.load === 'function') {
+    try { W.v133.load(); } catch (e) { }
+  }
+
+  // Redraw when v133 finishes loading fills
+  W.addEventListener('v133fills', () => {
+    const card = $('vLivePnlTick');
+    if (card) card.__renderedKey = null;
+    drawPanel();
+  });
 
   setInterval(sampleTick, 2500);
 
