@@ -63081,9 +63081,9 @@ document.addEventListener('click', function(e) {
   position: relative;
   width: 100%;
   height: 230px;
-  background: rgba(0,0,0,0.18);
+  background: rgba(0,0,0,0.22);
   border-radius: 10px;
-  border: 1px solid var(--line2, rgba(255,255,255,0.05));
+  border: 1px solid var(--line2, rgba(255,255,255,0.06));
   overflow: hidden;
   user-select: none;
 }
@@ -63092,21 +63092,11 @@ document.addEventListener('click', function(e) {
   height: 100%;
   display: block;
 }
-#vLivePnlTick .v-hairline {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: rgba(255,255,255,0.4);
-  pointer-events: none;
-  display: none;
-  z-index: 4;
-}
 #vLivePnlTick .v-tooltip {
   position: absolute;
   top: 10px;
   background: rgba(20, 24, 33, 0.96);
-  border: 1px solid var(--line2, rgba(255,255,255,0.15));
+  border: 1px solid var(--line2, rgba(255,255,255,0.18));
   border-radius: 6px;
   padding: 6px 10px;
   font-size: 11px;
@@ -63115,7 +63105,7 @@ document.addEventListener('click', function(e) {
   pointer-events: none;
   display: none;
   z-index: 5;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
   white-space: nowrap;
 }
 #vLivePnlTick .v-empty {
@@ -63189,7 +63179,7 @@ document.addEventListener('click', function(e) {
 }
 </style>
 <script data-module="live-pnl-tick">
-/* vLivePnlTick · Live Tick-by-Tick P&L Graph & Real Start-to-Exit Trade Lifecycle */
+/* vLivePnlTick · Live Tick-by-Tick P&L Graph, Continuous Crosshair Hairline & Universal Read-Only / Read+Trade Tracking */
 (function initLivePnlTickModule() {
   'use strict';
 
@@ -63210,7 +63200,9 @@ document.addEventListener('click', function(e) {
     openTicks: [], // live ticks for current open trade
     lastTradeCurve: null, // start-to-exit curve for the closed trade
     lastTradeId: null,
-    fetchingCurve: false
+    fetchingCurve: false,
+    directDeltaPositions: null,
+    lastDeltaPoll: 0
   };
 
   function escapeHtml(s) {
@@ -63242,10 +63234,91 @@ document.addEventListener('click', function(e) {
     return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + fmtTime(ts);
   }
 
-  /** Read open position from Delta (read-only or read+trade) */
+  /**
+   * Poll Delta Exchange directly via server-signed relay so Read-Only positions
+   * are detected within 2.5 seconds instead of waiting for other modules.
+   */
+  async function pollDeltaPositions() {
+    const now = Date.now();
+    if (now - S.lastDeltaPoll < 2500) return;
+    S.lastDeltaPoll = now;
+
+    try {
+      const tok = localStorage.getItem('desk_jwt');
+      if (!tok) return;
+      const u = '/api/v1/delta/signed?path=/v2/positions/margined&query=contract_types=call_options,put_options';
+      const r = await fetch(u, { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/json' }, cache: 'no-store' });
+      if (r.ok) {
+        const j = await r.json();
+        if (j && Array.isArray(j.result)) {
+          S.directDeltaPositions = j.result;
+          // If positions exist and LAB.cur is empty, trigger sync so Trade Lab also shows it
+          if (j.result.some(p => Number(p.size) !== 0)) {
+            syncReadOnlyToDesk(j.result);
+          }
+        }
+      }
+    } catch (e) { }
+  }
+
+  /**
+   * Sync Read-Only Delta positions to the desk so Trade Lab terminal and PnL page
+   * display the Read-Only trade in the exact same rich visual format.
+   */
+  function syncReadOnlyToDesk(positions) {
+    try {
+      const open = positions.filter(p => Number(p.size) !== 0);
+      if (!open.length) return;
+
+      const puts = [], calls = [];
+      for (const p of open) {
+        const sym = String(p.product_symbol || (p.product && p.product.symbol) || p.symbol || '');
+        const m = /^([CP])-BTC-(d+(?:.d+)?)-(d{2})(d{2})(d{2})$/i.exec(sym);
+        if (!m) continue;
+        const leg = {
+          sym,
+          type: m[1].toUpperCase(),
+          K: +m[2],
+          exp: '20' + m[5] + '-' + m[4] + '-' + m[3],
+          size: Number(p.size),
+          entry: Number(p.entry_price || 0),
+          cv: Number(p.contract_value || 0.001)
+        };
+        if (leg.type === 'P') puts.push(leg);
+        else calls.push(leg);
+      }
+
+      if (puts.length || calls.length) {
+        const exp = (puts[0] || calls[0]).exp;
+        const Kp = puts.length ? puts[0].K : null;
+        const Kc = calls.length ? calls[0].K : null;
+        const tradeObj = {
+          id: 'delta_api_' + exp + '_' + (Kp || 0) + '_' + (Kc || 0),
+          src: 'api',
+          exp,
+          Kp,
+          Kc,
+          lot: Math.abs((puts[0] || calls[0]).size),
+          openedAt: Date.now()
+        };
+        try {
+          localStorage.setItem('v99_trade', JSON.stringify(tradeObj));
+        } catch (e) { }
+      }
+    } catch (e) { }
+  }
+
+  /**
+   * Read open position from Delta (Read-Only via API key or Read+Trade).
+   * Checks direct Delta poll, v100 API, watch snapshot, and Trade Lab.
+   */
   function getOpenPosition() {
     const A = W.v100 && W.v100.api;
-    const pos = A && A.last && Array.isArray(A.last.positions) ? A.last.positions : null;
+    let pos = S.directDeltaPositions;
+    if (!pos || !pos.length) {
+      pos = A && A.last && Array.isArray(A.last.positions) ? A.last.positions : null;
+    }
+
     let kind = 'read-only';
     if (A && (A.keyKind === 'trade' || A.tradeKey)) kind = 'trade';
 
@@ -63526,6 +63599,7 @@ document.addEventListener('click', function(e) {
 
   /** Sample a new live tick when a trade is active */
   function sampleTick() {
+    pollDeltaPositions();
     const pos = getOpenPosition();
     updateFloatingPnl(pos);
 
@@ -63590,13 +63664,14 @@ document.addEventListener('click', function(e) {
     if (pos.open) {
       // ========================================================
       // CASE A: Live Open Trade Active (Read-Only or Read+Trade)
+      // Displays the exact same rich visual format for Read-Only & Read+Trade
       // ========================================================
       const curPnl = pos.totalPnl;
       const isPos = curPnl > 0.001;
       const isNeg = curPnl < -0.001;
       const colClass = isPos ? 'pos' : (isNeg ? 'neg' : 'zero');
       const kindClass = pos.kind === 'trade' ? 'trade' : 'readonly';
-      const kindLabel = pos.kind === 'trade' ? 'READ+TRADE (ACTIVE)' : 'READ-ONLY (DELTA)';
+      const kindLabel = pos.kind === 'trade' ? 'READ+TRADE (ACTIVE)' : 'READ-ONLY (DELTA API)';
 
       const ticks = S.openTicks.length >= 2 ? S.openTicks : [
         { t: pos.openedAt || Date.now() - 5000, pnl: 0, spot: pos.spot },
@@ -63622,6 +63697,11 @@ document.addEventListener('click', function(e) {
       const strokeCol = curPnl >= 0 ? '#16c784' : '#f6465d';
       const gradId = curPnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg';
 
+      // Find call leg & put leg
+      const callLeg = pos.legs.find(l => l.type === 'C');
+      const putLeg = pos.legs.find(l => l.type === 'P');
+      const totalCredit = pos.legs.reduce((acc, l) => acc + (l.entry * l.size * (l.cv || 0.001)), 0);
+
       card.innerHTML =
         '<div class="v-head">' +
           '<div class="v-head-left">' +
@@ -63629,34 +63709,59 @@ document.addEventListener('click', function(e) {
             '<span class="v-title">LIVE TICK-BY-TICK P&amp;L</span>' +
             '<span class="v-badge v-badge-live">LIVE TRACKING</span>' +
             '<span class="v-badge v-badge-' + kindClass + '">' + kindLabel + '</span>' +
+            (callLeg && callLeg.exp ? '<span class="v-badge">' + escapeHtml(callLeg.exp) + ' EXP</span>' : '') +
           '</div>' +
           '<div class="v-head-right">' +
             '<span>Started: ' + fmtTime(pos.openedAt) + '</span>' +
-            '<span>Ticks: ' + ticks.length + '</span>' +
+            '<span>Live Ticks: ' + ticks.length + '</span>' +
           '</div>' +
         '</div>' +
 
         '<div class="v-hero">' +
           '<div class="v-pnl-val ' + colClass + '">' + fmtMoney(curPnl) + '</div>' +
           '<div class="v-sub-stats">' +
-            '<span>Legs: ' + pos.legs.length + '</span>' +
-            (pos.spot ? '<span>BTC Spot: $' + pos.spot.toLocaleString() + '</span>' : '') +
+            '<span>Status: <b style="color:#16c784;">ACTIVE POSITION OPEN</b></span>' +
+            '<span>Mode: <b>' + (pos.kind === 'trade' ? 'Read+Trade' : 'Read-Only (Delta)') + '</b></span>' +
+            (pos.spot ? '<span>BTC Spot: $' + Math.round(pos.spot).toLocaleString() + '</span>' : '') +
           '</div>' +
         '</div>' +
 
         '<div class="v-kpi-grid">' +
-          pos.legs.map(l =>
+          '<div class="v-kpi-box">' +
+            '<div class="v-kpi-lbl">UNREALIZED P&amp;L</div>' +
+            '<div class="v-kpi-val ' + colClass + '">' + fmtMoney(curPnl) + '</div>' +
+          '</div>' +
+          (totalCredit > 0 ?
             '<div class="v-kpi-box">' +
-              '<div class="v-kpi-lbl">' + escapeHtml(l.sym) + ' (' + l.side.toUpperCase() + ')</div>' +
-              '<div class="v-kpi-val ' + (l.pnl > 0.001 ? 'pos' : (l.pnl < -0.001 ? 'neg' : 'zero')) + '">' +
-                fmtMoney(l.pnl) +
+              '<div class="v-kpi-lbl">INITIAL CREDIT</div>' +
+              '<div class="v-kpi-val pos">+' + fmtMoney(totalCredit, false) + '</div>' +
+            '</div>' : '') +
+          (callLeg ?
+            '<div class="v-kpi-box">' +
+              '<div class="v-kpi-lbl">CALL LEG ' + (callLeg.strike ? '(' + callLeg.strike + ')' : '') + '</div>' +
+              '<div class="v-kpi-val ' + (callLeg.pnl > 0 ? 'pos' : (callLeg.pnl < 0 ? 'neg' : 'zero')) + '">' +
+                fmtMoney(callLeg.pnl) +
               '</div>' +
-            '</div>'
-          ).join('') +
+            '</div>' : '') +
+          (putLeg ?
+            '<div class="v-kpi-box">' +
+              '<div class="v-kpi-lbl">PUT LEG ' + (putLeg.strike ? '(' + putLeg.strike + ')' : '') + '</div>' +
+              '<div class="v-kpi-val ' + (putLeg.pnl > 0 ? 'pos' : (putLeg.pnl < 0 ? 'neg' : 'zero')) + '">' +
+                fmtMoney(putLeg.pnl) +
+              '</div>' +
+            '</div>' : '') +
+          '<div class="v-kpi-box">' +
+            '<div class="v-kpi-lbl">BTC SPOT</div>' +
+            '<div class="v-kpi-val">' + (pos.spot ? '$' + Math.round(pos.spot).toLocaleString() : '--') + '</div>' +
+          '</div>' +
+          '<div class="v-kpi-box">' +
+            '<div class="v-kpi-lbl">POSITION LEGS</div>' +
+            '<div class="v-kpi-val">' + pos.legs.length + ' Legs (' + (callLeg ? callLeg.size : 100) + 'L)</div>' +
+          '</div>' +
         '</div>' +
 
         '<div class="v-chart-wrap" id="vLiveChartWrap">' +
-          '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
+          '<svg id="vLiveChartSvg" viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
             '<defs>' +
               '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
               '<linearGradient id="vPnlGradNeg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#f6465d" stop-opacity="0.38"/><stop offset="100%" stop-color="#f6465d" stop-opacity="0.02"/></linearGradient>' +
@@ -63666,19 +63771,31 @@ document.addEventListener('click', function(e) {
             '<path d="' + areaD + '" fill="url(#' + gradId + ')"/>' +
             '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + strokeCol + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
             '<circle cx="' + lx + '" cy="' + ly + '" r="5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
+
+            '<!-- Continuous SVG Crosshair Hairline -->' +
+            '<g id="vChartHairG" style="display:none; pointer-events:none;">' +
+              '<line id="vHairV" x1="0" y1="' + T + '" x2="0" y2="' + (Ht - B) + '" stroke="rgba(255,255,255,0.45)" stroke-width="1.2" stroke-dasharray="3 3"/>' +
+              '<line id="vHairH" x1="' + L + '" y1="0" x2="' + (Wd - R) + '" y2="0" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3 3"/>' +
+              '<circle id="vHairDot" cx="0" cy="0" r="5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
+              '<rect id="vHairPillY" x="5" y="0" width="46" height="18" rx="4" fill="' + strokeCol + '"/>' +
+              '<text id="vHairTxtY" x="28" y="0" font-size="10" fill="#fff" font-weight="700" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">$0.00</text>' +
+              '<rect id="vHairPillX" x="0" y="' + (Ht - B + 4) + '" width="54" height="18" rx="4" fill="#222733" stroke="rgba(255,255,255,0.2)"/>' +
+              '<text id="vHairTxtX" x="0" y="' + (Ht - B + 13) + '" font-size="9.5" fill="#bbb" font-weight="600" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">--:--</text>' +
+            '</g>' +
+
+            '<!-- Event capture overlay spanning full plot area -->' +
+            '<rect id="vChartEventsRect" x="0" y="0" width="' + Wd + '" height="' + Ht + '" fill="transparent" style="cursor:crosshair; pointer-events:all;"/>' +
           '</svg>' +
-          '<div class="v-hairline" id="vChartHair"></div>' +
           '<div class="v-tooltip" id="vChartTip"></div>' +
         '</div>';
 
-      attachChartEvents(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
+      attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
 
     } else if (lastTrade) {
       // ========================================================
       // CASE B: Idle / Flat -> Real Last Closed Trade P&L Curve
       // ========================================================
       const curve = getOrFetchClosedTradeCurve(lastTrade, () => {
-        // Redraw when full candle history arrives from Delta
         card.__renderedKey = null;
         drawPanel();
       });
@@ -63775,7 +63892,7 @@ document.addEventListener('click', function(e) {
         '</div>' +
 
         '<div class="v-chart-wrap" id="vLiveChartWrap">' +
-          '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
+          '<svg id="vLiveChartSvg" viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
             '<defs>' +
               '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
               '<linearGradient id="vPnlGradNeg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#f6465d" stop-opacity="0.38"/><stop offset="100%" stop-color="#f6465d" stop-opacity="0.02"/></linearGradient>' +
@@ -63785,12 +63902,25 @@ document.addEventListener('click', function(e) {
             '<path d="' + areaD + '" fill="url(#' + gradId + ')"/>' +
             '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + strokeCol + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
             '<circle cx="' + lx + '" cy="' + ly + '" r="5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
+
+            '<!-- Continuous SVG Crosshair Hairline -->' +
+            '<g id="vChartHairG" style="display:none; pointer-events:none;">' +
+              '<line id="vHairV" x1="0" y1="' + T + '" x2="0" y2="' + (Ht - B) + '" stroke="rgba(255,255,255,0.45)" stroke-width="1.2" stroke-dasharray="3 3"/>' +
+              '<line id="vHairH" x1="' + L + '" y1="0" x2="' + (Wd - R) + '" y2="0" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="3 3"/>' +
+              '<circle id="vHairDot" cx="0" cy="0" r="5" fill="' + strokeCol + '" stroke="#fff" stroke-width="2"/>' +
+              '<rect id="vHairPillY" x="5" y="0" width="46" height="18" rx="4" fill="' + strokeCol + '"/>' +
+              '<text id="vHairTxtY" x="28" y="0" font-size="10" fill="#fff" font-weight="700" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">$0.00</text>' +
+              '<rect id="vHairPillX" x="0" y="' + (Ht - B + 4) + '" width="54" height="18" rx="4" fill="#222733" stroke="rgba(255,255,255,0.2)"/>' +
+              '<text id="vHairTxtX" x="0" y="' + (Ht - B + 13) + '" font-size="9.5" fill="#bbb" font-weight="600" text-anchor="middle" dominant-baseline="middle" font-family="var(--mono,monospace)">--:--</text>' +
+            '</g>' +
+
+            '<!-- Event capture overlay spanning full plot area -->' +
+            '<rect id="vChartEventsRect" x="0" y="0" width="' + Wd + '" height="' + Ht + '" fill="transparent" style="cursor:crosshair; pointer-events:all;"/>' +
           '</svg>' +
-          '<div class="v-hairline" id="vChartHair"></div>' +
           '<div class="v-tooltip" id="vChartTip"></div>' +
         '</div>';
 
-      attachChartEvents(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
+      attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT);
 
     } else {
       // ========================================================
@@ -63804,37 +63934,102 @@ document.addEventListener('click', function(e) {
     }
   }
 
-  function attachChartEvents(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT) {
+  /**
+   * Continuous Interactive Crosshair Hairline
+   * Tracks smoothly 1:1 in SVG coordinates without jumping or disappearing.
+   */
+  function attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT) {
     const wrap = $('vLiveChartWrap');
-    if (wrap && ticks.length >= 2) {
-      wrap.addEventListener('pointermove', e => {
-        const rect = wrap.getBoundingClientRect();
-        const xRel = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        const frac = xRel / rect.width;
-        const idx = Math.round(frac * (ticks.length - 1));
-        if (idx >= 0 && idx < ticks.length) {
-          const tk = ticks[idx];
-          const tip = $('vChartTip'), hair = $('vChartHair');
-          if (tip && hair) {
-            hair.style.display = 'block';
-            hair.style.left = (frac * 100).toFixed(2) + '%';
-            tip.style.display = 'block';
-            tip.style.left = Math.min(rect.width - 150, Math.max(10, xRel - 50)) + 'px';
-            const sign = tk.pnl > 0 ? '+' : '';
-            const pnlCol = tk.pnl > 0 ? '#16c784' : (tk.pnl < 0 ? '#f6465d' : '#aaa');
-            tip.innerHTML =
-              '<div>' + fmtDate(tk.t) + '</div>' +
-              '<div style="font-weight:700;color:' + pnlCol + ';">PnL: ' + sign + '$' + tk.pnl.toFixed(2) + '</div>' +
-              (tk.spot ? '<div style="color:#888;">Spot: $' + Math.round(tk.spot).toLocaleString() + '</div>' : '');
-          }
-        }
-      });
-      wrap.addEventListener('pointerleave', () => {
-        const tip = $('vChartTip'), hair = $('vChartHair');
-        if (tip) tip.style.display = 'none';
-        if (hair) hair.style.display = 'none';
-      });
-    }
+    const svg = $('vLiveChartSvg');
+    const overlay = $('vChartEventsRect');
+    if (!wrap || !svg || !overlay || !ticks || ticks.length < 2) return;
+
+    const hairG = $('vChartHairG');
+    const hairV = $('vHairV');
+    const hairH = $('vHairH');
+    const hairDot = $('vHairDot');
+    const hairPillY = $('vHairPillY');
+    const hairTxtY = $('vHairTxtY');
+    const hairPillX = $('vHairPillX');
+    const hairTxtX = $('vHairTxtX');
+    const tip = $('vChartTip');
+
+    const X = t => L + (t - t0) / spanT * (Wd - L - R);
+    const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
+
+    const onMove = e => {
+      const rect = wrap.getBoundingClientRect();
+      const xClamped = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+      const scaleX = Wd / rect.width;
+      const svgX = xClamped * scaleX;
+
+      // Find fraction across plot area [L, Wd - R]
+      const frac = Math.max(0, Math.min(1, (svgX - L) / (Wd - L - R)));
+      const idx = Math.max(0, Math.min(ticks.length - 1, Math.round(frac * (ticks.length - 1))));
+      const tk = ticks[idx];
+      if (!tk) return;
+
+      const ptX = X(tk.t);
+      const ptY = Y(tk.pnl);
+      const isPos = tk.pnl >= 0;
+      const col = isPos ? '#16c784' : '#f6465d';
+
+      if (hairV) {
+        hairV.setAttribute('x1', ptX.toFixed(1));
+        hairV.setAttribute('x2', ptX.toFixed(1));
+      }
+      if (hairH) {
+        hairH.setAttribute('y1', ptY.toFixed(1));
+        hairH.setAttribute('y2', ptY.toFixed(1));
+      }
+      if (hairDot) {
+        hairDot.setAttribute('cx', ptX.toFixed(1));
+        hairDot.setAttribute('cy', ptY.toFixed(1));
+        hairDot.setAttribute('fill', col);
+      }
+      if (hairPillY) {
+        hairPillY.setAttribute('y', (ptY - 9).toFixed(1));
+        hairPillY.setAttribute('fill', col);
+      }
+      if (hairTxtY) {
+        hairTxtY.setAttribute('y', ptY.toFixed(1));
+        hairTxtY.textContent = fmtMoney(tk.pnl);
+      }
+      if (hairPillX) {
+        hairPillX.setAttribute('x', Math.max(L, Math.min(Wd - R - 54, ptX - 27)).toFixed(1));
+      }
+      if (hairTxtX) {
+        hairTxtX.setAttribute('x', Math.max(L + 27, Math.min(Wd - R - 27, ptX)).toFixed(1));
+        hairTxtX.textContent = fmtTime(tk.t);
+      }
+      if (hairG) {
+        hairG.style.display = 'inline';
+      }
+
+      if (tip) {
+        tip.style.display = 'block';
+        const tipX = Math.min(rect.width - 150, Math.max(10, (ptX / scaleX) - 50));
+        tip.style.left = tipX + 'px';
+        const tipY = Math.max(10, Math.min(rect.height - 70, (ptY / (Ht / rect.height)) - 55));
+        tip.style.top = tipY + 'px';
+
+        const sign = tk.pnl > 0 ? '+' : '';
+        tip.innerHTML =
+          '<div>' + fmtDate(tk.t) + '</div>' +
+          '<div style="font-weight:800;color:' + col + ';">PnL: ' + sign + '$' + tk.pnl.toFixed(2) + '</div>' +
+          (tk.spot ? '<div style="color:#888;">Spot: $' + Math.round(tk.spot).toLocaleString() + '</div>' : '');
+      }
+    };
+
+    const onLeave = () => {
+      if (hairG) hairG.style.display = 'none';
+      if (tip) tip.style.display = 'none';
+    };
+
+    overlay.addEventListener('pointermove', onMove, { passive: true });
+    overlay.addEventListener('pointerdown', onMove, { passive: true });
+    overlay.addEventListener('pointerleave', onLeave);
+    wrap.addEventListener('pointerleave', onLeave);
   }
 
   // Auto-fetch fills if v133_rows is missing
@@ -63849,6 +64044,7 @@ document.addEventListener('click', function(e) {
     drawPanel();
   });
 
+  // Regular sampling & Delta polling
   setInterval(sampleTick, 2500);
 
   D.addEventListener('click', e => {
@@ -63862,10 +64058,14 @@ document.addEventListener('click', function(e) {
     draw: drawPanel,
     state: () => S,
     getOpenPosition,
-    getLastClosedTrade
+    getLastClosedTrade,
+    pollDeltaPositions
   };
 
-  setTimeout(drawPanel, 500);
+  setTimeout(() => {
+    pollDeltaPositions();
+    drawPanel();
+  }, 500);
 })();
 </script>
 </body>
