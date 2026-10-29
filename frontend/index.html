@@ -50399,7 +50399,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       let last = '';
       function draw() {
         const host = $('pgPnl'); if (!host) return; let d = $('v158Deep');
-        if (!d) { d = D.createElement('div'); d.id = 'v158Deep'; host.insertBefore(d, host.firstChild); } else if (host.firstChild !== d) host.insertBefore(d, host.firstChild);
+        const topCard = $('vLivePnlTick'); if (!d) { d = D.createElement('div'); d.id = 'v158Deep'; if (topCard && topCard.parentNode === host) topCard.after(d); else host.insertBefore(d, host.firstChild); } else { if (topCard && topCard.parentNode === host) { if (topCard.nextSibling !== d) topCard.after(d); } else if (host.firstChild !== d) { host.insertBefore(d, host.firstChild); } }
         host.classList.toggle('v158-deep', mode === 'deep');
         let body = ''; try { body = mode === 'deep' ? build() : ''; } catch (e) { console.warn('v158', e); body = '<div class="kc">Could not draw the analysis.</div>'; }
         const html = `<div class="bar"><span></span><span><button data-v158m="deep" class="${mode === 'deep' ? 'on' : ''}">Deep</button><button data-v158m="classic" class="${mode === 'classic' ? 'on' : ''}">Classic</button></span></div>${body}`;
@@ -62931,6 +62931,7 @@ document.addEventListener('click', function(e) {
   });
 })();
 </script>
+
 <style id="vLivePnlTickCss">
 /* vLivePnlTick · Live Tick-by-Tick P&L Graph & Universal Floating P&L */
 #vLivePnlTick {
@@ -62939,12 +62940,13 @@ document.addEventListener('click', function(e) {
   background: var(--panel, #181c24);
   border: 1px solid var(--line2, rgba(255,255,255,0.08));
   border-radius: 14px;
-  padding: 18px 20px;
+  padding: 16px 20px;
   box-sizing: border-box;
   color: var(--text, #eee);
   font-family: var(--font, system-ui, sans-serif);
   display: block !important;
   box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+  min-height: 120px;
 }
 #pgPnl.v158-deep > #vLivePnlTick {
   display: block !important;
@@ -62971,6 +62973,13 @@ document.addEventListener('click', function(e) {
   display: inline-block;
   animation: vTickPulse 1.8s infinite ease-in-out;
 }
+#vLivePnlTick .v-last-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--muted, #888);
+  display: inline-block;
+}
 @keyframes vTickPulse {
   0% { transform: scale(0.9); opacity: 0.7; }
   50% { transform: scale(1.35); opacity: 1; }
@@ -62996,6 +63005,11 @@ document.addEventListener('click', function(e) {
   color: var(--amber, #e3ae45);
   border-color: rgba(227,174,69,0.45);
 }
+#vLivePnlTick .v-badge.closed {
+  background: rgba(255,255,255,0.08);
+  color: var(--muted, #aaa);
+  border-color: rgba(255,255,255,0.15);
+}
 #vLivePnlTick .v-stat-strip {
   display: flex;
   gap: 14px;
@@ -63003,7 +63017,7 @@ document.addEventListener('click', function(e) {
   align-items: center;
 }
 #vLivePnlTick .v-big-pnl {
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 800;
   font-family: var(--mono, monospace);
   line-height: 1.1;
@@ -63012,7 +63026,7 @@ document.addEventListener('click', function(e) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 10px;
-  margin: 14px 0;
+  margin: 12px 0;
 }
 #vLivePnlTick .v-kpi-box {
   background: color-mix(in srgb, var(--bg, #0b0e14) 40%, var(--panel, #181c24));
@@ -63021,7 +63035,7 @@ document.addEventListener('click', function(e) {
   padding: 8px 12px;
 }
 #vLivePnlTick .v-kpi-lbl {
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--muted, #888);
   text-transform: uppercase;
@@ -63036,7 +63050,7 @@ document.addEventListener('click', function(e) {
 #vLivePnlTick .v-chart-wrap {
   position: relative;
   width: 100%;
-  height: 240px;
+  height: 230px;
   border-radius: 10px;
   background: color-mix(in srgb, var(--bg, #0b0e14) 75%, var(--panel, #181c24));
   border: 1px solid var(--line, rgba(255,255,255,0.06));
@@ -63077,7 +63091,7 @@ document.addEventListener('click', function(e) {
 #vLivePnlTick .v-legs-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 14px;
+  margin-top: 12px;
   font-size: 12px;
 }
 #vLivePnlTick .v-legs-table th {
@@ -63095,22 +63109,6 @@ document.addEventListener('click', function(e) {
 #vLivePnlTick .pos { color: var(--pos, #16c784) !important; }
 #vLivePnlTick .neg { color: var(--neg, #f6465d) !important; }
 #vLivePnlTick .am { color: var(--amber, #e3ae45) !important; }
-#vLivePnlTick .v-act-btn {
-  background: color-mix(in srgb, var(--panel, #181c24) 70%, #fff);
-  border: 1px solid var(--line2, #444);
-  color: var(--text, #eee);
-  padding: 4px 10px;
-  border-radius: 6px;
-  font-size: 11.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-#vLivePnlTick .v-act-btn:hover {
-  background: color-mix(in srgb, var(--panel, #181c24) 50%, #2f7cc0);
-  border-color: #2f7cc0;
-}
-/* Ensure floating live P&L card always floats on screen above everything */
 #v18Float {
   z-index: 99999 !important;
 }
@@ -63134,7 +63132,7 @@ document.addEventListener('click', function(e) {
 </style>
 
 <script data-module="live-pnl-tick">
-/* live-pnl-tick · Tick-by-tick real-time P&L graph in P&L analysis panel & universal floating P&L card */
+/* live-pnl-tick · Stable Tick-by-Tick P&L Graph & Universal Floating P&L (fixed on top, no mocking, no blinking) */
 (function initLivePnlTick() {
   'use strict';
   const W = window, D = document, $ = id => D.getElementById(id);
@@ -63156,26 +63154,26 @@ document.addEventListener('click', function(e) {
     const d = new Date(ms + IST);
     return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0');
   };
+  const dkShort = ms => {
+    const d = new Date(ms + IST);
+    return d.getUTCDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+  };
   const dur = ms => {
     if (!ms || ms < 0) return '0m';
     const s = Math.floor(ms / 1000), m = Math.floor(s / 60), h = Math.floor(m / 60);
     return h > 0 ? h + 'h ' + (m % 60) + 'm' : m + 'm ' + (s % 60) + 's';
   };
 
-  // State
   const S = {
     ticks: [],
-    simulating: false,
-    simTimer: null,
     peak: null,
     dip: null,
     startTime: null,
     lastPnl: 0,
     hoverIdx: -1,
-    activeLegs: []
+    renderedKey: ''
   };
 
-  // Restore stored ticks
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
@@ -63201,7 +63199,7 @@ document.addEventListener('click', function(e) {
     } catch (e) { }
   }
 
-  /** Read open positions from Delta API (read-only or read+trade) or Paper trade */
+  /** Get currently open position from Delta */
   function getOpenPosition() {
     const A = W.v100 && W.v100.api;
     const pos = A && A.last && Array.isArray(A.last.positions) ? A.last.positions : null;
@@ -63266,26 +63264,79 @@ document.addEventListener('click', function(e) {
       const totalPnl = legs.reduce((acc, x) => acc + (x.pnl || 0), 0);
       return { open: true, kind, legs, totalPnl, spot, openedAt: S.startTime || Date.now() };
     }
-
-    if (S.simulating && S.ticks.length > 0) {
-      return {
-        open: true,
-        kind: 'read-only',
-        sim: true,
-        legs: S.activeLegs.length ? S.activeLegs : [
-          { sym: 'P-BTC-96000', type: 'P', strike: 96000, size: 200, side: 'sell', entry: 430, mark: 310, pnl: 24.0 },
-          { sym: 'C-BTC-104000', type: 'C', strike: 104000, size: 200, side: 'sell', entry: 460, mark: 320, pnl: 28.0 }
-        ],
-        totalPnl: S.lastPnl,
-        spot: spot || 94500,
-        openedAt: S.startTime || (Date.now() - 3600000)
-      };
-    }
-
     return { open: false, kind, legs: [], totalPnl: 0, spot, openedAt: null };
   }
 
-  /** Sample a new live tick */
+  /** Read the last closed real trade from Delta fills or logged trades (no mocking) */
+  function getLastClosedTrade() {
+    try {
+      const raw = localStorage.getItem('v133_rows');
+      if (raw) {
+        const c = JSON.parse(raw);
+        const rows = (c && c.rows) || (Array.isArray(c) ? c : []);
+        const closed = rows.filter(r => r && !r.open && fin(r.pnl)).sort((a, b) => (b.last || b.first || 0) - (a.last || a.first || 0));
+        if (closed.length > 0) {
+          const t = closed[0];
+          return {
+            source: 'Delta fills',
+            pnl: t.pnl,
+            credit: t.credit || null,
+            lots: t.lots || null,
+            exp: t.exp || '',
+            Kp: t.Kp || null,
+            Kc: t.Kc || null,
+            closedAt: t.last || t.first || Date.now(),
+            openedAt: t.first || null,
+            fees: t.fee || 0
+          };
+        }
+      }
+    } catch (e) { }
+
+    try {
+      const lab = W.LAB && Array.isArray(W.LAB.trades) ? W.LAB.trades : null;
+      if (lab && lab.length > 0) {
+        const t = lab[lab.length - 1];
+        if (t && fin(t.pnl)) {
+          return {
+            source: 'Trade Lab',
+            pnl: t.pnl,
+            credit: t.credit || null,
+            lots: t.size0 ? t.size0.reduce((a, s) => a + (s.n || 0), 0) : null,
+            exp: t.exp || '',
+            Kp: t.Kp || null,
+            Kc: t.Kc || null,
+            closedAt: t.closedAt || Date.now(),
+            openedAt: t.openedAt || null,
+            holdMin: t.holdMin || null
+          };
+        }
+      }
+    } catch (e) { }
+
+    try {
+      const v99 = JSON.parse(localStorage.getItem('v99_trades') || '[]');
+      if (Array.isArray(v99) && v99.length > 0) {
+        const t = v99[v99.length - 1];
+        if (t && fin(t.pnlUsd || t.pnl)) {
+          return {
+            source: 'Logged trade',
+            pnl: fin(t.pnlUsd) ? t.pnlUsd : t.pnl,
+            credit: t.cr || null,
+            lots: t.lot || t.lots || null,
+            exp: t.exp || '',
+            Kp: t.Kp || null,
+            Kc: t.Kc || null,
+            closedAt: t.closedAt || Date.now(),
+            openedAt: t.openedAt || null
+          };
+        }
+      }
+    } catch (e) { }
+    return null;
+  }
+
+  /** Sample a new live tick when a trade is active */
   function sampleTick() {
     const pos = getOpenPosition();
     if (!pos.open) return;
@@ -63296,10 +63347,9 @@ document.addEventListener('click', function(e) {
     S.lastPnl = pnl;
     S.peak = S.peak == null ? pnl : Math.max(S.peak, pnl);
     S.dip = S.dip == null ? pnl : Math.min(S.dip, pnl);
-    S.activeLegs = pos.legs;
 
     const lastTk = S.ticks[S.ticks.length - 1];
-    if (lastTk && Math.abs(lastTk.pnl - pnl) < 0.005 && now - lastTk.t < 4000) {
+    if (lastTk && Math.abs(lastTk.pnl - pnl) < 0.005 && now - lastTk.t < 3500) {
       return;
     }
 
@@ -63307,47 +63357,13 @@ document.addEventListener('click', function(e) {
     saveTicks();
     drawPanel();
 
-    // Also trigger floating card update
     try {
       if (W.v18 && W.v18.floatRender) W.v18.floatRender();
       else if (W.floatRender) W.floatRender();
     } catch (e) { }
   }
 
-  /** Simulation tick engine for testing */
-  function toggleSim() {
-    S.simulating = !S.simulating;
-    if (S.simulating) {
-      if (!S.ticks.length) {
-        S.ticks = [];
-        S.startTime = Date.now() - 30 * 60 * 1000;
-        let v = 0;
-        for (let i = 0; i < 30; i++) {
-          v += (Math.random() - 0.44) * 12;
-          S.ticks.push({ t: S.startTime + i * 60000, pnl: +v.toFixed(2), spot: 94200 + (Math.random() - 0.5) * 150 });
-        }
-        S.lastPnl = v;
-        S.peak = Math.max(...S.ticks.map(x => x.pnl));
-        S.dip = Math.min(...S.ticks.map(x => x.pnl));
-      }
-      if (!S.simTimer) {
-        S.simTimer = setInterval(() => {
-          if (!S.simulating) return;
-          S.lastPnl += (Math.random() - 0.45) * 4;
-          S.ticks.push({ t: Date.now(), pnl: +S.lastPnl.toFixed(2), spot: 94250 + (Math.random() - 0.5) * 50 });
-          S.peak = Math.max(S.peak, S.lastPnl);
-          S.dip = Math.min(S.dip, S.lastPnl);
-          saveTicks();
-          drawPanel();
-        }, 2500);
-      }
-    } else {
-      if (S.simTimer) { clearInterval(S.simTimer); S.simTimer = null; }
-    }
-    drawPanel();
-  }
-
-  /** Draw the Tick-by-Tick Live Graph Panel inside #pgPnl */
+  /** Draw the panel fixed at the top of #pgPnl with zero blinking */
   function drawPanel() {
     const host = $('pgPnl');
     if (!host) return;
@@ -63356,154 +63372,210 @@ document.addEventListener('click', function(e) {
       card = D.createElement('div');
       card.id = 'vLivePnlTick';
       host.insertBefore(card, host.firstChild);
-      card.addEventListener('click', e => {
-        const b = e.target.closest('[data-v-act]');
-        if (!b) return;
-        const act = b.dataset.vAct;
-        if (act === 'sim') toggleSim();
-        else if (act === 'clear') {
-          S.ticks = [];
-          S.peak = S.dip = null;
-          S.startTime = null;
-          saveTicks();
-          drawPanel();
-        }
-      });
-    } else if (host.firstChild !== card) {
+    } else if (card.parentElement !== host) {
+      host.insertBefore(card, host.firstChild);
+    } else if (host.firstElementChild !== card) {
       host.insertBefore(card, host.firstChild);
     }
 
     const pos = getOpenPosition();
-    const hasData = S.ticks.length >= 2;
-    const curPnl = pos.open ? pos.totalPnl : S.lastPnl;
-    const kindClass = pos.kind === 'trade' ? 'trade' : 'read-only';
-    const kindLabel = pos.kind === 'trade' ? 'READ+TRADE' : 'READ-ONLY (DELTA)';
+    const lastTrade = !pos.open ? getLastClosedTrade() : null;
 
-    // SVG calculation
-    const Wd = 880, Ht = 240, L = 55, R = 20, T = 22, B = 30;
-    let svgContent = '';
-    if (hasData) {
-      const pnls = S.ticks.map(x => x.pnl);
-      let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
-      const span = (hi - lo) || 10;
-      const pad = span * 0.16;
-      lo -= pad; hi += pad;
+    // Stable state key to avoid unnecessary DOM re-rendering
+    const stateKey = pos.open
+      ? ('open|' + pos.totalPnl + '|' + S.ticks.length + '|' + pos.legs.length)
+      : (lastTrade ? ('closed|' + lastTrade.pnl + '|' + lastTrade.closedAt) : 'empty');
 
-      const t0 = S.ticks[0].t, t1 = S.ticks[S.ticks.length - 1].t || t0 + 1;
-      const spanT = Math.max(1000, t1 - t0);
+    if (card.__renderedKey === stateKey && card.innerHTML.length > 50) {
+      return;
+    }
+    card.__renderedKey = stateKey;
 
-      const X = t => L + (t - t0) / spanT * (Wd - L - R);
-      const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
-      const zeroY = Y(0);
+    const Wd = 880, Ht = 230, L = 55, R = 20, T = 20, B = 28;
 
-      const pathPts = S.ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
-      const latest = S.ticks[S.ticks.length - 1];
-      const lx = X(latest.t).toFixed(1), ly = Y(latest.pnl).toFixed(1);
-      const zeroStr = zeroY.toFixed(1);
+    if (pos.open) {
+      // CASE A: Live Open Trade Active
+      const curPnl = pos.totalPnl;
+      const kindClass = pos.kind === 'trade' ? 'trade' : 'read-only';
+      const kindLabel = pos.kind === 'trade' ? 'READ+TRADE' : 'READ-ONLY (DELTA)';
+      const hasTicks = S.ticks.length >= 2;
 
-      // Area under curve
-      const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
+      let chartHtml = '';
+      if (hasTicks) {
+        const pnls = S.ticks.map(x => x.pnl);
+        let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
+        const span = (hi - lo) || 10;
+        const pad = span * 0.16; lo -= pad; hi += pad;
+        const t0 = S.ticks[0].t, t1 = S.ticks[S.ticks.length - 1].t || t0 + 1;
+        const spanT = Math.max(1000, t1 - t0);
 
-      // Peak & Dip markers
-      const maxVal = Math.max(...pnls), minVal = Math.min(...pnls);
-      const maxTk = S.ticks.find(x => x.pnl === maxVal) || latest;
-      const minTk = S.ticks.find(x => x.pnl === minVal) || latest;
-      const mxX = X(maxTk.t).toFixed(1), mxY = Y(maxVal).toFixed(1);
-      const mnX = X(minTk.t).toFixed(1), mnY = Y(minVal).toFixed(1);
+        const X = t => L + (t - t0) / spanT * (Wd - L - R);
+        const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
+        const zeroY = Y(0);
 
-      // Time markers
-      const timeLabels = [0, 0.33, 0.66, 1].map(frac => {
-        const t = t0 + frac * spanT;
-        return '<text x="' + X(t).toFixed(1) + '" y="' + (Ht - 8) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="middle" font-family="var(--mono,monospace)">' + hmShort(t) + '</text>';
-      }).join('');
+        const pathPts = S.ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
+        const latest = S.ticks[S.ticks.length - 1];
+        const lx = X(latest.t).toFixed(1), ly = Y(latest.pnl).toFixed(1);
+        const zeroStr = zeroY.toFixed(1);
+        const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
 
-      let hairlineSvg = '';
-      if (S.hoverIdx >= 0 && S.hoverIdx < S.ticks.length) {
-        const hk = S.ticks[S.hoverIdx];
-        const hx = X(hk.t).toFixed(1), hy = Y(hk.pnl).toFixed(1);
-        hairlineSvg = '<line x1="' + hx + '" y1="' + T + '" x2="' + hx + '" y2="' + (Ht - B) + '" stroke="rgba(255,255,255,0.4)" stroke-dasharray="3 3"/>' +
-          '<circle cx="' + hx + '" cy="' + hy + '" r="5" fill="#fff" stroke="' + (hk.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2"/>';
+        const maxVal = Math.max(...pnls), minVal = Math.min(...pnls);
+        const maxTk = S.ticks.find(x => x.pnl === maxVal) || latest;
+        const minTk = S.ticks.find(x => x.pnl === minVal) || latest;
+        const mxX = X(maxTk.t).toFixed(1), mxY = Y(maxVal).toFixed(1);
+        const mnX = X(minTk.t).toFixed(1), mnY = Y(minVal).toFixed(1);
+
+        const timeLabels = [0, 0.33, 0.66, 1].map(frac => {
+          const t = t0 + frac * spanT;
+          return '<text x="' + X(t).toFixed(1) + '" y="' + (Ht - 6) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="middle" font-family="var(--mono,monospace)">' + hmShort(t) + '</text>';
+        }).join('');
+
+        chartHtml = '<div class="v-chart-wrap" id="vLiveChartWrap">' +
+          '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
+            '<defs>' +
+              '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
+              '<linearGradient id="vPnlGradNeg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#f6465d" stop-opacity="0.38"/><stop offset="100%" stop-color="#f6465d" stop-opacity="0.02"/></linearGradient>' +
+            '</defs>' +
+            '<line x1="' + L + '" y1="' + zeroStr + '" x2="' + (Wd - R) + '" y2="' + zeroStr + '" stroke="var(--line2, rgba(255,255,255,0.2))" stroke-dasharray="4 4"/>' +
+            '<text x="' + (L - 8) + '" y="' + (+zeroStr + 4) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="end" font-family="var(--mono,monospace)">$0</text>' +
+            '<path d="' + areaD + '" fill="url(#' + (latest.pnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg') + ')"/>' +
+            '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+            '<circle cx="' + mxX + '" cy="' + mxY + '" r="4" fill="var(--pos,#16c784)" stroke="#fff" stroke-width="1.2"/>' +
+            '<text x="' + mxX + '" y="' + Math.max(T + 10, +mxY - 8) + '" font-size="10" font-weight="700" fill="var(--pos,#16c784)" text-anchor="middle" font-family="var(--mono,monospace)">▲ ' + usd(maxVal) + '</text>' +
+            (minVal < 0 ? '<circle cx="' + mnX + '" cy="' + mnY + '" r="4" fill="var(--neg,#f6465d)" stroke="#fff" stroke-width="1.2"/><text x="' + mnX + '" y="' + Math.min(Ht - B - 4, +mnY + 14) + '" font-size="10" font-weight="700" fill="var(--neg,#f6465d)" text-anchor="middle" font-family="var(--mono,monospace)">▼ ' + usd(minVal) + '</text>' : '') +
+            '<circle cx="' + lx + '" cy="' + ly + '" r="6" fill="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '"><animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/></circle>' +
+            '<circle cx="' + lx + '" cy="' + ly + '" r="3" fill="#fff"/>' +
+            timeLabels +
+          '</svg>' +
+          '<div class="v-hairline" id="vChartHair"></div>' +
+          '<div class="v-tooltip" id="vChartTip"></div>' +
+        '</div>';
+      } else {
+        chartHtml = '<div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--muted,#888);font-size:13px">Waiting for next tick from Delta stream...</div>';
       }
 
-      svgContent = '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img" aria-label="Live PnL Tick Graph">' +
-        '<defs>' +
-          '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
-          '<linearGradient id="vPnlGradNeg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#f6465d" stop-opacity="0.38"/><stop offset="100%" stop-color="#f6465d" stop-opacity="0.02"/></linearGradient>' +
-        '</defs>' +
-        '<line x1="' + L + '" y1="' + zeroStr + '" x2="' + (Wd - R) + '" y2="' + zeroStr + '" stroke="var(--line2, rgba(255,255,255,0.2))" stroke-dasharray="4 4"/>' +
-        '<text x="' + (L - 8) + '" y="' + (+zeroStr + 4) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="end" font-family="var(--mono,monospace)">$0</text>' +
-        '<path d="' + areaD + '" fill="url(#' + (latest.pnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg') + ')"/>' +
-        '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
-        '<circle cx="' + mxX + '" cy="' + mxY + '" r="4" fill="var(--pos,#16c784)" stroke="#fff" stroke-width="1.2"/>' +
-        '<text x="' + mxX + '" y="' + Math.max(T + 10, +mxY - 8) + '" font-size="10" font-weight="700" fill="var(--pos,#16c784)" text-anchor="middle" font-family="var(--mono,monospace)">▲ ' + usd(maxVal) + '</text>' +
-        (minVal < 0 ? '<circle cx="' + mnX + '" cy="' + mnY + '" r="4" fill="var(--neg,#f6465d)" stroke="#fff" stroke-width="1.2"/><text x="' + mnX + '" y="' + Math.min(Ht - B - 4, +mnY + 14) + '" font-size="10" font-weight="700" fill="var(--neg,#f6465d)" text-anchor="middle" font-family="var(--mono,monospace)">▼ ' + usd(minVal) + '</text>' : '') +
-        '<circle cx="' + lx + '" cy="' + ly + '" r="6" fill="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '">' +
-          '<animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite"/>' +
-          '<animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>' +
-        '</circle>' +
-        '<circle cx="' + lx + '" cy="' + ly + '" r="3" fill="#fff"/>' +
-        timeLabels + hairlineSvg +
-      '</svg>';
+      let legsHtml = '';
+      if (pos.legs && pos.legs.length > 0) {
+        legsHtml = '<table class="v-legs-table">' +
+          '<thead><tr><th>LEG / STRIKE</th><th>SIDE</th><th>LOTS</th><th>ENTRY</th><th>LIVE MARK</th><th>LEG P&amp;L</th></tr></thead>' +
+          '<tbody>' +
+            pos.legs.map(l => '<tr>' +
+              '<td><b>' + (l.sym || (l.type + ' ' + (l.strike || ''))) + '</b></td>' +
+              '<td><span class="' + (l.side === 'sell' ? 'am' : 'pos') + '">' + l.side.toUpperCase() + '</span></td>' +
+              '<td>' + l.size + '</td>' +
+              '<td>$' + Number(l.entry || 0).toFixed(1) + '</td>' +
+              '<td>$' + Number(l.mark || 0).toFixed(1) + '</td>' +
+              '<td class="' + (l.pnl >= 0 ? 'pos' : 'neg') + '"><b>' + usd(l.pnl, true) + '</b></td>' +
+            '</tr>').join('') +
+          '</tbody>' +
+        '</table>';
+      }
+
+      card.innerHTML = '<div class="v-head">' +
+        '<div class="v-title-row">' +
+          '<span class="v-live-dot"></span>' +
+          '<h3 style="margin:0;font-size:16px;font-weight:700">LIVE TICK-BY-TICK P&amp;L</h3>' +
+          '<span class="v-badge ' + kindClass + '">' + kindLabel + '</span>' +
+        '</div>' +
+        '<div class="v-stat-strip">' +
+          '<div class="v-big-pnl ' + (curPnl >= 0 ? 'pos' : 'neg') + '">' + usd(curPnl, true) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="v-kpi-grid">' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">PEAK (HIGH WATER)</div><div class="v-kpi-val pos">' + usd(S.peak, true) + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">MAX DIP</div><div class="v-kpi-val neg">' + usd(S.dip, true) + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">DURATION</div><div class="v-kpi-val">' + dur(Date.now() - (S.startTime || Date.now())) + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">TICKS RECORDED</div><div class="v-kpi-val">' + S.ticks.length + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">BTC SPOT</div><div class="v-kpi-val">$' + Number(pos.spot || 0).toLocaleString() + '</div></div>' +
+      '</div>' +
+      chartHtml +
+      legsHtml;
+
+      attachHairline(Wd, L, R);
+
+    } else if (lastTrade) {
+      // CASE B: No open position -> Show Real Last Trade P&L fixed on top (no mocking)
+      const hasTicks = S.ticks.length >= 2;
+      let chartHtml = '';
+      if (hasTicks) {
+        const pnls = S.ticks.map(x => x.pnl);
+        let lo = Math.min(0, ...pnls), hi = Math.max(0, ...pnls);
+        const span = (hi - lo) || 10;
+        const pad = span * 0.16; lo -= pad; hi += pad;
+        const t0 = S.ticks[0].t, t1 = S.ticks[S.ticks.length - 1].t || t0 + 1;
+        const spanT = Math.max(1000, t1 - t0);
+        const X = t => L + (t - t0) / spanT * (Wd - L - R);
+        const Y = v => T + (1 - (v - lo) / (hi - lo)) * (Ht - T - B);
+        const zeroY = Y(0), zeroStr = zeroY.toFixed(1);
+        const pathPts = S.ticks.map(tk => X(tk.t).toFixed(1) + ',' + Y(tk.pnl).toFixed(1)).join(' ');
+        const latest = S.ticks[S.ticks.length - 1];
+        const lx = X(latest.t).toFixed(1);
+        const areaD = 'M ' + X(t0).toFixed(1) + ',' + zeroStr + ' L ' + pathPts.split(' ').join(' L ') + ' L ' + lx + ',' + zeroStr + ' Z';
+
+        chartHtml = '<div class="v-chart-wrap" id="vLiveChartWrap">' +
+          '<svg viewBox="0 0 ' + Wd + ' ' + Ht + '" preserveAspectRatio="none" role="img">' +
+            '<defs>' +
+              '<linearGradient id="vPnlGradPos" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#16c784" stop-opacity="0.38"/><stop offset="100%" stop-color="#16c784" stop-opacity="0.02"/></linearGradient>' +
+              '<linearGradient id="vPnlGradNeg" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#f6465d" stop-opacity="0.38"/><stop offset="100%" stop-color="#f6465d" stop-opacity="0.02"/></linearGradient>' +
+            '</defs>' +
+            '<line x1="' + L + '" y1="' + zeroStr + '" x2="' + (Wd - R) + '" y2="' + zeroStr + '" stroke="var(--line2, rgba(255,255,255,0.2))" stroke-dasharray="4 4"/>' +
+            '<text x="' + (L - 8) + '" y="' + (+zeroStr + 4) + '" font-size="10.5" fill="var(--muted,#888)" text-anchor="end" font-family="var(--mono,monospace)">$0</text>' +
+            '<path d="' + areaD + '" fill="url(#' + (latest.pnl >= 0 ? 'vPnlGradPos' : 'vPnlGradNeg') + ')"/>' +
+            '<path d="M ' + pathPts.split(' ').join(' L ') + '" fill="none" stroke="' + (latest.pnl >= 0 ? 'var(--pos,#16c784)' : 'var(--neg,#f6465d)') + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>' +
+          '</svg>' +
+          '<div class="v-hairline" id="vChartHair"></div>' +
+          '<div class="v-tooltip" id="vChartTip"></div>' +
+        '</div>';
+      }
+
+      card.innerHTML = '<div class="v-head">' +
+        '<div class="v-title-row">' +
+          '<span class="v-last-dot"></span>' +
+          '<h3 style="margin:0;font-size:16px;font-weight:700">LAST P&amp;L · CLOSED TRADE</h3>' +
+          '<span class="v-badge closed">' + (lastTrade.source || 'DELTA RECORDED') + '</span>' +
+        '</div>' +
+        '<div class="v-stat-strip">' +
+          '<div class="v-big-pnl ' + (lastTrade.pnl >= 0 ? 'pos' : 'neg') + '">' + usd(lastTrade.pnl, true) + '</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="v-kpi-grid">' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">NET RESULT</div><div class="v-kpi-val ' + (lastTrade.pnl >= 0 ? 'pos' : 'neg') + '">' + usd(lastTrade.pnl, true) + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">CREDIT COLLECTED</div><div class="v-kpi-val">' + (lastTrade.credit ? '$' + Math.round(lastTrade.credit) : '—') + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">STRIKES</div><div class="v-kpi-val">' + (lastTrade.Kp && lastTrade.Kc ? (lastTrade.Kp/1000).toFixed(0) + 'k P / ' + (lastTrade.Kc/1000).toFixed(0) + 'k C' : '—') + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">SIZE / LOTS</div><div class="v-kpi-val">' + (lastTrade.lots || '—') + '</div></div>' +
+        '<div class="v-kpi-box"><div class="v-kpi-lbl">CLOSED AT</div><div class="v-kpi-val">' + dkShort(lastTrade.closedAt) + ' ' + hmShort(lastTrade.closedAt) + '</div></div>' +
+      '</div>' +
+      chartHtml;
+
+      if (hasTicks) attachHairline(Wd, L, R);
+
     } else {
-      svgContent = '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--muted,#888);gap:8px">' +
-        '<span>No live ticks recorded yet. Ticks stream automatically when an option position is open on Delta.</span>' +
-        '<button type="button" class="v-act-btn" data-v-act="sim">Test / Preview Live Tick Stream</button>' +
+      // CASE C: No open position & no recorded trade yet
+      card.innerHTML = '<div class="v-head">' +
+        '<div class="v-title-row">' +
+          '<span class="v-last-dot"></span>' +
+          '<h3 style="margin:0;font-size:16px;font-weight:700">P&amp;L MONITOR · READY</h3>' +
+          '<span class="v-badge closed">IDLE</span>' +
+        '</div>' +
+        '<div class="v-stat-strip">' +
+          '<div class="v-big-pnl" style="color:var(--muted,#888)">$0.00</div>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:14px 4px;font-size:13px;color:var(--muted,#888)">' +
+        'No active option position on Delta right now. Live P&amp;L and tick-by-tick stream will activate automatically when a trade opens.' +
       '</div>';
     }
+  }
 
-    let legsHtml = '';
-    if (pos.legs && pos.legs.length > 0) {
-      legsHtml = '<table class="v-legs-table">' +
-        '<thead><tr><th>LEG / STRIKE</th><th>SIDE</th><th>LOTS</th><th>ENTRY</th><th>LIVE MARK</th><th>LEG P&amp;L</th></tr></thead>' +
-        '<tbody>' +
-          pos.legs.map(l => '<tr>' +
-            '<td><b>' + (l.sym || (l.type + ' ' + (l.strike || ''))) + '</b></td>' +
-            '<td><span class="' + (l.side === 'sell' ? 'am' : 'pos') + '">' + l.side.toUpperCase() + '</span></td>' +
-            '<td>' + l.size + '</td>' +
-            '<td>$' + Number(l.entry || 0).toFixed(1) + '</td>' +
-            '<td>$' + Number(l.mark || 0).toFixed(1) + '</td>' +
-            '<td class="' + (l.pnl >= 0 ? 'pos' : 'neg') + '"><b>' + usd(l.pnl, true) + '</b></td>' +
-          '</tr>').join('') +
-        '</tbody>' +
-      '</table>';
-    }
-
-    card.innerHTML = '<div class="v-head">' +
-      '<div class="v-title-row">' +
-        '<span class="v-live-dot"></span>' +
-        '<h3 style="margin:0;font-size:16px;font-weight:700">TICK-BY-TICK P&amp;L STREAM</h3>' +
-        '<span class="v-badge ' + kindClass + '">' + kindLabel + '</span>' +
-        (S.simulating ? '<span class="v-badge am">SIMULATION ACTIVE</span>' : '') +
-      '</div>' +
-      '<div class="v-stat-strip">' +
-        '<div class="v-big-pnl ' + (curPnl >= 0 ? 'pos' : 'neg') + '">' + usd(curPnl, true) + '</div>' +
-        '<button type="button" class="v-act-btn" data-v-act="sim">' + (S.simulating ? 'Stop Test' : 'Test Stream') + '</button>' +
-        (S.ticks.length ? '<button type="button" class="v-act-btn" data-v-act="clear">Clear</button>' : '') +
-      '</div>' +
-    '</div>' +
-    '<div class="v-kpi-grid">' +
-      '<div class="v-kpi-box"><div class="v-kpi-lbl">PEAK (HIGH WATER)</div><div class="v-kpi-val pos">' + usd(S.peak, true) + '</div></div>' +
-      '<div class="v-kpi-box"><div class="v-kpi-lbl">MAX DIP</div><div class="v-kpi-val neg">' + usd(S.dip, true) + '</div></div>' +
-      '<div class="v-kpi-box"><div class="v-kpi-lbl">DURATION</div><div class="v-kpi-val">' + dur(Date.now() - (S.startTime || Date.now())) + '</div></div>' +
-      '<div class="v-kpi-box"><div class="v-kpi-lbl">TICKS RECORDED</div><div class="v-kpi-val">' + S.ticks.length + '</div></div>' +
-      '<div class="v-kpi-box"><div class="v-kpi-lbl">BTC SPOT</div><div class="v-kpi-val">$' + Number(pos.spot || 0).toLocaleString() + '</div></div>' +
-    '</div>' +
-    '<div class="v-chart-wrap" id="vLiveChartWrap">' +
-      svgContent +
-      '<div class="v-hairline" id="vChartHair"></div>' +
-      '<div class="v-tooltip" id="vChartTip"></div>' +
-    '</div>' +
-    legsHtml;
-
+  function attachHairline(Wd, L, R) {
     const wrap = $('vLiveChartWrap');
-    if (wrap && hasData) {
+    if (wrap && S.ticks.length >= 2) {
       wrap.addEventListener('pointermove', e => {
         const rect = wrap.getBoundingClientRect();
         const rx = e.clientX - rect.left;
         const frac = Math.max(0, Math.min(1, (rx - L) / (Wd - L - R)));
         const idx = Math.round(frac * (S.ticks.length - 1));
         if (idx >= 0 && idx < S.ticks.length) {
-          S.hoverIdx = idx;
           const tk = S.ticks[idx];
           const tip = $('vChartTip'), hair = $('vChartHair');
           if (tip && hair) {
@@ -63516,7 +63588,6 @@ document.addEventListener('click', function(e) {
         }
       });
       wrap.addEventListener('pointerleave', () => {
-        S.hoverIdx = -1;
         const tip = $('vChartTip'), hair = $('vChartHair');
         if (tip) tip.style.display = 'none';
         if (hair) hair.style.display = 'none';
@@ -63528,19 +63599,19 @@ document.addEventListener('click', function(e) {
 
   D.addEventListener('click', e => {
     if (e.target.closest && e.target.closest('#nav [data-page="pgPnl"], #tabbar [data-page="pgPnl"], [data-page="pgPnl"]')) {
-      setTimeout(drawPanel, 80);
+      setTimeout(drawPanel, 50);
     }
   });
 
   W.deskLivePnlTick = {
     sample: sampleTick,
     draw: drawPanel,
-    toggleSim,
     state: () => S,
-    getOpenPosition
+    getOpenPosition,
+    getLastClosedTrade
   };
 
-  setTimeout(drawPanel, 1200);
+  setTimeout(drawPanel, 500);
 })();
 </script>
 </body>
