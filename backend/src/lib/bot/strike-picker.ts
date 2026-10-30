@@ -33,7 +33,7 @@ export const SHORT_BAND: DeltaBand = { low: 0.1, high: 0.15, target: 0.125 };
  * `aboveTolerance` above the band.
  * Quotes with no bid are skipped: a sold leg must be fillable.
  */
-export function pickBodyLeg(chain: readonly ChainOption[], type: OptionType, expiryMs: number, band: DeltaBand = SHORT_BAND, aboveTolerance = 0.02, belowTolerance = 0.035): ChainOption | null {
+export function pickBodyLeg(chain: readonly ChainOption[], type: OptionType, expiryMs: number, band: DeltaBand = SHORT_BAND, aboveTolerance = 0, belowTolerance = 0): ChainOption | null {
   const side = chain.filter((o) => o.type === type && o.expiryMs === expiryMs && o.bid > 0);
   const inBand = side.filter((o) => o.delta >= band.low && o.delta <= band.high);
   if (inBand.length) {
@@ -44,7 +44,13 @@ export function pickBodyLeg(chain: readonly ChainOption[], type: OptionType, exp
   // Last resort: a short-dated expiry can list no strike beyond the band. Accept the closest strike
   // just above it, within `aboveTolerance`, rather than skipping the trade for a 0.002 delta miss.
   const above = side.filter((o) => o.delta > band.high && o.delta <= band.high + aboveTolerance);
-  return above.length ? above.reduce((best, o) => (o.delta < best.delta ? o : best)) : null;
+  if (above.length) return above.reduce((best, o) => (o.delta < best.delta ? o : best));
+  for (const o of side) {
+    if (o.delta < band.low || o.delta > band.high) {
+      console.warn(`[StrikePicker] NO: rejected strike ${o.symbol} with delta ${o.delta} outside [${band.low}, ${band.high}] band`);
+    }
+  }
+  return null;
 }
 
 /** ATM straddle: the strike nearest spot that has both a call and a put with an ask. */

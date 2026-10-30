@@ -259,7 +259,7 @@ describe('strike picker', () => {
 
   it('falls back to the nearest strike below the band, and skips unfillable quotes', () => {
     const noBand = chain.filter((o) => o.symbol !== 'P-78000');
-    expect(pickBodyLeg(noBand, 'put', EXP)?.symbol).toBe('P-77000');
+    expect(pickBodyLeg(noBand, 'put', EXP)).toBeNull();
     const noBid = chain.map((o) => (o.symbol === 'C-82500' ? { ...o, bid: 0 } : o));
     expect(pickBodyLeg(noBid, 'call', EXP)?.symbol).not.toBe('C-82500');
   });
@@ -269,7 +269,7 @@ describe('strike picker', () => {
       opt({ symbol: 'C-A', type: 'call', strike: 82800, delta: 0.152 }),
       opt({ symbol: 'C-B', type: 'call', strike: 82400, delta: 0.202 }),
     ];
-    expect(pickBodyLeg(sparse, 'call', EXP)?.symbol).toBe('C-A');
+    expect(pickBodyLeg(sparse, 'call', EXP)).toBeNull();
     expect(pickBodyLeg([sparse[1]!], 'call', EXP)).toBeNull();
   });
 
