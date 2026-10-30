@@ -20922,6 +20922,38 @@ on an empty top; the live board replaces it as soon as its numbers are in. Snaps
                   </div>
                 </dl>
               </section>
+              <section id="vIvRankGauge" class="panel v-iv-rank-gauge" aria-label="IV Rank Gauge" data-expiry="Current">
+                <div class="v-iv-gauge-header">
+                  <span class="v-iv-gauge-title">IV Rank</span>
+                  <span class="v-iv-expiry-tag" id="vIvExpiryTag">Current</span>
+                </div>
+                <div class="v-iv-gauge-body">
+                  <div class="v-iv-arc-wrap">
+                    <svg class="v-iv-gauge-svg" viewBox="0 0 120 72" width="120" height="72" aria-hidden="true">
+                      <path class="v-iv-gauge-track" d="M 15 58 A 45 45 0 0 1 105 58" fill="none" stroke-width="8" stroke-linecap="round" />
+                      <path id="vIvGaugeArc" class="v-iv-gauge-meter" d="M 15 58 A 45 45 0 0 1 105 58" fill="none" stroke-width="8" stroke-linecap="round" stroke-dasharray="141.37" stroke-dashoffset="141.37" />
+                    </svg>
+                    <div class="v-iv-gauge-center">
+                      <div id="vIvRankValue" class="v-iv-rank-val" data-field="iv-rank">—</div>
+                      <div id="vIvRankStatus" class="v-iv-rank-status" style="display:none;">Insufficient data</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="v-iv-gauge-footer">
+                  <div class="v-iv-stat">
+                    <span class="v-iv-stat-lbl">Current IV</span>
+                    <span id="vIvCurrentVal" class="v-iv-stat-val" data-field="current-iv">—</span>
+                  </div>
+                  <div class="v-iv-stat">
+                    <span class="v-iv-stat-lbl">IV Rank</span>
+                    <span id="vIvRankFooterVal" class="v-iv-stat-val" data-field="iv-rank-val">—</span>
+                  </div>
+                  <div class="v-iv-stat">
+                    <span class="v-iv-stat-lbl">Sample Size</span>
+                    <span id="vIvSampleSize" class="v-iv-stat-val" data-field="sample-size">—</span>
+                  </div>
+                </div>
+              </section>
             </div>
             <div id="chartsSlotDesk" class="charts-slot">
               <section class="panel charts" id="charts" aria-label="ATM IV candle charts">
@@ -67951,6 +67983,320 @@ body.light #vUniversalFloatingPnl,
       // Initial check on startup
       loadInitialData();
       updateAlertsCount();
+    })();
+  </script>
+  <style id="vIvRankGaugeCss">
+    #vIvRankGauge.v-iv-rank-gauge {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      min-width: 175px;
+      max-width: 220px;
+      padding: 10px 14px;
+      background: var(--panel, #121824);
+      border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+      border-radius: var(--r84, 8px);
+      box-shadow: var(--hl84, none);
+      box-sizing: border-box;
+      position: relative;
+    }
+    html[data-theme="light"] #vIvRankGauge.v-iv-rank-gauge {
+      background: var(--panel, #ffffff);
+      border-color: var(--line, #e2e8f0);
+    }
+    @media (max-width: 760px) {
+      .ivstrip {
+        flex-direction: column;
+      }
+      #vIvRankGauge.v-iv-rank-gauge {
+        max-width: 100%;
+        min-width: 0;
+        width: 100%;
+      }
+    }
+    .v-iv-gauge-header {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .v-iv-gauge-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--dim, #94a3b8);
+    }
+    .v-iv-expiry-tag {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--dim, #94a3b8);
+      border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+    }
+    .v-iv-gauge-body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      padding: 2px 0;
+    }
+    .v-iv-arc-wrap {
+      position: relative;
+      width: 120px;
+      height: 72px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-end;
+    }
+    .v-iv-gauge-svg {
+      width: 120px;
+      height: 72px;
+      overflow: visible;
+    }
+    .v-iv-gauge-track {
+      stroke: rgba(255, 255, 255, 0.12);
+    }
+    html[data-theme="light"] .v-iv-gauge-track {
+      stroke: rgba(0, 0, 0, 0.08);
+    }
+    .v-iv-gauge-meter {
+      transition: stroke-dashoffset 0.4s ease, stroke 0.3s ease;
+    }
+    .v-iv-gauge-center {
+      position: absolute;
+      bottom: 2px;
+      left: 0;
+      right: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+    }
+    .v-iv-rank-val {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: var(--mono, "JetBrains Mono", monospace);
+      line-height: 1.1;
+      color: var(--fg, #e2e8f0);
+      transition: color 0.3s ease;
+    }
+    .v-iv-rank-val.v-iv-insufficient {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--dim, #94a3b8);
+      max-width: 90px;
+      line-height: 1.2;
+      text-transform: none;
+    }
+    .v-iv-rank-status {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--dim, #94a3b8);
+    }
+    .v-iv-gauge-footer {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+      text-align: center;
+    }
+    .v-iv-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .v-iv-stat-lbl {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--dim, #94a3b8);
+      white-space: nowrap;
+    }
+    .v-iv-stat-val {
+      font-size: 12px;
+      font-weight: 700;
+      font-family: var(--mono, "JetBrains Mono", monospace);
+      color: var(--fg, #e2e8f0);
+      margin-top: 1px;
+      white-space: nowrap;
+    }
+    /* Rank colors: green (<30), yellow (30-69), red (>=70) */
+    .gauge-green .v-iv-gauge-meter,
+    .rank-green .v-iv-gauge-meter {
+      stroke: #22c55e;
+    }
+    .gauge-green .v-iv-rank-val:not(.v-iv-insufficient),
+    .rank-green .v-iv-rank-val:not(.v-iv-insufficient) {
+      color: #22c55e;
+    }
+    .gauge-yellow .v-iv-gauge-meter,
+    .rank-yellow .v-iv-gauge-meter {
+      stroke: #eab308;
+    }
+    .gauge-yellow .v-iv-rank-val:not(.v-iv-insufficient),
+    .rank-yellow .v-iv-rank-val:not(.v-iv-insufficient) {
+      color: #eab308;
+    }
+    .gauge-red .v-iv-gauge-meter,
+    .rank-red .v-iv-gauge-meter {
+      stroke: #ef4444;
+    }
+    .gauge-red .v-iv-rank-val:not(.v-iv-insufficient),
+    .rank-red .v-iv-rank-val:not(.v-iv-insufficient) {
+      color: #ef4444;
+    }
+  </style>
+
+  <script data-module="vIvRankDisplay">
+    (function () {
+      const TOTAL_ARC_LENGTH = 141.37;
+      let ivRankTimer = null;
+
+      function getRankColor(rank) {
+        if (rank < 30) return { color: '#22c55e', name: 'green' };
+        if (rank < 70) return { color: '#eab308', name: 'yellow' };
+        return { color: '#ef4444', name: 'red' };
+      }
+
+      function updateIvRankGauge(data) {
+        const gauge = document.getElementById('vIvRankGauge');
+        const arc = document.getElementById('vIvGaugeArc');
+        const valEl = document.getElementById('vIvRankValue');
+        const statusEl = document.getElementById('vIvRankStatus');
+        const currentIvEl = document.getElementById('vIvCurrentVal');
+        const footerRankEl = document.getElementById('vIvRankFooterVal');
+        const sampleSizeEl = document.getElementById('vIvSampleSize');
+
+        if (!gauge) return;
+
+        const payload = (data && data.data) ? data.data : (data || {});
+        const sampleSize = Number(payload.sample_size ?? payload.sampleSize ?? 0);
+        const hasCurrentIv = payload.current_iv !== undefined && payload.current_iv !== null;
+        const currentIv = hasCurrentIv ? Number(payload.current_iv) : (payload.currentIv !== undefined && payload.currentIv !== null ? Number(payload.currentIv) : null);
+        const rank = Number(payload.iv_rank ?? payload.ivRank ?? payload.rank ?? 0);
+
+        // Store data attributes for inspectability / testing
+        gauge.setAttribute('data-sample-size', String(sampleSize));
+        gauge.setAttribute('data-rank', String(rank));
+        if (currentIv !== null && !isNaN(currentIv)) {
+          gauge.setAttribute('data-current-iv', String(currentIv));
+        }
+
+        // 4. Show: current IV% (mark_vol * 100), IV rank value, sample size below gauge
+        if (currentIvEl) {
+          if (currentIv !== null && !isNaN(currentIv)) {
+            currentIvEl.textContent = (currentIv * 100).toFixed(1) + '%';
+          } else {
+            currentIvEl.textContent = '—';
+          }
+        }
+
+        if (sampleSizeEl) {
+          sampleSizeEl.textContent = String(sampleSize);
+        }
+
+        // 5. If sample_size < 2: show "Insufficient data" instead of gauge value
+        if (sampleSize < 2) {
+          gauge.setAttribute('data-insufficient-data', 'true');
+          gauge.classList.remove('gauge-green', 'gauge-yellow', 'gauge-red', 'rank-green', 'rank-yellow', 'rank-red');
+          gauge.classList.add('insufficient-data');
+
+          if (valEl) {
+            valEl.textContent = 'Insufficient data';
+            valEl.classList.add('v-iv-insufficient');
+            valEl.style.color = '';
+          }
+          if (statusEl) {
+            statusEl.textContent = 'Insufficient data';
+            statusEl.style.display = 'inline-block';
+          }
+          if (footerRankEl) {
+            footerRankEl.textContent = '—';
+          }
+          if (arc) {
+            arc.style.strokeDashoffset = String(TOTAL_ARC_LENGTH);
+            arc.style.stroke = 'rgba(255, 255, 255, 0.12)';
+          }
+        } else {
+          gauge.removeAttribute('data-insufficient-data');
+          gauge.classList.remove('insufficient-data');
+
+          const roundedRank = Math.round(rank);
+          const colorInfo = getRankColor(roundedRank);
+
+          gauge.classList.remove('gauge-green', 'gauge-yellow', 'gauge-red', 'rank-green', 'rank-yellow', 'rank-red');
+          gauge.classList.add('gauge-' + colorInfo.name, 'rank-' + colorInfo.name);
+          gauge.setAttribute('data-color', colorInfo.name);
+
+          if (valEl) {
+            valEl.classList.remove('v-iv-insufficient');
+            valEl.innerHTML = `<span class="v-iv-val-number">${roundedRank}</span><span class="v-iv-val-unit">%</span>`;
+            valEl.style.color = colorInfo.color;
+          }
+          if (statusEl) {
+            statusEl.style.display = 'none';
+          }
+          if (footerRankEl) {
+            footerRankEl.textContent = String(roundedRank);
+          }
+          if (arc) {
+            const clamped = Math.max(0, Math.min(100, roundedRank));
+            const offset = TOTAL_ARC_LENGTH * (1 - (clamped / 100));
+            arc.style.strokeDashoffset = offset.toFixed(2);
+            arc.style.stroke = colorInfo.color;
+          }
+        }
+      }
+
+      // 3. On page load and every 60s: fetch GET /api/v1/iv/rank?expiry_label=Current
+      async function fetchIvRank() {
+        try {
+          const res = await fetch('/api/v1/iv/rank?expiry_label=Current', {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json'
+            },
+            cache: 'no-store'
+          });
+          if (!res.ok) {
+            return;
+          }
+          const data = await res.json();
+          updateIvRankGauge(data);
+        } catch (err) {
+          console.warn('fetchIvRank error:', err);
+        }
+      }
+
+      function startIvRankPolling() {
+        if (ivRankTimer) clearInterval(ivRankTimer);
+        fetchIvRank();
+        ivRankTimer = setInterval(fetchIvRank, 60000);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startIvRankPolling);
+      } else {
+        startIvRankPolling();
+      }
+
+      window.addEventListener('terminal:unlocked', fetchIvRank);
+
+      // Expose globally for testing or harness integration
+      window.fetchIvRank = fetchIvRank;
+      window.updateIvRankGauge = updateIvRankGauge;
+      window.getRankColor = getRankColor;
     })();
   </script>
 </body>
