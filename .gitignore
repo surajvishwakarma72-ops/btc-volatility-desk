@@ -33,3 +33,4 @@ backend/scripts/*.json
 scratch/
 dist.tgz
 
+backend/src/backtest/output/
