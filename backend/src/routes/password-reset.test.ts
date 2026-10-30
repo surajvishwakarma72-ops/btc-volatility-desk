@@ -1,9 +1,9 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import Fastify from 'fastify';
 import jwt from '@fastify/jwt';
 
-const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function } }));
+const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function; close?: Function } }));
 vi.mock('../db/index.js', () => ({
   pool: {
     query: async (text: string, params?: unknown[]) => {
@@ -14,6 +14,11 @@ vi.mock('../db/index.js', () => ({
       }
       const r = await h.db.query(text, params);
       return { rows: r.rows, rowCount: r.affectedRows || r.rows.length };
+    },
+    end: async () => {
+      if (h.db && !(h.db as any).closed && typeof (h.db as any).close === 'function') {
+        await (h.db as any).close();
+      }
     },
   },
 }));
@@ -45,6 +50,15 @@ beforeAll(async () => {
   await ensureAuthSchema().catch(() => undefined);
   await pool.query("UPDATE users SET email = 'desk@example.com' WHERE id = $1", [OWNER]); // a valid-looking address, so the owner rule (not the email check) is what is tested
   friendId = (await createUser('friend@example.com', await hashPassword('old-password-123'), 'Friend'))!.id;
+}, 30000);
+
+afterAll(async () => {
+  if (pool && typeof (pool as any).end === 'function') {
+    await (pool as any).end();
+  }
+  if (h.db && !(h.db as any).closed && typeof (h.db as any).close === 'function') {
+    await (h.db as any).close();
+  }
 });
 
 const issue = async (app: any, email = 'friend@example.com') => app.inject({ method: 'POST', url: '/auth/reset-codes', headers: bearer(ownerToken(app)), payload: { email } });
