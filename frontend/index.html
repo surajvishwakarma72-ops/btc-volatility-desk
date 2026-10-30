@@ -20534,6 +20534,10 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
   </script>
 
   <div class="app">
+    <!-- ───────── Full-width Desk Halted Banner (Task T3.2) ───────── -->
+    <div id="vDeskHaltedBanner" class="desk-halted-banner v-desk-halted-banner" style="display:none;" role="alert">
+      DESK HALTED
+    </div>
 
     <!-- ───────── ticker strip ───────── -->
     <div class="tk" id="tk" aria-label="Live ticker">
@@ -20574,6 +20578,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         <div class="clock2" id="hdrClock"><span>IST <b class="num" id="hdrIst">—</b></span><span>UTC <b class="num"
               id="hdrUtc">—</b></span><span class="sess" id="hdrSess">—</span></div>
         <span id="badge" class="pill" role="status">Connecting</span>
+        <button id="vAlertBell" class="icon-btn alert-bell-btn" type="button" aria-label="Strike Alerts" title="Strike Alerts" aria-expanded="false"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" /></svg><span id="vAlertBadge" class="v-alert-badge" style="display:none;">0</span></button>
         <button id="themeBtn" class="icon-btn" type="button" aria-label="Switch light or dark theme"
           title="Switch theme">◐</button>
         <button id="vVoiceBtn" class="icon-btn voice-btn" type="button" aria-label="Voice command" title="Voice command (🎤)" aria-pressed="false">🎤</button>
@@ -66200,7 +66205,7 @@ body.light #vUniversalFloatingPnl,
     _deskWs.onmessage = function(event) {
       try {
         const msg = JSON.parse(event.data);
-        if (!msg || !msg.type) return;
+        if (!msg || (!msg.type && !msg.event)) return;
 
         if (msg.type === 'positions') {
           if (Array.isArray(msg.data)) {
@@ -66223,6 +66228,15 @@ body.light #vUniversalFloatingPnl,
             const qty = msg.data.qty ? ` ${msg.data.qty}` : '';
             const price = msg.data.price ? ` @ ${msg.data.price}` : '';
             window.showToast(`Fill executed: ${side}${qty} ${sym}${price}`, 'info');
+          }
+        } else if (msg.type === 'KILL_SWITCH' || msg.type === 'kill_switch') {
+          if (typeof window.handleKillSwitchWs === 'function') {
+            window.handleKillSwitchWs(msg);
+          }
+        } else if (msg.type === 'STRIKE_ALERT' || msg.type === 'strike_alert' || msg.event === 'alert' || msg.event === 'strike_alert') {
+          if (typeof window.handleStrikeAlertWs === 'function') {
+            window.handleStrikeAlertWs(msg);
+          }
           }
         }
       } catch (err) {
@@ -67394,5 +67408,550 @@ body.light #vUniversalFloatingPnl,
     })();
   </script>
 
+  <!-- ════════ Strike Alerts & Kill Switch System (Task T3.2) ════════ -->
+  <style id="vAlertsPanelCss">
+    /* Full-width Desk Halted Banner */
+    #vDeskHaltedBanner,
+    .desk-halted-banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      width: 100%;
+      box-sizing: border-box;
+      background: #dc2626;
+      color: #ffffff;
+      text-align: center;
+      font-weight: 800;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      padding: 9px 16px;
+      z-index: 9999999;
+      box-shadow: 0 4px 16px rgba(220, 38, 38, 0.45);
+      text-transform: uppercase;
+      font-family: var(--font, system-ui, sans-serif);
+      pointer-events: auto;
+    }
+
+    /* Bell icon button */
+    #vAlertBell {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #vAlertBell .v-alert-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 8px;
+      background: #ef4444;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 16px;
+      text-align: center;
+      box-shadow: 0 0 0 1.5px var(--bg, #0b131b);
+      box-sizing: border-box;
+    }
+
+    /* Alerts Panel */
+    #vAlertsPanel {
+      position: fixed;
+      top: 56px;
+      right: 16px;
+      width: 360px;
+      max-width: calc(100vw - 32px);
+      max-height: calc(100vh - 76px);
+      background: var(--panel, #132230);
+      border: 1px solid var(--line, #223648);
+      border-radius: 10px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      z-index: 10001;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      font-family: var(--font, system-ui, sans-serif);
+      color: var(--text, #E4ECF2);
+      box-sizing: border-box;
+    }
+
+    html[data-theme="light"] #vAlertsPanel {
+      background: var(--panel, #FFFFFF);
+      border-color: var(--line, #D0D7DE);
+      color: var(--text, #1F2328);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+    }
+
+    #vTerminalLockGate:not([style*="display: none"]) ~ #vAlertsPanel,
+    body:has(#vTerminalLockGate:not([style*="display: none"])) #vAlertsPanel {
+      display: none !important;
+    }
+
+    .v-alerts-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line, #223648);
+      background: var(--panel2, #182A3B);
+    }
+    html[data-theme="light"] .v-alerts-header {
+      background: #F6F8FA;
+      border-bottom-color: var(--line, #D0D7DE);
+    }
+
+    .v-alerts-header-title {
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .v-alerts-count-badge {
+      font-size: 11px;
+      padding: 1px 7px;
+      border-radius: 10px;
+      background: rgba(56, 189, 248, 0.2);
+      color: #38bdf8;
+      font-weight: 600;
+    }
+
+    .v-alerts-close-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted, #8B98A5);
+      font-size: 20px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .v-alerts-close-btn:hover {
+      color: var(--text, #E4ECF2);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .v-alerts-list {
+      padding: 10px 12px;
+      overflow-y: auto;
+      max-height: calc(100vh - 150px);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .v-alerts-empty {
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--muted, #8B98A5);
+      font-size: 12px;
+    }
+
+    /* Alert Card */
+    .v-alert-card {
+      background: var(--bg2, #0d1924);
+      border: 1px solid var(--line, #223648);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    html[data-theme="light"] .v-alert-card {
+      background: #FFFFFF;
+      border-color: var(--line, #D0D7DE);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+    .v-alert-card:hover {
+      border-color: var(--accent, #38bdf8);
+    }
+
+    .v-alert-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted, #8B98A5);
+    }
+
+    .v-alert-cohort-tag {
+      font-weight: 600;
+      color: var(--accent, #38bdf8);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .v-alert-card-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .v-alert-metric {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .v-alert-lbl {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted, #8B98A5);
+    }
+
+    .v-alert-val {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text, #E4ECF2);
+    }
+    html[data-theme="light"] .v-alert-val {
+      color: var(--text, #1F2328);
+    }
+
+    .v-alert-score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    html[data-theme="light"] .v-alert-score-row {
+      background: rgba(0, 0, 0, 0.02);
+    }
+
+    .v-alert-score,
+    .confidence-score {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .confidence-green,
+    .score-green {
+      color: #22c55e !important;
+    }
+
+    .confidence-yellow,
+    .score-yellow {
+      color: #eab308 !important;
+    }
+
+    .v-alert-card-footer {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+
+    .v-alert-ack-btn,
+    .ack-btn {
+      background: #2563eb;
+      color: #ffffff;
+      border: none;
+      border-radius: 4px;
+      padding: 4px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s ease, opacity 0.15s ease;
+    }
+    .v-alert-ack-btn:hover,
+    .ack-btn:hover {
+      background: #1d4ed8;
+    }
+    .v-alert-ack-btn:disabled,
+    .ack-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+
+  <aside id="vAlertsPanel" class="v-alerts-panel" style="display:none;" role="region" aria-label="Strike Alerts">
+    <div class="v-alerts-header">
+      <div class="v-alerts-header-title">
+        <span class="v-alerts-header-icon">⚡</span>
+        <span class="v-alerts-title-text">Strike Alerts</span>
+        <span id="vAlertsCountBadge" class="v-alerts-count-badge" style="display:none;">0</span>
+      </div>
+      <div class="v-alerts-header-actions">
+        <button type="button" id="vAlertsCloseBtn" class="v-alerts-close-btn" aria-label="Close strike alerts panel" title="Close">&times;</button>
+      </div>
+    </div>
+    <div id="vAlertsList" class="v-alerts-list">
+      <div id="vAlertsEmpty" class="v-alerts-empty">No active strike alerts</div>
+    </div>
+  </aside>
+
+  <script data-module="vAlertsFrontend">
+    (function () {
+      const banner = document.getElementById('vDeskHaltedBanner');
+      const panel = document.getElementById('vAlertsPanel');
+      const bellBtn = document.getElementById('vAlertBell');
+      const bellBadge = document.getElementById('vAlertBadge');
+      const closeBtn = document.getElementById('vAlertsCloseBtn');
+      const alertsList = document.getElementById('vAlertsList');
+      const emptyEl = document.getElementById('vAlertsEmpty');
+      const headerCountBadge = document.getElementById('vAlertsCountBadge');
+
+      function formatNum(val) {
+        if (val === null || val === undefined || val === '') return '—';
+        const n = Number(val);
+        return isNaN(n) ? String(val) : n.toLocaleString();
+      }
+
+      function updateAlertsCount() {
+        const cards = alertsList ? alertsList.querySelectorAll('.v-alert-card') : [];
+        const count = cards.length;
+
+        if (bellBadge) {
+          bellBadge.textContent = String(count);
+          bellBadge.style.display = count > 0 ? 'inline-flex' : 'none';
+        }
+
+        if (headerCountBadge) {
+          headerCountBadge.textContent = String(count);
+          headerCountBadge.style.display = count > 0 ? 'inline-block' : 'none';
+        }
+
+        if (emptyEl) {
+          emptyEl.style.display = count === 0 ? 'block' : 'none';
+        }
+      }
+
+      function handleKillSwitchWs(msg) {
+        if (!banner) return;
+        const halted = (msg && typeof msg.halted === 'boolean') ? msg.halted : true;
+        if (halted) {
+          banner.style.display = 'block';
+          banner.textContent = 'DESK HALTED';
+        } else {
+          banner.style.display = 'none';
+        }
+      }
+
+      async function ackAlert(id, cardEl) {
+        if (!id) return;
+        const btn = cardEl ? cardEl.querySelector('.v-alert-ack-btn, .ack-btn') : null;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = '...';
+        }
+
+        try {
+          const res = await fetch('/api/v1/alerts/' + encodeURIComponent(id) + '/ack', {
+            method: 'POST',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (res.ok) {
+            // Auto-dismiss acknowledged alerts from panel: removes card on success
+            if (cardEl && cardEl.parentNode) {
+              cardEl.remove();
+            } else {
+              const el = document.querySelector(`.v-alert-card[data-alert-id="${id}"]`);
+              if (el) el.remove();
+            }
+            updateAlertsCount();
+          } else {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = 'Ack';
+            }
+            if (typeof window.showToast === 'function') {
+              window.showToast('Failed to acknowledge alert', 'error');
+            }
+          }
+        } catch (err) {
+          console.error('Ack error:', err);
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Ack';
+          }
+        }
+      }
+
+      function addStrikeAlertCard(rawAlert, autoOpen) {
+        if (!rawAlert || !alertsList) return null;
+        const alert = rawAlert.alert || rawAlert.data || rawAlert;
+        const id = alert.id || alert._id || ('alert-' + Math.random().toString(36).slice(2));
+
+        // If alert is already acknowledged, auto-dismiss if present and do not add
+        if (alert.acknowledged_at) {
+          const existing = alertsList.querySelector(`.v-alert-card[data-alert-id="${id}"]`);
+          if (existing) {
+            existing.remove();
+            updateAlertsCount();
+          }
+          return null;
+        }
+
+        // Avoid duplicate cards
+        let existingCard = alertsList.querySelector(`.v-alert-card[data-alert-id="${id}"]`);
+        if (existingCard) {
+          existingCard.remove();
+        }
+
+        const callStrike = alert.call_strike ?? alert.callStrike ?? alert.call_strike_price ?? '—';
+        const putStrike = alert.put_strike ?? alert.putStrike ?? alert.put_strike_price ?? '—';
+        const score = Math.round(Number(alert.confidence_score ?? alert.confidenceScore ?? alert.confidence ?? 0));
+        const cohortId = alert.cohort_id ?? alert.cohortId ?? '';
+        const emittedAt = alert.emitted_at ?? alert.emittedAt;
+
+        // Confidence score coloring: green if >=80, yellow if 70-79
+        const isGreen = score >= 80;
+        const isYellow = score >= 70 && score < 80;
+        const confColor = isGreen ? '#22c55e' : (isYellow ? '#eab308' : '#94a3b8');
+        const confClass = isGreen ? 'confidence-green score-green' : (isYellow ? 'confidence-yellow score-yellow' : '');
+
+        const card = document.createElement('div');
+        card.className = 'v-alert-card';
+        card.setAttribute('data-alert-id', String(id));
+        card.setAttribute('data-call-strike', String(callStrike));
+        card.setAttribute('data-put-strike', String(putStrike));
+        card.setAttribute('data-confidence-score', String(score));
+
+        let timeStr = 'Just now';
+        if (emittedAt) {
+          try {
+            const d = new Date(emittedAt);
+            if (!isNaN(d.getTime())) {
+              timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+          } catch (e) {}
+        }
+
+        card.innerHTML = `
+          <div class="v-alert-card-header">
+            <span class="v-alert-cohort-tag">${cohortId ? ('COHORT ' + cohortId) : 'STRIKE ALERT'}</span>
+            <span class="v-alert-time">${timeStr}</span>
+          </div>
+          <div class="v-alert-card-grid">
+            <div class="v-alert-metric">
+              <span class="v-alert-lbl">Call Strike</span>
+              <span class="v-alert-val call-strike" data-field="call-strike" data-strike="${callStrike}">$${formatNum(callStrike)} <span class="v-alert-raw-num" style="display:none;">${callStrike}</span></span>
+            </div>
+            <div class="v-alert-metric">
+              <span class="v-alert-lbl">Put Strike</span>
+              <span class="v-alert-val put-strike" data-field="put-strike" data-strike="${putStrike}">$${formatNum(putStrike)} <span class="v-alert-raw-num" style="display:none;">${putStrike}</span></span>
+            </div>
+          </div>
+          <div class="v-alert-score-row">
+            <span class="v-alert-lbl">Confidence Score</span>
+            <span class="v-alert-score confidence-score ${confClass}" style="color: ${confColor}; font-weight: 700;" data-field="confidence-score" data-confidence="${score}">
+              ${score}% <span class="v-alert-raw-num" style="display:none;">${score}</span>
+            </span>
+          </div>
+          <div class="v-alert-card-footer">
+            <button type="button" class="v-alert-ack-btn ack-btn" data-id="${id}">Ack</button>
+          </div>
+        `;
+
+        const ackBtn = card.querySelector('.v-alert-ack-btn, .ack-btn');
+        if (ackBtn) {
+          ackBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            ackAlert(id, card);
+          });
+        }
+
+        // Insert at top of list
+        alertsList.insertBefore(card, alertsList.firstChild);
+        updateAlertsCount();
+
+        if (autoOpen && panel) {
+          panel.style.display = 'flex';
+          if (bellBtn) bellBtn.setAttribute('aria-expanded', 'true');
+        }
+
+        return card;
+      }
+
+      function handleStrikeAlertWs(msg) {
+        const alertData = msg.alert || msg.data || msg;
+        addStrikeAlertCard(alertData, true);
+      }
+
+      // Bell click toggles panel
+      if (bellBtn && panel) {
+        bellBtn.addEventListener('click', function () {
+          const isHidden = panel.style.display === 'none' || getComputedStyle(panel).display === 'none';
+          panel.style.display = isHidden ? 'flex' : 'none';
+          bellBtn.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
+        });
+      }
+
+      // Close button closes panel
+      if (closeBtn && panel) {
+        closeBtn.addEventListener('click', function () {
+          panel.style.display = 'none';
+          if (bellBtn) bellBtn.setAttribute('aria-expanded', 'false');
+        });
+      }
+
+      // Initial loaders
+      async function loadInitialData() {
+        // Kill switch status
+        try {
+          const r = await fetch('/api/v1/admin/kill-switch/status', { cache: 'no-store' });
+          if (r.ok) {
+            const data = await r.json();
+            if (data && data.halted) {
+              handleKillSwitchWs({ type: 'KILL_SWITCH', halted: true });
+            }
+          }
+        } catch (e) {}
+
+        // Active unacknowledged alerts
+        try {
+          const r = await fetch('/api/v1/alerts?limit=50', { cache: 'no-store' });
+          if (r.ok) {
+            const j = await r.json();
+            const list = Array.isArray(j.alerts) ? j.alerts : (Array.isArray(j.data) ? j.data : []);
+            for (let i = list.length - 1; i >= 0; i--) {
+              const item = list[i];
+              if (item && !item.acknowledged_at) {
+                addStrikeAlertCard(item, false);
+              }
+            }
+            updateAlertsCount();
+          }
+        } catch (e) {}
+      }
+
+      window.addEventListener('terminal:unlocked', loadInitialData);
+      window.addEventListener('terminal:locked', function () {
+        if (panel) panel.style.display = 'none';
+        if (bellBtn) bellBtn.setAttribute('aria-expanded', 'false');
+      });
+
+      // Custom event listeners for external integration or test harnesses
+      window.addEventListener('desk:kill_switch', function (ev) {
+        handleKillSwitchWs(ev.detail || { type: 'KILL_SWITCH', halted: true });
+      });
+      window.addEventListener('desk:strike_alert', function (ev) {
+        handleStrikeAlertWs(ev.detail);
+      });
+
+      // Expose globally
+      window.handleKillSwitchWs = handleKillSwitchWs;
+      window.handleStrikeAlertWs = handleStrikeAlertWs;
+      window.addStrikeAlertCard = addStrikeAlertCard;
+      window.ackAlert = ackAlert;
+      window.updateAlertsCount = updateAlertsCount;
+
+      // Initial check on startup
+      loadInitialData();
+      updateAlertsCount();
+    })();
+  </script>
 </body>
 </html>
