@@ -4,6 +4,7 @@ import { pool } from '../db/index.js';
 import { isTokenRevoked, sessionStillValid } from '../services/session-guard.js';
 import { DESK_USER_ID } from '../services/auth-store.js';
 import { broadcastFill } from '../services/desk-events.js';
+import { logAudit } from '../services/audit-logger.js';
 
 let schemaReady: Promise<void> | null = null;
 
@@ -218,7 +219,11 @@ export const fillsRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(auth.errorStatus || 401).send({ success: false, error: auth.error });
     }
 
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.ip || '127.0.0.1';
+    const actorId = auth.user.sub && UUID_REGEX.test(auth.user.sub) ? auth.user.sub : DESK_USER_ID;
+
     if (!isOwner(auth.user)) {
+      void logAudit(pool, actorId, 'fills_ingest', 'denied', ip);
       return reply.status(403).send({ success: false, error: 'Forbidden: Owner role required' });
     }
 
@@ -286,6 +291,7 @@ export const fillsRoutes: FastifyPluginAsync = async (fastify) => {
       }
     }
 
+    void logAudit(pool, actorId, 'fills_ingest', 'success', ip);
     return reply.status(200).send({
       success: true,
       inserted,

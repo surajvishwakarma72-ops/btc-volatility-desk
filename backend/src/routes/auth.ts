@@ -7,6 +7,8 @@ import { approvePasswordReset, completePasswordReset, consumeInvite, consumeRese
 import { hasDeltaKey } from '../services/delta-keys.js';
 import { loginCooldown } from '../lib/cooldown.js';
 import { isTokenRevoked, revokeToken, sessionStillValid } from '../services/session-guard.js';
+import { pool } from '../db/index.js';
+import { logAudit } from '../services/audit-logger.js';
 
 function passwordOk(submitted: string, expected: string): boolean {
   const a = Buffer.from(submitted);
@@ -123,9 +125,18 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   fastify.post('/logout', async (request, reply) => {
     const token = getSessionToken(request) || (!request.url.startsWith('/api/v1') && request.headers.authorization?.startsWith('Bearer ') ? request.headers.authorization.slice(7).trim() : null);
+    let actorId = DESK_USER_ID;
     if (token) {
+      try {
+        const decoded = (fastify as any).jwt.verify(token);
+        if (decoded?.sub || decoded?.id) {
+          actorId = decoded.sub || decoded.id;
+        }
+      } catch {}
       revokeToken(token);
     }
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.ip || '127.0.0.1';
+    void logAudit(pool, actorId, 'logout', 'success', ip);
     reply.header('Set-Cookie', 'desk_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
     return reply.status(200).send({ success: true, message: 'Logged out successfully' });
   });
@@ -138,6 +149,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const check = loginCooldown.check(ip, 5, 600_000);
       if (!check.allowed) {
         reply.header('Retry-After', check.retryAfterSeconds);
+        void logAudit(pool, DESK_USER_ID, 'login', 'failed', ip);
         return reply.status(429).send({
           success: false,
           error: 'Too many login attempts. Cooldown active.',
@@ -150,12 +162,19 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const raw = (request.body || {}) as Record<string, unknown>;
     const password = typeof raw.password === 'string' ? raw.password : null; // reject non-string bodies (avoids Buffer.from throw -> 500)
     const email = typeof raw.email === 'string' ? raw.email.trim().toLowerCase() : '';
-    if (!password) return reply.status(401).send({ success: false, error: 'Wrong password' });
+    if (!password) {
+      void logAudit(pool, DESK_USER_ID, 'login', 'failed', ip);
+      return reply.status(401).send({ success: false, error: 'Wrong password' });
+    }
 
     if (email) {
       const u = await findUserByEmail(email);
       const ok = await verifyPassword(password, u ? u.passwordHash : await decoyHash());
-      if (!u || !ok) return reply.status(401).send({ success: false, error: 'Wrong email or password' });
+      if (!u || !ok) {
+        void logAudit(pool, u?.id || DESK_USER_ID, 'login', 'failed', ip);
+        return reply.status(401).send({ success: false, error: 'Wrong email or password' });
+      }
+      void logAudit(pool, u.id, 'login', 'success', ip);
       const token = await sign(reply, { id: u.id, role: u.id === DESK_USER_ID ? 'admin' : u.role, email: u.email });
       reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
       return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
@@ -174,11 +193,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       ok = passwordOk(password, expected);
     }
     if (!ok) {
+      void logAudit(pool, DESK_USER_ID, 'login', 'failed', ip);
       if (!hasDbPw && !expected) {
         return reply.status(503).send({ success: false, error: 'Login not configured on server. Use "Forgot password?" to set an owner password.' });
       }
       return reply.status(401).send({ success: false, error: 'Wrong password. If you have a friend account, type your email too: only the desk owner leaves the email empty.' });
     }
+    void logAudit(pool, DESK_USER_ID, 'login', 'success', ip);
     const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: owner?.email || 'desk@local' });
     reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
     return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: owner?.email || 'desk@local', displayName: owner?.displayName || 'Desk', role: 'admin' } });
@@ -318,20 +339,26 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       decodedUser = (request as any).user;
     }
 
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.ip || '127.0.0.1';
+
     if (!decodedUser || (decodedUser.role !== 'owner' && decodedUser.role !== 'admin' && decodedUser.sub !== DESK_USER_ID)) {
+      void logAudit(pool, decodedUser?.sub || DESK_USER_ID, 'password_reset_approve', 'denied', ip);
       return reply.status(403).send({ success: false, error: 'Only the desk owner can approve password resets' });
     }
 
     const raw = (request.body || {}) as Record<string, unknown>;
     const resetId = (raw.reset_id || raw.resetId || raw.id) as string | undefined;
     if (!resetId || typeof resetId !== 'string') {
+      void logAudit(pool, decodedUser.sub || DESK_USER_ID, 'password_reset_approve', 'denied', ip);
       return reply.status(400).send({ success: false, error: 'reset_id is required' });
     }
 
     const ok = await approvePasswordReset(resetId, decodedUser.sub || DESK_USER_ID);
     if (!ok) {
+      void logAudit(pool, decodedUser.sub || DESK_USER_ID, 'password_reset_approve', 'denied', ip);
       return reply.status(404).send({ success: false, error: 'Password reset request not found' });
     }
+    void logAudit(pool, decodedUser.sub || DESK_USER_ID, 'password_reset_approve', 'success', ip);
     return reply.status(200).send({ success: true, message: 'Password reset approved', reset_id: resetId });
   });
 
