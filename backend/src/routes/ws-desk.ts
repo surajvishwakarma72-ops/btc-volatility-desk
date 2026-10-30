@@ -66,6 +66,28 @@ export function broadcastKillSwitch(halted: boolean = true): void {
   }
 }
 
+/**
+ * Broadcast strike alert to all active WebSocket connections.
+ */
+export function broadcastStrikeAlert(alert: Record<string, unknown>): void {
+  const payload = JSON.stringify({
+    type: 'strike_alert',
+    event: 'alert',
+    alert,
+    data: alert,
+    ...alert,
+  });
+  for (const conns of userConnections.values()) {
+    for (const ws of conns) {
+      if (ws.readyState === 1) { // 1 === WebSocket.OPEN
+        try {
+          ws.send(payload);
+        } catch {}
+      }
+    }
+  }
+}
+
 type PositionsProvider = (userId: string) => Promise<any[]> | any[];
 type TickersProvider = () => Promise<any[]> | any[];
 
@@ -211,8 +233,21 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     }
   };
 
+  const onStrikeAlert = (alert: any) => {
+    if (socket.readyState === 1) {
+      socket.send(JSON.stringify({
+        type: 'strike_alert',
+        event: 'alert',
+        alert,
+        data: alert,
+        ...alert,
+      }));
+    }
+  };
+
   deskEvents.on('fill', onFill);
   deskEvents.on('kill_switch', onKillSwitch);
+  deskEvents.on('strike_alert', onStrikeAlert);
 
   // If desk is already halted on connection, notify client immediately
   if (isDeskHalted() && socket.readyState === 1) {
@@ -241,6 +276,7 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     clearInterval(tickersInterval);
     deskEvents.removeListener('fill', onFill);
     deskEvents.removeListener('kill_switch', onKillSwitch);
+    deskEvents.removeListener('strike_alert', onStrikeAlert);
     conns?.delete(socket);
     if (conns && conns.size === 0) {
       userConnections.delete(userId);
