@@ -22,6 +22,7 @@ import { fillsRoutes } from './fills.js';
 import { pnlRoutes } from './pnl.js';
 import { shadowRoutes } from './shadow.js';
 import { adminRoutes } from './admin.js';
+import { ivRoutes } from './iv.js';
 
 /**
  * Primary API v1 Router Registration
@@ -52,4 +53,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(pnlRoutes, { prefix: '/pnl' });
   await fastify.register(shadowRoutes, { prefix: '/shadow' });
   await fastify.register(adminRoutes, { prefix: '/admin' });
+  await fastify.register(ivRoutes, { prefix: '/iv' });
 };
