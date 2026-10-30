@@ -18,6 +18,7 @@ import { watchRoutes } from './watch.js';
 import { algoRoutes } from './algo.js';
 import { scoreRoutes } from './score.js';
 import { feedbackRoutes } from './feedback.js';
+import { fillsRoutes } from './fills.js';
 
 /**
  * Primary API v1 Router Registration
@@ -44,4 +45,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(algoRoutes, { prefix: '/algo' });
   await fastify.register(scoreRoutes, { prefix: '/score' });
   await fastify.register(feedbackRoutes, { prefix: '/feedback' });
+  await fastify.register(fillsRoutes, { prefix: '/fills' });
 };

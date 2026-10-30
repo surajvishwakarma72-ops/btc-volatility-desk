@@ -65961,7 +65961,8 @@ body.light #vUniversalFloatingPnl,
     }
   } catch {}
 
-  // Polling intervals
+  /*
+  // Polling intervals (legacy fallback - replaced by WebSocket streams in T2.2)
   setInterval(() => {
     pollDeltaPositions();
   }, 3500);
@@ -65973,6 +65974,7 @@ body.light #vUniversalFloatingPnl,
   setInterval(() => {
     pollDeltaFills();
   }, 12000);
+  */
 
   setInterval(() => {
     const anyOpen = getAnyOpenPosition();
@@ -66136,13 +66138,152 @@ body.light #vUniversalFloatingPnl,
 
     window.addEventListener('terminal:unlocked', () => {
       renderPositionTracker();
-      pollDeltaPositions();
+      connectDeskWebSocket();
     });
 
     window.addEventListener('terminal:locked', () => {
       const tracker = document.getElementById('vPositionTracker');
       if (tracker) tracker.style.display = 'none';
+      disconnectDeskWebSocket();
     });
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // WebSocket Desk Streams (Task T2.2)
+  // ═════════════════════════════════════════════════════════════════════════
+  let _deskWs = null;
+  let _deskWsReconnectTimer = null;
+  let _deskWsReconnectDelay = 1000;
+  let _deskWsIntentionalClose = false;
+
+  function connectDeskWebSocket() {
+    const gate = document.getElementById('vTerminalLockGate');
+    const isAuth = Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
+    if (!isAuth) return;
+
+    if (_deskWs && (_deskWs.readyState === WebSocket.OPEN || _deskWs.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    if (_deskWsReconnectTimer) {
+      clearTimeout(_deskWsReconnectTimer);
+      _deskWsReconnectTimer = null;
+    }
+
+    _deskWsIntentionalClose = false;
+
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = (window.location.port === '3000') ? 'localhost:4000' : (window.location.host || 'localhost:4000');
+    const url = `${wsProto}//${host}/ws/desk`;
+
+    try {
+      _deskWs = new WebSocket(url);
+    } catch (err) {
+      console.warn('Failed to create WebSocket', err);
+      scheduleDeskWsReconnect();
+      return;
+    }
+
+    _deskWs.onopen = function() {
+      _deskWsReconnectDelay = 1000;
+      try {
+        _deskWs.send(JSON.stringify({
+          type: 'subscribe',
+          channels: ['positions', 'tickers', 'fills']
+        }));
+      } catch (err) {
+        console.warn('Error sending WS subscribe', err);
+      }
+    };
+
+    _deskWs.onmessage = function(event) {
+      try {
+        const msg = JSON.parse(event.data);
+        if (!msg || !msg.type) return;
+
+        if (msg.type === 'positions') {
+          if (Array.isArray(msg.data)) {
+            S.apiPositions = msg.data;
+            S.deltaPositionsReadOnly = msg.data.filter(p => Math.abs(+p.size || 0) > 0);
+            renderPositionTracker();
+            scheduleRedraw();
+          }
+        } else if (msg.type === 'tickers') {
+          if (Array.isArray(msg.data)) {
+            msg.data.forEach(t => {
+              if (t && t.symbol) S.tickerGreeks[t.symbol] = t;
+            });
+            scheduleRedraw();
+          }
+        } else if (msg.type === 'fill') {
+          if (msg.data && typeof window.showToast === 'function') {
+            const sym = msg.data.symbol || 'Contract';
+            const side = (msg.data.side || '').toUpperCase();
+            const qty = msg.data.qty ? ` ${msg.data.qty}` : '';
+            const price = msg.data.price ? ` @ ${msg.data.price}` : '';
+            window.showToast(`Fill executed: ${side}${qty} ${sym}${price}`, 'info');
+          }
+        }
+      } catch (err) {
+        console.warn('WS message parse error', err);
+      }
+    };
+
+    _deskWs.onclose = function(event) {
+      if (_deskWsIntentionalClose) return;
+      if (event.code === 4401) {
+        // Unauthorized - session locked
+        return;
+      }
+      if (typeof window.showToast === 'function') {
+        window.showToast('Connection lost — reconnecting...', 'error');
+      }
+      scheduleDeskWsReconnect();
+    };
+
+    _deskWs.onerror = function() {
+      // onclose handles reconnect
+    };
+  }
+
+  function scheduleDeskWsReconnect() {
+    if (_deskWsReconnectTimer || _deskWsIntentionalClose) return;
+    const gate = document.getElementById('vTerminalLockGate');
+    const isAuth = Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
+    if (!isAuth) return;
+
+    _deskWsReconnectTimer = setTimeout(() => {
+      _deskWsReconnectTimer = null;
+      connectDeskWebSocket();
+    }, _deskWsReconnectDelay);
+    // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
+    _deskWsReconnectDelay = Math.min(_deskWsReconnectDelay * 2, 30000);
+  }
+
+  function disconnectDeskWebSocket() {
+    _deskWsIntentionalClose = true;
+    if (_deskWsReconnectTimer) {
+      clearTimeout(_deskWsReconnectTimer);
+      _deskWsReconnectTimer = null;
+    }
+    if (_deskWs) {
+      try {
+        _deskWs.close();
+      } catch (e) {}
+      _deskWs = null;
+    }
+  }
+
+  window.addEventListener('terminal:unlocked', () => {
+    connectDeskWebSocket();
+  });
+
+  window.addEventListener('terminal:locked', () => {
+    disconnectDeskWebSocket();
+  });
+
+  if (window.__vTerminalAuthenticated) {
+    connectDeskWebSocket();
   }
 
   // Immediate boot
