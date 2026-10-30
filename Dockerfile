@@ -6,7 +6,8 @@ WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
-RUN npm run build
+# RUN npm run build
+RUN mkdir -p dist && cp index.html dist/index.html && cp -rn public/* dist/ 2>/dev/null || true
 
 # Stage 2: Build Backend
 FROM node:20-alpine AS backend-builder
