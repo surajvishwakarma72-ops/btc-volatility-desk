@@ -10,13 +10,31 @@ import { ensureAuthSchema } from './auth-store.js';
  */
 const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; changedMs: number | null }>();
+const revokedTokens = new Set<string>();
 
 /** Called by a password change, so this server stops accepting the old tokens straight away instead of after the cache expires. */
 export function noteSessionReset(userId: string, changedMs: number): void {
   cache.set(userId, { at: Date.now(), changedMs });
 }
 
-export function resetSessionGuardCache(): void { cache.clear(); }
+/** Invalidate a session token server-side (e.g. on logout). */
+export function revokeToken(token: string): void {
+  if (token) revokedTokens.add(token);
+}
+
+/** Check if a session token has been revoked server-side. */
+export function isTokenRevoked(token: string): boolean {
+  return revokedTokens.has(token);
+}
+
+export function clearRevokedTokens(): void {
+  revokedTokens.clear();
+}
+
+export function resetSessionGuardCache(): void {
+  cache.clear();
+  revokedTokens.clear();
+}
 
 async function changedAt(userId: string): Promise<number | null> {
   const hit = cache.get(userId);

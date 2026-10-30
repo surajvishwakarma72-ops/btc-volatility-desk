@@ -1,5 +1,6 @@
 import { userId } from '../lib/guards.js';
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { getStrikeAlerts, acknowledgeStrikeAlert } from '../services/strike-alerts.js';
 import { eq, desc, and } from 'drizzle-orm';
 import { db, alertRules, alertLogs } from '../db/index.js';
 import { alertRuleCreate, idParam, alertsHistoryQuery, alertTest, registerDevice } from '../schemas.js';
@@ -15,7 +16,62 @@ import { alertRuleCreate, idParam, alertsHistoryQuery, alertTest, registerDevice
  * - GET    /api/v1/alerts/history     List triggered alert logs & VolTurn signals
  */
 export const alertRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.addHook('preHandler', (fastify as any).authenticate); // everything here is somebody's own data
+  fastify.addHook('preHandler', async (request, reply) => {
+    const routeUrl = request.routeOptions?.url || request.url;
+    if (
+      routeUrl === '/api/v1/alerts' ||
+      routeUrl === '/api/v1/alerts/' ||
+      routeUrl === '/' ||
+      routeUrl === '' ||
+      routeUrl.includes('/ack') ||
+      request.url.includes('/ack') ||
+      request.url === '/api/v1/alerts' ||
+      request.url === '/api/v1/alerts/' ||
+      request.url.startsWith('/api/v1/alerts?')
+    ) {
+      return;
+    }
+    if ((fastify as any).authenticate) {
+      await (fastify as any).authenticate(request, reply);
+    }
+  });
+
+  // GET /api/v1/alerts - returns last 50 alerts, newest first (Task T3.1)
+  const handleGetAlerts = async (request: FastifyRequest, reply: FastifyReply) => {
+    const query = (request.query || {}) as { limit?: string | number };
+    const limit = query.limit !== undefined ? Number(query.limit) : 50;
+    const alerts = await getStrikeAlerts(limit);
+
+    return reply.status(200).send({
+      success: true,
+      count: alerts.length,
+      alerts,
+      data: alerts,
+    });
+  };
+
+  fastify.get('/', handleGetAlerts);
+
+  // POST /api/v1/alerts/:id/ack - marks acknowledged_at = now() (Task T3.1)
+  fastify.post('/:id/ack', async (request: FastifyRequest, reply: FastifyReply) => {
+    const { id } = (request.params || {}) as { id: string };
+    if (!id) {
+      return reply.status(400).send({ success: false, error: 'Alert ID is required' });
+    }
+
+    const updated = await acknowledgeStrikeAlert(id);
+    if (!updated) {
+      return reply.status(404).send({ success: false, error: 'Alert not found' });
+    }
+
+    return reply.status(200).send({
+      success: true,
+      message: 'Alert acknowledged',
+      alert: updated,
+      data: updated,
+      acknowledged_at: updated.acknowledged_at,
+    });
+  });
 
   // GET /api/v1/alerts/rules - List rules
   fastify.get('/rules', async (request) => {

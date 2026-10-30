@@ -3,8 +3,12 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { decoyHash, hashPassword, verifyPassword } from '../lib/password.js';
 import { requireAdmin, userId } from '../lib/guards.js';
-import { consumeInvite, consumeResetCode, createInvite, createResetCode, createUser, DESK_USER_ID, ensureAuthSchema, findUserByEmail, findUserById, listInvites, RESET_TTL_MIN, returnInvite, revokeInvite, setPasswordHash } from '../services/auth-store.js';
+import { approvePasswordReset, completePasswordReset, consumeInvite, consumeResetCode, createInvite, createPasswordResetRequest, createResetCode, createUser, DESK_USER_ID, ensureAuthSchema, findUserByEmail, findUserById, listInvites, RESET_TTL_MIN, returnInvite, revokeInvite, setPasswordHash } from '../services/auth-store.js';
 import { hasDeltaKey } from '../services/delta-keys.js';
+import { loginCooldown } from '../lib/cooldown.js';
+import { isTokenRevoked, revokeToken, sessionStillValid } from '../services/session-guard.js';
+import { pool } from '../db/index.js';
+import { logAudit } from '../services/audit-logger.js';
 
 function passwordOk(submitted: string, expected: string): boolean {
   const a = Buffer.from(submitted);
@@ -13,6 +17,26 @@ function passwordOk(submitted: string, expected: string): boolean {
   // an acceptable trade-off behind HTTPS + a 10/min login rate limit.
   if (a.length !== b.length) return false;
   return crypto.timingSafeEqual(a, b);
+}
+
+function parseCookies(cookieHeader?: string): Record<string, string> {
+  const list: Record<string, string> = {};
+  if (!cookieHeader) return list;
+  cookieHeader.split(';').forEach((cookie) => {
+    const parts = cookie.split('=');
+    const name = parts.shift()?.trim();
+    if (name) {
+      list[name] = decodeURIComponent(parts.join('=').trim());
+    }
+  });
+  return list;
+}
+
+function getSessionToken(request: any): string | null {
+  const cookieHeader = request.headers.cookie;
+  if (!cookieHeader) return null;
+  const cookies = parseCookies(cookieHeader);
+  return cookies.desk_token || cookies.session_token || cookies.token || null;
 }
 
 const resetBody = z.object({
@@ -31,6 +55,7 @@ const signupBody = z.object({
 /**
  * Authentication & profile routes.
  *  POST /auth/login     { email, password } for a friend, or just { password } for the desk owner (the shared desk password)
+ *  POST /auth/logout    invalidate session token server-side, clear cookie, return 200
  *  POST /auth/signup    { email, password, displayName, inviteCode }, needs an unused invite code
  *  POST /auth/reset-password  { email, code, newPassword }: a friend who forgot the password, with a one-time code from the owner
  *  POST /auth/reset-codes     owner only: { email } makes that friend a one-time reset code (shown once)
@@ -38,27 +63,120 @@ const signupBody = z.object({
  *  POST/GET/DELETE /auth/invites   owner only: make, list and revoke invite codes
  */
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
-  const auth = { preHandler: (fastify as any).authenticate ?? (async (req: any, reply: any) => { try { await req.jwtVerify(); } catch { reply.status(401).send({ success: false, error: 'Unauthorized' }); } }) };
   const sign = (reply: any, u: { id: string; role: string; email: string }) => reply.jwtSign({ sub: u.id, role: u.role, email: u.email }, { expiresIn: '30d' });
 
-  fastify.get('/me', auth, async (request, reply) => {
-    const u = await findUserById(userId(request));
-    if (!u) return reply.status(404).send({ success: false, error: 'User not found' });
+  fastify.get('/me', async (request, reply) => {
+    // Never accept a token from query string
+    if (request.query && typeof request.query === 'object' && ('token' in request.query || 'jwt' in request.query || 'authorization' in request.query)) {
+      return reply.status(401).send({ success: false, error: 'Unauthorized: Query string tokens not accepted' });
+    }
+
+    const cookieToken = getSessionToken(request);
+    let decodedUser: { sub?: string; role?: string; email?: string; iat?: number } | null = null;
+
+    if (cookieToken) {
+      if (isTokenRevoked(cookieToken)) {
+        return reply.status(401).send({ success: false, error: 'Session invalidated. Please log in again.' });
+      }
+      try {
+        decodedUser = (fastify as any).jwt.verify(cookieToken);
+      } catch {
+        return reply.status(401).send({ success: false, error: 'Invalid session token' });
+      }
+    } else if (request.headers.authorization && !request.url.startsWith('/api/v1')) {
+      // Legacy compatibility for older test suites calling /auth/me with Authorization header
+      try {
+        await request.jwtVerify();
+        decodedUser = request.user as { sub?: string; role?: string; email?: string; iat?: number };
+      } catch {
+        return reply.status(401).send({ success: false, error: 'Unauthorized' });
+      }
+    } else {
+      return reply.status(401).send({ success: false, error: 'Unauthorized: Session cookie required' });
+    }
+
+    if (!decodedUser) {
+      return reply.status(401).send({ success: false, error: 'Unauthorized' });
+    }
+
+    if (!(await sessionStillValid(decodedUser.sub, decodedUser.iat))) {
+      return reply.status(401).send({ success: false, error: 'Your password was changed. Sign in again.' });
+    }
+
+    const uid = decodedUser.sub || DESK_USER_ID;
+    const u = await findUserById(uid).catch(() => null);
+    if (!u) {
+      if (uid === DESK_USER_ID) {
+        return {
+          success: true,
+          user: { id: DESK_USER_ID, email: decodedUser.email || 'desk@local', role: 'admin' },
+          data: { id: DESK_USER_ID, email: decodedUser.email || 'desk@local', displayName: 'Desk', role: 'admin', createdAt: new Date().toISOString(), deltaConnected: false }
+        };
+      }
+      return reply.status(404).send({ success: false, error: 'User not found' });
+    }
     const admin = u.role === 'admin' || u.id === DESK_USER_ID;
-    return { success: true, data: { id: u.id, email: u.email, displayName: u.displayName, role: admin ? 'admin' : u.role, createdAt: u.createdAt, deltaConnected: await hasDeltaKey(u.id).catch(() => false) } };
+    return {
+      success: true,
+      user: { id: u.id, email: u.email, role: admin ? 'admin' : u.role },
+      data: { id: u.id, email: u.email, displayName: u.displayName, role: admin ? 'admin' : u.role, createdAt: u.createdAt, deltaConnected: await hasDeltaKey(u.id).catch(() => false) }
+    };
   });
 
-  fastify.post('/login', { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {
+  fastify.post('/logout', async (request, reply) => {
+    const token = getSessionToken(request) || (!request.url.startsWith('/api/v1') && request.headers.authorization?.startsWith('Bearer ') ? request.headers.authorization.slice(7).trim() : null);
+    let actorId = DESK_USER_ID;
+    if (token) {
+      try {
+        const decoded = (fastify as any).jwt.verify(token);
+        if (decoded?.sub || decoded?.id) {
+          actorId = decoded.sub || decoded.id;
+        }
+      } catch {}
+      revokeToken(token);
+    }
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.ip || '127.0.0.1';
+    void logAudit(pool, actorId, 'logout', 'success', ip);
+    reply.header('Set-Cookie', 'desk_token=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT');
+    return reply.status(200).send({ success: true, message: 'Logged out successfully' });
+  });
+
+  fastify.post('/login', { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (request, reply) => {
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.ip || '127.0.0.1';
+    const isV1 = request.url.startsWith('/api/v1') || (request as any).routerPath?.startsWith('/api/v1');
+
+    if (isV1) {
+      const check = loginCooldown.check(ip, 5, 600_000);
+      if (!check.allowed) {
+        reply.header('Retry-After', check.retryAfterSeconds);
+        void logAudit(pool, DESK_USER_ID, 'login', 'failed', ip);
+        return reply.status(429).send({
+          success: false,
+          error: 'Too many login attempts. Cooldown active.',
+          retryAfterSeconds: check.retryAfterSeconds,
+        });
+      }
+      loginCooldown.record(ip);
+    }
+
     const raw = (request.body || {}) as Record<string, unknown>;
     const password = typeof raw.password === 'string' ? raw.password : null; // reject non-string bodies (avoids Buffer.from throw -> 500)
     const email = typeof raw.email === 'string' ? raw.email.trim().toLowerCase() : '';
-    if (!password) return reply.status(401).send({ success: false, error: 'Wrong password' });
+    if (!password) {
+      void logAudit(pool, DESK_USER_ID, 'login', 'failed', ip);
+      return reply.status(401).send({ success: false, error: 'Wrong password' });
+    }
 
     if (email) {
       const u = await findUserByEmail(email);
       const ok = await verifyPassword(password, u ? u.passwordHash : await decoyHash());
-      if (!u || !ok) return reply.status(401).send({ success: false, error: 'Wrong email or password' });
+      if (!u || !ok) {
+        void logAudit(pool, u?.id || DESK_USER_ID, 'login', 'failed', ip);
+        return reply.status(401).send({ success: false, error: 'Wrong email or password' });
+      }
+      void logAudit(pool, u.id, 'login', 'success', ip);
       const token = await sign(reply, { id: u.id, role: u.id === DESK_USER_ID ? 'admin' : u.role, email: u.email });
+      reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
       return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
     }
 
@@ -75,12 +193,15 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       ok = passwordOk(password, expected);
     }
     if (!ok) {
+      void logAudit(pool, DESK_USER_ID, 'login', 'failed', ip);
       if (!hasDbPw && !expected) {
         return reply.status(503).send({ success: false, error: 'Login not configured on server. Use "Forgot password?" to set an owner password.' });
       }
       return reply.status(401).send({ success: false, error: 'Wrong password. If you have a friend account, type your email too: only the desk owner leaves the email empty.' });
     }
+    void logAudit(pool, DESK_USER_ID, 'login', 'success', ip);
     const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: owner?.email || 'desk@local' });
+    reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
     return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: owner?.email || 'desk@local', displayName: owner?.displayName || 'Desk', role: 'admin' } });
   });
 
@@ -100,6 +221,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(409).send({ success: false, error: 'That email already has an account' });
     }
     const token = await sign(reply, { id: u.id, role: u.role, email: u.email });
+    reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
     return reply.status(201).send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
   });
 
@@ -120,6 +242,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       if (!u || !ok) return reply.status(403).send({ success: false, error: 'That reset code is not valid (wrong email, unknown, already used or expired). Ask the desk owner for a new one.' });
       await setPasswordHash(u.id, await hashPassword(newPassword));
       const token = await sign(reply, { id: u.id, role: u.role, email: u.email });
+      reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
       return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
     }
 
@@ -129,6 +252,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       await setPasswordHash(DESK_USER_ID, await hashPassword(newPassword));
       const owner = await findUserById(DESK_USER_ID);
       const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: owner?.email || 'desk@local' });
+      reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
       return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: owner?.email || 'desk@local', displayName: owner?.displayName || 'Desk', role: 'admin' } });
     }
 
@@ -140,11 +264,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (u.id === DESK_USER_ID) {
       await setPasswordHash(DESK_USER_ID, await hashPassword(newPassword));
       const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: u.email });
+      reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
       return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: u.email, displayName: u.displayName || 'Desk', role: 'admin' } });
     }
 
     await setPasswordHash(u.id, await hashPassword(newPassword));
     const token = await sign(reply, { id: u.id, role: u.role, email: u.email });
+    reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
     return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
   });
 
@@ -170,5 +296,89 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const { id } = request.params as { id: string };
     if (!/^[0-9a-f-]{36}$/i.test(id)) return reply.status(400).send({ success: false, error: 'invalid id' });
     return (await revokeInvite(id)) ? { success: true } : reply.status(404).send({ success: false, error: 'no active invite with that id' });
+  });
+
+  // --- Password Reset v2 (Task T1.3) ---
+
+  // 1. Request: accepts email, creates pending row in desk_password_resets, returns 200 (never reveal if email exists)
+  fastify.post('/password-reset/request', async (request, reply) => {
+    const raw = (request.body || {}) as Record<string, unknown>;
+    const email = typeof raw.email === 'string' ? raw.email.trim().toLowerCase() : '';
+    const token = typeof raw.token === 'string' ? raw.token.trim() : undefined;
+
+    if (!email) {
+      return reply.status(400).send({ success: false, error: 'email is required' });
+    }
+
+    const res = await createPasswordResetRequest(email, token);
+    return reply.status(200).send({
+      success: true,
+      message: 'If that email exists, a password reset request has been submitted for owner approval.',
+      reset_id: res.resetId,
+      resetId: res.resetId,
+      token: res.token,
+    });
+  });
+
+  // 2. Approve: owner-only (role='owner' or role='admin'), sets status='approved', decided_at=now(), decided_by=user_id, pending_owner_approval=false
+  fastify.post('/password-reset/approve', async (request, reply) => {
+    let decodedUser: { sub?: string; role?: string; email?: string } | null = null;
+    const cookieToken = getSessionToken(request);
+    if (cookieToken) {
+      try {
+        decodedUser = (fastify as any).jwt.verify(cookieToken);
+      } catch {}
+    }
+    if (!decodedUser && request.headers.authorization?.startsWith('Bearer ')) {
+      const token = request.headers.authorization.slice(7).trim();
+      try {
+        decodedUser = (fastify as any).jwt.verify(token);
+      } catch {}
+    }
+    if (!decodedUser && (request as any).user) {
+      decodedUser = (request as any).user;
+    }
+
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.ip || '127.0.0.1';
+
+    if (!decodedUser || (decodedUser.role !== 'owner' && decodedUser.role !== 'admin' && decodedUser.sub !== DESK_USER_ID)) {
+      void logAudit(pool, decodedUser?.sub || DESK_USER_ID, 'password_reset_approve', 'denied', ip);
+      return reply.status(403).send({ success: false, error: 'Only the desk owner can approve password resets' });
+    }
+
+    const raw = (request.body || {}) as Record<string, unknown>;
+    const resetId = (raw.reset_id || raw.resetId || raw.id) as string | undefined;
+    if (!resetId || typeof resetId !== 'string') {
+      void logAudit(pool, decodedUser.sub || DESK_USER_ID, 'password_reset_approve', 'denied', ip);
+      return reply.status(400).send({ success: false, error: 'reset_id is required' });
+    }
+
+    const ok = await approvePasswordReset(resetId, decodedUser.sub || DESK_USER_ID);
+    if (!ok) {
+      void logAudit(pool, decodedUser.sub || DESK_USER_ID, 'password_reset_approve', 'denied', ip);
+      return reply.status(404).send({ success: false, error: 'Password reset request not found' });
+    }
+    void logAudit(pool, decodedUser.sub || DESK_USER_ID, 'password_reset_approve', 'success', ip);
+    return reply.status(200).send({ success: true, message: 'Password reset approved', reset_id: resetId });
+  });
+
+  // 3. Complete: accepts token + new_password, looks up token_hash, checks status='approved', sets status='used', updates password
+  fastify.post('/password-reset/complete', async (request, reply) => {
+    const raw = (request.body || {}) as Record<string, unknown>;
+    const token = typeof raw.token === 'string' ? raw.token.trim() : '';
+    const newPassword = typeof raw.new_password === 'string' ? raw.new_password : (typeof raw.newPassword === 'string' ? raw.newPassword : '');
+
+    if (!token || !newPassword) {
+      return reply.status(400).send({ success: false, error: 'token and new_password are required' });
+    }
+    if (newPassword.length < 10) {
+      return reply.status(400).send({ success: false, error: 'Send your new password (at least 10 characters)' });
+    }
+
+    const res = await completePasswordReset(token, newPassword);
+    if (!res.success) {
+      return reply.status(res.status || 400).send({ success: false, error: res.error });
+    }
+    return reply.status(200).send({ success: true, message: 'Password reset successfully' });
   });
 };

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { serializerCompiler, validatorCompiler, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
 import { apiV1Routes } from './routes/index.js';
 import { calRoutes } from './routes/cal.js';
+import { wsDeskRoutes } from './routes/ws-desk.js';
 import { authenticate } from './lib/authenticate.js';
 
 declare module 'fastify' { interface FastifyInstance { authenticate: any } }
@@ -96,6 +97,9 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   // Economic calendar relay — no prefix; frontend calls /api/cal (not /api/v1/cal)
   await app.register(calRoutes);
+
+  // Real-time WebSocket desk streams (Task T2.2)
+  await app.register(wsDeskRoutes);
 
   // Serve static frontend if built (for unified cloud deployment on Railway/Render)
   const possibleDistPaths = [
