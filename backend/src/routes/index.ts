@@ -20,6 +20,7 @@ import { scoreRoutes } from './score.js';
 import { feedbackRoutes } from './feedback.js';
 import { fillsRoutes } from './fills.js';
 import { pnlRoutes } from './pnl.js';
+import { shadowRoutes } from './shadow.js';
 
 /**
  * Primary API v1 Router Registration
@@ -48,4 +49,5 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(feedbackRoutes, { prefix: '/feedback' });
   await fastify.register(fillsRoutes, { prefix: '/fills' });
   await fastify.register(pnlRoutes, { prefix: '/pnl' });
+  await fastify.register(shadowRoutes, { prefix: '/shadow' });
 };
