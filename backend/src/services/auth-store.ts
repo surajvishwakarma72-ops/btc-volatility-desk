@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { pool } from '../db/index.js';
 import { noteSessionReset } from './session-guard.js';
+import { hashPassword } from '../lib/password.js';
 
 /**
  * Accounts, invite codes and each user's stored Delta key. Created idempotently like the paper and bot tables, so a
@@ -32,13 +33,28 @@ CREATE TABLE IF NOT EXISTS desk_invites (
 CREATE TABLE IF NOT EXISTS desk_password_resets (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL,
-  code_hash text NOT NULL UNIQUE,
-  expires_at timestamptz NOT NULL,
+  code_hash text,
+  expires_at timestamptz,
   used_at timestamptz,
   created_by uuid,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  token_hash text,
+  status varchar(20) NOT NULL DEFAULT 'pending',
+  requested_at timestamptz NOT NULL DEFAULT now(),
+  decided_at timestamptz,
+  decided_by uuid REFERENCES users(id),
+  pending_owner_approval boolean NOT NULL DEFAULT true
 );
+ALTER TABLE desk_password_resets ADD COLUMN IF NOT EXISTS token_hash text;
+ALTER TABLE desk_password_resets ADD COLUMN IF NOT EXISTS status varchar(20) NOT NULL DEFAULT 'pending';
+ALTER TABLE desk_password_resets ADD COLUMN IF NOT EXISTS requested_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE desk_password_resets ADD COLUMN IF NOT EXISTS decided_at timestamptz;
+ALTER TABLE desk_password_resets ADD COLUMN IF NOT EXISTS decided_by uuid REFERENCES users(id);
+ALTER TABLE desk_password_resets ADD COLUMN IF NOT EXISTS pending_owner_approval boolean NOT NULL DEFAULT true;
+ALTER TABLE desk_password_resets ALTER COLUMN code_hash DROP NOT NULL;
+ALTER TABLE desk_password_resets ALTER COLUMN expires_at DROP NOT NULL;
 CREATE INDEX IF NOT EXISTS desk_password_resets_user_idx ON desk_password_resets (user_id);
+CREATE INDEX IF NOT EXISTS idx_pwreset_token ON desk_password_resets(token_hash) WHERE token_hash IS NOT NULL;
 CREATE TABLE IF NOT EXISTS desk_delta_keys (
   user_id uuid PRIMARY KEY,
   key_enc text NOT NULL,
@@ -167,4 +183,59 @@ export async function setPasswordHash(userId: string, passwordHash: string): Pro
   const r = await pool.query('UPDATE users SET password_hash = $2, updated_at = now(), password_changed_at = now() WHERE id = $1 RETURNING password_changed_at', [userId, passwordHash]);
   // every token issued before this moment stops working (see session-guard.ts)
   noteSessionReset(userId, r.rows[0] ? new Date((r.rows[0] as any).password_changed_at).getTime() : Date.now());
+}
+
+export async function createPasswordResetRequest(email: string, clientToken?: string): Promise<{ success: boolean; resetId?: string; token?: string }> {
+  await ensureAuthSchema();
+  const u = await findUserByEmail(email);
+  if (!u) {
+    return { success: true };
+  }
+  const token = clientToken || crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+  const r = await pool.query(
+    `INSERT INTO desk_password_resets (user_id, token_hash, status, requested_at, pending_owner_approval, expires_at)
+     VALUES ($1, $2, 'pending', now(), true, now() + interval '30 minutes')
+     RETURNING id`,
+    [u.id, tokenHash]
+  );
+  return { success: true, resetId: (r.rows[0] as any).id, token };
+}
+
+export async function approvePasswordReset(resetId: string, decidedBy: string): Promise<boolean> {
+  await ensureAuthSchema();
+  const r = await pool.query(
+    `UPDATE desk_password_resets
+     SET status = 'approved', decided_at = now(), decided_by = $1, pending_owner_approval = false
+     WHERE id = $2
+     RETURNING id`,
+    [decidedBy, resetId]
+  );
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function completePasswordReset(token: string, newPassword: string): Promise<{ success: boolean; status?: number; error?: string }> {
+  await ensureAuthSchema();
+  const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
+  const r = await pool.query(
+    `SELECT * FROM desk_password_resets WHERE token_hash = $1 ORDER BY requested_at DESC LIMIT 1`,
+    [tokenHash]
+  );
+  const row = r.rows[0];
+  if (!row) {
+    return { success: false, status: 404, error: 'Invalid or unknown reset token' };
+  }
+  if (row.status === 'used') {
+    return { success: false, status: 410, error: 'This reset token has already been used' };
+  }
+  if (row.status !== 'approved') {
+    return { success: false, status: 400, error: 'This reset request is still pending owner approval' };
+  }
+  if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+    return { success: false, status: 410, error: 'This reset token has expired' };
+  }
+
+  await pool.query(`UPDATE desk_password_resets SET status = 'used', used_at = now() WHERE id = $1`, [row.id]);
+  await setPasswordHash(row.user_id, await hashPassword(newPassword));
+  return { success: true };
 }

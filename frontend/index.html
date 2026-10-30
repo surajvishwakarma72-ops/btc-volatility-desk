@@ -19780,6 +19780,747 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
 </head>
 
 <body>
+  <!-- ───────── Terminal Entry Lock Gate (#vTerminalLockGate) ───────── -->
+  <div id="vTerminalLockGate" style="position:fixed;inset:0;z-index:999999;background:rgba(8,14,21,0.92);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;">
+    <style id="vTerminalLockGateCss">
+      #vTerminalLockGate {
+        --vtg-bg: #0D1721;
+        --vtg-panel: #132230;
+        --vtg-panel2: #182A3B;
+        --vtg-line: #223648;
+        --vtg-line2: #2C4459;
+        --vtg-text: #E4ECF2;
+        --vtg-muted: #8FA3B5;
+        --vtg-faint: #5F7487;
+        --vtg-accent: #58A6D6;
+        --vtg-accent-glow: rgba(88, 166, 214, 0.15);
+        --vtg-input-bg: #09121B;
+        --vtg-input-border: #223648;
+        --vtg-input-focus: #58A6D6;
+        --vtg-btn-bg: #1F78B4;
+        --vtg-btn-hover: #298FD4;
+        --vtg-danger: #EF5A5E;
+        --vtg-danger-bg: rgba(239, 90, 94, 0.12);
+        --vtg-danger-border: rgba(239, 90, 94, 0.3);
+        --vtg-warn: #E3AE45;
+        --vtg-warn-bg: rgba(227, 174, 69, 0.12);
+        --vtg-warn-border: rgba(227, 174, 69, 0.3);
+        font-family: var(--font, "Barlow Semi Condensed", "Barlow", system-ui, sans-serif);
+      }
+      #vTerminalLockGate * {
+        box-sizing: border-box;
+      }
+      #vTerminalLockGate .vtg-card {
+        width: 100%;
+        max-width: 440px;
+        background: var(--vtg-panel);
+        border: 1px solid var(--vtg-line);
+        border-radius: 12px;
+        padding: 32px 30px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+        position: relative;
+        color: var(--vtg-text);
+      }
+      @media (max-width: 480px) {
+        #vTerminalLockGate .vtg-card {
+          max-width: 350px;
+          padding: 24px 20px;
+        }
+      }
+      #vTerminalLockGate .vtg-header {
+        text-align: center;
+        margin-bottom: 22px;
+      }
+      #vTerminalLockGate .vtg-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 10px;
+        background: var(--vtg-panel2);
+        border: 1px solid var(--vtg-line2);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        margin-bottom: 12px;
+        color: var(--vtg-accent);
+        box-shadow: 0 4px 14px var(--vtg-accent-glow);
+      }
+      #vTerminalLockGate .vtg-title {
+        font-size: 21px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        color: #FFFFFF;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+      #vTerminalLockGate .vtg-sub {
+        font-size: 13px;
+        color: var(--vtg-muted);
+        font-weight: 500;
+      }
+      #vTerminalLockGate .vtg-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 10px;
+        font-family: var(--font-mono, monospace);
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 4px;
+        background: var(--vtg-panel2);
+        color: var(--vtg-warn);
+        border: 1px solid var(--vtg-warn-border);
+        letter-spacing: 0.4px;
+      }
+      #vTerminalLockGate .vtg-form {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+      }
+      #vTerminalLockGate .vtg-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      #vTerminalLockGate .vtg-label {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--vtg-muted);
+        display: flex;
+        justify-content: space-between;
+      }
+      #vTerminalLockGate .vtg-input-wrap {
+        position: relative;
+        display: flex;
+        align-items: center;
+      }
+      #vTerminalLockGate .vtg-icon-left {
+        position: absolute;
+        left: 12px;
+        color: var(--vtg-faint);
+        pointer-events: none;
+        display: flex;
+        align-items: center;
+      }
+      #vTerminalLockGate .vtg-input {
+        width: 100%;
+        height: 42px;
+        background: var(--vtg-input-bg);
+        border: 1px solid var(--vtg-input-border);
+        border-radius: 6px;
+        padding: 0 38px 0 38px;
+        font-family: inherit;
+        font-size: 14px;
+        color: var(--vtg-text);
+        outline: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+      }
+      #vTerminalLockGate .vtg-input:focus {
+        border-color: var(--vtg-input-focus);
+        box-shadow: 0 0 0 3px var(--vtg-accent-glow);
+      }
+      #vTerminalLockGate .vtg-input::placeholder {
+        color: var(--vtg-faint);
+        font-size: 13.5px;
+      }
+      #vTerminalLockGate .vtg-toggle-pw {
+        position: absolute;
+        right: 12px;
+        background: transparent;
+        border: none;
+        color: var(--vtg-faint);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        padding: 2px;
+      }
+      #vTerminalLockGate .vtg-toggle-pw:hover {
+        color: var(--vtg-text);
+      }
+      #vTerminalLockGate .vtg-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 13px;
+        color: var(--vtg-muted);
+        margin-top: -2px;
+      }
+      #vTerminalLockGate .vtg-remember {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        user-select: none;
+      }
+      #vTerminalLockGate .vtg-checkbox {
+        accent-color: var(--vtg-accent);
+        width: 15px;
+        height: 15px;
+        cursor: pointer;
+      }
+      #vTerminalLockGate .vtg-link {
+        color: var(--vtg-accent);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 12.5px;
+        cursor: pointer;
+      }
+      #vTerminalLockGate .vtg-link:hover {
+        text-decoration: underline;
+      }
+      #vTerminalLockGate .vtg-btn {
+        width: 100%;
+        height: 44px;
+        background: var(--vtg-btn-bg);
+        color: #FFFFFF;
+        border: none;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 14.5px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: background 0.15s;
+        margin-top: 4px;
+      }
+      #vTerminalLockGate .vtg-btn:hover {
+        background: var(--vtg-btn-hover);
+      }
+      #vTerminalLockGate .vtg-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      #vTerminalLockGate .vtg-alert {
+        padding: 10px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        line-height: 1.4;
+        display: none;
+        align-items: flex-start;
+        gap: 8px;
+      }
+      #vTerminalLockGate .vtg-alert-error {
+        background: var(--vtg-danger-bg);
+        color: var(--vtg-danger);
+        border: 1px solid var(--vtg-danger-border);
+      }
+      #vTerminalLockGate .vtg-alert-cooldown {
+        background: var(--vtg-warn-bg);
+        color: var(--vtg-warn);
+        border: 1px solid var(--vtg-warn-border);
+        font-family: var(--font-mono, monospace);
+        font-size: 11.5px;
+      }
+      #vTerminalLockGate .vtg-footer {
+        margin-top: 20px;
+        padding-top: 16px;
+        border-top: 1px solid var(--vtg-line);
+        text-align: center;
+        font-size: 11.5px;
+        color: var(--vtg-faint);
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      #vTerminalLockGate .vtg-pill {
+        font-family: var(--font-mono, monospace);
+        font-size: 10.5px;
+        color: var(--vtg-muted);
+      }
+    </style>
+
+    <div class="vtg-card">
+      <div class="vtg-header">
+        <div class="vtg-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <div class="vtg-title">BTC Volatility Desk</div>
+        <div class="vtg-sub">Institutional Derivatives & Volatility Terminal</div>
+        <div class="vtg-badge">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          TERMINAL LOCKED · AUTH REQUIRED
+        </div>
+      </div>
+
+      <!-- Login Form View -->
+            <!-- Inactivity Toast / Banner inside the lock card -->
+      <div id="vGateInactivityToast" class="vtg-alert vtg-alert-cooldown" style="display:none; margin-bottom:16px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+        <span>Session locked after 30 min inactivity</span>
+      </div>
+
+<form id="vGateLoginForm" class="vtg-form" onsubmit="return false;">
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateEmail">Trader Email / Desk ID</label>
+          <div class="vtg-input-wrap">
+            <span class="vtg-icon-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            </span>
+            <input type="text" id="vGateEmail" class="vtg-input" placeholder="trader@volatilitydesk.local" autocomplete="username">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGatePassword">Terminal Password</label>
+          <div class="vtg-input-wrap">
+            <span class="vtg-icon-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </span>
+            <input type="password" id="vGatePassword" class="vtg-input" placeholder="Enter password" autocomplete="current-password">
+            <button type="button" id="vGatePwToggle" class="vtg-toggle-pw" title="Toggle password visibility">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="vtg-row">
+          <label class="vtg-remember">
+            <input type="checkbox" id="vGateRemember" class="vtg-checkbox" checked>
+            <span>Remember this device</span>
+          </label>
+          <a href="#" id="vGateResetLink" class="vtg-link">Request Password Reset</a>
+        </div>
+
+        <div id="vGateAlert" class="vtg-alert"></div>
+
+        <button type="button" id="vGateSubmit" class="vtg-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          <span>Unlock Terminal</span>
+        </button>
+      </form>
+
+      <!-- Password Reset Form View (Hidden by default) -->
+      <form id="vGateResetForm" class="vtg-form" style="display:none;" onsubmit="return false;">
+        <div style="font-size:13px; color:var(--vtg-muted); line-height:1.4;">
+          Enter your email and the 12-character one-time reset code issued by the desk owner.
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateResetEmail">Account Email</label>
+          <div class="vtg-input-wrap">
+            <input type="text" id="vGateResetEmail" class="vtg-input" style="padding-left:14px;" placeholder="friend@example.com">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateResetCode">Reset Code (from Owner)</label>
+          <div class="vtg-input-wrap">
+            <input type="text" id="vGateResetCode" class="vtg-input" style="padding-left:14px; font-family:var(--font-mono, monospace);" placeholder="12-character code">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateResetNewPw">New Password (min 10 chars)</label>
+          <div class="vtg-input-wrap">
+            <input type="password" id="vGateResetNewPw" class="vtg-input" style="padding-left:14px;" placeholder="Enter new password">
+          </div>
+        </div>
+
+        <div id="vGateResetAlert" class="vtg-alert"></div>
+
+        <button type="button" id="vGateResetSubmit" class="vtg-btn">Submit Password Reset</button>
+
+        <div style="text-align:center; margin-top:4px;">
+          <a href="#" id="vGateResetBack" class="vtg-link">← Back to Sign In</a>
+        </div>
+      </form>
+
+      <div class="vtg-footer">
+        <div id="vGateSessionTimer" class="vtg-session-timer" style="font-family:var(--font-mono, monospace); font-weight:600; color:var(--vtg-muted);">Session locked · Re-authenticate to continue</div>
+        <div class="vtg-pill">ZERO NETWORK CALLS PRIOR TO AUTHENTICATION</div>
+      </div>
+    </div>
+  </div>
+
+  <script data-module="vTerminalLock">
+    (function () {
+      const gate = document.getElementById('vTerminalLockGate');
+      const emailInput = document.getElementById('vGateEmail');
+      const pwInput = document.getElementById('vGatePassword');
+      const togglePwBtn = document.getElementById('vGatePwToggle');
+      const submitBtn = document.getElementById('vGateSubmit');
+      const alertBox = document.getElementById('vGateAlert');
+      const rememberBox = document.getElementById('vGateRemember');
+      const resetLink = document.getElementById('vGateResetLink');
+      const loginForm = document.getElementById('vGateLoginForm');
+      const resetForm = document.getElementById('vGateResetForm');
+      const resetBack = document.getElementById('vGateResetBack');
+      const resetSubmit = document.getElementById('vGateResetSubmit');
+      const resetAlert = document.getElementById('vGateResetAlert');
+      const inactivityToast = document.getElementById('vGateInactivityToast');
+      const sessionTimerEl = document.getElementById('vGateSessionTimer');
+
+      const INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
+      let lastActivity = Date.now();
+      let isLocked = true;
+
+      function resetInactivity() {
+        lastActivity = Date.now();
+      }
+
+      // Track last user activity: mousemove, keydown, click, touchstart events on document
+      ['mousemove', 'keydown', 'click', 'touchstart'].forEach(function (evt) {
+        document.addEventListener(evt, resetInactivity, { passive: true });
+      });
+
+      function stopMarketPolling() {
+        try { if (typeof flushAll === 'function') flushAll(); } catch (e) { }
+        try { if (typeof closeWS === 'function') closeWS(); } catch (e) { }
+        try { if (typeof wsClose === 'function') wsClose(); } catch (e) { }
+        try {
+          if (window.desk80 && typeof window.desk80.emit === 'function') {
+            window.desk80.emit('visible', { hidden: true });
+          }
+        } catch (e) { }
+        window.dispatchEvent(new CustomEvent('terminal:locked'));
+      }
+
+      function startMarketPolling(user) {
+        try {
+          if (window.desk80 && typeof window.desk80.emit === 'function') {
+            window.desk80.emit('visible', { hidden: false });
+          }
+        } catch (e) { }
+        try { if (typeof refresh === 'function') refresh(); } catch (e) { }
+        try { if (typeof connectWS === 'function') connectWS(); } catch (e) { }
+        try { if (typeof recConnect === 'function') recConnect(); } catch (e) { }
+        window.dispatchEvent(new CustomEvent('terminal:unlocked', { detail: user }));
+      }
+
+      function lockSession(reason) {
+        isLocked = true;
+        window.__vTerminalAuthenticated = false;
+        stopMarketPolling();
+        if (gate) gate.style.display = 'flex';
+        if (pwInput) pwInput.value = '';
+        if (sessionTimerEl) sessionTimerEl.textContent = 'Session locked · Re-authenticate to continue';
+        if (inactivityToast) {
+          inactivityToast.style.display = (reason === 'inactivity') ? 'flex' : 'none';
+        }
+      }
+
+      // Visible session timer in footer using requestAnimationFrame
+      let lastTickTime = 0;
+      function timerLoop() {
+        const now = Date.now();
+        if (now - lastTickTime >= 500) {
+          lastTickTime = now;
+          if (isLocked) {
+            if (sessionTimerEl && sessionTimerEl.textContent !== 'Session locked · Re-authenticate to continue') {
+              sessionTimerEl.textContent = 'Session locked · Re-authenticate to continue';
+            }
+          } else {
+            const elapsed = now - lastActivity;
+            const remainingMs = Math.max(0, INACTIVITY_MS - elapsed);
+            if (remainingMs <= 0) {
+              lockSession('inactivity');
+            } else {
+              const totalSec = Math.ceil(remainingMs / 1000);
+              const mm = String(Math.floor(totalSec / 60)).padStart(2, '0');
+              const ss = String(totalSec % 60).padStart(2, '0');
+              const text = 'Session active · Locks in ' + mm + ':' + ss;
+              if (sessionTimerEl) sessionTimerEl.textContent = text;
+            }
+          }
+        }
+        requestAnimationFrame(timerLoop);
+      }
+      requestAnimationFrame(timerLoop);
+
+      window.lockTerminal = function (reason) {
+        lockSession(reason || 'manual');
+      };
+
+      function getStoredToken() {
+        try {
+          const raw = localStorage.getItem('desk_jwt');
+          if (!raw) return null;
+          try {
+            const p = JSON.parse(raw);
+            return typeof p === 'string' ? p : (p && p.token ? p.token : raw);
+          } catch (e) { return raw; }
+        } catch (e) { return null; }
+      }
+
+      function getFailLog() {
+        try {
+          return JSON.parse(localStorage.getItem('vTerminalLockFails') || '[]');
+        } catch (e) { return []; }
+      }
+
+      function recordFail() {
+        try {
+          const log = getFailLog().filter(function (t) { return Date.now() - t < 600000; });
+          log.push(Date.now());
+          localStorage.setItem('vTerminalLockFails', JSON.stringify(log));
+          return log;
+        } catch (e) { return []; }
+      }
+
+      function checkCooldown() {
+        const log = getFailLog().filter(function (t) { return Date.now() - t < 600000; });
+        if (log.length >= 5) {
+          const oldest = log[log.length - 5];
+          const remainingMs = 600000 - (Date.now() - oldest);
+          if (remainingMs > 0) return Math.ceil(remainingMs / 1000);
+        }
+        return 0;
+      }
+
+      let cooldownTimer = null;
+      function updateCooldownUI() {
+        const cdSec = checkCooldown();
+        if (cdSec > 0) {
+          if (submitBtn) submitBtn.disabled = true;
+          if (alertBox) {
+            alertBox.className = 'vtg-alert vtg-alert-cooldown';
+            alertBox.style.display = 'flex';
+            const m = Math.floor(cdSec / 60);
+            const s = cdSec % 60;
+            alertBox.innerHTML = '<span>COOLDOWN ACTIVE: 5 failed attempts reached. Terminal unlocked in ' + m.toString().padStart(2, '0') + ':' + s.toString().padStart(2, '0') + '.</span>';
+          }
+          if (!cooldownTimer) {
+            cooldownTimer = setInterval(updateCooldownUI, 1000);
+          }
+        } else {
+          if (cooldownTimer) {
+            clearInterval(cooldownTimer);
+            cooldownTimer = null;
+          }
+          if (submitBtn) submitBtn.disabled = false;
+          if (alertBox && alertBox.classList.contains('vtg-alert-cooldown')) {
+            alertBox.style.display = 'none';
+          }
+        }
+      }
+
+      // Initial validation on page load
+      async function initCheck() {
+        updateCooldownUI();
+        const token = getStoredToken();
+        if (!token) {
+          lockSession('init');
+          return;
+        }
+        try {
+          const r = await fetch('/api/v1/auth/me', {
+            headers: { Accept: 'application/json', Authorization: 'Bearer ' + token },
+            cache: 'no-store'
+          });
+          if (r.ok) {
+            const j = await r.json().catch(function () { return null; });
+            if (j && (j.success || j.user || j.data)) {
+              const user = j.user || j.data || {};
+              isLocked = false;
+              resetInactivity();
+              if (gate) gate.style.display = 'none';
+              if (inactivityToast) inactivityToast.style.display = 'none';
+              if (alertBox) alertBox.style.display = 'none';
+              window.__vTerminalAuthenticated = true;
+              startMarketPolling(user);
+              return;
+            }
+          }
+        } catch (e) {
+          // Keep gate up on network error
+        }
+        lockSession('init');
+      }
+
+      // Password visibility toggle
+      if (togglePwBtn && pwInput) {
+        togglePwBtn.addEventListener('click', function () {
+          const isPw = pwInput.type === 'password';
+          pwInput.type = isPw ? 'text' : 'password';
+          togglePwBtn.innerHTML = isPw
+            ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>'
+            : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+        });
+      }
+
+      // Login / Re-authentication execution
+      async function doLogin() {
+        if (checkCooldown() > 0) return;
+        const email = (emailInput ? emailInput.value : '').trim();
+        const password = pwInput ? pwInput.value : '';
+        if (!password) {
+          if (alertBox) {
+            alertBox.className = 'vtg-alert vtg-alert-error';
+            alertBox.style.display = 'flex';
+            alertBox.innerHTML = '<span>Please enter your password.</span>';
+          }
+          if (pwInput) pwInput.focus();
+          return;
+        }
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span>Unlocking…</span>';
+        }
+
+        try {
+          const payload = email ? { email: email, password: password } : { password: password };
+          const r = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const j = await r.json().catch(function () { return null; });
+
+          if (r.ok && j && j.success) {
+            // Re-authentication step: Call GET /api/v1/auth/me to verify session
+            const token = j.token;
+            const headers = { Accept: 'application/json' };
+            if (token) headers.Authorization = 'Bearer ' + token;
+            const meRes = await fetch('/api/v1/auth/me', { headers: headers, cache: 'no-store' });
+            const meData = await meRes.json().catch(function () { return null; });
+
+            if (meRes.ok && meData && (meData.success || meData.user || meData.data)) {
+              const user = meData.user || meData.data || j.user;
+              try {
+                if (token) localStorage.setItem('desk_jwt', JSON.stringify(token));
+                if (user) localStorage.setItem('desk_user', JSON.stringify(user));
+                localStorage.removeItem('vTerminalLockFails');
+              } catch (e) { }
+
+              isLocked = false;
+              resetInactivity(); // resets timer to 30:00
+              if (gate) gate.style.display = 'none';
+              if (inactivityToast) inactivityToast.style.display = 'none';
+              if (alertBox) alertBox.style.display = 'none';
+              window.__vTerminalAuthenticated = true;
+              startMarketPolling(user); // restarts market data polling
+              return;
+            } else {
+              // Session verification failed
+              if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg><span>Unlock Terminal</span>';
+              }
+              if (alertBox) {
+                alertBox.className = 'vtg-alert vtg-alert-error';
+                alertBox.style.display = 'flex';
+                alertBox.innerHTML = '<span>Session verification failed. Re-authenticate to continue.</span>';
+              }
+              return;
+            }
+          }
+
+          // Auth failure
+          const fails = recordFail();
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg><span>Unlock Terminal</span>';
+          }
+          const cdSec = checkCooldown();
+          if (cdSec > 0) {
+            updateCooldownUI();
+          } else if (alertBox) {
+            const remain = 5 - (fails.filter(function (t) { return Date.now() - t < 600000; }).length);
+            alertBox.className = 'vtg-alert vtg-alert-error';
+            alertBox.style.display = 'flex';
+            const errMsg = (j && j.error) || 'Invalid credentials.';
+            alertBox.innerHTML = '<span>' + errMsg + ' (' + remain + ' attempt' + (remain === 1 ? '' : 's') + ' remaining).</span>';
+          }
+        } catch (e) {
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg><span>Unlock Terminal</span>';
+          }
+          if (alertBox) {
+            alertBox.className = 'vtg-alert vtg-alert-error';
+            alertBox.style.display = 'flex';
+            alertBox.innerHTML = '<span>Network error during authentication. Check server connection.</span>';
+          }
+        }
+      }
+
+      if (submitBtn) submitBtn.addEventListener('click', doLogin);
+      if (pwInput) pwInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+      if (emailInput) emailInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+
+      // Reset view switching
+      if (resetLink && loginForm && resetForm) {
+        resetLink.addEventListener('click', function (e) {
+          e.preventDefault();
+          loginForm.style.display = 'none';
+          resetForm.style.display = 'flex';
+          if (alertBox) alertBox.style.display = 'none';
+          if (inactivityToast) inactivityToast.style.display = 'none';
+        });
+      }
+      if (resetBack && loginForm && resetForm) {
+        resetBack.addEventListener('click', function (e) {
+          e.preventDefault();
+          resetForm.style.display = 'none';
+          loginForm.style.display = 'flex';
+          if (resetAlert) resetAlert.style.display = 'none';
+        });
+      }
+
+      // Password Reset submission (v2 route: /api/v1/auth/password-reset/request)
+      if (resetSubmit) {
+        resetSubmit.addEventListener('click', async function () {
+          const email = (document.getElementById('vGateResetEmail')?.value || '').trim();
+          if (!email) {
+            if (resetAlert) {
+              resetAlert.className = 'vtg-alert vtg-alert-error';
+              resetAlert.style.display = 'flex';
+              resetAlert.innerHTML = '<span>Please enter your registered email.</span>';
+            }
+            return;
+          }
+          resetSubmit.disabled = true;
+          try {
+            const r = await fetch('/api/v1/auth/password-reset/request', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: email })
+            });
+            const j = await r.json().catch(function () { return null; });
+            if (r.ok && j && j.success) {
+              if (resetAlert) {
+                resetAlert.className = 'vtg-alert';
+                resetAlert.style.background = 'rgba(74, 222, 128, 0.12)';
+                resetAlert.style.color = '#4ade80';
+                resetAlert.style.border = '1px solid rgba(74, 222, 128, 0.3)';
+                resetAlert.style.display = 'flex';
+                resetAlert.innerHTML = '<span>' + (j.message || 'Reset request submitted. Desk owner approval required.') + '</span>';
+              }
+              return;
+            }
+            if (resetAlert) {
+              resetAlert.className = 'vtg-alert vtg-alert-error';
+              resetAlert.style.display = 'flex';
+              resetAlert.innerHTML = '<span>' + ((j && j.error) || 'Failed to submit reset request.') + '</span>';
+            }
+          } catch (e) {
+            if (resetAlert) {
+              resetAlert.className = 'vtg-alert vtg-alert-error';
+              resetAlert.style.display = 'flex';
+              resetAlert.innerHTML = '<span>Network error during reset request.</span>';
+            }
+          } finally {
+            resetSubmit.disabled = false;
+          }
+        });
+      }
+
+      // Run on DOM ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initCheck);
+      } else {
+        initCheck();
+      }
+    })();
+  </script>
   <script data-module="v133early">
     /* v133: first open after this update → BTC chart layers off (session shading/boxes, candle and chart patterns, structure,
        IV-by-session strip, σ/strike lines): candles only, like CoinGlass. Switch any back under Layers. Runs once (v133clean). */
@@ -19835,7 +20576,8 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         <span id="badge" class="pill" role="status">Connecting</span>
         <button id="themeBtn" class="icon-btn" type="button" aria-label="Switch light or dark theme"
           title="Switch theme">◐</button>
-        <button id="lockBtn" class="icon-btn lock-btn" type="button" aria-label="Lock the desk now"
+        <button id="vVoiceBtn" class="icon-btn voice-btn" type="button" aria-label="Voice command" title="Voice command (🎤)" aria-pressed="false">🎤</button>
+          <button id="lockBtn" class="icon-btn lock-btn" type="button" aria-label="Lock the desk now"
           title="Lock now: forget the 24-hour unlock on this device and ask for the password"><svg viewBox="0 0 24 24"
             width="17" height="17" aria-hidden="true">
             <rect x="5" y="10.5" width="14" height="10" rx="2.2" fill="none" stroke="currentColor" stroke-width="1.7" />
@@ -19864,6 +20606,201 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
     </div>
 
     <main id="pages">
+      <!-- ───────── Live Position Tracker Panel (#vPositionTracker) ───────── -->
+      <section id="vPositionTracker" class="v-pos-tracker" style="display:none;">
+        <style id="vPositionTrackerCss">
+          #vPositionTracker {
+            margin: 8px 12px 12px 12px;
+            background: var(--panel, #132230);
+            border: 1px solid var(--line, #223648);
+            border-radius: 8px;
+            overflow: hidden;
+            font-family: var(--font, system-ui, sans-serif);
+            color: var(--text, #E4ECF2);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+          }
+          #vTerminalLockGate:not([style*="display: none"]) ~ * #vPositionTracker,
+          body:has(#vTerminalLockGate[style*="display: flex"]) #vPositionTracker {
+            display: none !important;
+          }
+          html[data-theme="light"] #vPositionTracker {
+            background: var(--panel, #FFFFFF);
+            border-color: var(--line, #D0D7DE);
+            color: var(--text, #1F2328);
+          }
+          .v-pos-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 14px;
+            background: var(--panel2, #182A3B);
+            border-bottom: 1px solid var(--line, #223648);
+            cursor: pointer;
+            user-select: none;
+          }
+          html[data-theme="light"] .v-pos-header {
+            background: var(--panel2, #F6F8FA);
+            border-bottom-color: var(--line, #D0D7DE);
+          }
+          .v-pos-title-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .v-pos-indicator {
+            color: #16c784;
+            font-size: 10px;
+          }
+          .v-pos-title {
+            font-size: 12.5px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: var(--text, #E4ECF2);
+          }
+          html[data-theme="light"] .v-pos-title {
+            color: #1F2328;
+          }
+          .v-pos-badge {
+            font-family: var(--font-mono, monospace);
+            font-size: 11px;
+            font-weight: 600;
+            padding: 2px 7px;
+            border-radius: 4px;
+            background: var(--bg, #0D1721);
+            color: var(--muted, #8FA3B5);
+            border: 1px solid var(--line, #223648);
+          }
+          html[data-theme="light"] .v-pos-badge {
+            background: #EAEEF2;
+            color: #57606A;
+            border-color: #D0D7DE;
+          }
+          .v-pos-toggle-btn {
+            background: none;
+            border: none;
+            color: var(--text, #E4ECF2);
+            font-size: 12px;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          html[data-theme="light"] .v-pos-toggle-btn {
+            color: #1F2328;
+          }
+          .v-pos-body {
+            padding: 0;
+            background: var(--panel, #132230);
+          }
+          html[data-theme="light"] .v-pos-body {
+            background: #FFFFFF;
+          }
+          .v-pos-body.collapsed {
+            display: none !important;
+          }
+          .v-pos-table-wrap {
+            overflow-x: auto;
+          }
+          .v-pos-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12.5px;
+            text-align: left;
+          }
+          .v-pos-table th {
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.15);
+            color: var(--muted, #8FA3B5);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--line, #223648);
+            white-space: nowrap;
+          }
+          html[data-theme="light"] .v-pos-table th {
+            background: rgba(0, 0, 0, 0.04);
+            color: var(--muted, #656D76);
+            border-bottom-color: var(--line, #D0D7DE);
+          }
+          .v-pos-table td {
+            padding: 8px 12px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            white-space: nowrap;
+            font-family: var(--font-mono, monospace);
+          }
+          html[data-theme="light"] .v-pos-table td {
+            border-bottom-color: rgba(0, 0, 0, 0.06);
+          }
+          .v-pos-table tr:last-child td {
+            border-bottom: none;
+          }
+          .v-pos-empty {
+            text-align: center;
+            padding: 16px 12px !important;
+            color: var(--muted, #8FA3B5);
+            font-style: italic;
+            font-family: var(--font, system-ui, sans-serif) !important;
+          }
+          .v-pos-side-long {
+            color: #4CAF50;
+            font-weight: 700;
+          }
+          .v-pos-side-short {
+            color: #F44336;
+            font-weight: 700;
+          }
+          .v-pos-pnl-pos {
+            color: #4CAF50 !important;
+            font-weight: 600;
+          }
+          .v-pos-pnl-neg {
+            color: #F44336 !important;
+            font-weight: 600;
+          }
+          .v-pos-pnl-zero {
+            color: var(--muted, #8FA3B5);
+          }
+        </style>
+        <div class="v-pos-header">
+          <div class="v-pos-title-wrap">
+            <span class="v-pos-indicator">●</span>
+            <span class="v-pos-title">Live Position Tracker</span>
+            <span id="vPosCountBadge" class="v-pos-badge">0 Open</span>
+          </div>
+          <div class="v-pos-actions">
+            <button type="button" id="vPosTrackerToggle" class="v-pos-toggle-btn" aria-label="Toggle Position Tracker" title="Collapse / Expand panel">▼</button>
+          </div>
+        </div>
+        <div id="vPosTrackerBody" class="v-pos-body">
+          <div class="v-pos-table-wrap">
+            <table class="v-pos-table">
+              <thead>
+                <tr>
+                  <th>Symbol</th>
+                  <th>Side</th>
+                  <th>Qty</th>
+                  <th>Entry Price</th>
+                  <th>Mark Price</th>
+                  <th>Unrealised PnL (USD)</th>
+                  <th>Delta</th>
+                  <th>Expiry</th>
+                </tr>
+              </thead>
+              <tbody id="vPosTrackerRows">
+                <tr>
+                  <td colspan="8" class="v-pos-empty">No open positions</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+
 
       <!-- ═══════════ DESK ═══════════ -->
       <section class="page on" id="pgDesk" aria-label="Trade">
@@ -65044,6 +65981,7 @@ body.light #vUniversalFloatingPnl,
 
   setInterval(() => {
     installHooks();
+    initPositionTracker();
     ensurePnlNav();
   }, 5000);
 
@@ -65061,6 +65999,152 @@ body.light #vUniversalFloatingPnl,
     navigateToPnl
   };
 
+  
+  /** Live Position Tracker Rendering (#vPositionTracker) */
+  function renderPositionTracker() {
+    const tracker = document.getElementById('vPositionTracker');
+    if (!tracker) return;
+
+    const gate = document.getElementById('vTerminalLockGate');
+    const isAuth = window.__vTerminalAuthenticated && (!gate || gate.style.display === 'none');
+    if (!isAuth) {
+      tracker.style.display = 'none';
+      return;
+    }
+    tracker.style.display = 'block';
+
+    const tbody = document.getElementById('vPosTrackerRows');
+    const countBadge = document.getElementById('vPosCountBadge');
+    if (!tbody) return;
+
+    const map = new Map();
+    if (Array.isArray(S.apiPositions) && S.apiPositions.length > 0) {
+      S.apiPositions.forEach(p => {
+        const sym = p.symbol || p.product_symbol;
+        if (sym && Math.abs(+p.size || +p.qty || 0) > 0) map.set(sym, p);
+      });
+    }
+    if (Array.isArray(S.deltaPositionsReadOnly)) {
+      S.deltaPositionsReadOnly.forEach(p => {
+        const sym = p.product_symbol || p.symbol;
+        if (sym && Math.abs(+p.size || 0) > 0 && !map.has(sym)) map.set(sym, p);
+      });
+    }
+    if (Array.isArray(S.deltaPositionsReadTrade)) {
+      S.deltaPositionsReadTrade.forEach(p => {
+        const sym = p.product_symbol || p.symbol;
+        if (sym && Math.abs(+p.size || 0) > 0 && !map.has(sym)) map.set(sym, p);
+      });
+    }
+
+    const positions = Array.from(map.values());
+    if (countBadge) {
+      countBadge.textContent = positions.length + ' Open';
+    }
+
+    if (positions.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="v-pos-empty">No open positions</td></tr>';
+      return;
+    }
+
+    let html = '';
+    positions.forEach(p => {
+      const sym = p.product_symbol || p.symbol || '—';
+      const size = +p.size || +p.qty || 0;
+      const isLong = size > 0;
+      const isShort = size < 0;
+      const sideText = isLong ? 'LONG' : (isShort ? 'SHORT' : (p.side ? String(p.side).toUpperCase() : '—'));
+      const sideClass = isLong ? 'v-pos-side-long' : (isShort ? 'v-pos-side-short' : '');
+      const qty = Math.abs(size);
+
+      const entry = +p.entry_price || +p.entry || 0;
+      const entryStr = entry > 0 ? ('$' + entry.toFixed(2)) : '—';
+
+      const tk = S.tickerGreeks && S.tickerGreeks[sym];
+      const mark = +p.mark_price || +p.mark || (tk && +tk.mark_price) || 0;
+      const markStr = mark > 0 ? ('$' + mark.toFixed(2)) : '—';
+
+      const cv = +(p.product && p.product.contract_value) || +(p.contract_value) || 0.001;
+      let pnl = 0;
+      if (p.unrealized_pnl != null && !isNaN(+p.unrealized_pnl)) {
+        pnl = +p.unrealized_pnl;
+      } else if (size !== 0 && entry > 0 && mark > 0) {
+        pnl = isShort ? (entry - mark) * qty * cv : (mark - entry) * qty * cv;
+      }
+
+      let pnlClass = 'v-pos-pnl-zero';
+      let pnlStr = '$0.00';
+      if (pnl > 0.0001) {
+        pnlClass = 'v-pos-pnl-pos';
+        pnlStr = '+$' + pnl.toFixed(2);
+      } else if (pnl < -0.0001) {
+        pnlClass = 'v-pos-pnl-neg';
+        pnlStr = '-$' + Math.abs(pnl).toFixed(2);
+      }
+
+      const deltaVal = (tk && tk.greeks && tk.greeks.delta != null) ? +tk.greeks.delta : (p.delta != null ? +p.delta : null);
+      const deltaStr = deltaVal != null ? ((deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(3)) : '—';
+
+      const parsed = typeof parseSym === 'function' ? parseSym(sym) : null;
+      const expStr = (parsed && parsed.exp) ? parsed.exp : (p.settlement_time ? p.settlement_time.slice(0, 10) : (p.expiry || '—'));
+
+      html += '<tr>' +
+        '<td><b>' + sym + '</b></td>' +
+        '<td class="' + sideClass + '">' + sideText + '</td>' +
+        '<td>' + qty + '</td>' +
+        '<td>' + entryStr + '</td>' +
+        '<td>' + markStr + '</td>' +
+        '<td class="' + pnlClass + '">' + pnlStr + '</td>' +
+        '<td>' + deltaStr + '</td>' +
+        '<td>' + expStr + '</td>' +
+      '</tr>';
+    });
+
+    tbody.innerHTML = html;
+  }
+
+  function initPositionTracker() {
+    const toggleBtn = document.getElementById('vPosTrackerToggle');
+    const header = document.querySelector('#vPositionTracker .v-pos-header');
+    const body = document.getElementById('vPosTrackerBody');
+    if (!toggleBtn || !body) return;
+
+    let isCollapsed = false;
+    try {
+      isCollapsed = localStorage.getItem('v_pos_tracker_collapsed') === '1';
+    } catch (e) {}
+
+    function setCollapsed(collapsed) {
+      isCollapsed = collapsed;
+      try { localStorage.setItem('v_pos_tracker_collapsed', isCollapsed ? '1' : '0'); } catch (e) {}
+      if (isCollapsed) {
+        body.classList.add('collapsed');
+        toggleBtn.textContent = '▶';
+      } else {
+        body.classList.remove('collapsed');
+        toggleBtn.textContent = '▼';
+      }
+    }
+
+    setCollapsed(isCollapsed);
+
+    if (header) {
+      header.addEventListener('click', () => {
+        setCollapsed(!isCollapsed);
+      });
+    }
+
+    window.addEventListener('terminal:unlocked', () => {
+      renderPositionTracker();
+      pollDeltaPositions();
+    });
+
+    window.addEventListener('terminal:locked', () => {
+      const tracker = document.getElementById('vPositionTracker');
+      if (tracker) tracker.style.display = 'none';
+    });
+  }
+
   // Immediate boot
   setTimeout(() => {
     installHooks();
@@ -65072,5 +66156,653 @@ body.light #vUniversalFloatingPnl,
   }, 100);
 })();
 </script>
+  <!-- ════════ User Feedback Widget (#vFeedbackBtn & #vFeedbackModal - Task T1.6) ════════ -->
+  <style id="vFeedbackWidgetCss">
+    #vFeedbackBtn {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: var(--panel, #132230);
+      border: 1px solid var(--line, #223648);
+      color: var(--text, #E4ECF2);
+      font-size: 20px;
+      cursor: pointer;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+      transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+      outline: none;
+    }
+    #vFeedbackBtn:hover {
+      transform: scale(1.08);
+      background: var(--panel2, #182A3B);
+      border-color: var(--accent, #58A6D6);
+    }
+    #vTerminalLockGate:not([style*="display: none"]) ~ #vFeedbackBtn,
+    #vTerminalLockGate:not([style*="display: none"]) ~ #vFeedbackModal,
+    body:has(#vTerminalLockGate:not([style*="display: none"])) #vFeedbackBtn,
+    body:has(#vTerminalLockGate:not([style*="display: none"])) #vFeedbackModal {
+      display: none !important;
+    }
+
+    #vFeedbackModal {
+      position: fixed;
+      bottom: 74px;
+      right: 20px;
+      z-index: 10000;
+      width: 340px;
+      max-width: calc(100vw - 32px);
+      background: var(--panel, #132230);
+      border: 1px solid var(--line, #223648);
+      border-radius: 10px;
+      padding: 16px 18px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.05);
+      font-family: var(--font, system-ui, sans-serif);
+      color: var(--text, #E4ECF2);
+      box-sizing: border-box;
+    }
+    html[data-theme="light"] #vFeedbackBtn {
+      background: var(--panel, #FFFFFF);
+      border-color: var(--line, #D0D7DE);
+      color: var(--text, #1F2328);
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+    }
+    html[data-theme="light"] #vFeedbackModal {
+      background: var(--panel, #FFFFFF);
+      border-color: var(--line, #D0D7DE);
+      color: var(--text, #1F2328);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.2);
+    }
+
+    .v-fb-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line, #223648);
+    }
+    .v-fb-title {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text, #E4ECF2);
+    }
+    html[data-theme="light"] .v-fb-title {
+      color: var(--text, #1F2328);
+    }
+    .v-fb-close {
+      background: transparent;
+      border: none;
+      color: var(--muted, #8FA3B5);
+      font-size: 20px;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .v-fb-close:hover {
+      color: var(--text, #E4ECF2);
+      background: var(--panel2, #182A3B);
+    }
+    .v-fb-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .v-fb-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .v-fb-label-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .v-fb-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--muted, #8FA3B5);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .v-fb-count {
+      font-size: 11px;
+      font-family: var(--font-mono, monospace);
+      color: var(--faint, #5F7487);
+    }
+    .v-fb-select, .v-fb-textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: var(--input-bg, #09121B);
+      border: 1px solid var(--input-border, #223648);
+      border-radius: 6px;
+      color: var(--text, #E4ECF2);
+      font-family: inherit;
+      font-size: 13px;
+      padding: 8px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    html[data-theme="light"] .v-fb-select,
+    html[data-theme="light"] .v-fb-textarea {
+      background: #F6F8FA;
+      border-color: #D0D7DE;
+      color: #1F2328;
+    }
+    .v-fb-select:focus, .v-fb-textarea:focus {
+      border-color: var(--accent, #58A6D6);
+    }
+    .v-fb-textarea {
+      resize: vertical;
+      min-height: 80px;
+      line-height: 1.4;
+    }
+    .v-fb-alert {
+      padding: 8px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+    .v-fb-alert.error {
+      background: rgba(239, 83, 80, 0.15);
+      border: 1px solid rgba(239, 83, 80, 0.4);
+      color: #FF8A80;
+    }
+    .v-fb-alert.success {
+      background: rgba(76, 175, 80, 0.15);
+      border: 1px solid rgba(76, 175, 80, 0.4);
+      color: #81C784;
+    }
+    .v-fb-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .v-fb-btn-cancel {
+      background: transparent;
+      border: 1px solid var(--line, #223648);
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: var(--muted, #8FA3B5);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .v-fb-btn-cancel:hover {
+      background: var(--panel2, #182A3B);
+      color: var(--text, #E4ECF2);
+    }
+    .v-fb-btn-submit {
+      background: var(--btn-bg, #1F78B4);
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      color: #FFFFFF;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, background 0.15s;
+    }
+    .v-fb-btn-submit:hover {
+      background: var(--btn-hover, #298FD4);
+    }
+    .v-fb-btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  </style>
+
+  <button id="vFeedbackBtn" type="button" aria-label="Give Feedback" title="Give Feedback (💬)">
+    💬
+  </button>
+
+  <div id="vFeedbackModal" role="dialog" aria-labelledby="vFeedbackTitle" aria-modal="true" style="display:none;">
+    <div class="v-fb-header">
+      <div id="vFeedbackTitle" class="v-fb-title">
+        <span style="font-size:16px;">💬</span>
+        <span>Share Feedback</span>
+      </div>
+      <button id="vFeedbackClose" type="button" class="v-fb-close" aria-label="Close feedback modal">&times;</button>
+    </div>
+
+    <form id="vFeedbackForm" class="v-fb-body" onsubmit="return false;">
+      <div id="vFeedbackAlert" class="v-fb-alert" style="display:none;"></div>
+
+      <div class="v-fb-group">
+        <label for="vFeedbackCategory" class="v-fb-label">Category</label>
+        <select id="vFeedbackCategory" class="v-fb-select">
+          <option value="bug">🐛 Bug report</option>
+          <option value="idea">💡 Feature idea</option>
+          <option value="other">💬 Other feedback</option>
+        </select>
+      </div>
+
+      <div class="v-fb-group">
+        <div class="v-fb-label-row">
+          <label for="vFeedbackMessage" class="v-fb-label">Message</label>
+          <span id="vFeedbackCharCount" class="v-fb-count">0 / 1000</span>
+        </div>
+        <textarea id="vFeedbackMessage" class="v-fb-textarea" rows="4" maxlength="1000" placeholder="Tell us what happened or what you'd like to see (max 1000 chars)..."></textarea>
+      </div>
+
+      <div class="v-fb-actions">
+        <button id="vFeedbackCancel" type="button" class="v-fb-btn-cancel">Cancel</button>
+        <button id="vFeedbackSubmit" type="button" class="v-fb-btn-submit">Send Feedback</button>
+      </div>
+    </form>
+  </div>
+
+  <script data-module="vFeedbackWidget">
+    (function () {
+      const btn = document.getElementById('vFeedbackBtn');
+      const modal = document.getElementById('vFeedbackModal');
+      const closeBtn = document.getElementById('vFeedbackClose');
+      const cancelBtn = document.getElementById('vFeedbackCancel');
+      const submitBtn = document.getElementById('vFeedbackSubmit');
+      const catSelect = document.getElementById('vFeedbackCategory');
+      const msgArea = document.getElementById('vFeedbackMessage');
+      const charCount = document.getElementById('vFeedbackCharCount');
+      const alertBox = document.getElementById('vFeedbackAlert');
+      const gate = document.getElementById('vTerminalLockGate');
+
+      function isTerminalUnlocked() {
+        return Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
+      }
+
+      function updateWidgetVisibility() {
+        if (isTerminalUnlocked()) {
+          if (btn) btn.style.display = 'flex';
+        } else {
+          if (btn) btn.style.display = 'none';
+          if (modal) modal.style.display = 'none';
+        }
+      }
+
+      function showAlert(msg, type) {
+        if (!alertBox) return;
+        alertBox.textContent = msg;
+        alertBox.className = 'v-fb-alert ' + (type || 'error');
+        alertBox.style.display = 'block';
+      }
+
+      function hideAlert() {
+        if (!alertBox) return;
+        alertBox.textContent = '';
+        alertBox.style.display = 'none';
+      }
+
+      function openModal() {
+        if (!isTerminalUnlocked()) return;
+        hideAlert();
+        if (modal) modal.style.display = 'block';
+        if (msgArea) msgArea.focus();
+      }
+
+      function closeModal() {
+        if (modal) modal.style.display = 'none';
+        hideAlert();
+      }
+
+      if (btn) {
+        btn.addEventListener('click', () => {
+          if (modal && modal.style.display !== 'none') {
+            closeModal();
+          } else {
+            openModal();
+          }
+        });
+      }
+
+      if (closeBtn) closeBtn.addEventListener('click', closeModal);
+      if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
+
+      if (msgArea) {
+        msgArea.addEventListener('input', () => {
+          const len = msgArea.value.length;
+          if (charCount) charCount.textContent = len + ' / 1000';
+          if (alertBox && alertBox.className.includes('error')) hideAlert();
+        });
+      }
+
+      if (submitBtn) {
+        submitBtn.addEventListener('click', async () => {
+          const message = msgArea ? msgArea.value.trim() : '';
+          const category = catSelect ? catSelect.value : 'other';
+
+          if (!message) {
+            showAlert('Please enter a feedback message', 'error');
+            if (msgArea) msgArea.focus();
+            return;
+          }
+          if (message.length > 1000) {
+            showAlert('Feedback message cannot exceed 1000 characters', 'error');
+            return;
+          }
+
+          hideAlert();
+          submitBtn.disabled = true;
+          const originalText = submitBtn.textContent;
+          submitBtn.textContent = 'Sending...';
+
+          try {
+            const resp = await fetch('/api/v1/feedback', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              credentials: 'same-origin',
+              body: JSON.stringify({ category, message }),
+            });
+
+            const data = await resp.json().catch(() => ({}));
+
+            if (resp.status === 201 && data.success) {
+              showAlert('Thank you — feedback sent', 'success');
+              if (msgArea) msgArea.value = '';
+              if (charCount) charCount.textContent = '0 / 1000';
+              setTimeout(() => {
+                closeModal();
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+              }, 1400);
+            } else {
+              showAlert(data.error || 'Failed to submit feedback. Please try again.', 'error');
+              submitBtn.disabled = false;
+              submitBtn.textContent = originalText;
+            }
+          } catch (err) {
+            showAlert('Network error while submitting feedback', 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalText;
+          }
+        });
+      }
+
+      window.addEventListener('terminal:unlocked', () => {
+        updateWidgetVisibility();
+      });
+
+      window.addEventListener('terminal:locked', () => {
+        updateWidgetVisibility();
+      });
+
+      setTimeout(updateWidgetVisibility, 300);
+    })();
+  </script>
+
+  <!-- ════════ Voice Command Hook & Toast System (#vVoiceBtn & #vToastContainer - Task T1.7) ════════ -->
+  <style id="vVoiceToastCss">
+    #vVoiceBtn {
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      background: var(--panel2, #182A3B);
+      border: 1px solid var(--line, #223648);
+      color: var(--text, #E4ECF2);
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      outline: none;
+    }
+    #vVoiceBtn:hover {
+      background: var(--panel3, #223648);
+      border-color: var(--accent, #58A6D6);
+    }
+    #vVoiceBtn.active,
+    #vVoiceBtn[aria-pressed="true"] {
+      background: rgba(88, 166, 214, 0.25) !important;
+      border-color: var(--accent, #58A6D6) !important;
+      color: var(--accent, #58A6D6) !important;
+      animation: vVoiceGlow 1.2s ease-in-out infinite alternate !important;
+    }
+    @keyframes vVoiceGlow {
+      0% {
+        box-shadow: 0 0 4px var(--accent, #58A6D6), 0 0 8px rgba(88, 166, 214, 0.3);
+        transform: scale(1);
+      }
+      100% {
+        box-shadow: 0 0 12px var(--accent, #58A6D6), 0 0 22px rgba(88, 166, 214, 0.7);
+        transform: scale(1.08);
+      }
+    }
+    #vTerminalLockGate:not([style*="display: none"]) ~ * #vVoiceBtn,
+    body:has(#vTerminalLockGate:not([style*="display: none"])) #vVoiceBtn {
+      display: none !important;
+    }
+    html[data-theme="light"] #vVoiceBtn {
+      background: #FFFFFF;
+      border-color: #D0D7DE;
+      color: #1F2328;
+    }
+    html[data-theme="light"] #vVoiceBtn.active,
+    html[data-theme="light"] #vVoiceBtn[aria-pressed="true"] {
+      background: rgba(31, 120, 180, 0.15) !important;
+      border-color: #1F78B4 !important;
+      color: #1F78B4 !important;
+    }
+
+    /* Toast Notification System */
+    #vToastContainer {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      pointer-events: none;
+      max-width: 90vw;
+    }
+    .v-toast {
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      font-family: var(--font, system-ui, sans-serif);
+      line-height: 1.4;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+      transition: opacity 0.25s ease, transform 0.25s ease;
+      animation: vToastIn 0.25s ease forwards;
+      cursor: pointer;
+    }
+    @keyframes vToastIn {
+      from { opacity: 0; transform: translateY(12px) scale(0.95); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .v-toast.fade-out {
+      opacity: 0;
+      transform: translateY(8px) scale(0.95);
+    }
+    .v-toast.info {
+      background: var(--panel2, #182A3B);
+      color: var(--text, #E4ECF2);
+      border: 1px solid var(--line2, #2C4459);
+    }
+    .v-toast.success {
+      background: rgba(16, 185, 129, 0.15);
+      color: #10B981;
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      backdrop-filter: blur(8px);
+    }
+    .v-toast.error {
+      background: rgba(239, 68, 68, 0.15);
+      color: #EF4444;
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      backdrop-filter: blur(8px);
+    }
+    html[data-theme="light"] .v-toast.info {
+      background: #FFFFFF;
+      color: #1F2328;
+      border-color: #D0D7DE;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+    }
+    html[data-theme="light"] .v-toast.success {
+      background: #DCFCE7;
+      color: #15803D;
+      border-color: #86EFAC;
+    }
+    html[data-theme="light"] .v-toast.error {
+      background: #FEE2E2;
+      color: #B91C1C;
+      border-color: #FCA5A5;
+    }
+  </style>
+
+  <div id="vToastContainer" aria-live="polite"></div>
+
+  <script data-module="vVoiceHook">
+    (function () {
+      // 1. Toast Notification System
+      const activeToasts = [];
+      window.showToast = function (message, type, durationMs) {
+        type = type || 'info';
+        durationMs = typeof durationMs === 'number' ? durationMs : 3000;
+
+        let container = document.getElementById('vToastContainer');
+        if (!container) {
+          container = document.createElement('div');
+          container.id = 'vToastContainer';
+          document.body.appendChild(container);
+        }
+
+        // Max 3 toasts visible at once (oldest dismissed first)
+        while (activeToasts.length >= 3) {
+          const oldest = activeToasts.shift();
+          if (oldest && oldest.parentNode) {
+            oldest.remove();
+          }
+        }
+
+        const toast = document.createElement('div');
+        toast.className = 'v-toast ' + type;
+        toast.setAttribute('role', 'alert');
+
+        const icon = type === 'success' ? '✓ ' : type === 'error' ? '⚠ ' : 'ℹ ';
+        toast.textContent = icon + message;
+
+        container.appendChild(toast);
+        activeToasts.push(toast);
+
+        let dismissed = false;
+        function dismiss() {
+          if (dismissed) return;
+          dismissed = true;
+          toast.classList.add('fade-out');
+          setTimeout(() => {
+            if (toast.parentNode) toast.parentNode.removeChild(toast);
+            const idx = activeToasts.indexOf(toast);
+            if (idx !== -1) activeToasts.splice(idx, 1);
+          }, 250);
+        }
+
+        const timer = setTimeout(dismiss, durationMs);
+        toast.addEventListener('click', () => {
+          clearTimeout(timer);
+          dismiss();
+        });
+      };
+
+      // 2. Microphone Toolbar Button Toggle
+      const voiceBtn = document.getElementById('vVoiceBtn');
+      let isListening = false;
+
+      function updateVoiceBtnState(active) {
+        isListening = active;
+        if (!voiceBtn) return;
+        if (isListening) {
+          voiceBtn.classList.add('active');
+          voiceBtn.setAttribute('aria-pressed', 'true');
+          voiceBtn.title = 'Voice commands: listening (active) - click to stop';
+          window.showToast('Voice: listening (stub)...', 'info', 2500);
+        } else {
+          voiceBtn.classList.remove('active');
+          voiceBtn.setAttribute('aria-pressed', 'false');
+          voiceBtn.title = 'Voice commands (🎤) - click to listen';
+          window.showToast('Voice: stopped', 'info', 2000);
+        }
+      }
+
+      if (voiceBtn) {
+        voiceBtn.addEventListener('click', () => {
+          updateVoiceBtnState(!isListening);
+        });
+      }
+
+      // 3. Voice Command Dispatcher Stub
+      window.voiceDispatch = function (transcript) {
+        if (typeof transcript !== 'string') return;
+        const clean = transcript.trim().toLowerCase();
+
+        if (clean === 'lock terminal' || clean.includes('lock terminal')) {
+          window.showToast('Voice command: Locking terminal...', 'info');
+          if (typeof window.lockTerminal === 'function') {
+            window.lockTerminal('voice');
+          }
+        } else if (clean === 'show positions' || clean.includes('show positions')) {
+          const tracker = document.getElementById('vPositionTracker');
+          if (tracker) {
+            tracker.style.display = 'block';
+            const body = document.getElementById('vPosTrackerBody');
+            const toggle = document.getElementById('vPosTrackerToggle');
+            if (body) body.classList.remove('collapsed');
+            if (toggle) toggle.textContent = '▼';
+            try { localStorage.setItem('v_pos_tracker_collapsed', '0'); } catch (e) {}
+            tracker.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            window.showToast('Voice command: Positions displayed', 'success');
+          }
+        } else if (clean === 'hide positions' || clean.includes('hide positions')) {
+          const tracker = document.getElementById('vPositionTracker');
+          if (tracker) {
+            const body = document.getElementById('vPosTrackerBody');
+            const toggle = document.getElementById('vPosTrackerToggle');
+            if (body) body.classList.add('collapsed');
+            if (toggle) toggle.textContent = '▶';
+            try { localStorage.setItem('v_pos_tracker_collapsed', '1'); } catch (e) {}
+            window.showToast('Voice command: Positions collapsed', 'info');
+          }
+        } else if (clean === 'send feedback' || clean.includes('send feedback')) {
+          const modal = document.getElementById('vFeedbackModal');
+          if (modal) {
+            modal.style.display = 'block';
+            const msgArea = document.getElementById('vFeedbackMessage');
+            if (msgArea) msgArea.focus();
+            window.showToast('Voice command: Feedback modal opened', 'success');
+          }
+        } else {
+          console.log('Voice: unrecognised:', transcript);
+        }
+      };
+
+      // Reset button on terminal lock
+      window.addEventListener('terminal:locked', () => {
+        if (isListening && voiceBtn) {
+          isListening = false;
+          voiceBtn.classList.remove('active');
+          voiceBtn.setAttribute('aria-pressed', 'false');
+        }
+      });
+    })();
+  </script>
+
 </body>
 </html>
