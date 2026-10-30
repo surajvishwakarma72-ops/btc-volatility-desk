@@ -65187,6 +65187,7 @@ body.light #vUniversalFloatingPnl,
 
   /** Update Draggable Universal Floating PnL Pill & Greeks Card */
   function updateFloatingPnl(openPos) {
+    return; // Replaced by Greek P&L Attribution Floating Panel (Task T2.4)
     let flEl = $('vUniversalFloatingPnl');
     if (!flEl) {
       flEl = D.createElement('div');
@@ -66502,6 +66503,454 @@ body.light #vUniversalFloatingPnl,
       cursor: not-allowed;
     }
   </style>
+
+  <!-- ════════ Universal Floating P&L Panel (Greek P&L Attribution - Task T2.4) ════════ -->
+  <style id="vUniversalFloatingPnlCss">
+    #vFeedbackBtn {
+      left: 20px !important;
+      right: auto !important;
+    }
+    #vUniversalFloatingPnl {
+      position: fixed !important;
+      bottom: 74px !important;
+      left: 20px !important;
+      top: auto !important;
+      right: auto !important;
+      z-index: 9998 !important;
+      width: 280px !important;
+      max-width: calc(100vw - 40px) !important;
+      background: var(--panel, #132230) !important;
+      border: 1px solid var(--line, #223648) !important;
+      border-radius: 8px !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45) !important;
+      font-family: var(--font, system-ui, sans-serif) !important;
+      color: var(--text, #E4ECF2) !important;
+      display: none;
+      flex-direction: column !important;
+      overflow: hidden !important;
+      user-select: none !important;
+      padding: 0 !important;
+      cursor: default !important;
+      transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
+    }
+    html[data-theme="light"] #vUniversalFloatingPnl,
+    body.light #vUniversalFloatingPnl,
+    #vUniversalFloatingPnl.v-light {
+      background: #FFFFFF !important;
+      border-color: #D0D7DE !important;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+      color: #1F2328 !important;
+    }
+    #vTerminalLockGate:not([style*="display: none"]) ~ #vUniversalFloatingPnl,
+    body:has(#vTerminalLockGate:not([style*="display: none"])) #vUniversalFloatingPnl {
+      display: none !important;
+    }
+    .v-fpnl-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid var(--line, #223648);
+      cursor: pointer;
+    }
+    html[data-theme="light"] .v-fpnl-header,
+    .v-light .v-fpnl-header {
+      background: #F6F8FA !important;
+      border-bottom-color: #D0D7DE !important;
+    }
+    .v-fpnl-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .v-fpnl-indicator {
+      color: #16c784;
+      font-size: 10px;
+    }
+    .v-fpnl-title {
+      font-size: 11.5px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+      color: var(--text, #E4ECF2);
+    }
+    html[data-theme="light"] .v-fpnl-title,
+    .v-light .v-fpnl-title {
+      color: #1F2328 !important;
+    }
+    .v-fpnl-badge {
+      font-family: var(--font-mono, monospace);
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--bg, #0D1721);
+      color: var(--muted, #8FA3B5);
+      border: 1px solid var(--line, #223648);
+    }
+    html[data-theme="light"] .v-fpnl-badge,
+    .v-light .v-fpnl-badge {
+      background: #EAEEF2 !important;
+      color: #57606A !important;
+      border-color: #D0D7DE !important;
+    }
+    .v-fpnl-toggle-btn {
+      background: none;
+      border: none;
+      color: var(--text, #E4ECF2);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    html[data-theme="light"] .v-fpnl-toggle-btn,
+    .v-light .v-fpnl-toggle-btn {
+      color: #1F2328 !important;
+    }
+    .v-fpnl-body {
+      padding: 10px 12px;
+      background: var(--panel, #132230);
+    }
+    html[data-theme="light"] .v-fpnl-body,
+    .v-light .v-fpnl-body {
+      background: #FFFFFF !important;
+    }
+    .v-fpnl-body.collapsed {
+      display: none !important;
+    }
+    .v-fpnl-content {
+      display: flex;
+      flex-direction: column;
+    }
+    .v-fpnl-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 5px;
+      font-size: 12px;
+    }
+    .v-fpnl-total {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .v-fpnl-divider {
+      height: 1px;
+      background: var(--line, #223648);
+      margin-bottom: 8px;
+    }
+    html[data-theme="light"] .v-fpnl-divider,
+    .v-light .v-fpnl-divider {
+      background: #E1E4E8 !important;
+    }
+    .v-fpnl-label {
+      color: var(--muted, #8FA3B5);
+      font-size: 11.5px;
+    }
+    html[data-theme="light"] .v-fpnl-label,
+    .v-light .v-fpnl-label {
+      color: #57606A !important;
+    }
+    .v-fpnl-value {
+      font-family: var(--font-mono, monospace);
+      font-weight: 600;
+      font-size: 12px;
+    }
+    .v-fpnl-val-pos {
+      color: #4CAF50 !important;
+    }
+    .v-fpnl-val-neg {
+      color: #F44336 !important;
+    }
+    .v-fpnl-val-zero {
+      color: var(--muted, #8FA3B5) !important;
+    }
+    html[data-theme="light"] .v-fpnl-val-zero,
+    .v-light .v-fpnl-val-zero {
+      color: #8C959F !important;
+    }
+    .v-fpnl-error {
+      color: #f59e0b;
+      text-align: center;
+      padding: 10px 0;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .v-fpnl-skeleton {
+      padding: 4px 0;
+    }
+    .v-fpnl-skel-line {
+      height: 12px;
+      background: var(--line, #223648);
+      border-radius: 4px;
+      margin-bottom: 8px;
+      animation: vFpnlShimmer 1.5s infinite ease-in-out;
+    }
+    html[data-theme="light"] .v-fpnl-skel-line,
+    .v-light .v-fpnl-skel-line {
+      background: #EAEEF2 !important;
+    }
+    @keyframes vFpnlShimmer {
+      0% { opacity: 0.35; }
+      50% { opacity: 0.8; }
+      100% { opacity: 0.35; }
+    }
+  </style>
+
+  <div id="vUniversalFloatingPnl" role="region" aria-label="Greek P&L Attribution">
+    <div class="v-fpnl-header" id="vFpnlHeader">
+      <div class="v-fpnl-title-wrap">
+        <span class="v-fpnl-indicator">●</span>
+        <span class="v-fpnl-title">Greek P&L Attribution</span>
+        <span id="vFpnlSymbolBadge" class="v-fpnl-badge">BTC</span>
+      </div>
+      <div class="v-fpnl-actions">
+        <button type="button" id="vFpnlToggleBtn" class="v-fpnl-toggle-btn" aria-label="Toggle Greek P&L Attribution panel" title="Collapse / Expand panel">▼</button>
+      </div>
+    </div>
+    <div id="vFpnlBody" class="v-fpnl-body">
+      <div class="v-fpnl-skeleton" id="vFpnlSkeleton">
+        <div class="v-fpnl-skel-line" style="width: 100%;"></div>
+        <div class="v-fpnl-skel-line" style="width: 85%;"></div>
+        <div class="v-fpnl-skel-line" style="width: 70%;"></div>
+        <div class="v-fpnl-skel-line" style="width: 90%;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script data-module="vGreekPnlFloating">
+    (function () {
+      let _fpnlPollingTimer = null;
+      let _fpnlCollapsed = false;
+
+      function getTerminalSymbol() {
+        const el = document.getElementById('symbol') ||
+                   document.getElementById('symbolSel') ||
+                   document.getElementById('currentSymbol') ||
+                   document.querySelector('select[name="symbol"]') ||
+                   document.querySelector('[data-symbol]');
+        if (el && el.value) return el.value.trim();
+
+        const posCell = document.querySelector('#vPosTrackerRows td:first-child');
+        if (posCell && !posCell.classList.contains('v-pos-empty')) {
+          const sym = posCell.textContent.trim();
+          if (sym && sym !== '—' && sym !== 'No open positions') return sym;
+        }
+
+        if (window.S && Array.isArray(window.S.apiPositions) && window.S.apiPositions.length > 0) {
+          const p = window.S.apiPositions[0];
+          const s = p.symbol || p.product_symbol;
+          if (s) return s;
+        }
+
+        if (window.S && Array.isArray(window.S.deltaPositionsReadOnly) && window.S.deltaPositionsReadOnly.length > 0) {
+          const p = window.S.deltaPositionsReadOnly[0];
+          const s = p.product_symbol || p.symbol;
+          if (s) return s;
+        }
+
+        if (window.S && window.S.tickerGreeks) {
+          const keys = Object.keys(window.S.tickerGreeks);
+          if (keys.length > 0) return keys[0];
+        }
+
+        const symSpan = document.querySelector('#gTop .sym');
+        if (symSpan) {
+          const t = symSpan.childNodes[0]?.textContent?.trim();
+          if (t) return t;
+        }
+
+        return 'BTC';
+      }
+
+      function formatVal(v) {
+        const n = Number(v) || 0;
+        if (Math.abs(n) < 0.005) {
+          return { text: '$0.00', cls: 'v-fpnl-val-zero' };
+        }
+        if (n > 0) {
+          return { text: '+$' + n.toFixed(2), cls: 'v-fpnl-val-pos' };
+        }
+        return { text: '-$' + Math.abs(n).toFixed(2), cls: 'v-fpnl-val-neg' };
+      }
+
+      function renderData(d) {
+        const body = document.getElementById('vFpnlBody');
+        if (!body) return;
+
+        const total = formatVal(d.total_pnl);
+        const delta = formatVal(d.delta_pnl);
+        const gamma = formatVal(d.gamma_pnl);
+        const theta = formatVal(d.theta_pnl);
+        const vega = formatVal(d.vega_pnl);
+        const other = formatVal(d.other_pnl);
+
+        body.innerHTML =
+          '<div class="v-fpnl-content">' +
+            '<div class="v-fpnl-row v-fpnl-total">' +
+              '<span class="v-fpnl-label" style="font-weight:700;">Total P&L (USD)</span>' +
+              '<span class="v-fpnl-value ' + total.cls + '">' + total.text + '</span>' +
+            '</div>' +
+            '<div class="v-fpnl-divider"></div>' +
+            '<div class="v-fpnl-row">' +
+              '<span class="v-fpnl-label">Delta P&L</span>' +
+              '<span class="v-fpnl-value ' + delta.cls + '">' + delta.text + '</span>' +
+            '</div>' +
+            '<div class="v-fpnl-row">' +
+              '<span class="v-fpnl-label">Gamma P&L</span>' +
+              '<span class="v-fpnl-value ' + gamma.cls + '">' + gamma.text + '</span>' +
+            '</div>' +
+            '<div class="v-fpnl-row">' +
+              '<span class="v-fpnl-label">Theta P&L</span>' +
+              '<span class="v-fpnl-value ' + theta.cls + '">' + theta.text + '</span>' +
+            '</div>' +
+            '<div class="v-fpnl-row">' +
+              '<span class="v-fpnl-label">Vega P&L</span>' +
+              '<span class="v-fpnl-value ' + vega.cls + '">' + vega.text + '</span>' +
+            '</div>' +
+            '<div class="v-fpnl-row">' +
+              '<span class="v-fpnl-label">Other P&L</span>' +
+              '<span class="v-fpnl-value ' + other.cls + '">' + other.text + '</span>' +
+            '</div>' +
+          '</div>';
+      }
+
+      function showError() {
+        const body = document.getElementById('vFpnlBody');
+        if (!body) return;
+        body.innerHTML = '<div class="v-fpnl-error">P&L unavailable</div>';
+      }
+
+      async function fetchAttribution() {
+        const gate = document.getElementById('vTerminalLockGate');
+        const isAuth = Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
+        if (!isAuth || _fpnlCollapsed) return;
+
+        const sym = getTerminalSymbol();
+        const badge = document.getElementById('vFpnlSymbolBadge');
+        if (badge) badge.textContent = sym;
+
+        try {
+          const headers = { Accept: 'application/json' };
+          const token = localStorage.getItem('desk_token') || localStorage.getItem('jwt') || localStorage.getItem('token');
+          if (token) {
+            headers['Authorization'] = 'Bearer ' + token;
+          }
+
+          const res = await fetch('/api/v1/pnl/greek?symbol=' + encodeURIComponent(sym), {
+            headers,
+            credentials: 'include',
+          });
+
+          if (!res.ok) {
+            showError();
+            return;
+          }
+
+          const data = await res.json();
+          if (!data || data.success === false) {
+            showError();
+            return;
+          }
+
+          renderData(data);
+        } catch {
+          showError();
+        }
+      }
+
+      function startPolling() {
+        stopPolling();
+        if (_fpnlCollapsed) return;
+        const gate = document.getElementById('vTerminalLockGate');
+        const isAuth = Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
+        if (!isAuth) return;
+
+        fetchAttribution();
+        _fpnlPollingTimer = setInterval(() => {
+          if (_fpnlCollapsed) {
+            stopPolling();
+            return;
+          }
+          fetchAttribution();
+        }, 5000);
+      }
+
+      function stopPolling() {
+        if (_fpnlPollingTimer) {
+          clearInterval(_fpnlPollingTimer);
+          _fpnlPollingTimer = null;
+        }
+      }
+
+      function setCollapsed(collapsed) {
+        _fpnlCollapsed = collapsed;
+        const body = document.getElementById('vFpnlBody');
+        const btn = document.getElementById('vFpnlToggleBtn');
+        if (body) {
+          if (collapsed) body.classList.add('collapsed');
+          else body.classList.remove('collapsed');
+        }
+        if (btn) {
+          btn.textContent = collapsed ? '▶' : '▼';
+        }
+
+        if (collapsed) {
+          stopPolling();
+        } else {
+          startPolling();
+        }
+      }
+
+      function updateVisibility() {
+        const panel = document.getElementById('vUniversalFloatingPnl');
+        if (!panel) return;
+        const gate = document.getElementById('vTerminalLockGate');
+        const isAuth = Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
+
+        if (!isAuth) {
+          panel.style.display = 'none';
+          stopPolling();
+        } else {
+          panel.style.display = 'flex';
+          if (!_fpnlCollapsed && !_fpnlPollingTimer) {
+            startPolling();
+          }
+        }
+      }
+
+      function init() {
+        const header = document.getElementById('vFpnlHeader');
+        if (header) {
+          header.addEventListener('click', () => {
+            setCollapsed(!_fpnlCollapsed);
+          });
+        }
+
+        window.addEventListener('terminal:unlocked', () => {
+          updateVisibility();
+          if (!_fpnlCollapsed) startPolling();
+        });
+
+        window.addEventListener('terminal:locked', () => {
+          updateVisibility();
+          stopPolling();
+        });
+
+        updateVisibility();
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        setTimeout(init, 50);
+      }
+    })();
+  </script>
 
   <button id="vFeedbackBtn" type="button" aria-label="Give Feedback" title="Give Feedback (💬)">
     💬
