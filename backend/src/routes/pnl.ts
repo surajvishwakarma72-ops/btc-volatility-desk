@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { computeGreekPnl, type PositionInput } from '../services/greek-pnl.js';
+import { getSessionPnl } from '../services/session-pnl.js';
 import { isTokenRevoked, sessionStillValid } from '../services/session-guard.js';
 import { DESK_USER_ID } from '../services/auth-store.js';
 
@@ -131,6 +132,29 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
       other_pnl: res.other_pnl,
       total_pnl: res.total_pnl,
     });
+  });
+
+  // GET /api/v1/pnl/session — returns today's aggregated P&L from fills table (Task T4.3)
+  fastify.get('/session', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const query = (request.query || {}) as { since?: string; date?: string };
+      const since = query.since || query.date;
+      const result = await getSessionPnl(since);
+      return reply.status(200).send({
+        total_pnl: result.total_pnl,
+        delta_pnl: result.delta_pnl,
+        gamma_pnl: result.gamma_pnl,
+        theta_pnl: result.theta_pnl,
+        vega_pnl: result.vega_pnl,
+        other_pnl: result.other_pnl,
+        fill_count: result.fill_count,
+      });
+    } catch (err: any) {
+      request.log?.error(err);
+      return reply.status(500).send({
+        error: err.message || 'Failed to aggregate session P&L',
+      });
+    }
   });
 };
 

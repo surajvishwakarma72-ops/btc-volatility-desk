@@ -33,6 +33,12 @@ export async function ensureFillsSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_fills_filled_at ON fills(filled_at DESC);
         CREATE INDEX IF NOT EXISTS idx_fills_symbol ON fills(symbol);
+        ALTER TABLE fills ADD COLUMN IF NOT EXISTS total_pnl numeric;
+        ALTER TABLE fills ADD COLUMN IF NOT EXISTS delta_pnl numeric;
+        ALTER TABLE fills ADD COLUMN IF NOT EXISTS gamma_pnl numeric;
+        ALTER TABLE fills ADD COLUMN IF NOT EXISTS theta_pnl numeric;
+        ALTER TABLE fills ADD COLUMN IF NOT EXISTS vega_pnl numeric;
+        ALTER TABLE fills ADD COLUMN IF NOT EXISTS other_pnl numeric;
       `);
     })();
   }

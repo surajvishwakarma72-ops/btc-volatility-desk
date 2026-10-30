@@ -20954,6 +20954,43 @@ on an empty top; the live board replaces it as soon as its numbers are in. Snaps
                   </div>
                 </div>
               </section>
+              <section id="vSessionPnl" class="panel v-session-pnl" aria-label="Session P&L Summary">
+                <div class="v-session-header">
+                  <div class="v-session-title-wrap">
+                    <span class="v-session-title">Session P&L</span>
+                    <span class="v-session-tag">Today UTC</span>
+                  </div>
+                  <div class="v-session-total-wrap">
+                    <span id="vSessionTotalPnl" class="v-session-total-val" data-field="total-pnl">$0.00</span>
+                  </div>
+                </div>
+                <div class="v-session-rows" id="vSessionRows">
+                  <div class="v-session-row" data-greek="delta">
+                    <span class="v-session-row-lbl">Delta P&L</span>
+                    <span id="vSessionDeltaPnl" class="v-session-row-val" data-field="delta-pnl">$0.00</span>
+                  </div>
+                  <div class="v-session-row" data-greek="gamma">
+                    <span class="v-session-row-lbl">Gamma P&L</span>
+                    <span id="vSessionGammaPnl" class="v-session-row-val" data-field="gamma-pnl">$0.00</span>
+                  </div>
+                  <div class="v-session-row" data-greek="theta">
+                    <span class="v-session-row-lbl">Theta P&L</span>
+                    <span id="vSessionThetaPnl" class="v-session-row-val" data-field="theta-pnl">$0.00</span>
+                  </div>
+                  <div class="v-session-row" data-greek="vega">
+                    <span class="v-session-row-lbl">Vega P&L</span>
+                    <span id="vSessionVegaPnl" class="v-session-row-val" data-field="vega-pnl">$0.00</span>
+                  </div>
+                  <div class="v-session-row" data-greek="other">
+                    <span class="v-session-row-lbl">Other P&L</span>
+                    <span id="vSessionOtherPnl" class="v-session-row-val" data-field="other-pnl">$0.00</span>
+                  </div>
+                </div>
+                <div class="v-session-footer">
+                  <span class="v-session-fill-lbl">Fills</span>
+                  <span id="vSessionFillCount" class="v-session-fill-val" data-field="fill-count">0</span>
+                </div>
+              </section>
             </div>
             <div id="chartsSlotDesk" class="charts-slot">
               <section class="panel charts" id="charts" aria-label="ATM IV candle charts">
@@ -68297,6 +68334,229 @@ body.light #vUniversalFloatingPnl,
       window.fetchIvRank = fetchIvRank;
       window.updateIvRankGauge = updateIvRankGauge;
       window.getRankColor = getRankColor;
+    })();
+  </script>
+  <style id="vSessionPnlCss">
+    #vSessionPnl.v-session-pnl {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-width: 190px;
+      max-width: 240px;
+      padding: 10px 14px;
+      background: var(--panel, #121824);
+      border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+      border-radius: var(--r84, 8px);
+      box-shadow: var(--hl84, none);
+      box-sizing: border-box;
+      position: relative;
+    }
+    html[data-theme="light"] #vSessionPnl.v-session-pnl {
+      background: var(--panel, #ffffff);
+      border-color: var(--line, #e2e8f0);
+    }
+    @media (max-width: 760px) {
+      #vSessionPnl.v-session-pnl {
+        max-width: 100%;
+        min-width: 0;
+        width: 100%;
+      }
+    }
+    .v-session-header {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+    }
+    .v-session-title-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .v-session-title {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--dim, #94a3b8);
+    }
+    .v-session-tag {
+      font-size: 9px;
+      font-weight: 600;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--dim, #94a3b8);
+      border: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+    }
+    .v-session-total-wrap {
+      display: flex;
+      align-items: baseline;
+      margin-top: 2px;
+    }
+    .v-session-total-val {
+      font-size: 20px;
+      font-weight: 700;
+      font-family: var(--mono, "JetBrains Mono", monospace);
+      line-height: 1.1;
+      color: var(--fg, #e2e8f0);
+      transition: color 0.2s ease;
+    }
+    .v-session-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 6px 0;
+      width: 100%;
+    }
+    .v-session-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      line-height: 1.2;
+    }
+    .v-session-row-lbl {
+      color: var(--dim, #94a3b8);
+      font-weight: 500;
+    }
+    .v-session-row-val {
+      font-weight: 600;
+      font-family: var(--mono, "JetBrains Mono", monospace);
+      color: var(--fg, #e2e8f0);
+      transition: color 0.2s ease;
+    }
+    .v-session-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 5px;
+      border-top: 1px solid var(--line, rgba(255, 255, 255, 0.08));
+      font-size: 10px;
+      color: var(--dim, #94a3b8);
+    }
+    .v-session-fill-lbl {
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .v-session-fill-val {
+      font-family: var(--mono, "JetBrains Mono", monospace);
+      font-weight: 600;
+      color: var(--fg, #e2e8f0);
+    }
+    /* Value styling */
+    .v-session-row-val.pos,
+    .v-session-total-val.pos {
+      color: #22c55e !important;
+    }
+    .v-session-row-val.neg,
+    .v-session-total-val.neg {
+      color: #ef4444 !important;
+    }
+    .v-session-row-val.zero,
+    .v-session-total-val.zero {
+      color: #94a3b8 !important;
+    }
+  </style>
+
+  <script data-module="vSessionPnlDisplay">
+    (function () {
+      let sessionPnlTimer = null;
+
+      function formatPnlCurrency(val) {
+        const num = Number(val) || 0;
+        const absStr = Math.abs(num).toLocaleString('en-US', {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        });
+        if (num > 0) return '+$' + absStr;
+        if (num < 0) return '-$' + absStr;
+        return '$0.00';
+      }
+
+      function applyPnlColor(el, val) {
+        if (!el) return;
+        const num = Number(val) || 0;
+        el.textContent = formatPnlCurrency(num);
+        el.setAttribute('data-value', String(num));
+
+        el.classList.remove('pos', 'neg', 'zero', 'val-pos', 'val-neg', 'val-zero', 'pnl-pos', 'pnl-neg', 'pnl-zero', 'green', 'red');
+
+        if (num > 0) {
+          el.classList.add('pos', 'val-pos', 'pnl-pos', 'green');
+          el.style.color = '#22c55e';
+        } else if (num < 0) {
+          el.classList.add('neg', 'val-neg', 'pnl-neg', 'red');
+          el.style.color = '#ef4444';
+        } else {
+          el.classList.add('zero', 'val-zero', 'pnl-zero');
+          el.style.color = '#94a3b8';
+        }
+      }
+
+      function updateSessionPnl(data) {
+        const panel = document.getElementById('vSessionPnl');
+        if (!panel) return;
+
+        const payload = (data && data.data) ? data.data : (data || {});
+
+        const totalPnl = Number(payload.total_pnl ?? 0);
+        const deltaPnl = Number(payload.delta_pnl ?? 0);
+        const gammaPnl = Number(payload.gamma_pnl ?? 0);
+        const thetaPnl = Number(payload.theta_pnl ?? 0);
+        const vegaPnl = Number(payload.vega_pnl ?? 0);
+        const otherPnl = Number(payload.other_pnl ?? 0);
+        const fillCount = Number(payload.fill_count ?? payload.count ?? 0);
+
+        panel.setAttribute('data-total-pnl', String(totalPnl));
+        panel.setAttribute('data-fill-count', String(fillCount));
+
+        applyPnlColor(document.getElementById('vSessionTotalPnl'), totalPnl);
+        applyPnlColor(document.getElementById('vSessionDeltaPnl'), deltaPnl);
+        applyPnlColor(document.getElementById('vSessionGammaPnl'), gammaPnl);
+        applyPnlColor(document.getElementById('vSessionThetaPnl'), thetaPnl);
+        applyPnlColor(document.getElementById('vSessionVegaPnl'), vegaPnl);
+        applyPnlColor(document.getElementById('vSessionOtherPnl'), otherPnl);
+
+        const countEl = document.getElementById('vSessionFillCount');
+        if (countEl) {
+          countEl.textContent = String(fillCount);
+        }
+      }
+
+      async function fetchSessionPnl() {
+        try {
+          const res = await fetch('/api/v1/pnl/session', {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' },
+            cache: 'no-store'
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          updateSessionPnl(data);
+        } catch (err) {
+          console.warn('fetchSessionPnl error:', err);
+        }
+      }
+
+      function startSessionPnlPolling() {
+        if (sessionPnlTimer) clearInterval(sessionPnlTimer);
+        fetchSessionPnl();
+        sessionPnlTimer = setInterval(fetchSessionPnl, 30000);
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startSessionPnlPolling);
+      } else {
+        startSessionPnlPolling();
+      }
+
+      window.addEventListener('terminal:unlocked', fetchSessionPnl);
+
+      window.fetchSessionPnl = fetchSessionPnl;
+      window.updateSessionPnl = updateSessionPnl;
     })();
   </script>
 </body>
