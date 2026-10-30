@@ -5,6 +5,7 @@ import { isTokenRevoked, sessionStillValid } from '../services/session-guard.js'
 import { DESK_USER_ID } from '../services/auth-store.js';
 import { loadDeltaKey } from '../services/delta-keys.js';
 import { deltaSignedGet } from './delta.js';
+import { isDeskHalted } from '../services/kill-switch.js';
 
 function parseCookies(header?: string): Record<string, string> {
   const list: Record<string, string> = {};
@@ -47,6 +48,22 @@ export function resetActiveConnections(): void {
     }
   }
   userConnections.clear();
+}
+
+/**
+ * Broadcast kill switch status to all active WebSocket connections.
+ */
+export function broadcastKillSwitch(halted: boolean = true): void {
+  const payload = JSON.stringify({ type: 'KILL_SWITCH', halted });
+  for (const conns of userConnections.values()) {
+    for (const ws of conns) {
+      if (ws.readyState === 1) { // 1 === WebSocket.OPEN
+        try {
+          ws.send(payload);
+        } catch {}
+      }
+    }
+  }
 }
 
 type PositionsProvider = (userId: string) => Promise<any[]> | any[];
@@ -188,7 +205,19 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     }
   };
 
+  const onKillSwitch = (halted: boolean) => {
+    if (socket.readyState === 1) {
+      socket.send(JSON.stringify({ type: 'KILL_SWITCH', halted }));
+    }
+  };
+
   deskEvents.on('fill', onFill);
+  deskEvents.on('kill_switch', onKillSwitch);
+
+  // If desk is already halted on connection, notify client immediately
+  if (isDeskHalted() && socket.readyState === 1) {
+    socket.send(JSON.stringify({ type: 'KILL_SWITCH', halted: true }));
+  }
 
   // Periodic intervals: positions every 2s, tickers every 4s
   const positionsInterval = setInterval(() => {
@@ -211,6 +240,7 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     clearInterval(positionsInterval);
     clearInterval(tickersInterval);
     deskEvents.removeListener('fill', onFill);
+    deskEvents.removeListener('kill_switch', onKillSwitch);
     conns?.delete(socket);
     if (conns && conns.size === 0) {
       userConnections.delete(userId);

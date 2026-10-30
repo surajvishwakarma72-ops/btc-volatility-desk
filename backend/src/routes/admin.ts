@@ -1,8 +1,11 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { DESK_USER_ID } from '../services/auth-store.js';
 import { isTokenRevoked } from '../services/session-guard.js';
-import { ensureAdminAuditSchema, getAuditLogs } from '../services/audit-logger.js';
+import { ensureAdminAuditSchema, getAuditLogs, logAudit } from '../services/audit-logger.js';
 import { pool } from '../db/index.js';
+import { isDeskHalted, setDeskHalted, isAdminKillSwitchEnabled } from '../services/kill-switch.js';
+import { broadcastKillSwitch } from './ws-desk.js';
+import { broadcastKillSwitchEvent } from '../services/desk-events.js';
 
 function parseCookies(header: string): Record<string, string> {
   const list: Record<string, string> = {};
@@ -103,6 +106,71 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     });
   };
 
+  // GET /api/v1/admin/kill-switch/status
+  const handleKillSwitchStatus = async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.status(200).send({
+      halted: isDeskHalted(),
+      flag_enabled: isAdminKillSwitchEnabled(),
+    });
+  };
+
+  // POST /api/v1/admin/kill-switch
+  const handleKillSwitchPost = async (request: FastifyRequest, reply: FastifyReply) => {
+    const auth = await verifyAdminAuth(request, fastify);
+    if (!auth.user) {
+      return reply.status(401).send({
+        success: false,
+        error: auth.error || 'Unauthorized: Owner session required',
+      });
+    }
+
+    const ip = (request.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || request.ip || '127.0.0.1';
+    const actorId = auth.user.sub || auth.user.id || DESK_USER_ID;
+
+    // Feature flag gate: ENABLE_ADMIN_KILL_SWITCH must be true
+    if (!isAdminKillSwitchEnabled()) {
+      void logAudit(pool, actorId, 'kill_switch', 'denied', ip);
+      return reply.status(403).send({
+        success: false,
+        error: 'Kill switch is disabled by owner setting (D5)',
+        halted: isDeskHalted(),
+        flag_enabled: false,
+      });
+    }
+
+    const body = (request.body || {}) as { resume?: boolean; reset?: boolean; halted?: boolean };
+    const isResume = body.resume === true || body.reset === true || body.halted === false;
+
+    if (isResume) {
+      setDeskHalted(false);
+      broadcastKillSwitch(false);
+      broadcastKillSwitchEvent(false);
+      void logAudit(pool, actorId, 'kill_switch_reset', 'success', ip);
+      return reply.status(200).send({
+        success: true,
+        halted: false,
+        flag_enabled: true,
+        message: 'Desk resumed successfully',
+      });
+    }
+
+    // Activate kill switch: deskHalted = true
+    setDeskHalted(true);
+    broadcastKillSwitch(true);
+    broadcastKillSwitchEvent(true);
+    void logAudit(pool, actorId, 'kill_switch', 'success', ip);
+
+    return reply.status(200).send({
+      success: true,
+      halted: true,
+      flag_enabled: true,
+      message: 'Desk halted successfully',
+    });
+  };
+
   fastify.get('/audit', handleAuditGet);
   fastify.get('/', handleAuditGet);
+  fastify.get('/kill-switch/status', handleKillSwitchStatus);
+  fastify.get('/kill-switch', handleKillSwitchStatus);
+  fastify.post('/kill-switch', handleKillSwitchPost);
 };

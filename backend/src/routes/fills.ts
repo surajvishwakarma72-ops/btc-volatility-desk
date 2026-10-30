@@ -5,6 +5,7 @@ import { isTokenRevoked, sessionStillValid } from '../services/session-guard.js'
 import { DESK_USER_ID } from '../services/auth-store.js';
 import { broadcastFill } from '../services/desk-events.js';
 import { logAudit } from '../services/audit-logger.js';
+import { isDeskHalted } from '../services/kill-switch.js';
 
 let schemaReady: Promise<void> | null = null;
 
@@ -214,6 +215,10 @@ export const fillsRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /api/v1/fills/ingest
   fastify.post('/ingest', async (request: FastifyRequest, reply: FastifyReply) => {
+    if (isDeskHalted()) {
+      return reply.status(503).send({ error: 'desk_halted' });
+    }
+
     const auth = await verifyAuth(request, fastify);
     if (!auth.user) {
       return reply.status(auth.errorStatus || 401).send({ success: false, error: auth.error });

@@ -11,6 +11,10 @@ export function broadcastFill(fillRow: Record<string, unknown>): void {
   deskEvents.emit('fill', fillRow);
 }
 
+export function broadcastKillSwitchEvent(halted: boolean = true): void {
+  deskEvents.emit('kill_switch', halted);
+}
+
 export function resetDeskEvents(): void {
   deskEvents.removeAllListeners();
 }
