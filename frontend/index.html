@@ -52420,7 +52420,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           o.a.applyOptions({ lastValueVisible: true, crosshairMarkerVisible: true, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
           ch.applyOptions({ leftPriceScale: { visible: true, borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.06 }, minimumWidth: 52 } });
           o.b = Ln('#E3AE45', 1.5, pf(0, '$'), 'left'); o.c = Ln('#4C9BE8', 1.5, pf(0, '$'), 'left'); o.d = Ln('#B48CF0', 1.5, pf(0, '$'), 'left'); o.e = Ln('#15803d', 2, pf(0, '$'), 'left');
-          for (const s of [o.b, o.c, o.d, o.e]) s.applyOptions({ lastValueVisible: false });
+          for (const s of [o.a, o.b, o.c, o.d, o.e]) s.applyOptions({ lineType: 2 }); for (const s of [o.b, o.c, o.d, o.e]) s.applyOptions({ lastValueVisible: false });
           o.pd = { risk: false, sell: 70, caution: 45, marks: [] }; o.pl = [];
           o.prim = new Prim(sc => {
             const c = sc.context, vr = sc.verticalPixelRatio, hr = sc.horizontalPixelRatio, w = sc.bitmapSize.width, h = sc.bitmapSize.height, P = o.pd;
@@ -52830,7 +52830,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         if (k === 'pulse') {
           const P = pulseGet(), d = P.s, card = d && d.card, risk = !!LSg('v153_risk', false);
           const barOf = t => { if (!B.n || t0ms(B.b[0]) > t) return -1; let lo = 0, hi = B.n - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (t0ms(B.b[m]) <= t) lo = m; else hi = m - 1; } return t < t0ms(B.b[lo]) + B.tf ? lo : -1; };
-          const put = (series, list, get) => { const a = new Array(B.n).fill(null); for (const p of list || []) { const v = get(p); const i = v == null ? -1 : barOf(p.t); if (i >= 0) a[i] = v; } series.setData(B.b.map((b, i) => (a[i] == null ? { time: b.time } : { time: b.time, value: a[i] }))); return a; };
+          const put = (series, list, get) => { const a = new Array(B.n).fill(null); for (const p of list || []) { const v = get(p); const i = v == null ? -1 : barOf(p.t); if (i >= 0) a[i] = v; } let prev = -1; for (let i = 0; i < B.n; i++) { if (a[i] == null) continue; if (prev >= 0 && i - prev > 1) for (let j = prev + 1; j < i; j++) a[j] = a[prev] + (a[i] - a[prev]) * (j - prev) / (i - prev); prev = i; } series.setData(B.b.flatMap((b, i) => (a[i] == null ? [] : [{ time: b.time, value: a[i] }]))); return a; };
           put(o.a, d && d.points, p => (p.c == null ? null : risk ? 100 - p.c : p.c));
           const ac = put(o.b, d && d.pnl, p => p.call), ap = put(o.c, d && d.pnl, p => p.put), af = put(o.d, d && d.pnl, p => p.fut), an = put(o.e, d && d.pnl, p => p.net);
           const ZC = { sell: '#22A06B', caution: '#E3AE45', avoid: '#E05252', nodata: '#8FA3B5' }, ZL = { sell: 'SELL', caution: 'WAIT', avoid: 'AVOID', nodata: 'NO DATA' };
