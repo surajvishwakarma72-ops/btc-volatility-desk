@@ -110,3 +110,27 @@ export const REGIME_GATE_CONFIG = {
   /** Fewest completed bars before bar inputs are trusted: 372 days, as the browser's RVP window needs 366 rolling 7-day values. */
   minBars: 8928,
 } as const;
+
+/** Strangle Pulse confidence score: every weight and cut-off. Initial weights are untested judgement until calibration (Phase 7). */
+export const SCORE_CONFIG = {
+  weights: { decay: 20, realized: 15, delta: 15, balance: 15, iv: 10, oi: 10, futures: 10, liquidity: 5 },
+  /** Cohort groups by recency: newest 3 count 60%, next 3 count 30%, the rest 10%. */
+  recency: [{ upTo: 3, weight: 0.6 }, { upTo: 6, weight: 0.3 }, { upTo: 99, weight: 0.1 }],
+  /** Linear 0-100 maps: [value that scores 0, value that scores 100]. */
+  map: {
+    de: [0.3, 1.0], rangeRatio: [1.0, 0.7], dsi: [3, 1], netDeltaAbs: [0.3, 0.05], balanceDrift: [0.5, 0.1],
+    ivChange1h: [2, -2], efficiency: [0.6, 0.2], moveVsBreakeven: [0.6, 0.3],
+  },
+  oiScore: { short_buildup: 100, long_unwinding: 65, long_buildup: 0, short_covering: 0 },
+  liquidityScore: { normal: 100, penalty: 50, veto: 0 },
+  zones: { sellMin: 70, cautionMin: 45 },
+  vetoCap: 40,
+  /** Fewest weight points present before a cohort gets a score. */
+  minWeightPresent: 40,
+  /** A cohort whose newest step is older than this (ms) before the reading is stale. */
+  staleStepMs: 1_800_000,
+  /** Consecutive readings on the new side before the zone changes. */
+  hysteresisReadings: 2,
+  /** Hours of readings returned. */
+  historyHours: 24,
+} as const;

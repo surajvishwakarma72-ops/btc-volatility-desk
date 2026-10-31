@@ -1,10 +1,11 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { METRIC_CONFIG, REGIME_GATE_CONFIG } from '../lib/pulse/config.js';
-import { SLOTS, type Slot } from '../lib/pulse/grid.js';
+import { METRIC_CONFIG, PULSE_CONFIG, REGIME_GATE_CONFIG, SCORE_CONFIG } from '../lib/pulse/config.js';
+import { cohortSlotMs, HOUR_MS, SLOTS, type Slot } from '../lib/pulse/grid.js';
 import { termInverted } from '../lib/pulse/metrics/market.js';
 import { metricSeries, winnerAtAge, type CohortRow } from '../lib/pulse/metrics/series.js';
-import { winnerPersistence } from '../lib/pulse/metrics/tape.js';
+import { breakevens, winnerPersistence } from '../lib/pulse/metrics/tape.js';
+import { readings, type CohortSteps, type LiveContext } from '../lib/pulse/score/score.js';
 import type { PulseCohort } from '../lib/pulse/snapshot.js';
 import { pulseEngine } from '../services/pulse/pulse-engine.js';
 import { regimeService } from '../services/pulse/regime-service.js';
@@ -12,6 +13,7 @@ import { cohortRows, latestMarketRows, pulseTablesExist, recentCohorts } from '.
 
 /** A week of hourly cohorts: covers every open one (at most 24) and a long run of no_valid_strikes before the persistence window. */
 const RECENT_COHORTS = 168;
+const nextSlotMs = (nowMs: number) => cohortSlotMs(nowMs) + HOUR_MS;
 
 const metricsQuery = z.object({ slot: z.enum(SLOTS as [Slot, ...Slot[]]) });
 
@@ -59,6 +61,75 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
       cohort: { id: cohort.id, status: cohort.status, opened_at: cohort.opened_at, call_strike: cohort.call_strike, put_strike: cohort.put_strike },
       points,
     };
+  });
+
+  /**
+   * The Strangle Pulse panel in one call: verdict card, confidence line with zones, zone changes and the newest cohort's P&L lines.
+   * Computed on read from stored cohorts; cached for 45 s per slot. Confidence is uncalibrated until Phase 7.
+   */
+  const scoreCache = new Map<Slot, { at: number; body: unknown }>();
+  fastify.get('/score', auth, async (req, reply) => {
+    const q = metricsQuery.safeParse(req.query);
+    if (!q.success) return reply.status(400).send({ success: false, error: 'slot must be current, next or n2n' });
+    const { slot } = q.data;
+    const hit = scoreCache.get(slot);
+    if (hit && Date.now() - hit.at < 45_000) return hit.body;
+
+    const ready = await pulseTablesExist();
+    const recent = ready ? await recentCohorts(slot, SCORE_CONFIG.historyHours + 12) : [];
+    const traded = recent.filter((c) => c.status !== 'no_valid_strikes');
+    const rowsBy = new Map<string, CohortRow[]>(await Promise.all(traded.map(async (c) => [c.id, await cohortRows(c.id)] as const)));
+    const cohorts: CohortSteps[] = traded.map((c) => ({ opened_at: c.opened_at, steps: metricSeries(c, rowsBy.get(c.id) ?? []) }));
+
+    const nowMs = Date.now();
+    const grids = [...new Set(cohorts.flatMap((c) => c.steps.map((s) => s.grid_ms)))]
+      .filter((g) => g >= nowMs - SCORE_CONFIG.historyHours * 3_600_000).sort((a, b) => a - b);
+
+    const gate = regimeService.snapshot();
+    const market = ready ? await latestMarketRows() : [];
+    const fresh = market.length > 0 && nowMs - market[0].grid_ms <= METRIC_CONFIG.marketStaleMs;
+    const atm = (s: Slot) => market.find((m) => m.slot === s)?.atm_iv ?? null;
+    const scoredRecent = traded.slice(0, METRIC_CONFIG.persistenceWindow);
+    const winners = scoredRecent.flatMap((c) => { const j = winnerAtAge(c, rowsBy.get(c.id) ?? []); return j === null ? [] : [j.side]; });
+    const live: LiveContext = {
+      gatePass: gate.pass,
+      killer: gate.inputs.find((i) => i.id === 'killer')?.ok === false ? true : null,
+      termInverted: fresh ? termInverted(atm('current'), atm('next')) : null,
+      persistence: winnerPersistence(winners),
+      noValidStrikes: recent[0]?.status === 'no_valid_strikes',
+    };
+    const list = readings(grids, cohorts, live);
+    const last = list.at(-1) ?? null;
+
+    const changes = list.flatMap((r, i) => (i > 0 && r.zone !== list[i - 1].zone ? [{ t: r.t, zone: r.zone, reason: r.why[0] ?? null }] : []));
+    const open = traded.find((c) => c.status === 'open') ?? traded[0] ?? null;
+    const credit = open && open.call_bid !== null && open.put_bid !== null ? open.call_bid + open.put_bid : null;
+    const pnl = open
+      ? (rowsBy.get(open.id) ?? []).filter((r) => r.data_ok).map((r) => {
+          const fl = r.fut_long_pnl; const fs = r.fut_short_pnl;
+          return { t: r.sampled_ms, call: r.call.net_pnl, put: r.put.net_pnl, fut: fl === null && fs === null ? null : Math.max(fl ?? -Infinity, fs ?? -Infinity), net: r.call.net_pnl === null || r.put.net_pnl === null ? null : r.call.net_pnl + r.put.net_pnl };
+        })
+      : [];
+    const body = {
+      success: true,
+      slot,
+      uncalibrated: true,
+      card: last && {
+        verdict: last.verdict, zone: last.zone, confidence: last.confidence, why: last.why, flips: last.flips, vetoes: last.vetoes, heavyLeg: last.heavyLeg,
+        gate: { pass: gate.pass, reasons: gate.reasons },
+        nextCohortMs: nextSlotMs(nowMs),
+        strikes: open && { call: open.call_strike, put: open.put_strike, callDelta: open.call_delta, putDelta: open.put_delta },
+        premium: open && { credit, breakevens: breakevens(open.call_strike, open.put_strike, credit) },
+        stopPremium: open && { call: open.call_bid === null ? null : open.call_bid * PULSE_CONFIG.stopMultiple, put: open.put_bid === null ? null : open.put_bid * PULSE_CONFIG.stopMultiple },
+      },
+      zones: { sellMin: SCORE_CONFIG.zones.sellMin, cautionMin: SCORE_CONFIG.zones.cautionMin },
+      points: list.map((r) => ({ t: r.t, c: r.confidence, z: r.zone })),
+      changes,
+      pnl,
+      cohort: open && { id: open.id, status: open.status, opened_at: open.opened_at },
+    };
+    scoreCache.set(slot, { at: Date.now(), body });
+    return body;
   });
 
   fastify.get('/metrics', auth, async (req, reply) => {
