@@ -46448,6 +46448,58 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
     }
   </style>
+  <script data-module="pulse">
+    /* Strangle Pulse card: the fx menu entry "Short Strangle" shows a small floating card with the live regime gate
+       (GET /api/v1/pulse/regime) and the open paper cohorts (GET /api/v1/pulse/metrics). Read-only; shown only while ticked. */
+    (function () {
+      'use strict'; const D = document, W = window;
+      const tok = () => { try { return JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { return null; } };
+      const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const css = D.createElement('style');
+      css.textContent = '#pulseCard{position:fixed;right:12px;bottom:70px;z-index:9000;width:290px;max-height:60vh;overflow:auto;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 Inter,sans-serif}'
+        + '#pulseCard[hidden]{display:none}#pulseCard .ph{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:800}'
+        + '#pulseCard .pv{padding:2px 8px;border-radius:4px;color:#fff;font-weight:800}#pulseCard .pb{padding:8px 10px}#pulseCard .pr{display:flex;justify-content:space-between;gap:8px;padding:2px 0}'
+        + '#pulseCard .pr i{font-style:normal;color:#64748b}#pulseCard .pm{color:#64748b;font-size:11px;margin-top:6px}#pulseCard .x{cursor:pointer;border:0;background:none;font-size:16px;color:#64748b}';
+      D.head.appendChild(css);
+      let card = null, timer = null, busy = false;
+      async function api(path) {
+        const r = await fetch('/api/v1/pulse' + path, { headers: { Accept: 'application/json', Authorization: 'Bearer ' + tok() }, cache: 'no-store' });
+        if (!r.ok) throw new Error(r.status === 401 ? 'sign in again' : 'HTTP ' + r.status);
+        return r.json();
+      }
+      function make() {
+        card = D.createElement('div'); card.id = 'pulseCard'; card.hidden = true;
+        card.innerHTML = '<div class="ph"><span>SHORT STRANGLE · PULSE</span><button class="x" title="Hide">×</button></div><div class="pb">loading…</div>';
+        card.querySelector('.x').onclick = () => { try { const on = JSON.parse(localStorage.getItem('v133_ind') || '{}'); on.pulse = false; localStorage.setItem('v133_ind', JSON.stringify(on)); if (W.v132ind && W.v132ind.state) W.v132ind.state().pulse = false; } catch (e) { } show(false); };
+        D.body.appendChild(card);
+      }
+      async function load() {
+        if (busy || !card) return; busy = true;
+        try {
+          const g = await api('/regime'); let m = null; try { m = await api('/metrics?slot=n2n'); } catch (e) { }
+          const v = g.pass === true ? ['GO', '#16a34a'] : g.pass === false ? ['WAIT', '#dc2626'] : ['NO DATA', '#d97706'];
+          const rows = (g.inputs || []).map(i => '<div class="pr"><span>' + esc(i.label) + (i.tested ? '' : ' <i>(info)</i>') + '</span><b style="color:' + (i.ok === true ? '#16a34a' : i.ok === false ? '#dc2626' : '#94a3b8') + '">'
+            + (i.value == null ? 'n/a' : esc(typeof i.value === 'number' ? +i.value.toFixed(2) : i.value)) + (i.threshold ? ' <i>' + esc(i.threshold) + '</i>' : '') + '</b></div>').join('');
+          const why = (g.reasons || []).length ? '<div class="pm">' + g.reasons.map(esc).join(' · ') + '</div>' : '';
+          const co = m && m.cohorts ? '<div class="pm">Paper cohorts (N2N): ' + m.cohorts.length + ' open'
+            + (m.persistence ? ' · winner persistence ' + esc(m.persistence.side) + ' ' + esc(m.persistence.count) + '/' + esc(m.persistence.n) : '')
+            + (m.term_inverted != null ? ' · term ' + (m.term_inverted ? 'inverted' : 'normal') : '') + '</div>' : '';
+          const off = g.enabled === false ? '<div class="pm" style="color:#d97706">Collector is off on the server.</div>' : '';
+          card.querySelector('.pb').innerHTML = '<div class="pr"><span>Regime gate</span><span class="pv" style="background:' + v[1] + '">' + v[0] + '</span></div>' + rows + why + co + off
+            + '<div class="pm">Verdict (SELL / WAIT / AVOID) comes in a later phase. Updated ' + new Date(g.asOf || Date.now()).toLocaleTimeString() + '</div>';
+        } catch (e) { card.querySelector('.pb').textContent = 'Could not load: ' + e.message; }
+        busy = false;
+      }
+      function show(on) {
+        if (!card) make();
+        if (card.hidden === !on) return;
+        card.hidden = !on;
+        if (on) { load(); timer = setInterval(load, 60000); } else { clearInterval(timer); timer = null; }
+      }
+      // Follow the fx menu tick without touching its layout code.
+      setInterval(() => { try { const s = W.v132ind && W.v132ind.state && W.v132ind.state(); if (s) show(!!s.pulse); } catch (e) { } }, 800);
+    })();
+  </script>
   <script data-module="v127">
     /* v132 (replaces v127's tabs) · ONE Indicators menu, CoinGlass style (16 Oct 2026, preview, not deployed).
        "ƒx Indicators" in the BTC chart bar opens a list with search: Speed vs IV · Edge · Range · ADX · ATM IV · RV · VoV ·
@@ -46473,9 +46525,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       ['fp', 'Footprint', 'sell × buy volume per price inside each candle · zoom in', 'btc'], ['vwap', 'VWAP ± bands', 'session VWAP (05:30 IST) with ±1σ and ±2σ', 'btc'],
       ['avp', 'Anchored VWAP + volume', 'from the NY open or a candle you pick · volume profile, POC, value area', 'btc'], ['lhm', 'Liquidation heatmap', 'estimated liquidation levels (10–100×) · a model, like CoinGlass', 'btc'],
       ['ses', 'Session boxes + IV', 'Asia · London · New York boxes on the BTC chart, each labelled with its IV change · green = IV fell, red = IV rose', 'btc'],
-      ['crush', 'IV driver · crush', 'who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger', 'btc'], ['fut', 'Futures positioning', 'OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days', 'btc']];   // v145 · v146
+      ['crush', 'IV driver · crush', 'who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger', 'btc'], ['fut', 'Futures positioning', 'OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days', 'btc'], ['pulse', 'Short Strangle', 'Strangle Pulse: live regime gate (GO / WAIT and why) + paper cohort read · floating card', 'btc']];   // v145 · v146 · pulse
       const IND = { spd: () => $('cvLane'), edge: () => $('v105EdgeBox'), rng: () => $('v105RangeBox'), adx: () => $('paAdxBox'), term: () => $('v137Term'), skew: () => $('v137Skew'), fund: () => $('v137Fund'), iv: () => $('v138Iv'), rv: () => $('v138Rv'), vov: () => $('v138Vov'), dv: () => $('v138Dv'), ton: () => $('v142Ton'), rsi: () => $('v142Rsi'), dfl: () => $('v142Dfl'), grk: () => $('v142Grk'), spr: () => $('v142Spr'), crush: () => $('v145Crush'), fut: () => $('v146Fut'), lvl: () => null, risk: () => $('v151Risk'), macro: () => $('macroStressLane') || (W.macroStress && W.macroStress.mount ? W.macroStress.mount() : null) };   // v137: new lanes · v142 sections
-      const DEF = { spd: false, edge: false, rng: false, adx: false, iv: false, rv: false, vov: false, dv: false, ton: false, gex: false, sig: false, pat: false, cdl: false, term: false, skew: false, fund: false, liq: false, strk: true, legs: true, lvl: false, ses: false, rsi: false, dfl: false, grk: false, spr: false, fp: false, vwap: false, avp: false, lhm: false, crush: false, fut: false, macro: false, risk: false };   // v133: a clean first screen; tick more in the menu
+      const DEF = { spd: false, edge: false, rng: false, adx: false, iv: false, rv: false, vov: false, dv: false, ton: false, gex: false, sig: false, pat: false, cdl: false, term: false, skew: false, fund: false, liq: false, strk: true, legs: true, lvl: false, ses: false, rsi: false, dfl: false, grk: false, spr: false, fp: false, vwap: false, avp: false, lhm: false, crush: false, fut: false, macro: false, risk: false, pulse: false };   // v133: a clean first screen; tick more in the menu
       let on = Object.assign({}, DEF, LSg('v133_ind', {}));
       delete on.ready; delete on.day; delete on.gng; delete on.pwin; delete on.tip;
       function save() { LSs('v133_ind', on); }
