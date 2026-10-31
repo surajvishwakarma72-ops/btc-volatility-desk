@@ -68,7 +68,7 @@ describe('mergeBars', () => {
 describe('HourlyBars.completed', () => {
   it('excludes the bar whose hour has not ended and honours barsKept', async () => {
     const f = fakeFetch(9);
-    const hb = new HourlyBars({ fetchKlines: f.fn, now: () => T0 + 9 * H + 1000 }, { backfillBars: 10, barsKept: 4 });
+    const hb = new HourlyBars({ fetchKlines: f.fn, now: () => T0 + 10 * H + 1000 }, { backfillBars: 10, barsKept: 4 });
     await hb.backfill();
     const now = T0 + 9 * H + 30 * 60_000; // bar 9 is forming
     const done = hb.completed(now);
@@ -281,5 +281,26 @@ describe('HourlyBars backfill hardening', () => {
     await hb.refresh();
     expect(hb.status().lastError).toContain('empty');
     expect(hb.status().lastOkAt).toBe(ok);
+  });
+});
+
+describe('HourlyBars forming bar', () => {
+  it('never stores the still-forming bar; its final version arrives on the next refresh', async () => {
+    const HR = T0 + 100 * H;
+    let nowMs = HR + 20_000; // H:00:20, bar 99 just closed, bar 100 (open time H) is forming
+    let lastIdx = 100;
+    const f = (e: number | null, l: number) => fakeFetch(lastIdx).fn(e, l);
+    const hb = new HourlyBars({ fetchKlines: f, now: () => nowMs }, { backfillBars: 100, barsKept: 9300 });
+    await hb.backfill();
+    expect(hb.status().newestOpenMs).toBe(HR - H);
+    await hb.refresh();
+    expect(hb.status().newestOpenMs).toBe(HR - H);
+    expect(hb.completed(HR + H + 5_000).map((b) => b.t)).not.toContain(HR);
+    nowMs = HR + H + 20_000;
+    lastIdx = 101; // bar 100 is final now, 101 forming
+    await hb.refresh();
+    const done = hb.completed(nowMs);
+    expect(done.at(-1)!.t).toBe(HR);
+    expect(done.at(-1)).toEqual(bar(100));
   });
 });

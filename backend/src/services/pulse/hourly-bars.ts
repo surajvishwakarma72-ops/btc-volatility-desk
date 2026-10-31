@@ -93,7 +93,7 @@ export class HourlyBars {
     try {
       let endTime: number | null = null;
       for (let n = 0; n < maxPages; n++) {
-        const page = await this.deps.fetchKlines(endTime, PAGE);
+        const page = this.finished(await this.deps.fetchKlines(endTime, PAGE));
         if (page.length === 0) {
           if (n === 0) failure = 'empty first page from klines';
           else complete = true;
@@ -129,7 +129,7 @@ export class HourlyBars {
     }
     if (!this.backfillComplete) return this.backfill();
     try {
-      const bars = await this.deps.fetchKlines(null, REFRESH_BARS);
+      const bars = this.finished(await this.deps.fetchKlines(null, REFRESH_BARS));
       if (bars.length === 0) throw new Error('empty response from klines');
       mergeBars(this.store, bars);
       this.markOk();
@@ -173,6 +173,12 @@ export class HourlyBars {
       void this.refresh().then(() => this.schedule(generation), () => this.schedule(generation));
     }, wait);
     this.timer.unref?.();
+  }
+
+  /** Binance returns the still-forming bar without an endTime; only bars whose hour has ended may be stored. */
+  private finished(bars: readonly Bar1h[]): Bar1h[] {
+    const now = this.deps.now();
+    return bars.filter((b) => b.t + HOUR_MS <= now);
   }
 
   private newestOpenMs(): number | null {
