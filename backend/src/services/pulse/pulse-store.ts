@@ -1,4 +1,5 @@
 import { pool } from '../../db/index.js';
+import type { MarketRow } from '../../lib/pulse/metrics/market.js';
 import type { Slot } from '../../lib/pulse/grid.js';
 import type { BuiltSnapshot, LegName, LegRow, PulseCohort } from '../../lib/pulse/snapshot.js';
 
@@ -91,6 +92,19 @@ CREATE TABLE IF NOT EXISTS pulse_cohort_snapshots (
   fut_short_pnl numeric,
   data_ok boolean NOT NULL,
   PRIMARY KEY (cohort_id, grid_ms)
+);
+
+CREATE TABLE IF NOT EXISTS pulse_market_snapshots (
+  grid_ms bigint NOT NULL,
+  slot text NOT NULL,
+  expiry_ms bigint NOT NULL,
+  sampled_ms bigint NOT NULL,
+  spot numeric NOT NULL,
+  atm_iv numeric,
+  call25_iv numeric,
+  put25_iv numeric,
+  rr25 numeric,
+  PRIMARY KEY (grid_ms, slot)
 );
 
 CREATE TABLE IF NOT EXISTS pulse_events (
@@ -208,6 +222,33 @@ export async function insertSnapshot(s: BuiltSnapshot): Promise<void> {
   });
   const cStmt = multiInsert('pulse_cohort_snapshots', COHORT_SNAP_COLS, [cohortRow]);
   await pool.query(cStmt.sql, cStmt.params as never);
+}
+
+const MARKET_COLS = ['grid_ms', 'slot', 'expiry_ms', 'sampled_ms', 'spot', 'atm_iv', 'call25_iv', 'put25_iv', 'rr25'] as const;
+
+/** Writes skew and term-structure rows in one statement, idempotent per (grid, slot). */
+export async function insertMarketRows(rows: readonly MarketRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const stmt = multiInsert('pulse_market_snapshots', MARKET_COLS, rows.map((r) => MARKET_COLS.map((col) => r[col] ?? null)));
+  await pool.query(stmt.sql, stmt.params as never);
+}
+
+function toMarketRow(r: Row): MarketRow {
+  return {
+    grid_ms: Number(r.grid_ms), slot: r.slot as Slot, expiry_ms: Number(r.expiry_ms), sampled_ms: Number(r.sampled_ms), spot: Number(r.spot),
+    atm_iv: num(r.atm_iv), call25_iv: num(r.call25_iv), put25_iv: num(r.put25_iv), rr25: num(r.rr25),
+  };
+}
+
+export async function marketRowsAt(gridMs: number): Promise<MarketRow[]> {
+  const r = await pool.query('SELECT * FROM pulse_market_snapshots WHERE grid_ms = $1 ORDER BY slot', [gridMs]);
+  return (r.rows as Row[]).map(toMarketRow);
+}
+
+/** The rows at the newest stored grid, or none before the first. */
+export async function latestMarketRows(): Promise<MarketRow[]> {
+  const r = await pool.query('SELECT * FROM pulse_market_snapshots WHERE grid_ms = (SELECT max(grid_ms) FROM pulse_market_snapshots) ORDER BY slot');
+  return (r.rows as Row[]).map(toMarketRow);
 }
 
 const NUM_LEG_COLS = [

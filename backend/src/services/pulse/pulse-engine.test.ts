@@ -148,7 +148,7 @@ beforeEach(async () => {
   mocks.fetchOptionFeeRates.mockReset().mockImplementation(
     async (symbols: string[]) => new Map(symbols.map((s) => [s, s.startsWith('C-') ? CALL_FEE : FEE])),
   );
-  await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_events; DELETE FROM pulse_cohorts;');
+  await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_events; DELETE FROM pulse_cohorts; DELETE FROM pulse_market_snapshots;');
   h.queries = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -1039,5 +1039,74 @@ describe('resilience', () => {
     expect(logged[0].detail.bytes).toBe(e.status().dbSizeBytes);
     await at(e, '2026-11-01T01:00:00Z');
     expect(await events('DB_SIZE')).toHaveLength(2);
+  });
+});
+
+describe('market snapshots', () => {
+  const GRID0 = T('2026-11-01T00:15:00Z');
+  const marketCount = () => count('FROM pulse_market_snapshots');
+
+  it('a grid tick writes one row per resolved slot, even with no live cohort', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:15:00Z'); // first tick: no cohort exists yet at this point of the tick
+    const rows = await store.marketRowsAt(GRID0);
+    expect(rows.map((r) => r.slot).sort()).toEqual(['current', 'n2n', 'next']);
+    expect(rows.find((r) => r.slot === 'current')).toMatchObject({ expiry_ms: E_NOV1, spot: 80_000, sampled_ms: GRID0 });
+  });
+
+  it('writes one set per grid, not per tick', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:15:00Z');
+    await at(e, '2026-11-01T00:16:00Z');
+    expect(await marketCount()).toBe(3);
+    await at(e, '2026-11-01T00:30:00Z');
+    expect(await marketCount()).toBe(6);
+  });
+
+  it('only resolved slots get rows', async () => {
+    h.listed = 1;
+    const e = engine();
+    await at(e, '2026-11-01T00:15:00Z');
+    expect((await store.marketRowsAt(GRID0)).map((r) => r.slot)).toEqual(['current']);
+  });
+
+  it('a stale tick, an incomplete chain and a frozen feed write none', async () => {
+    const e = engine();
+    h.chainAgeMs = 10 * 60_000;
+    await at(e, '2026-11-01T00:15:00Z');
+    expect(await marketCount()).toBe(0);
+    h.chainAgeMs = 0;
+    await at(e, '2026-11-01T00:00:00Z'); // opens cohorts
+    await pool.query('DELETE FROM pulse_market_snapshots');
+    h.hidden.add(E_NOV2);
+    await at(e, '2026-11-01T00:30:00Z');
+    expect(await events('CHAIN_INCOMPLETE')).toHaveLength(1);
+    expect(await marketCount()).toBe(0);
+    h.hidden.clear();
+    await at(e, '2026-11-01T00:40:00Z'); // healthy again: the 00:30 grid is written
+    expect(await marketCount()).toBe(3);
+    h.frozen = true;
+    for (let i = 41; i <= 46; i++) await at(e, `2026-11-01T00:${i}:00Z`); // the 00:45 grid arrives with the feed frozen
+    expect(await events('FEED_FROZEN')).toHaveLength(1);
+    expect(await marketCount()).toBe(3);
+  });
+
+  it('a failed market write does not stop leg snapshots, is recorded, and is retried on the next tick of that grid', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    await pool.query('DELETE FROM pulse_market_snapshots');
+    h.failSql = 'INSERT INTO pulse_market_snapshots';
+    await expect(at(e, '2026-11-01T00:15:00Z')).resolves.toBeUndefined();
+    expect(await count('FROM pulse_cohort_snapshots WHERE grid_ms = $1', [GRID0])).toBe(3);
+    expect(await count('FROM pulse_leg_snapshots WHERE grid_ms = $1', [GRID0])).toBe(6);
+    expect(await marketCount()).toBe(0);
+    expect(e.status().lastError).toContain('market snapshot write failed');
+    expect(e.status().lastGoodTickAt).toBe(T('2026-11-01T00:00:00Z'));
+    h.failSql = null;
+    await at(e, '2026-11-01T00:16:00Z');
+    expect(await marketCount()).toBe(3);
+    expect(e.status().lastError).toBeNull();
+    expect(e.status().lastGoodTickAt).toBe(T('2026-11-01T00:16:00Z'));
+    expect(await count('FROM pulse_cohort_snapshots')).toBe(3);
   });
 });

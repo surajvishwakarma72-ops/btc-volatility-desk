@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
+import type { MarketRow } from '../../lib/pulse/metrics/market.js';
 import type { BuiltSnapshot, LegRow, PulseCohort } from '../../lib/pulse/snapshot.js';
 
 const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function } }));
@@ -63,7 +64,7 @@ afterAll(async () => {
   await (h.db as unknown as PGlite).close();
 });
 beforeEach(async () => {
-  await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_events; DELETE FROM pulse_cohorts;');
+  await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_events; DELETE FROM pulse_cohorts; DELETE FROM pulse_market_snapshots;');
 });
 
 describe('pulse-store', () => {
@@ -196,5 +197,41 @@ describe('pulse-store', () => {
     const n = await store.dbSizeBytes();
     expect(typeof n).toBe('number');
     expect(n).toBeGreaterThan(0);
+  });
+});
+
+describe('pulse market snapshots', () => {
+  const mrow = (over: Partial<MarketRow> = {}): MarketRow => ({
+    grid_ms: GRID, slot: 'current', expiry_ms: EXP, sampled_ms: GRID + 5_000, spot: 80100.5,
+    atm_iv: 51.25, call25_iv: 48, put25_iv: 53, rr25: -5, ...over,
+  });
+
+  it('inserting twice stores one row per (grid_ms, slot) and keeps the first', async () => {
+    await store.insertMarketRows([mrow(), mrow({ slot: 'next' })]);
+    await store.insertMarketRows([mrow({ atm_iv: 99 })]);
+    expect((await q('SELECT count(*)::int AS n FROM pulse_market_snapshots'))[0].n).toBe(2);
+    const rows = await store.marketRowsAt(GRID);
+    expect(rows.find((r) => r.slot === 'current')?.atm_iv).toBe(51.25);
+  });
+
+  it('marketRowsAt returns numbers, not strings, and keeps nulls', async () => {
+    await store.insertMarketRows([mrow({ call25_iv: null, rr25: null })]);
+    const [r] = await store.marketRowsAt(GRID);
+    expect(r).toEqual(mrow({ call25_iv: null, rr25: null }));
+    expect(typeof r.grid_ms).toBe('number');
+    expect(typeof r.spot).toBe('number');
+  });
+
+  it('an empty insert does nothing and an unknown grid returns no rows', async () => {
+    await store.insertMarketRows([]);
+    expect(await store.marketRowsAt(GRID)).toEqual([]);
+  });
+
+  it('latestMarketRows returns only the newest grid', async () => {
+    expect(await store.latestMarketRows()).toEqual([]);
+    await store.insertMarketRows([mrow(), mrow({ grid_ms: GRID + 900_000, slot: 'next' }), mrow({ grid_ms: GRID + 900_000 })]);
+    const rows = await store.latestMarketRows();
+    expect(rows.map((r) => r.slot).sort()).toEqual(['current', 'next']);
+    expect(rows.every((r) => r.grid_ms === GRID + 900_000)).toBe(true);
   });
 });

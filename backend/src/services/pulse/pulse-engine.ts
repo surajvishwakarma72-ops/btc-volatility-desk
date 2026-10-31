@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { closeNetPnl, buildSnapshot, stopHitNow, type LegName, type PulseCohort } from '../../lib/pulse/snapshot.js';
 import { feedFingerprint, finiteOrNull, oiBand, planOpen, positiveOrNull, type OpenPlan } from '../../lib/pulse/cohort.js';
+import { marketRow } from '../../lib/pulse/metrics/market.js';
 import { PULSE_CONFIG } from '../../lib/pulse/config.js';
 import { HOUR_MS, SLOTS, cohortSlotMs, resolveSlots, snapshotGridMs, type Slot } from '../../lib/pulse/grid.js';
 import {
@@ -8,7 +9,7 @@ import {
 } from '../bot/delta-public.js';
 import {
   closeCohorts, dbSizeBytes, ensurePulseSchema, gridIncomplete, insertCohort, insertSnapshot, lastLegSnapshots, latestGridMs,
-  latestSeries, latestSlotMs, liveCohorts, logEvent, markStop, missedOpenSlots,
+  insertMarketRows, latestSeries, latestSlotMs, liveCohorts, logEvent, markStop, missedOpenSlots,
 } from './pulse-store.js';
 
 const TICK_MS = 60_000;
@@ -68,6 +69,8 @@ export class PulseEngine {
   private busy = false;
 
   private lastGrid: number | null = null;
+  /** The grid whose market rows are stored. Separate from lastGrid, and not restored: a rewrite after a restart is a no-op. */
+  private lastMarketGrid: number | null = null;
   private gapLoggedTo: number | null = null;
   private series: Partial<Record<Slot, string>> = {};
   /** The expiry each series belongs to. A slot whose expiry differs needs a new series. */
@@ -213,8 +216,10 @@ export class PulseEngine {
     this.live = this.countLive(stillLive);
     this.rotateSeries(slots);
     await this.snapshot(now, stillLive, chain, perp);
+    const marketOk = await this.collectMarket(now, slots, chain, perp);
     await this.open(now, slots, chain, perp);
     await this.logDbSize(now);
+    if (!marketOk) return; // keep the market write's error and the last good tick
     this.lastError = null;
     this.lastGoodTickAt = now;
   }
@@ -310,6 +315,25 @@ export class PulseEngine {
       }
     }
     this.lastGrid = grid; // only now: a failed write above must leave this grid for the next tick to retry
+  }
+
+  /** Skew and term structure for the slots resolved this tick, once per grid. A failure is recorded here and retried on the next tick; it never reaches the cohort work. */
+  private async collectMarket(now: number, slots: Slots, chain: ChainSnapshot, perp: PerpQuote): Promise<boolean> {
+    const grid = snapshotGridMs(now);
+    if (grid === this.lastMarketGrid) return true;
+    try {
+      const rows = SLOTS.flatMap((slot) => {
+        const expiryMs = slots[slot];
+        return expiryMs === undefined ? [] : [marketRow(chain.options, slot, expiryMs, perp.spot, grid, now)];
+      });
+      await insertMarketRows(rows);
+      this.lastMarketGrid = grid;
+      return true;
+    } catch (e) {
+      this.lastError = `market snapshot write failed: ${errText(e)}`;
+      console.error('[pulse]', this.lastError);
+      return false;
+    }
   }
 
   private async open(now: number, slots: Slots, chain: ChainSnapshot, perp: PerpQuote): Promise<void> {
