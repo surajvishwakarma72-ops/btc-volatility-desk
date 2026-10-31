@@ -39,6 +39,20 @@ describe('parseKlines', () => {
     ]);
     expect(parseKlines({ not: 'an array' })).toEqual([]);
   });
+
+  it('drops null, empty, boolean, zero, negative prices and high below low', () => {
+    const raw = [
+      [T0 + H, null, '104', '98', '102'],
+      [T0 + 2 * H, '100', '', '98', '102'],
+      [T0 + 3 * H, '100', true, '98', '102'],
+      [T0 + 4 * H, '0', '104', '98', '102'],
+      [T0 + 5 * H, '100', '104', '-98', '102'],
+      [T0 + 6 * H, '100', '90', '98', '95'],
+      [0, '100', '104', '98', '102'],
+      [T0, '100', '104', '98', '102'],
+    ];
+    expect(parseKlines(raw)).toEqual([{ t: T0, o: 100, h: 104, l: 98, c: 102 }]);
+  });
 });
 
 describe('mergeBars', () => {
@@ -189,5 +203,83 @@ describe('HourlyBars.start', () => {
     expect(calls.length).toBe(settled); // caught up: waits for the next hour
     hb.stop();
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('HourlyBars backfill hardening', () => {
+  const opts = { backfillBars: 2500, barsKept: 5000 };
+
+  it('completes a partial startup backfill on a later refresh and only then looks healthy', async () => {
+    const f = fakeFetch(2999);
+    let calls = 0;
+    let failPage2 = true;
+    const fetchKlines = async (e: number | null, l: number) => {
+      calls++;
+      if (failPage2 && calls === 2) throw new Error('page 2 timeout');
+      return f.fn(e, l);
+    };
+    const hb = new HourlyBars({ fetchKlines, now: () => T0 + 3000 * H + 20_000 }, opts);
+    await hb.backfill();
+    expect(hb.status().count).toBe(1000);
+    expect(hb.status().lastError).toContain('page 2 timeout');
+    expect(hb.status().lastOkAt).toBeNull();
+    failPage2 = false;
+    await hb.refresh();
+    expect(hb.status().count).toBe(3000);
+    expect(hb.status().lastError).toBeNull();
+    expect(hb.status().lastOkAt).not.toBeNull();
+  });
+
+  it('terminates on a non-advancing page and reports incomplete', async () => {
+    const page = Array.from({ length: 1000 }, (_, i) => bar(i));
+    const fetchKlines = vi.fn(async () => page);
+    const hb = new HourlyBars({ fetchKlines, now: () => T0 + 1000 * H }, { backfillBars: 9500, barsKept: 9300 });
+    await hb.backfill();
+    expect(fetchKlines.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(hb.status().lastError).toContain('incomplete backfill: 1000 of 9500');
+    expect(hb.status().lastOkAt).toBeNull();
+  });
+
+  it('rebuilds a 50-day-old store contiguously', async () => {
+    const old = fakeFetch(99);
+    const fresh = fakeFetch(1500);
+    let phase = 0;
+    const hb = new HourlyBars(
+      { fetchKlines: (e, l) => (phase === 0 ? old : fresh).fn(e, l), now: () => T0 + (phase === 0 ? 100 : 1501) * H },
+      { backfillBars: 600, barsKept: 9300 },
+    );
+    await hb.backfill();
+    phase = 1;
+    await hb.refresh();
+    const ts = hb.completed(T0 + 2000 * H).map((b) => b.t);
+    expect(ts.length).toBeGreaterThan(0);
+    expect(ts.every((t, i) => i === 0 || t - ts[i - 1]! === H)).toBe(true);
+    expect(ts[0]).toBeGreaterThan(T0 + 99 * H);
+  });
+
+  it('treats an empty first page, or one with every row dropped, as an error', async () => {
+    const empty = new HourlyBars({ fetchKlines: async () => [], now: () => T0 }, opts);
+    await empty.backfill();
+    expect(empty.status().lastError).toContain('empty');
+    expect(empty.status().lastOkAt).toBeNull();
+    const dropped = new HourlyBars({ fetchKlines: async () => parseKlines([[T0, '0', '0', '0', '0']]), now: () => T0 }, opts);
+    await dropped.backfill();
+    expect(dropped.status().lastError).not.toBeNull();
+    expect(dropped.status().lastOkAt).toBeNull();
+  });
+
+  it('treats an empty 24-bar refresh response as an error', async () => {
+    const f = fakeFetch(99);
+    let empty = false;
+    const hb = new HourlyBars(
+      { fetchKlines: async (e, l) => (empty ? [] : f.fn(e, l)), now: () => T0 + 100 * H + 20_000 },
+      { backfillBars: 100, barsKept: 9300 },
+    );
+    await hb.backfill();
+    const ok = hb.status().lastOkAt;
+    empty = true;
+    await hb.refresh();
+    expect(hb.status().lastError).toContain('empty');
+    expect(hb.status().lastOkAt).toBe(ok);
   });
 });

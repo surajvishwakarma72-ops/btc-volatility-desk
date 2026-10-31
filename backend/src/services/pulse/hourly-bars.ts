@@ -21,12 +21,13 @@ export function parseKlines(raw: unknown): Bar1h[] {
   const out: Bar1h[] = [];
   for (const row of raw) {
     if (!Array.isArray(row) || row.length < 5) continue;
+    if (!row.slice(0, 5).every((x) => typeof x === 'string' || typeof x === 'number')) continue;
     const t = Number(row[0]);
     const o = Number(row[1]);
     const h = Number(row[2]);
     const l = Number(row[3]);
     const c = Number(row[4]);
-    if (![t, o, h, l, c].every((x) => Number.isFinite(x))) continue;
+    if (![t, o, h, l, c].every((x) => Number.isFinite(x) && x > 0) || h < l) continue;
     out.push({ t, o, h, l, c });
   }
   return out.sort((a, b) => a.t - b.t);
@@ -66,6 +67,8 @@ export class HourlyBars {
   private lastError: string | null = null;
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  /** Whether the last backfill reached its target or the end of the exchange's history. */
+  private backfillComplete = false;
   /** Bumped by start and stop so a cycle still in flight can tell it was superseded. */
   private generation = 0;
 
@@ -77,30 +80,58 @@ export class HourlyBars {
     };
   }
 
-  /** Page backwards from now until enough bars are held or a page comes back empty. Never throws. */
+  /**
+   * Page backwards from now until enough bars are held or the exchange has no more. Never throws.
+   * Complete = reached backfillBars, or a later page was empty. Anything else (error, empty first page, a page that
+   * does not advance, the page cap) is incomplete: lastError stays set and refresh() will backfill again.
+   */
   async backfill(): Promise<void> {
+    const target = this.opts.backfillBars;
+    const maxPages = Math.ceil(target / PAGE) + 3;
+    let complete = false;
+    let failure: string | null = null;
     try {
       let endTime: number | null = null;
-      for (;;) {
+      for (let n = 0; n < maxPages; n++) {
         const page = await this.deps.fetchKlines(endTime, PAGE);
-        if (page.length === 0) break;
+        if (page.length === 0) {
+          if (n === 0) failure = 'empty first page from klines';
+          else complete = true;
+          break;
+        }
+        const before = this.store.size;
         mergeBars(this.store, page);
-        if (this.store.size >= this.opts.backfillBars) break;
-        endTime = Math.min(...page.map((b) => b.t)) - 1;
+        if (this.store.size >= target) { complete = true; break; }
+        // the first page may overlap bars held from an earlier partial run; later pages must add something
+        if (n > 0 && this.store.size === before) break;
+        const next = Math.min(...page.map((b) => b.t)) - 1;
+        if (endTime !== null && next >= endTime) break;
+        endTime = next;
       }
-      this.markOk();
     } catch (e) {
-      this.lastError = errText(e);
+      failure = errText(e);
     }
+    this.backfillComplete = complete;
+    if (complete) this.markOk();
+    else this.lastError = failure ?? `incomplete backfill: ${this.store.size} of ${target} bars`;
     this.prune();
   }
 
-  /** Re-fetch the last 24 bars; a cache older than 24 hours (or empty) is rebuilt by backfill instead. Never throws. */
+  /**
+   * Re-fetch the last 24 bars. A cache that is empty or older than 24 hours is cleared and rebuilt by backfill (no hole
+   * in the middle); one whose last backfill did not complete is backfilled again. Never throws.
+   */
   async refresh(): Promise<void> {
     const newest = this.newestOpenMs();
-    if (newest === null || this.deps.now() - newest > STALE_MS) return this.backfill();
+    if (newest === null || this.deps.now() - newest > STALE_MS) {
+      this.store.clear();
+      return this.backfill();
+    }
+    if (!this.backfillComplete) return this.backfill();
     try {
-      mergeBars(this.store, await this.deps.fetchKlines(null, REFRESH_BARS));
+      const bars = await this.deps.fetchKlines(null, REFRESH_BARS);
+      if (bars.length === 0) throw new Error('empty response from klines');
+      mergeBars(this.store, bars);
       this.markOk();
     } catch (e) {
       this.lastError = errText(e);
