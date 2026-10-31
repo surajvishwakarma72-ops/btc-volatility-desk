@@ -99,7 +99,8 @@ function buildLeg(
   const symbol = which === 'call' ? c.call_symbol : c.put_symbol;
   const strike = (which === 'call' ? c.call_strike : c.put_strike) ?? 0;
   const entryBid = which === 'call' ? c.call_bid : c.put_bid;
-  const slAt = which === 'call' ? c.call_sl_at : c.put_sl_at;
+  // Sticky: the row may hold a stop that never reached the cohort, and a lower ask must not erase it.
+  const stopped = (which === 'call' ? c.call_sl_at : c.put_sl_at) !== null || prev?.sl_hit === true;
   const o = symbol ? chain.find((x) => x.symbol === symbol) : undefined;
   const ok = !!o && o.ask > 0 && entryBid !== null;
   const band = o ? oiBand(chain, which, c.expiry_ms, strike) : null;
@@ -117,7 +118,7 @@ function buildLeg(
     return {
       ...base, bid: null, ask: null, mark: null, mid: null, delta: null, gamma: null, theta: null, vega: null, iv: null,
       oi: null, oi_band: null, oi_change: null, volume_raw: null, volume_change: null,
-      net_pnl: null, sl_hit: slAt !== null, data_ok: false,
+      net_pnl: null, sl_hit: stopped, data_ok: false,
     };
   }
   return {
@@ -137,7 +138,7 @@ function buildLeg(
     volume_raw: volume,
     volume_change: delta2(volume, prev?.volume_raw ?? null, { nonNegative: true }),
     net_pnl: ok ? legNetPnl({ entryBid: entryBid as number, ask: o.ask, spot: perp.spot, fee: c.fee }) : null,
-    sl_hit: slAt !== null || (ok && isStopHit(entryBid as number, o.ask)),
+    sl_hit: stopped || (ok && isStopHit(entryBid as number, o.ask)),
     data_ok: ok,
   };
 }
@@ -145,6 +146,7 @@ function buildLeg(
 /**
  * A cohort's final net P&L, option legs only. EXPIRED prices each leg at intrinsic against spot. ROLL uses the
  * leg's current ask, else its last stored net P&L; null if any leg has neither, never a partial total.
+ * Held to close: net_pnl ignores stops, which are recorded and tracked past SL_HIT.
  */
 export function closeNetPnl(
   c: PulseCohort,

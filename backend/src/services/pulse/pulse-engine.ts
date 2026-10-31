@@ -7,7 +7,7 @@ import {
   DEFAULT_OPTION_FEES, fetchChain, fetchOptionFeeRates, fetchPerpQuote, type ChainSnapshot, type FeeRates, type PerpQuote,
 } from '../bot/delta-public.js';
 import {
-  closeCohorts, dbSizeBytes, ensurePulseSchema, hasCohort, insertCohort, insertSnapshot, lastLegSnapshots, latestGridMs,
+  closeCohorts, dbSizeBytes, ensurePulseSchema, gridIncomplete, hasCohort, insertCohort, insertSnapshot, lastLegSnapshots, latestGridMs,
   latestSeries, liveCohorts, logEvent, markStop,
 } from './pulse-store.js';
 
@@ -69,7 +69,8 @@ export class PulseEngine {
   private slots: Slots = {};
   private live = zeroCounts();
 
-  private staleLogged = false;
+  /** DATA_STALE and CHAIN_INCOMPLETE already logged in this outage. */
+  private outageLogged = new Set<string>();
   private slotsLogged = new Set<Slot>();
   private missedLogged: Partial<Record<Slot, number>> = {};
   private dbSizeHour: number | null = null;
@@ -131,7 +132,8 @@ export class PulseEngine {
 
   private async restore(): Promise<void> {
     const [grid, series, live] = await Promise.all([latestGridMs(), latestSeries(), liveCohorts()]);
-    this.lastGrid = grid;
+    // max(grid_ms) is set by the first cohort written, so a crash part-way must not read as a finished grid.
+    this.lastGrid = grid !== null && (await gridIncomplete(grid)) ? grid - GRID_MS : grid;
     this.series = series;
     // Only a live cohort proves a series still applies. Otherwise the slot rolled, or was never filled, so it starts a new one.
     this.seriesExpiry = {};
@@ -169,32 +171,39 @@ export class PulseEngine {
     try {
       [chain, perp] = await Promise.all([fetchChain(now), fetchPerpQuote(PULSE_CONFIG.futuresSymbol)]);
     } catch (e) {
-      return this.markStale(`fetch failed: ${errText(e)}`);
+      return this.markUnhealthy('DATA_STALE', `market data stale: fetch failed: ${errText(e)}`, { reason: `fetch failed: ${errText(e)}` });
     }
     const stale = staleReason(chain, perp, now);
-    if (stale) return this.markStale(stale);
+    if (stale) return this.markUnhealthy('DATA_STALE', `market data stale: ${stale}`, { reason: stale });
+
+    // parseTicker drops bad tickers, so an expiry can vanish for a tick and shift every later slot into a false, irreversible roll.
+    // A lapsed expiry fails the `> now` test, so the real 12:00 roll passes.
+    const live = await liveCohorts();
+    const missing = [...new Set(live.filter((c) => c.expiry_ms > now && !chain.expiries.includes(c.expiry_ms)).map((c) => c.expiry_ms))];
+    if (missing.length > 0) return this.markUnhealthy('CHAIN_INCOMPLETE', `chain incomplete: ${missing.length} live expiry missing`, { missing });
+
     this.dataOk = true;
-    this.staleLogged = false;
+    this.outageLogged.clear();
 
     const slots = resolveSlots(chain.expiries);
     this.slots = slots;
     await this.logMissingSlots(slots, chain.expiries);
 
-    const live = await this.roll(now, slots, chain, perp);
-    this.live = this.countLive(live);
+    const stillLive = await this.roll(now, live, slots, chain, perp);
+    this.live = this.countLive(stillLive);
     this.rotateSeries(slots);
-    await this.snapshot(now, live, chain, perp);
+    await this.snapshot(now, stillLive, chain, perp);
     await this.open(now, slots, chain, perp);
     await this.logDbSize(now);
     this.lastError = null;
   }
 
-  private async markStale(reason: string): Promise<void> {
+  private async markUnhealthy(type: 'DATA_STALE' | 'CHAIN_INCOMPLETE', error: string, detail: unknown): Promise<void> {
     this.dataOk = false;
-    this.lastError = `market data stale: ${reason}`;
-    if (this.staleLogged) return;
-    await logEvent('DATA_STALE', null, { reason });
-    this.staleLogged = true;
+    this.lastError = error;
+    if (this.outageLogged.has(type)) return;
+    await logEvent(type, null, detail);
+    this.outageLogged.add(type);
   }
 
   private async logMissingSlots(slots: Slots, expiries: readonly number[]): Promise<void> {
@@ -209,9 +218,9 @@ export class PulseEngine {
   }
 
   /** Closes cohorts that expired or whose slot moved to another expiry. Returns those still live. */
-  private async roll(now: number, slots: Slots, chain: ChainSnapshot, perp: PerpQuote): Promise<PulseCohort[]> {
+  private async roll(now: number, live: readonly PulseCohort[], slots: Slots, chain: ChainSnapshot, perp: PerpQuote): Promise<PulseCohort[]> {
     const stillLive: PulseCohort[] = [];
-    for (const c of await liveCohorts()) {
+    for (const c of live) {
       const expired = c.expiry_ms <= now;
       const target = slots[c.slot];
       if (!expired && (target === undefined || target === c.expiry_ms)) {
@@ -243,11 +252,19 @@ export class PulseEngine {
       this.gapLoggedTo = grid;
     }
     for (const c of live) {
-      const built = buildSnapshot(c, chain.options, perp, await lastLegSnapshots(c.id), grid, now);
-      await insertSnapshot(built);
-      for (const leg of ['call', 'put'] as const satisfies readonly LegName[]) {
-        const stopAt = leg === 'call' ? c.call_sl_at : c.put_sl_at;
-        if (built.legs[leg].sl_hit && stopAt === null) await markStop(c.id, leg, grid);
+      if (c.slot_ms >= grid) continue; // a restart inside a cohort's opening grid: its first snapshot is the next grid
+      const prev = await lastLegSnapshots(c.id);
+      const built = buildSnapshot(c, chain.options, perp, prev, grid, now);
+      try {
+        for (const leg of ['call', 'put'] as const satisfies readonly LegName[]) {
+          const stopAt = leg === 'call' ? c.call_sl_at : c.put_sl_at;
+          if (!built.legs[leg].sl_hit || stopAt !== null) continue;
+          const before = prev[leg];
+          await markStop(c.id, leg, before?.sl_hit ? before.grid_ms : grid); // a healed stop keeps the grid that hit it
+        }
+      } finally {
+        // Stored even if markStop failed: this row's sticky sl_hit is what lets a later tick recover the stop.
+        await insertSnapshot(built);
       }
     }
     this.lastGrid = grid; // only now: a failed write above must leave this grid for the next tick to retry

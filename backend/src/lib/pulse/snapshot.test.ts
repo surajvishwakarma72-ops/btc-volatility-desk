@@ -42,6 +42,13 @@ describe('buildSnapshot', () => {
     expect(s.cohort.data_ok).toBe(false);
   });
 
+  it('sl_hit is sticky from the previous row, even when the leg is back under the stop or gone', () => {
+    const prev = { call: { sl_hit: true } as LegRow };
+    expect(buildSnapshot(cohort, [call, put], perp, prev, GRID, GRID).legs.call.sl_hit).toBe(true);
+    expect(buildSnapshot(cohort, [put], perp, prev, GRID, GRID).legs.call).toMatchObject({ sl_hit: true, data_ok: false });
+    expect(buildSnapshot(cohort, [call, put], perp, prev, GRID, GRID).legs.put.sl_hit).toBe(false);
+  });
+
   it('a zero bid alone does not fail a leg', () => {
     const s = buildSnapshot(cohort, [call, { ...put, bid: 0 }], perp, {}, GRID, GRID);
     expect(s.legs.put.data_ok).toBe(true);

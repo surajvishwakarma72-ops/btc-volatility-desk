@@ -160,6 +160,18 @@ describe('pulse-store', () => {
     expect(await store.latestSeries()).toEqual({ current: 'new', n2n: 'other' });
   });
 
+  it('gridIncomplete is true only for an open cohort from before the grid with no row at it', async () => {
+    const later = '66666666-6666-6666-6666-666666666666';
+    const closed = '77777777-7777-7777-7777-777777777777';
+    await store.insertCohort(mk({ id: later, slot: 'next', slot_ms: GRID })); // not before the grid
+    await store.insertCohort(mk({ id: closed, slot: 'n2n', status: 'closed' }));
+    expect(await store.gridIncomplete(GRID)).toBe(false);
+    await store.insertCohort(mk());
+    expect(await store.gridIncomplete(GRID)).toBe(true);
+    await store.insertSnapshot(snap(GRID));
+    expect(await store.gridIncomplete(GRID)).toBe(false);
+  });
+
   it('hasCohort matches on slot and slot_ms, any status', async () => {
     await store.insertCohort(mk({ status: 'no_valid_strikes' }));
     expect(await store.hasCohort('current', SLOT)).toBe(true);

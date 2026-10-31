@@ -253,6 +253,16 @@ export async function latestGridMs(): Promise<number | null> {
   return num((r.rows[0] as Row | undefined)?.grid);
 }
 
+/** True when a live cohort from before this grid has no cohort snapshot at it, as after a crash part-way through the grid. */
+export async function gridIncomplete(gridMs: number): Promise<boolean> {
+  const r = await pool.query(
+    `SELECT 1 FROM pulse_cohorts c WHERE c.status = 'open' AND c.slot_ms < $1
+     AND NOT EXISTS (SELECT 1 FROM pulse_cohort_snapshots s WHERE s.cohort_id = c.id AND s.grid_ms = $1) LIMIT 1`,
+    [gridMs],
+  );
+  return r.rows.length > 0;
+}
+
 /** The series of the newest cohort row per slot, whatever its status. */
 export async function latestSeries(): Promise<Partial<Record<Slot, string>>> {
   const r = await pool.query('SELECT DISTINCT ON (slot) slot, series_id FROM pulse_cohorts ORDER BY slot, slot_ms DESC');

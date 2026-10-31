@@ -22,6 +22,8 @@ const h = vi.hoisted(() => ({
   noStrikes: new Set<number>(),
   /** Symbols missing from the chain. */
   gone: new Set<string>(),
+  /** Expiries a fresh chain leaves out, as when parseTicker drops their tickers. */
+  hidden: new Set<number>(),
   ask: new Map<string, number>(),
   spot: 80_000,
   chainAgeMs: 0,
@@ -52,7 +54,7 @@ const FEE: FeeRates = { takerRate: 0.0001, makerRate: 0.0001, premiumCapRate: 0.
 const CALL_FEE: FeeRates = { ...FEE, takerRate: 0.0003 };
 
 function mockChain(nowMs: number): ChainSnapshot {
-  const expiries = EXPIRIES.filter((e) => e > nowMs).slice(0, h.listed);
+  const expiries = EXPIRIES.filter((e) => e > nowMs).slice(0, h.listed).filter((e) => !h.hidden.has(e));
   const options: ChainOption[] = [];
   const quoteTsMs = h.noQuoteTs ? undefined : nowMs - h.chainAgeMs;
   for (const e of expiries) {
@@ -122,6 +124,7 @@ beforeEach(async () => {
   Object.assign(h, { queries: 0, failSql: null, chainDown: false, perpDown: false, listed: 3, spot: 80_000, chainAgeMs: 0, perpAgeMs: 0, noQuoteTs: false, gate: null });
   h.noStrikes.clear();
   h.gone.clear();
+  h.hidden.clear();
   h.ask.clear();
   mocks.fetchChain.mockReset().mockImplementation(async (nowMs: number) => {
     if (h.gate) await h.gate;
@@ -235,7 +238,8 @@ describe('PulseEngine lifecycle', () => {
     const here = dirname(fileURLToPath(import.meta.url));
     const dirs = [here, join(here, '..', '..', 'lib', 'pulse')];
     const files = dirs.flatMap((d) => readdirSync(d).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => join(d, f)));
-    expect(files.length).toBeGreaterThanOrEqual(6);
+    files.push(join(here, '..', '..', 'routes', 'pulse.ts'));
+    expect(files.length).toBeGreaterThanOrEqual(7);
     for (const f of files) {
       const src = readFileSync(f, 'utf8');
       for (const banned of ['paper-broker', 'live-entry', 'brokers', 'stop-order', 'delta-keys', 'bot-engine']) {
@@ -543,21 +547,32 @@ describe('rolls', () => {
     expect((await store.liveCohorts()).map((c) => c.slot).sort()).toEqual(['current', 'next']);
     expect(e.status().slots.n2n).toMatchObject({ expiryMs: null, live: 0 });
     h.listed = 3;
+    await at(e, '2026-11-01T00:06:00Z'); // past the grace, so n2n stays empty
+    expect(await count(`FROM pulse_cohorts WHERE slot = 'n2n'`)).toBe(0);
+    h.listed = 2;
+    await at(e, '2026-11-01T00:07:00Z');
+    expect(await events('SLOT_MISSING')).toHaveLength(2);
+  });
+
+  it('a slot that comes back inside the grace opens', async () => {
+    h.listed = 2;
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.listed = 3;
     await at(e, '2026-11-01T00:02:00Z');
     expect(await count(`FROM pulse_cohorts WHERE slot = 'n2n'`)).toBe(1);
-    h.listed = 2;
-    await at(e, '2026-11-01T00:03:00Z');
-    expect(await events('SLOT_MISSING')).toHaveLength(2);
   });
 
   it('a live cohort whose slot is missing stays open until its expiry, then closes EXPIRED', async () => {
     const e = engine();
     await at(e, '2026-11-01T00:00:00Z');
-    h.listed = 2;
-    await at(e, '2026-11-01T00:01:00Z');
+    h.listed = 2; // the 12:00 roll leaves Nov 2 and Nov 3: n2n has no slot, its expiry is still listed
+    await at(e, '2026-11-01T12:00:00Z');
     expect(await count(`FROM pulse_cohorts WHERE slot = 'n2n' AND status = 'open'`)).toBe(1);
-    await at(e, '2026-11-01T00:15:00Z');
-    expect(await count('FROM pulse_cohort_snapshots')).toBe(3); // still snapshotted
+    expect(e.status().slots.n2n).toMatchObject({ expiryMs: null, live: 1 });
+    await at(e, '2026-11-01T12:15:00Z');
+    const n2n = (await store.liveCohorts()).find((c) => c.slot === 'n2n')!;
+    expect(await count('FROM pulse_cohort_snapshots WHERE cohort_id = $1', [n2n.id])).toBe(2); // still snapshotted, at 12:00 and 12:15
     h.listed = 0;
     await at(e, '2026-11-03T12:00:00Z');
     expect(e.status().dataOk).toBe(false); // no options at all reads as stale
@@ -656,6 +671,142 @@ describe('restarts', () => {
     const live = await store.liveCohorts();
     expect(live).toHaveLength(3);
     expect(live.some((c) => old.some((o) => o.series_id === c.series_id))).toBe(false);
+  });
+});
+
+describe('stops survive failure', () => {
+  const stopSql = 'UPDATE pulse_cohorts SET call_sl_at';
+  const callLeg = (id: string, grid: number) =>
+    q(`SELECT sl_hit FROM pulse_leg_snapshots WHERE cohort_id = $1 AND leg = 'call' AND grid_ms = $2`, [id, grid]);
+
+  it('markStop fails once, the ask falls back, the retry still sets the stop at the grid it was hit', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    const symbol = `C-88000-${E_NOV1}`;
+    h.ask.set(symbol, 200);
+    h.failSql = stopSql;
+    await at(e, '2026-11-01T00:15:00Z');
+    expect(e.status().lastError).toContain('db down');
+    h.failSql = null;
+    h.ask.set(symbol, 110);
+    await at(e, '2026-11-01T00:16:00Z');
+    expect(e.status().lastError).toBeNull();
+    const c = (await store.liveCohorts()).find((r) => r.slot === 'current')!;
+    expect(c.call_sl_at).toBe(T('2026-11-01T00:15:00Z'));
+    expect(await callLeg(c.id, T('2026-11-01T00:15:00Z'))).toMatchObject([{ sl_hit: true }]);
+  });
+
+  it('a later snapshot in a new process heals a stop the row recorded, and sl_hit stays true', async () => {
+    const a = engine();
+    await at(a, '2026-11-01T00:00:00Z');
+    const symbol = `C-88000-${E_NOV1}`;
+    h.ask.set(symbol, 200);
+    h.failSql = stopSql;
+    await at(a, '2026-11-01T00:15:00Z');
+    a.stop();
+    h.failSql = null;
+    h.ask.set(symbol, 110);
+    vi.setSystemTime(T('2026-11-01T00:30:00Z'));
+    const b = engine();
+    await b.start();
+    const c = (await store.liveCohorts()).find((r) => r.slot === 'current')!;
+    expect(c.call_sl_at).toBe(T('2026-11-01T00:15:00Z'));
+    expect(await callLeg(c.id, T('2026-11-01T00:30:00Z'))).toMatchObject([{ sl_hit: true }]);
+  });
+});
+
+describe('partial grid after a crash', () => {
+  async function crashPartWay(a: Engine) {
+    await at(a, '2026-11-01T00:00:00Z');
+    await at(a, '2026-11-01T00:15:00Z');
+    a.stop();
+    const next = (await store.liveCohorts()).find((c) => c.slot === 'next')!;
+    await pool.query('DELETE FROM pulse_cohort_snapshots WHERE cohort_id = $1 AND grid_ms = $2', [next.id, T('2026-11-01T00:15:00Z')] as never);
+    await pool.query('DELETE FROM pulse_leg_snapshots WHERE cohort_id = $1 AND grid_ms = $2', [next.id, T('2026-11-01T00:15:00Z')] as never);
+    return next;
+  }
+
+  it('restart in the same grid re-runs it, filling only the missing cohort', async () => {
+    const next = await crashPartWay(engine());
+    expect(await count('FROM pulse_cohort_snapshots')).toBe(2);
+    vi.setSystemTime(T('2026-11-01T00:17:00Z'));
+    await engine().start();
+    expect(await count('FROM pulse_cohort_snapshots WHERE grid_ms = $1', [T('2026-11-01T00:15:00Z')])).toBe(3);
+    expect(await count('FROM pulse_leg_snapshots')).toBe(6);
+    expect(await count('FROM pulse_cohort_snapshots WHERE cohort_id = $1', [next.id])).toBe(1);
+    expect(await events('SNAPSHOT_GAP')).toHaveLength(0);
+  });
+
+  it('restart after the clock moved on logs SNAPSHOT_GAP and does not back-fill', async () => {
+    const next = await crashPartWay(engine());
+    vi.setSystemTime(T('2026-11-01T00:31:00Z'));
+    await engine().start();
+    expect((await events('SNAPSHOT_GAP')).map((g) => g.detail)).toEqual([{ from: T('2026-11-01T00:00:00Z'), to: T('2026-11-01T00:30:00Z') }]);
+    const grids = (await q('SELECT grid_ms FROM pulse_cohort_snapshots WHERE cohort_id = $1', [next.id])).map((r) => Number(r.grid_ms));
+    expect(grids).toEqual([T('2026-11-01T00:30:00Z')]);
+    expect(await count('FROM pulse_cohort_snapshots WHERE grid_ms = $1', [T('2026-11-01T00:30:00Z')])).toBe(3);
+  });
+});
+
+describe('incomplete chain', () => {
+  it('a transient missing Next expiry closes and opens nothing, then carries on in the same series', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    const before = await store.liveCohorts();
+    h.hidden.add(E_NOV2); // would shift n2n's expiry into next and roll next and n2n
+    await at(e, '2026-11-01T00:15:00Z');
+    await at(e, '2026-11-01T01:00:00Z');
+    expect(e.status().dataOk).toBe(false);
+    expect(await count('FROM pulse_cohorts')).toBe(3);
+    expect(await count(`FROM pulse_cohorts WHERE status = 'open'`)).toBe(3);
+    expect(await count('FROM pulse_cohort_snapshots')).toBe(0);
+    expect(await events('CHAIN_INCOMPLETE')).toMatchObject([{ detail: { missing: [E_NOV2] } }]);
+    expect(await events('SLOT_MISSING')).toHaveLength(0);
+    expect(e.status().slots.next).toMatchObject({ expiryMs: E_NOV2, live: 1 });
+
+    h.hidden.clear();
+    await at(e, '2026-11-01T01:01:00Z');
+    expect(e.status().dataOk).toBe(true);
+    const after = await store.liveCohorts();
+    expect(after).toHaveLength(6);
+    expect([...new Set(after.map((c) => c.series_id))].sort()).toEqual(before.map((c) => c.series_id).sort());
+    expect(await count('FROM pulse_cohort_snapshots WHERE grid_ms = $1', [T('2026-11-01T01:00:00Z')])).toBe(3);
+  });
+
+  it('CHAIN_INCOMPLETE logs once per outage and again for a new one', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.hidden.add(E_NOV2);
+    await at(e, '2026-11-01T00:01:00Z');
+    await at(e, '2026-11-01T00:02:00Z');
+    h.hidden.clear();
+    await at(e, '2026-11-01T00:03:00Z');
+    h.hidden.add(E_NOV3);
+    await at(e, '2026-11-01T00:04:00Z');
+    expect(await events('CHAIN_INCOMPLETE')).toHaveLength(2);
+  });
+
+  it('an unlisted expiry with no live cohort is not incomplete', async () => {
+    h.hidden.add(E_NOV2);
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    expect(e.status().dataOk).toBe(true);
+    expect(await events('CHAIN_INCOMPLETE')).toHaveLength(0);
+  });
+});
+
+describe('same-grid cohorts', () => {
+  it('a restart inside the open grid never snapshots a cohort at or before its own slot', async () => {
+    const a = engine();
+    await at(a, '2026-11-01T00:00:00Z');
+    a.stop();
+    vi.setSystemTime(T('2026-11-01T00:10:00Z'));
+    const b = engine();
+    await b.start();
+    expect(await count('FROM pulse_leg_snapshots')).toBe(0);
+    await at(b, '2026-11-01T00:15:00Z');
+    expect(await count('FROM pulse_cohort_snapshots')).toBe(3);
+    expect(await count('FROM pulse_leg_snapshots WHERE minutes_since_entry < 0')).toBe(0);
   });
 });
 
