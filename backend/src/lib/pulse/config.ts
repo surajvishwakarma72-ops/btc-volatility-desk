@@ -59,3 +59,31 @@ export const METRIC_CONFIG = {
   /** Current ATM IV must exceed next by more than this (vol points) for the term structure to count as inverted. */
   termInversionMinPts: 0.5,
 } as const;
+
+/** Regime indicator thresholds, ported from the desk's browser regime code (frontend/index.html `regimeCompute`, `dailyRv`, `adxSeries`). */
+export const REGIME_CONFIG = {
+  /** Wilder ADX period (bars). */
+  adxPeriod: 14,
+  /** Newest 1h bars fed to ADX. */
+  adxBars: 720,
+  /** ADX is compared with the value this many bars before the last one (the 7th from the end). */
+  adxLookbackBars: 6,
+  /** ADX counts as rising when it gained at least this many points over the lookback. */
+  adxRiseMin: 0.5,
+  /** Fewest real hours a UTC day needs for its realised vol to count. */
+  minDaysHours: 20,
+  /** Fewest daily RV points before the volatility percentile is trusted. */
+  rvpMinDays: 60,
+  /** Newest daily RV points kept as the one-year percentile reference. */
+  rvpDays: 372,
+  /** Rolling realised-vol window in days for the percentile reference. */
+  rvpWindowDays: 7,
+  /** RVP counts as rising when it gained at least this much (fraction of the distribution) over the previous day. */
+  rvpRiseMin: 0.02,
+  /** Hours in the rolling realised-vol window that sets the live RV (7 days). */
+  rvWindowHours: 168,
+  /** A realised-vol window needs this fraction of its hours covered. */
+  rvCoverageMin: 0.6,
+  /** Hours per year used to annualise realised vol. */
+  hoursPerYear: 8760,
+} as const;
