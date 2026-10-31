@@ -16,6 +16,12 @@ export interface ChainOption {
   gamma?: number;
   theta?: number;
   vega?: number;
+  /** Open interest in contracts (from oi_contracts). */
+  oi?: number;
+  /** 24h volume (from volume). */
+  volume?: number;
+  /** Quote time, epoch ms (Delta sends microseconds). */
+  quoteTsMs?: number;
 }
 
 export interface DeltaBand {

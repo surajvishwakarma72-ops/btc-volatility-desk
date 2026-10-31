@@ -17,6 +17,10 @@ export interface DeltaTicker {
   greeks?: { delta?: string; gamma?: string; theta?: string; vega?: string; spot?: string } | null;
   quotes?: { best_bid?: string; best_ask?: string; mark_iv?: string; bid_size?: string; ask_size?: string } | null;
   product_id?: number;
+  oi_contracts?: string;
+  volume?: number;
+  /** Quote time in microseconds. */
+  timestamp?: number;
 }
 
 export interface ChainSnapshot {
@@ -59,6 +63,9 @@ export function parseTicker(t: DeltaTicker): (ChainOption & { gamma: number; the
   const bid = num(t.quotes?.best_bid);
   const ask = num(t.quotes?.best_ask);
   const mark = num(t.mark_price);
+  const oi = num(t.oi_contracts);
+  const volume = num(t.volume);
+  const tsUs = num(t.timestamp);
   return {
     symbol,
     type,
@@ -73,6 +80,9 @@ export function parseTicker(t: DeltaTicker): (ChainOption & { gamma: number; the
     gamma: num(t.greeks?.gamma),
     theta: num(t.greeks?.theta),
     vega: num(t.greeks?.vega),
+    oi: Number.isFinite(oi) ? oi : undefined,
+    volume: Number.isFinite(volume) ? volume : undefined,
+    quoteTsMs: Number.isFinite(tsUs) ? Math.floor(tsUs / 1000) : undefined,
   };
 }
 
@@ -206,4 +216,29 @@ export async function fetchPerpInfo(symbol = 'BTCUSD'): Promise<PerpInfo> {
   } catch {
     return DEFAULT_PERP;
   }
+}
+
+export interface PerpQuote {
+  bid: number;
+  ask: number;
+  mark: number;
+  spot: number;
+  tsMs: number;
+}
+
+/** Live top-of-book for the perpetual. Throws on a missing or non-positive bid/ask: a silent zero would read as a free fill. */
+export async function fetchPerpQuote(symbol = 'BTCUSD'): Promise<PerpQuote> {
+  const j = await deltaGet<{ result?: DeltaTicker }>(`/v2/tickers/${encodeURIComponent(symbol)}`);
+  const r = j.result;
+  const bid = num(r?.quotes?.best_bid);
+  const ask = num(r?.quotes?.best_ask);
+  if (!(bid > 0) || !(ask > 0)) throw new Error(`Delta ticker ${symbol} has no valid bid/ask`);
+  const tsUs = num(r?.timestamp);
+  return {
+    bid,
+    ask,
+    mark: num(r?.mark_price),
+    spot: num(r?.spot_price),
+    tsMs: Number.isFinite(tsUs) ? Math.floor(tsUs / 1000) : Date.now(),
+  };
 }
