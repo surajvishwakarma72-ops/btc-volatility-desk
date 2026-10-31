@@ -57,3 +57,9 @@ export function spreadVeto(spread: N, median24h: N): boolean | null {
   if (!ok(spread)) return null;
   return spread > METRIC_CONFIG.spreadVetoPct || (ok(median24h) && spread > METRIC_CONFIG.spreadVetoMedianMultiple * median24h);
 }
+
+/** Kleene OR of two leg vetoes: true if either is true, false only if both are false, otherwise null (unknown). */
+export function eitherVeto(a: boolean | null, b: boolean | null): boolean | null {
+  if (a === true || b === true) return true;
+  return a === false && b === false ? false : null;
+}

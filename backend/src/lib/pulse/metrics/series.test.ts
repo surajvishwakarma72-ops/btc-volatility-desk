@@ -265,7 +265,7 @@ describe('metricSeries rules', () => {
     expect(m[7].spread_median_call).toBeNull();
   });
 
-  it('spread veto is true if either leg vetoes, and unknown when a leg has no spread', () => {
+  it('spread veto is a Kleene OR of the legs', () => {
     const wide = { bid: 90, ask: 110, mid: 100 };
     expect(metricSeries(cohort(), [row(15, { put: wide })])[0].spread_veto).toBe(true); // 0.2 > 0.1
     expect(metricSeries(cohort(), [row(15, { call: wide })])[0].spread_veto).toBe(true);
@@ -273,8 +273,10 @@ describe('metricSeries rules', () => {
     expect(noBid.spread_call).toBeNull();
     expect(noBid.spread_veto).toBeNull();
     expect(noBid.liquidity_unknown).toBe(true);
-    // Even beside a vetoing leg, a missing spread makes the answer unknown.
-    expect(metricSeries(cohort(), [row(15, { call: { bid: null }, put: wide })])[0].spread_veto).toBeNull();
+    // A known veto is never hidden by a missing quote on the other leg.
+    expect(metricSeries(cohort(), [row(15, { call: { bid: null }, put: wide })])[0].spread_veto).toBe(true); // null + true
+    expect(metricSeries(cohort(), [row(15, { call: wide, put: wide })])[0].spread_veto).toBe(true); // true + true
+    expect(metricSeries(cohort(), [row(15)])[0].spread_veto).toBe(false); // false + false; noBid above is null + false
   });
 
   it('liquidity is unknown when the exit cost is missing', () => {

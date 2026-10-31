@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dsi, oiSignal, spreadPct, exitCostPct, median, liquidityBand, spreadVeto } from './legs.js';
+import { dsi, oiSignal, spreadPct, exitCostPct, median, liquidityBand, spreadVeto, eitherVeto } from './legs.js';
 
 describe('leg metrics', () => {
   it('dsi', () => {
@@ -52,5 +52,15 @@ describe('leg metrics', () => {
     expect(spreadVeto(0.04, 0.02)).toBe(false);
     expect(spreadVeto(null, 0.02)).toBeNull(); // unknown, not "no veto"
     expect(spreadVeto(null, null)).toBeNull();
+  });
+  it('eitherVeto is a Kleene OR: a known veto is never hidden by an unknown leg', () => {
+    expect(eitherVeto(true, null)).toBe(true);
+    expect(eitherVeto(null, true)).toBe(true);
+    expect(eitherVeto(false, null)).toBeNull();
+    expect(eitherVeto(null, false)).toBeNull();
+    expect(eitherVeto(null, null)).toBeNull();
+    expect(eitherVeto(true, true)).toBe(true);
+    expect(eitherVeto(true, false)).toBe(true);
+    expect(eitherVeto(false, false)).toBe(false);
   });
 });

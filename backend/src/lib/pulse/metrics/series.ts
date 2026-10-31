@@ -1,7 +1,7 @@
 /** Per-step metrics for one cohort, assembled from stored rows. Pure; a missing input or a zero divisor gives null. */
 import { METRIC_CONFIG, PULSE_CONFIG } from '../config.js';
 import type { LegRow, PulseCohort } from '../snapshot.js';
-import { dsi, exitCostPct, liquidityBand, median, oiSignal, spreadPct, spreadVeto, type OiSignal } from './legs.js';
+import { dsi, eitherVeto, exitCostPct, liquidityBand, median, oiSignal, spreadPct, spreadVeto, type OiSignal } from './legs.js';
 import { balanceDrift, decayEfficiency, expectedMove, heavyLeg, ivChange, rangeRatio } from './premium.js';
 import { breakevens, efficiencyRatio, moveVsBreakeven, winnerSide } from './tape.js';
 
@@ -53,7 +53,7 @@ export interface StepMetrics {
    */
   spread_median_call: N;
   spread_median_put: N;
-  /** Null when either leg's spread is unknown. */
+  /** Kleene OR of the leg vetoes: true if either vetoes, false only if both are known and clear, otherwise null. */
   spread_veto: boolean | null;
   exit_cost: N;
   liquidity: ReturnType<typeof liquidityBand>;
@@ -140,8 +140,6 @@ export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): S
     const medianCall = medianOf('call');
     const medianPut = medianOf('put');
     spreads.push({ sampled_ms: row.sampled_ms, call: spreadCall, put: spreadPut });
-    const vetoCall = spreadVeto(spreadCall, medianCall);
-    const vetoPut = spreadVeto(spreadPut, medianPut);
 
     const exitCost = exitCostPct(call.ask, put.ask, call.mid, put.mid, cohort.call_bid, cohort.put_bid);
 
@@ -168,7 +166,7 @@ export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): S
       spread_put: spreadPut,
       spread_median_call: medianCall,
       spread_median_put: medianPut,
-      spread_veto: vetoCall === null || vetoPut === null ? null : vetoCall || vetoPut,
+      spread_veto: eitherVeto(spreadVeto(spreadCall, medianCall), spreadVeto(spreadPut, medianPut)),
       exit_cost: exitCost,
       liquidity: liquidityBand(exitCost),
       liquidity_unknown: spreadCall === null || spreadPut === null || exitCost === null,
