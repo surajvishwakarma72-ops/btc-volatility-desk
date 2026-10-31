@@ -46448,58 +46448,6 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
     }
   </style>
-  <script data-module="pulse">
-    /* Strangle Pulse card: the fx menu entry "Short Strangle" shows a small floating card with the live regime gate
-       (GET /api/v1/pulse/regime) and the open paper cohorts (GET /api/v1/pulse/metrics). Read-only; shown only while ticked. */
-    (function () {
-      'use strict'; const D = document, W = window;
-      const tok = () => { try { return JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { return null; } };
-      const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-      const css = D.createElement('style');
-      css.textContent = '#pulseCard{position:fixed;right:12px;bottom:70px;z-index:9000;width:290px;max-height:60vh;overflow:auto;background:#fff;color:#0f172a;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.4 Inter,sans-serif}'
-        + '#pulseCard[hidden]{display:none}#pulseCard .ph{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-bottom:1px solid #e2e8f0;font-weight:800}'
-        + '#pulseCard .pv{padding:2px 8px;border-radius:4px;color:#fff;font-weight:800}#pulseCard .pb{padding:8px 10px}#pulseCard .pr{display:flex;justify-content:space-between;gap:8px;padding:2px 0}'
-        + '#pulseCard .pr i{font-style:normal;color:#64748b}#pulseCard .pm{color:#64748b;font-size:11px;margin-top:6px}#pulseCard .x{cursor:pointer;border:0;background:none;font-size:16px;color:#64748b}';
-      D.head.appendChild(css);
-      let card = null, timer = null, busy = false;
-      async function api(path) {
-        const r = await fetch('/api/v1/pulse' + path, { headers: { Accept: 'application/json', Authorization: 'Bearer ' + tok() }, cache: 'no-store' });
-        if (!r.ok) throw new Error(r.status === 401 ? 'sign in again' : 'HTTP ' + r.status);
-        return r.json();
-      }
-      function make() {
-        card = D.createElement('div'); card.id = 'pulseCard'; card.hidden = true;
-        card.innerHTML = '<div class="ph"><span>SHORT STRANGLE · PULSE</span><button class="x" title="Hide">×</button></div><div class="pb">loading…</div>';
-        card.querySelector('.x').onclick = () => { try { const on = JSON.parse(localStorage.getItem('v133_ind') || '{}'); on.pulse = false; localStorage.setItem('v133_ind', JSON.stringify(on)); if (W.v132ind && W.v132ind.state) W.v132ind.state().pulse = false; } catch (e) { } show(false); };
-        D.body.appendChild(card);
-      }
-      async function load() {
-        if (busy || !card) return; busy = true;
-        try {
-          const g = await api('/regime'); let m = null; try { m = await api('/metrics?slot=n2n'); } catch (e) { }
-          const v = g.pass === true ? ['GO', '#16a34a'] : g.pass === false ? ['WAIT', '#dc2626'] : ['NO DATA', '#d97706'];
-          const rows = (g.inputs || []).map(i => '<div class="pr"><span>' + esc(i.label) + (i.tested ? '' : ' <i>(info)</i>') + '</span><b style="color:' + (i.ok === true ? '#16a34a' : i.ok === false ? '#dc2626' : '#94a3b8') + '">'
-            + (i.value == null ? 'n/a' : esc(typeof i.value === 'number' ? +i.value.toFixed(2) : i.value)) + (i.threshold ? ' <i>' + esc(i.threshold) + '</i>' : '') + '</b></div>').join('');
-          const why = (g.reasons || []).length ? '<div class="pm">' + g.reasons.map(esc).join(' · ') + '</div>' : '';
-          const co = m && m.cohorts ? '<div class="pm">Paper cohorts (N2N): ' + m.cohorts.length + ' open'
-            + (m.persistence ? ' · winner persistence ' + esc(m.persistence.side) + ' ' + esc(m.persistence.count) + '/' + esc(m.persistence.n) : '')
-            + (m.term_inverted != null ? ' · term ' + (m.term_inverted ? 'inverted' : 'normal') : '') + '</div>' : '';
-          const off = g.enabled === false ? '<div class="pm" style="color:#d97706">Collector is off on the server.</div>' : '';
-          card.querySelector('.pb').innerHTML = '<div class="pr"><span>Regime gate</span><span class="pv" style="background:' + v[1] + '">' + v[0] + '</span></div>' + rows + why + co + off
-            + '<div class="pm">Verdict (SELL / WAIT / AVOID) comes in a later phase. Updated ' + new Date(g.asOf || Date.now()).toLocaleTimeString() + '</div>';
-        } catch (e) { card.querySelector('.pb').textContent = 'Could not load: ' + e.message; }
-        busy = false;
-      }
-      function show(on) {
-        if (!card) make();
-        if (card.hidden === !on) return;
-        card.hidden = !on;
-        if (on) { load(); timer = setInterval(load, 60000); } else { clearInterval(timer); timer = null; }
-      }
-      // Follow the fx menu tick without touching its layout code.
-      setInterval(() => { try { const s = W.v132ind && W.v132ind.state && W.v132ind.state(); if (s) show(!!s.pulse); } catch (e) { } }, 800);
-    })();
-  </script>
   <script data-module="v127">
     /* v132 (replaces v127's tabs) · ONE Indicators menu, CoinGlass style (16 Oct 2026, preview, not deployed).
        "ƒx Indicators" in the BTC chart bar opens a list with search: Speed vs IV · Edge · Range · ADX · ATM IV · RV · VoV ·
@@ -46525,8 +46473,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       ['fp', 'Footprint', 'sell × buy volume per price inside each candle · zoom in', 'btc'], ['vwap', 'VWAP ± bands', 'session VWAP (05:30 IST) with ±1σ and ±2σ', 'btc'],
       ['avp', 'Anchored VWAP + volume', 'from the NY open or a candle you pick · volume profile, POC, value area', 'btc'], ['lhm', 'Liquidation heatmap', 'estimated liquidation levels (10–100×) · a model, like CoinGlass', 'btc'],
       ['ses', 'Session boxes + IV', 'Asia · London · New York boxes on the BTC chart, each labelled with its IV change · green = IV fell, red = IV rose', 'btc'],
-      ['crush', 'IV driver · crush', 'who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger', 'btc'], ['fut', 'Futures positioning', 'OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days', 'btc'], ['pulse', 'Short Strangle', 'Strangle Pulse: live regime gate (GO / WAIT and why) + paper cohort read · floating card', 'btc']];   // v145 · v146 · pulse
-      const IND = { spd: () => $('cvLane'), edge: () => $('v105EdgeBox'), rng: () => $('v105RangeBox'), adx: () => $('paAdxBox'), term: () => $('v137Term'), skew: () => $('v137Skew'), fund: () => $('v137Fund'), iv: () => $('v138Iv'), rv: () => $('v138Rv'), vov: () => $('v138Vov'), dv: () => $('v138Dv'), ton: () => $('v142Ton'), rsi: () => $('v142Rsi'), dfl: () => $('v142Dfl'), grk: () => $('v142Grk'), spr: () => $('v142Spr'), crush: () => $('v145Crush'), fut: () => $('v146Fut'), lvl: () => null, risk: () => $('v151Risk'), macro: () => $('macroStressLane') || (W.macroStress && W.macroStress.mount ? W.macroStress.mount() : null) };   // v137: new lanes · v142 sections
+      ['crush', 'IV driver · crush', 'who moves IV: put wing vs call wing (25Δ) per candle + Deribit flow · puts lifting IV = put-leg danger', 'btc'], ['fut', 'Futures positioning', 'OI change per candle: new longs · short covering · new shorts · long liquidation · taker flow check · FUEL / FLUSH tested on 30 days', 'btc'], ['pulse', 'Short Strangle', 'Strangle Pulse: live regime gate (GO / WAIT and why) + paper cohort read · lane under the BTC chart', 'btc']];   // v145 · v146 · pulse
+      const IND = { spd: () => $('cvLane'), edge: () => $('v105EdgeBox'), rng: () => $('v105RangeBox'), adx: () => $('paAdxBox'), term: () => $('v137Term'), skew: () => $('v137Skew'), fund: () => $('v137Fund'), iv: () => $('v138Iv'), rv: () => $('v138Rv'), vov: () => $('v138Vov'), dv: () => $('v138Dv'), ton: () => $('v142Ton'), rsi: () => $('v142Rsi'), dfl: () => $('v142Dfl'), grk: () => $('v142Grk'), spr: () => $('v142Spr'), crush: () => $('v145Crush'), fut: () => $('v146Fut'), lvl: () => null, risk: () => $('v151Risk'), macro: () => $('macroStressLane') || (W.macroStress && W.macroStress.mount ? W.macroStress.mount() : null), pulse: () => $('v153Pulse') };   // v137: new lanes · v142 sections
       const DEF = { spd: false, edge: false, rng: false, adx: false, iv: false, rv: false, vov: false, dv: false, ton: false, gex: false, sig: false, pat: false, cdl: false, term: false, skew: false, fund: false, liq: false, strk: true, legs: true, lvl: false, ses: false, rsi: false, dfl: false, grk: false, spr: false, fp: false, vwap: false, avp: false, lhm: false, crush: false, fut: false, macro: false, risk: false, pulse: false };   // v133: a clean first screen; tick more in the menu
       let on = Object.assign({}, DEF, LSg('v133_ind', {}));
       delete on.ready; delete on.day; delete on.gng; delete on.pwin; delete on.tip;
@@ -49351,7 +49299,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       /* ---------- section factory ---------- */
       const SEC = { iv: { id: 'v138Iv' }, rv: { id: 'v138Rv' }, vov: { id: 'v138Vov' }, dv: { id: 'v138Dv' }, legs: { id: 'v138Legs' } };
-      const ORDER = ['v138Iv', 'v142Ton', 'v145Crush', 'cvLane', 'v151Risk', 'macroStressLane', 'v138Vov', 'v138Rv', 'paAdxBox', 'v142Rsi', 'v138Dv', 'v142Dfl', 'v142Grk', 'v142Spr', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v146Fut', 'v138Legs'];   // v142: + new sections
+      const ORDER = ['v138Iv', 'v142Ton', 'v145Crush', 'cvLane', 'v151Risk', 'v153Pulse', 'macroStressLane', 'v138Vov', 'v138Rv', 'paAdxBox', 'v142Rsi', 'v138Dv', 'v142Dfl', 'v142Grk', 'v142Spr', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v146Fut', 'v138Legs'];   // v142: + new sections
       function place(box) {
         const pane = $('paneG'); if (!pane) return; const my = ORDER.indexOf(box.id); let after = pane.querySelector(':scope>.chart-box') || null;
         for (const id of ORDER.slice(0, my)) { const e = $(id); if (e && e.parentElement === pane) after = e; }
@@ -52420,9 +52368,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* =================================================================== sections (same look as v138) */
       const SEC = {
         ton: { id: 'v142Ton', name: 'TONIGHT' }, rsi: { id: 'v142Rsi', name: 'RSI 14' }, dfl: { id: 'v142Dfl', name: 'DERIBIT FLOW' },
-        grk: { id: 'v142Grk', name: 'ATM GREEKS' }, spr: { id: 'v142Spr', name: 'BID / ASK' }, crush: { id: 'v145Crush', name: 'IV DRIVER' }, fut: { id: 'v146Fut', name: 'FUTURES' }, macro: { id: 'macroStressLane', name: 'MACRO STRESS' }, risk: { id: 'v151Risk', name: 'ENTRY GAUGE' }
+        grk: { id: 'v142Grk', name: 'ATM GREEKS' }, spr: { id: 'v142Spr', name: 'BID / ASK' }, crush: { id: 'v145Crush', name: 'IV DRIVER' }, fut: { id: 'v146Fut', name: 'FUTURES' }, macro: { id: 'macroStressLane', name: 'MACRO STRESS' }, risk: { id: 'v151Risk', name: 'ENTRY GAUGE' }, pulse: { id: 'v153Pulse', name: 'SHORT STRANGLE' }
       };   // v145 · v146 · v149
-      const ORDER = ['v138Iv', 'v142Ton', 'v145Crush', 'cvLane', 'v151Risk', 'macroStressLane', 'v138Vov', 'v138Rv', 'paAdxBox', 'v142Rsi', 'v138Dv', 'v142Dfl', 'v142Grk', 'v142Spr', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v146Fut', 'v138Legs'];
+      const ORDER = ['v138Iv', 'v142Ton', 'v145Crush', 'cvLane', 'v151Risk', 'v153Pulse', 'macroStressLane', 'v138Vov', 'v138Rv', 'paAdxBox', 'v142Rsi', 'v138Dv', 'v142Dfl', 'v142Grk', 'v142Spr', 'v105EdgeBox', 'v105RangeBox', 'v137Term', 'v137Skew', 'v137Fund', 'v146Fut', 'v138Legs'];
       const S = { lanes: {}, vals: {}, grk: LSg('v142_grk', 'theta'), anchor: LSg('v142_anchor', null), pick: false };
       const pf = (d, u) => ({ type: 'custom', formatter: v => (fin(v) ? v.toFixed(d) : '') + (u || ''), minMove: Math.pow(10, -d) });
       function order() {
@@ -52467,6 +52415,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           o.a.createPriceLine({ price: 65, color: 'rgba(185, 28, 28, 0.65)', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '65 SHOCK' });
           o.zoneDef = [{ lo: 0, hi: 35, c: '#22A06B', t: 'CALM' }, { lo: 35, hi: 65, c: '#E3AE45', t: 'ELEVATED' }, { lo: 65, hi: 100, c: '#E05252', t: 'SHOCK' }];
         }
+        if (k === 'pulse') {   // Strangle Pulse: one bar on the newest candle, coloured by the live regime gate; the legend lists each input
+          o.a = H('#8FA3B5', pf(0)); o.a.applyOptions({ lastValueVisible: false, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
+        }
         if ((k === 'day' || k === 'crush') && W.v145x) try { W.v145x.lane(k, o, { H, Ln, pf }); } catch (e) { console.warn('v145 lane', e); }
         if (k === 'fut' && W.v146f) try { W.v146f.lane(o, { H, Ln, pf }); } catch (e) { console.warn('v146 lane', e); }
         if (k === 'tip') { o.a = H('#22A06B', pf(0, '$')); o.a.createPriceLine({ price: 0, color: hx('#8FA3B5', .6), lineWidth: 1, lineStyle: 3, axisLabelVisible: false, title: '' }); }
@@ -52479,6 +52430,17 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function st(o, s) { if (o.box.dataset.st !== s) o.box.dataset.st = s; }
       function sync(o) { try { const pw = W.paChart().priceScale('right').width(); if (pw) o.ch.applyOptions({ rightPriceScale: { minimumWidth: Math.max(78, pw) } }); const r = W.paChart().timeScale().getVisibleLogicalRange(); if (r) o.ch.timeScale().setVisibleLogicalRange(r); } catch (e) { } }
       const blank = (B, i) => ({ time: B.b[i].time });
+      /* Strangle Pulse data: read-only, refreshed every 60 s while the lane is ticked */
+      const PU = { g: null, m: null, err: null, at: 0, busy: false };
+      function pulseGet() {
+        if (!PU.busy && Date.now() - PU.at > 60000) {
+          PU.busy = true; PU.at = Date.now();
+          let tok = null; try { tok = JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { }
+          const get = p => fetch('/api/v1/pulse' + p, { headers: { Accept: 'application/json', Authorization: 'Bearer ' + tok }, cache: 'no-store' }).then(r => { if (!r.ok) throw new Error(r.status === 401 ? 'sign in again' : 'HTTP ' + r.status); return r.json(); });
+          get('/regime').then(g => { PU.g = g; PU.err = null; return get('/metrics?slot=n2n').then(m => { PU.m = m; }).catch(() => { }); }).catch(e => { PU.err = 'Short Strangle: ' + e.message; }).finally(() => { PU.busy = false; try { paint('pulse'); } catch (e) { } });
+        }
+        return PU;
+      }
 
       /* ---------- primitive helper (lightweight-charts v4.2 series primitive) ---------- */
       class Prim {
@@ -52828,6 +52790,18 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function paint(k) {
         const o = lane(k); if (!o) return; const on = ON(k); if (!on) { o.box.classList.add('v127-off'); return; } o.box.classList.remove('v127-off'); const B = bars(); if (!B) return;
         const R = L121(), up = UP(), dn = DN(); let vals = new Array(B.n).fill(null);
+        if (k === 'pulse') {
+          const P = pulseGet(); const g = P.g;
+          const word = !g ? (P.err ? 'OFFLINE' : 'LOADING') : g.pass === true ? 'GO' : g.pass === false ? 'WAIT' : 'NO DATA', cls = word === 'GO' ? 'g' : word === 'WAIT' ? 'r' : 'a';
+          const col = cls === 'g' ? '#22A06B' : cls === 'r' ? '#E05252' : '#E3AE45';
+          const data = B.b.map(b => ({ time: b.time })); if (B.n && g) data[B.n - 1] = { time: B.b[B.n - 1].time, value: 100, color: col };
+          o.a.setData(data); st(o, cls);
+          const inp = g ? (g.inputs || []).filter(i => i.tested).map(i => `<span class="${i.ok === true ? 'g' : i.ok === false ? 'r' : 'm'}">${esc(i.label)} ${i.value == null ? 'n/a' : esc(typeof i.value === 'number' ? +i.value.toFixed(2) : i.value)}${i.threshold ? ' (' + esc(i.threshold) + ')' : ''}</span>`).join('') : '';
+          const co = P.m && P.m.cohorts ? `<span class="m">paper cohorts ${P.m.cohorts.length} open${P.m.persistence ? ' · winner ' + esc(P.m.persistence.side) + ' ' + esc(P.m.persistence.count) + '/' + esc(P.m.persistence.n) : ''}${P.m.term_inverted != null ? ' · term ' + (P.m.term_inverted ? 'inverted' : 'normal') : ''}</span>` : '';
+          setLeg(o, `<b>SHORT STRANGLE</b><span class="${cls}">${word}</span>${inp}${co}${P.err && !g ? `<span class="m">${esc(P.err)}</span>` : '<span class="m">regime gate · verdict comes later</span>'}`);
+          try { const key = B.n + '|' + B.b[0].time + '|' + B.b[B.n - 1].time; if (o.carK !== key) { o.carK = key; o.car.setData(B.b.map(b => ({ time: b.time, value: 0 }))); } } catch (e) { }
+          S.vals[k] = vals; sync(o); return;
+        }
         if (k === 'fut') { if (!o.a) return; try { W.v146f && W.v146f.paint(o, B, vals, { setLeg, st, blank, hx, t0ms, idxAt }); } catch (e) { console.warn('v146 fut', e); } try { const key = B.n + '|' + B.b[0].time + '|' + B.b[B.n - 1].time; if (o.carK !== key) { o.carK = key; o.car.setData(B.b.map(b => ({ time: b.time, value: 0 }))); } } catch (e) { } S.vals[k] = vals; sync(o); return; }   // v146
         if (k === 'day' || k === 'crush') { if (!o.a) return; try { W.v145x && W.v145x.paint(k, o, B, vals, { setLeg, st, blank, hx, t0ms, idxAt, R }); } catch (e) { console.warn('v145 ' + k, e); } try { const key = B.n + '|' + B.b[0].time + '|' + B.b[B.n - 1].time; if (o.carK !== key) { o.carK = key; o.car.setData(B.b.map(b => ({ time: b.time, value: 0 }))); } } catch (e) { } S.vals[k] = vals; sync(o); return; }   // v145
         if (k === 'gng') {
