@@ -28,8 +28,8 @@ describe('planOpen', () => {
 describe('legNetPnl', () => {
   it('matches a hand calculation', () => {
     const fee = { takerRate: 0.0001, makerRate: 0.0001, premiumCapRate: 0.035, contractValue: 0.001 };
-    // gross 0.05; fees (0.007 entry cap + 0.00525 exit cap) * 1.18 = 0.014455 (brief rounds to 0.01445, exact 0.033545); slippage 0.01 * 0.2 = 0.002
-    expect(legNetPnl({ entryBid: 200, ask: 150, spot: 77000, fee })).toBeCloseTo(0.03355, 4);
+    // gross 0.05; fees (0.007 entry cap + 0.00525 exit cap) * 1.18 = 0.014455; slippage 0.01 * 0.2 = 0.002
+    expect(legNetPnl({ entryBid: 200, ask: 150, spot: 77000, fee })).toBeCloseTo(0.033545, 6);
   });
 });
 
