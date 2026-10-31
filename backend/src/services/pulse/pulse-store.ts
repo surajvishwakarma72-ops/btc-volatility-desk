@@ -368,9 +368,9 @@ export async function missedOpenSlots(slot: Slot, fromMs: number): Promise<Set<n
   return new Set((r.rows as Row[]).map((row) => Number(row.slot_ms)));
 }
 
-/** Whether the collector has ever created its tables. Read routes use this because they must not run the DDL themselves. */
+/** Whether the collector has created the tables the read routes use. Read routes check this because they must not run the DDL themselves. */
 export async function pulseTablesExist(): Promise<boolean> {
-  const r = await pool.query(`SELECT to_regclass('pulse_cohorts') IS NOT NULL AS ready`);
+  const r = await pool.query(`SELECT to_regclass('pulse_cohorts') IS NOT NULL AND to_regclass('pulse_market_snapshots') IS NOT NULL AS ready`);
   return (r.rows[0] as Row).ready === true;
 }
 

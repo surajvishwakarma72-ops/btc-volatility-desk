@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import fastify, { type FastifyInstance } from 'fastify';
 import { PGlite } from '@electric-sql/pglite';
 import type { BuiltSnapshot, LegRow, PulseCohort } from '../lib/pulse/snapshot.js';
@@ -78,11 +78,16 @@ beforeAll(async () => {
   await app.register(pulseRoutes, { prefix: '/api/v1/pulse' });
   await app.ready();
 });
+afterEach(() => {
+  vi.useRealTimers();
+});
 afterAll(async () => {
   await app.close();
   await (h.db as unknown as PGlite).close();
 });
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(T0 + 5 * 60_000);
   await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_cohorts; DELETE FROM pulse_market_snapshots;');
 });
 
@@ -102,7 +107,7 @@ describe('GET /pulse/metrics', () => {
     const res = await get('n2n');
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
-      success: true, slot: 'n2n', cohorts: [], persistence: null, skew: { rr25: null, atm_iv: null }, term_inverted: null, gex: { available: false },
+      success: true, slot: 'n2n', cohorts: [], persistence: null, skew: null, term_inverted: null, market: null, gex: { available: false },
     });
   });
 
@@ -113,9 +118,24 @@ describe('GET /pulse/metrics', () => {
     try {
       const res = await get('current');
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toMatchObject({ cohorts: [], persistence: null, term_inverted: null });
+      expect(res.json()).toMatchObject({ cohorts: [], persistence: null, term_inverted: null, market: null });
       const t = await fresh.query(`SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name LIKE 'pulse_%'`);
       expect((t.rows[0] as { n: number }).n).toBe(0);
+    } finally {
+      h.db = real;
+      await fresh.close();
+    }
+  });
+
+  it('a database with cohorts but no market table yet gives the empty shape', async () => {
+    const real = h.db;
+    const fresh = new PGlite();
+    await fresh.exec('CREATE TABLE pulse_cohorts (id uuid)');
+    h.db = fresh as never;
+    try {
+      const res = await get('current');
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ cohorts: [], persistence: null, skew: null, term_inverted: null, market: null });
     } finally {
       h.db = real;
       await fresh.close();
@@ -141,23 +161,42 @@ describe('GET /pulse/metrics', () => {
     expect(body.cohorts[1].latest.de_call).toBeCloseTo(4, 6); // (100-90) / (240 x 15/1440 = 2.5)
   });
 
-  it('persistence uses each of the newest 6 usable cohorts of this slot, any status', async () => {
-    // Oldest first. Counting the oldest here would give 5; counting the no_valid_strikes rows as the window would give 3.
-    const sides = ['long', 'short', 'long', 'long', 'long', 'long', 'short'] as const;
+  it('persistence judges the newest 6 usable cohorts each at the 60m age; a young one is not counted', async () => {
+    // Oldest first. Each is judged on its 60m row; its 120m row says the opposite, so judging "now" would flip the count.
+    const sides = ['long', 'long', 'long', 'long', 'short', 'long'] as const;
     for (let i = 0; i < sides.length; i++) {
       const c = cohort(i, { status: i < 3 ? 'closed' : 'open' });
       await store.insertCohort(c);
-      await store.insertSnapshot(snap(c, 15, sides[i]));
-      await store.insertSnapshot(snap(c, 30, i === 6 ? 'long' : sides[i], false)); // bad, and for i=6 the wrong side
+      await store.insertSnapshot(snap(c, 60, sides[i]));
+      await store.insertSnapshot(snap(c, 120, sides[i] === 'long' ? 'short' : 'long'));
     }
+    const young = cohort(6); // newest usable, 15 minutes old: in the window, not judged
+    await store.insertCohort(young);
+    await store.insertSnapshot(snap(young, 15, 'short'));
     await store.insertCohort(cohort(20, { status: 'no_valid_strikes' }));
     await store.insertCohort(cohort(21, { status: 'no_valid_strikes' }));
     const other = cohort(22, { slot: 'next' });
     await store.insertCohort(other);
-    await store.insertSnapshot(snap(other, 15, 'long'));
-    // Newest 6 usable: short, long, long, long, long, short.
+    await store.insertSnapshot(snap(other, 60, 'short'));
+    // Window: cohorts 1-6. Judged: 1-5 = long, long, long, short, long.
     const body = (await get('current')).json();
-    expect(body.persistence).toEqual({ side: 'long', count: 4 });
+    expect(body.persistence).toEqual({ side: 'long', count: 4, n: 5 });
+  });
+
+  it('a cohort rolled before reaching the age is not judged, and too few judged gives null', async () => {
+    for (let i = 0; i < 3; i++) {
+      const c = cohort(i, { status: 'closed' });
+      await store.insertCohort(c);
+      await store.insertSnapshot(snap(c, 60, 'long'));
+    }
+    const rolled = cohort(3, { status: 'closed' }); // closed at 30m: its last row is not at the age
+    await store.insertCohort(rolled);
+    await store.insertSnapshot(snap(rolled, 30, 'long'));
+    expect((await get('current')).json().persistence).toBeNull(); // n = 3 < 4
+    const fourth = cohort(4, { status: 'closed' });
+    await store.insertCohort(fourth);
+    await store.insertSnapshot(snap(fourth, 60, 'short'));
+    expect((await get('current')).json().persistence).toEqual({ side: 'long', count: 3, n: 4 });
   });
 
   it('reports the skew of the requested slot and the term structure of current and next', async () => {
@@ -166,7 +205,19 @@ describe('GET /pulse/metrics', () => {
     const body = (await get('n2n')).json();
     expect(body.skew).toEqual({ rr25: 3, atm_iv: 50 });
     expect(body.term_inverted).toBe(true); // 60 > 55 at the newest grid, whatever the slot asked for
+    expect(body.market).toEqual({ grid_ms: T0, sampled_ms: T0, stale: false });
     expect(body.gex).toEqual({ available: false });
+  });
+
+  it('a market grid older than marketStaleMs gives null skew and term', async () => {
+    await store.insertMarketRows([market('current', 60, -2), market('next', 55, 1)]);
+    vi.setSystemTime(T0 + 21 * 60_000);
+    const body = (await get('current')).json();
+    expect(body.skew).toBeNull();
+    expect(body.term_inverted).toBeNull();
+    expect(body.market).toEqual({ grid_ms: T0, sampled_ms: T0, stale: true });
+    vi.setSystemTime(T0 + 20 * 60_000); // exactly the limit is still fresh
+    expect((await get('current')).json().market.stale).toBe(false);
   });
 
   it('skew is null for a slot missing from the newest grid, and term with a missing side', async () => {

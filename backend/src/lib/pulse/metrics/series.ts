@@ -3,12 +3,14 @@ import { METRIC_CONFIG, PULSE_CONFIG } from '../config.js';
 import type { LegRow, PulseCohort } from '../snapshot.js';
 import { dsi, exitCostPct, liquidityBand, median, oiSignal, spreadPct, spreadVeto, type OiSignal } from './legs.js';
 import { balanceDrift, decayEfficiency, expectedMove, heavyLeg, ivChange, rangeRatio } from './premium.js';
-import { breakevens, efficiencyRatio, moveVsBreakeven } from './tape.js';
+import { breakevens, efficiencyRatio, moveVsBreakeven, winnerSide } from './tape.js';
 
 type N = number | null;
 
 const DAY_MS = 86_400_000;
 const MINUTE_MS = 60_000;
+const HOUR_MS = 3_600_000;
+const GRID_MS = PULSE_CONFIG.snapshotMinutes * MINUTE_MS;
 
 /** One stored grid of a cohort: the cohort snapshot plus its two leg rows. */
 export interface CohortRow {
@@ -44,11 +46,19 @@ export interface StepMetrics {
   oi_put: OiSignal;
   spread_call: N;
   spread_put: N;
+  /**
+   * spread_median_* and spread_veto are valid for entry-time judgement only: an aged winning leg widens in percent as its
+   * premium decays, so Phase 4 must evaluate the veto on candidate entry strikes, not on live cohort legs.
+   * The median is over prior rows in the last 24h, null under spreadMedianMinSamples.
+   */
   spread_median_call: N;
   spread_median_put: N;
-  spread_veto: boolean;
+  /** Null when either leg's spread is unknown. */
+  spread_veto: boolean | null;
   exit_cost: N;
   liquidity: ReturnType<typeof liquidityBand>;
+  /** True when either leg's spread or the exit cost is missing. */
+  liquidity_unknown: boolean;
   move_vs_breakeven: N;
   efficiency_ratio: N;
   speed: Record<string, N>;
@@ -74,6 +84,29 @@ function speeds(now: StepMetrics, prev: StepMetrics | undefined): Record<string,
   return out;
 }
 
+/** The latest good row before index i sampled at least an hour before it, if no more than one grid older than that. */
+function baseAnHourBefore(good: readonly CohortRow[], i: number): CohortRow | undefined {
+  const target = good[i].sampled_ms - HOUR_MS;
+  for (let j = i - 1; j >= 0; j--) {
+    if (good[j].sampled_ms <= target) return good[j].sampled_ms >= target - GRID_MS ? good[j] : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * The hedge winner judged at the good row nearest opened_at + persistenceAgeMinutes, so every cohort is compared at the
+ * same age. Null when the cohort has no good row within one grid of that age (too young, or closed before it).
+ */
+export function winnerAtAge(cohort: PulseCohort, rows: readonly CohortRow[]): { side: 'long' | 'short' | null } | null {
+  const target = cohort.opened_at + METRIC_CONFIG.persistenceAgeMinutes * MINUTE_MS;
+  let best: CohortRow | null = null;
+  for (const r of rows) {
+    if (r.data_ok && (best === null || Math.abs(r.sampled_ms - target) < Math.abs(best.sampled_ms - target))) best = r;
+  }
+  if (best === null || Math.abs(best.sampled_ms - target) > GRID_MS) return null;
+  return { side: winnerSide(best.fut_long_pnl, best.fut_short_pnl) };
+}
+
 /** One entry per data_ok row, oldest first. Rows must arrive oldest first. */
 export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): StepMetrics[] {
   const good = rows.filter((r) => r.data_ok);
@@ -88,7 +121,7 @@ export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): S
 
   good.forEach((row, i) => {
     const prev: CohortRow | undefined = good[i - 1];
-    const hourAgo: CohortRow | undefined = good[i - METRIC_CONFIG.lastHourSteps];
+    const hourAgo = baseAnHourBefore(good, i);
     const { call, put } = row;
     spots.push(row.spot);
     futPrices.push(row.fut_price);
@@ -98,11 +131,17 @@ export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): S
 
     const spreadCall = spreadPct(call.bid, call.ask, call.mid);
     const spreadPut = spreadPct(put.bid, put.ask, put.mid);
-    spreads.push({ sampled_ms: row.sampled_ms, call: spreadCall, put: spreadPut });
+    // Prior rows only (spreads does not hold this row yet), within 24h by sampled_ms.
     const lastDay = spreads.filter((s) => s.sampled_ms >= row.sampled_ms - DAY_MS);
-    const medianOf = (which: 'call' | 'put') => median(lastDay.flatMap((s) => (s[which] === null ? [] : [s[which]])));
+    const medianOf = (which: 'call' | 'put') => {
+      const values = lastDay.flatMap((s) => (s[which] === null ? [] : [s[which]]));
+      return values.length < METRIC_CONFIG.spreadMedianMinSamples ? null : median(values);
+    };
     const medianCall = medianOf('call');
     const medianPut = medianOf('put');
+    spreads.push({ sampled_ms: row.sampled_ms, call: spreadCall, put: spreadPut });
+    const vetoCall = spreadVeto(spreadCall, medianCall);
+    const vetoPut = spreadVeto(spreadPut, medianPut);
 
     const exitCost = exitCostPct(call.ask, put.ask, call.mid, put.mid, cohort.call_bid, cohort.put_bid);
 
@@ -129,11 +168,13 @@ export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): S
       spread_put: spreadPut,
       spread_median_call: medianCall,
       spread_median_put: medianPut,
-      spread_veto: spreadVeto(spreadCall, medianCall) || spreadVeto(spreadPut, medianPut),
+      spread_veto: vetoCall === null || vetoPut === null ? null : vetoCall || vetoPut,
       exit_cost: exitCost,
       liquidity: liquidityBand(exitCost),
+      liquidity_unknown: spreadCall === null || spreadPut === null || exitCost === null,
       move_vs_breakeven: moveVsBreakeven(cohort.spot_entry, futPrices, futEntry, be),
-      efficiency_ratio: futEntry === null ? null : efficiencyRatio([futEntry, ...futPrices]),
+      efficiency_ratio:
+        futEntry === null || futPrices.length < METRIC_CONFIG.minPathSteps ? null : efficiencyRatio([futEntry, ...futPrices]),
       speed: {},
     };
     step.speed = speeds(step, steps[i - 1]);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { LegRow, PulseCohort } from '../snapshot.js';
-import { metricSeries, type CohortRow } from './series.js';
+import { metricSeries, winnerAtAge, type CohortRow } from './series.js';
 
 const MIN = 60_000;
 const T0 = Date.parse('2026-11-01T00:00:00Z');
@@ -110,9 +110,11 @@ describe('metricSeries: two steps worked by hand', () => {
     // Each ask-bid is 2. Call spreads 2/98 then 2/70; put 2/99 then 2/85.
     expect(m[1].spread_call).toBeCloseTo(2 / 70, 9);
     expect(m[1].spread_put).toBeCloseTo(2 / 85, 9);
-    expect(m[1].spread_median_call).toBeCloseTo((2 / 98 + 2 / 70) / 2, 9);
-    expect(m[1].spread_median_put).toBeCloseTo((2 / 99 + 2 / 85) / 2, 9);
+    // One prior row is under spreadMedianMinSamples (6): no median, so only the 10% rule can veto.
+    expect(m[1].spread_median_call).toBeNull();
+    expect(m[1].spread_median_put).toBeNull();
     expect(m[1].spread_veto).toBe(false);
+    expect(m[1].liquidity_unknown).toBe(false);
     // (71-70 + 86-85) / 190
     expect(m[1].exit_cost).toBeCloseTo(2 / 190, 9);
     expect(m[1].liquidity).toBe('normal');
@@ -120,8 +122,8 @@ describe('metricSeries: two steps worked by hand', () => {
 
   it('move vs breakeven and efficiency', () => {
     expect(m[1].move_vs_breakeven).toBeCloseTo(0.2, 9); // 1038 / 5190
-    // Path 100000, 100000, 101038: net 1038 over path 1038.
-    expect(m[1].efficiency_ratio).toBeCloseTo(1, 9);
+    // Two good steps are under minPathSteps (4).
+    expect(m[1].efficiency_ratio).toBeNull();
   });
 
   it('speed is the change per 15 minutes of real time', () => {
@@ -190,12 +192,15 @@ describe('metricSeries rules', () => {
     expect(m[0].de_call).toBeCloseTo(0.5, 9);
   });
 
-  it('move and path use fut_price', () => {
-    // Spot never moves. Futures 100000 (entry) -> 101038 -> 100519.
-    const m = metricSeries(cohort(), [row(15, { fut: 101038 }), row(30, { fut: 100519 })]);
+  it('move and path use fut_price; efficiency waits for minPathSteps', () => {
+    // Spot never moves. Futures 100000 (entry) -> 101038 -> 100519 -> 100519 -> 100519 -> 100519.
+    const m = metricSeries(cohort(), [15, 30, 45, 60, 75].map((t, i) => row(t, { fut: i === 0 ? 101038 : 100519 })));
     expect(m[1].range_ratio).toBe(0);
     expect(m[1].move_vs_breakeven).toBeCloseTo(0.2, 9); // the largest move 1038 / 5190, not the last 519
-    expect(m[1].efficiency_ratio).toBeCloseTo(519 / 1557, 9); // net 519, path 1038 + 519
+    expect([m[0], m[1], m[2]].map((s) => s.efficiency_ratio)).toEqual([null, null, null]);
+    expect(m[3].efficiency_ratio).toBeCloseTo(519 / 1557, 9); // step 4: net 519, path 1038 + 519
+    expect(m[3].speed.efficiency_ratio).toBeNull(); // step 3 had none
+    expect(m[4].speed.efficiency_ratio).toBeCloseTo(0, 9);
   });
 
   it('futEntry is the mean of the entry bid and ask', () => {
@@ -204,37 +209,79 @@ describe('metricSeries rules', () => {
     expect(m[0].move_vs_breakeven).toBeCloseTo(1028 / 5190, 9);
   });
 
-  it('iv 1h compares with the good row lastHourSteps back', () => {
+  it('iv 1h compares with the latest good row at least an hour old', () => {
     const rows = [50, 51, 52, 53, 56].map((iv, i) => row(15 * (i + 1), { call: { iv }, put: { iv: 60 - i } }));
-    rows.splice(2, 0, row(37, { ok: false, call: { iv: 99 } })); // does not count as a step
+    rows.splice(1, 0, row(15, { ok: false, call: { iv: 99 } })); // bad: never the base
     const m = metricSeries(cohort(), rows);
     expect(m).toHaveLength(5);
-    expect(m[3].iv_call_1h).toBeNull();
-    expect(m[4].iv_call_1h).toBeCloseTo(6, 9); // 56 - 50
+    expect(m[3].iv_call_1h).toBeNull(); // at 60m the target is entry time: no row that old
+    expect(m[4].iv_call_1h).toBeCloseTo(6, 9); // at 75m, the row at 15m: 56 - 50
     expect(m[4].iv_put_1h).toBeCloseTo(-4, 9); // 56 - 60
   });
 
-  it('spread median covers the 24h up to and including this row', () => {
-    const day = 1440;
-    const m = metricSeries(cohort(), [
-      row(15, { call: { bid: 50, ask: 150, mid: 100 } }), // spread 1.0, older than 24h by the last row
-      row(day + 15, { call: { bid: 99, ask: 101, mid: 100 } }), // 0.02, exactly 24h after the first
-      row(day + 16, { call: { bid: 97, ask: 103, mid: 100 } }), // 0.06
-    ]);
-    expect(m[1].spread_median_call).toBeCloseTo(0.51, 9); // the boundary row at exactly 24h is in
-    expect(m[2].spread_median_call).toBeCloseTo(0.04, 9); // 0.02 and 0.06
+  it('iv 1h follows time, not row count, across gaps', () => {
+    // Four rows back from 180m is the 15m row, but the newest row at least an hour old is at 60m, 60 minutes short of the target.
+    const gap = metricSeries(cohort(), [15, 30, 45, 60, 180].map((t) => row(t, { call: { iv: t === 180 ? 70 : 50 } })));
+    expect(gap[4].iv_call_1h).toBeNull();
+    // Only one row back, yet exactly an hour old.
+    const sparse = metricSeries(cohort(), [row(15, { call: { iv: 50 } }), row(75, { call: { iv: 53 } })]);
+    expect(sparse[1].iv_call_1h).toBeCloseTo(3, 9);
+    // The base may be one grid older than the target, not more.
+    expect(metricSeries(cohort(), [row(15, { call: { iv: 50 } }), row(90, { call: { iv: 52 } })])[1].iv_call_1h).toBeCloseTo(2, 9);
+    expect(metricSeries(cohort(), [row(15, { call: { iv: 50 } }), row(91, { call: { iv: 52 } })])[1].iv_call_1h).toBeNull();
   });
 
-  it('spread veto is true if either leg vetoes', () => {
+  // Mid 100 throughout, so the spread is ask - bid over 100.
+  const q = (spread: number) => ({ bid: 100 - spread * 50, ask: 100 + spread * 50, mid: 100 });
+
+  it('the spread median is over prior rows only and needs spreadMedianMinSamples of them', () => {
+    // Prior call spreads 0.02 x3 and 0.04 x3: median 0.03. With this row's 0.09 included it would be 0.04.
+    const prior = [0.02, 0.02, 0.02, 0.04, 0.04, 0.04].map((s, i) => row(15 * (i + 1), { call: q(s) }));
+    const m = metricSeries(cohort(), [...prior, row(105, { call: q(0.09) })]);
+    expect(m[5].spread_median_call).toBeNull(); // five prior rows
+    expect(m[6].spread_median_call).toBeCloseTo(0.03, 9);
+    expect(m[6].spread_veto).toBe(true); // 0.09 > 2 x 0.03, though under 0.1
+    expect(m[5].spread_veto).toBe(false); // 0.04 with no median cannot trip the 2x rule
+  });
+
+  it('the first rows cannot trigger the 2x rule and a flat series never vetoes', () => {
+    // Doubling on the second row would trip a median that included only one row.
+    const jump = metricSeries(cohort(), [row(15, { call: q(0.02) }), row(30, { call: q(0.05) })]);
+    expect(jump[1].spread_veto).toBe(false);
+    const flat = metricSeries(cohort(), Array.from({ length: 10 }, (_, i) => row(15 * (i + 1), { call: q(0.03), put: q(0.03) })));
+    expect(flat.every((s) => s.spread_veto === false)).toBe(true);
+    expect(flat[9].spread_median_call).toBeCloseTo(0.03, 9);
+  });
+
+  it('the spread median window is the 24h before this row by sampled_ms', () => {
+    const day = 1440;
+    const m = metricSeries(cohort(), [
+      row(15, { call: q(0.02) }), // exactly 24h before the row at day+15
+      ...[30, 45, 60, 75, 90].map((t) => row(t, { call: q(0.04) })),
+      row(day + 15, { call: q(0.04) }),
+      row(day + 31, { call: q(0.04) }), // now the 15m and 30m rows are out: 5 prior rows remain
+    ]);
+    expect(m[6].spread_median_call).toBeCloseTo(0.04, 9); // [0.02, 0.04 x5], the boundary row counted
+    expect(m[7].spread_median_call).toBeNull();
+  });
+
+  it('spread veto is true if either leg vetoes, and unknown when a leg has no spread', () => {
     const wide = { bid: 90, ask: 110, mid: 100 };
     expect(metricSeries(cohort(), [row(15, { put: wide })])[0].spread_veto).toBe(true); // 0.2 > 0.1
     expect(metricSeries(cohort(), [row(15, { call: wide })])[0].spread_veto).toBe(true);
-    // Calm rows, then a 0.05 put spread: under 0.1 but over 2 x the median of 0.02, 0.02, 0.05.
-    const m = metricSeries(cohort(), [
-      row(15), row(30), row(45, { put: { bid: 97.5, ask: 102.5, mid: 100 } }),
-    ]);
-    expect(m[2].spread_veto).toBe(true);
-    expect(m[1].spread_veto).toBe(false);
+    const noBid = metricSeries(cohort(), [row(15, { call: { bid: null } })])[0];
+    expect(noBid.spread_call).toBeNull();
+    expect(noBid.spread_veto).toBeNull();
+    expect(noBid.liquidity_unknown).toBe(true);
+    // Even beside a vetoing leg, a missing spread makes the answer unknown.
+    expect(metricSeries(cohort(), [row(15, { call: { bid: null }, put: wide })])[0].spread_veto).toBeNull();
+  });
+
+  it('liquidity is unknown when the exit cost is missing', () => {
+    const s = metricSeries(cohort({ put_bid: null }), [row(15)])[0];
+    expect(s.spread_veto).toBe(false);
+    expect(s.exit_cost).toBeNull();
+    expect(s.liquidity_unknown).toBe(true);
   });
 
   it('liquidity bands the exit cost', () => {
@@ -267,7 +314,38 @@ describe('metricSeries rules', () => {
     walk(m);
   });
 
+  it('heavy leg names the only leg above entry under the gap', () => {
+    // Call +5%, put -3%: gap 0.08 is under heavyLegGap, but only the call is above entry.
+    expect(metricSeries(cohort(), [row(15, { call: { mid: 105 }, put: { mid: 97 } })])[0].heavy_leg).toBe('call');
+  });
+
   it('a zero theta gives null decay, not Infinity', () => {
     expect(metricSeries(cohort({ call_theta: 0 }), [row(15)])[0].de_call).toBeNull();
+  });
+});
+
+describe('winnerAtAge', () => {
+  // The hedge P&L in each row picks the side; persistenceAgeMinutes is 60.
+  const at = (minutes: number, side: 'long' | 'short' | 'tie', ok = true): CohortRow => ({
+    ...row(minutes, { ok }), fut_long_pnl: side === 'long' ? 5 : 1, fut_short_pnl: side === 'short' ? 5 : 1,
+  });
+
+  it('judges at the good row nearest the age, not the latest row', () => {
+    expect(winnerAtAge(cohort(), [at(45, 'short'), at(60, 'long'), at(75, 'short'), at(600, 'short')])).toEqual({ side: 'long' });
+    expect(winnerAtAge(cohort(), [at(50, 'long'), at(80, 'short')])).toEqual({ side: 'long' }); // 10 away beats 20
+  });
+
+  it('a young cohort is not judged', () => {
+    expect(winnerAtAge(cohort(), [at(15, 'long'), at(30, 'long')])).toBeNull();
+    expect(winnerAtAge(cohort(), [])).toBeNull();
+  });
+
+  it('needs a good row within one grid of the age', () => {
+    expect(winnerAtAge(cohort(), [at(45, 'short'), at(60, 'long', false)])).toEqual({ side: 'short' });
+    expect(winnerAtAge(cohort(), [at(30, 'long'), at(100, 'long')])).toBeNull();
+  });
+
+  it('a judged tie has no side but still counts', () => {
+    expect(winnerAtAge(cohort(), [at(60, 'tie')])).toEqual({ side: null });
   });
 });

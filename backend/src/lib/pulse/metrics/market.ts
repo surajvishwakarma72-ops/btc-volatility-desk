@@ -59,8 +59,8 @@ export function marketRow(chain: readonly ChainOption[], slot: Slot, expiryMs: n
   };
 }
 
-/** True when the current expiry's ATM IV exceeds the next one's; null when either is missing. */
+/** True when the current expiry's ATM IV exceeds the next one's by more than termInversionMinPts; null when either is missing. */
 export function termInverted(currentAtm: N, nextAtm: N): boolean | null {
   if (currentAtm === null || nextAtm === null || !Number.isFinite(currentAtm) || !Number.isFinite(nextAtm)) return null;
-  return currentAtm > nextAtm;
+  return currentAtm - nextAtm > METRIC_CONFIG.termInversionMinPts;
 }

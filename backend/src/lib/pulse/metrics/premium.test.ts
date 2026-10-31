@@ -20,6 +20,13 @@ describe('premium metrics', () => {
     expect(heavyLeg(100, 100, 70, 90)).toBe('put');
     expect(heavyLeg(0, 100, 70, 90)).toBeNull();
   });
+  it('heavyLeg names the only leg above entry, even under the gap', () => {
+    expect(heavyLeg(100, 100, 105, 97)).toBe('call'); // +5% and -3%: gap 0.08 < 0.1
+    expect(heavyLeg(100, 100, 97, 105)).toBe('put');
+    expect(heavyLeg(100, 100, 105, 100)).toBe('call'); // the put is not above entry
+    expect(heavyLeg(100, 100, 105, 101)).toBeNull(); // both rise: the gap rule applies
+    expect(heavyLeg(100, 100, 120, 101)).toBe('call');
+  });
   it('ivChange', () => {
     expect(ivChange(55, 50)).toBeCloseTo(5, 6);
     expect(ivChange(null, 50)).toBeNull();

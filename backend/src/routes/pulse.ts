@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { METRIC_CONFIG } from '../lib/pulse/config.js';
 import { SLOTS, type Slot } from '../lib/pulse/grid.js';
 import { termInverted } from '../lib/pulse/metrics/market.js';
-import { metricSeries, type CohortRow } from '../lib/pulse/metrics/series.js';
-import { winnerPersistence, winnerSide } from '../lib/pulse/metrics/tape.js';
+import { metricSeries, winnerAtAge, type CohortRow } from '../lib/pulse/metrics/series.js';
+import { winnerPersistence } from '../lib/pulse/metrics/tape.js';
 import type { PulseCohort } from '../lib/pulse/snapshot.js';
 import { pulseEngine } from '../services/pulse/pulse-engine.js';
 import { cohortRows, latestMarketRows, pulseTablesExist, recentCohorts } from '../services/pulse/pulse-store.js';
@@ -34,10 +34,19 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
     const wanted = new Map<string, PulseCohort>([...open, ...scored].map((c) => [c.id, c]));
     const rows = new Map<string, CohortRow[]>(await Promise.all([...wanted.keys()].map(async (id) => [id, await cohortRows(id)] as const)));
 
-    const winners = scored.map((c) => {
-      const last = rows.get(c.id)?.filter((r) => r.data_ok).at(-1);
-      return last ? winnerSide(last.fut_long_pnl, last.fut_short_pnl) : null;
+    // Each cohort is judged at the same age; one that has not reached it (young, or closed first) is left out of n.
+    const winners = scored.flatMap((c) => {
+      const judged = winnerAtAge(c, rows.get(c.id) ?? []);
+      return judged === null ? [] : [judged.side];
     });
+
+    // latestMarketRows are all from one grid.
+    const marketAt = market.length === 0 ? null : {
+      grid_ms: market[0].grid_ms,
+      sampled_ms: Math.max(...market.map((m) => m.sampled_ms)),
+      stale: Date.now() - market[0].grid_ms > METRIC_CONFIG.marketStaleMs,
+    };
+    const fresh = marketAt !== null && !marketAt.stale;
     const atm = (s: Slot) => market.find((m) => m.slot === s)?.atm_iv ?? null;
     const here = market.find((m) => m.slot === slot);
 
@@ -46,8 +55,9 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
       slot,
       cohorts: open.map((c) => ({ id: c.id, slot_ms: c.slot_ms, latest: metricSeries(c, rows.get(c.id) ?? []).at(-1) ?? null })),
       persistence: winnerPersistence(winners),
-      skew: { rr25: here?.rr25 ?? null, atm_iv: here?.atm_iv ?? null },
-      term_inverted: termInverted(atm('current'), atm('next')),
+      skew: fresh ? { rr25: here?.rr25 ?? null, atm_iv: here?.atm_iv ?? null } : null,
+      term_inverted: fresh ? termInverted(atm('current'), atm('next')) : null,
+      market: marketAt,
       gex: { available: false },
     };
   });

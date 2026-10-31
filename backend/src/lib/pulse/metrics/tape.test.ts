@@ -9,7 +9,10 @@ describe('tape metrics', () => {
     expect(winnerSide(null, 1)).toBeNull();
   });
   it('winnerPersistence', () => {
-    expect(winnerPersistence(['long', 'long', 'short', 'long', 'long', 'long', 'short'])).toEqual({ side: 'long', count: 5 });
+    expect(winnerPersistence(['long', 'long', 'short', 'long', 'long', 'long', 'short'])).toEqual({ side: 'long', count: 5, n: 6 });
+    // n counts the cohorts judged, including a tie; below persistenceMinCohorts (4) there is no reading.
+    expect(winnerPersistence(['long', 'long', null, 'short'])).toEqual({ side: 'long', count: 2, n: 4 });
+    expect(winnerPersistence(['long', 'long', 'long'])).toBeNull();
     expect(winnerPersistence(['long', 'short', 'long', 'short', 'long', 'short'])).toBeNull();
     expect(winnerPersistence([])).toBeNull();
     expect(winnerPersistence([null, null])).toBeNull();

@@ -52,8 +52,8 @@ export function liquidityBand(exitCost: N): 'normal' | 'penalty' | 'veto' | null
   return exitCost <= METRIC_CONFIG.exitCostVeto ? 'penalty' : 'veto';
 }
 
-/** True when the spread is above spreadVetoPct or above spreadVetoMedianMultiple x its 24h median. A null spread is false (NO DATA handles it). */
-export function spreadVeto(spread: N, median24h: N): boolean {
-  if (!ok(spread)) return false;
+/** True when the spread is above spreadVetoPct or above spreadVetoMedianMultiple x its 24h median. A null spread is null: unknown, not "no veto". */
+export function spreadVeto(spread: N, median24h: N): boolean | null {
+  if (!ok(spread)) return null;
   return spread > METRIC_CONFIG.spreadVetoPct || (ok(median24h) && spread > METRIC_CONFIG.spreadVetoMedianMultiple * median24h);
 }

@@ -13,13 +13,18 @@ export function winnerSide(longPnl: N, shortPnl: N): Side | null {
   return longPnl > shortPnl ? 'long' : 'short';
 }
 
-/** Side that won most of the newest persistenceWindow samples (newest first); null on an empty window or a tied count. */
-export function winnerPersistence(winners: readonly (Side | null)[]): { side: Side; count: number } | null {
+/**
+ * Side that won most of the judged cohorts (newest first, at most persistenceWindow), with n = how many were judged.
+ * Null below persistenceMinCohorts or on a tied count. A trend veto must read count against n: 5 of 6 needs n = 6.
+ */
+export function winnerPersistence(winners: readonly (Side | null)[]): { side: Side; count: number; n: number } | null {
   const recent = winners.slice(0, METRIC_CONFIG.persistenceWindow);
+  const n = recent.length;
+  if (n < METRIC_CONFIG.persistenceMinCohorts) return null;
   const long = recent.filter((w) => w === 'long').length;
   const short = recent.filter((w) => w === 'short').length;
   if (long === short) return null;
-  return long > short ? { side: 'long', count: long } : { side: 'short', count: short };
+  return long > short ? { side: 'long', count: long, n } : { side: 'short', count: short, n };
 }
 
 /** Breakeven prices of a short strangle for the credit collected (call bid + put bid). */

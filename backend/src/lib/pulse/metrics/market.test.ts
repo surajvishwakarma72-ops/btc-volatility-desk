@@ -73,6 +73,11 @@ describe('termInverted', () => {
     expect(termInverted(50, 55)).toBe(false);
     expect(termInverted(50, 50)).toBe(false);
   });
+  it('needs current above next by more than termInversionMinPts (0.5)', () => {
+    expect(termInverted(50.5, 50)).toBe(false);
+    expect(termInverted(50.51, 50)).toBe(true);
+    expect(termInverted(50.3, 50)).toBe(false);
+  });
   it('is null when either side is missing', () => {
     expect(termInverted(null, 50)).toBeNull();
     expect(termInverted(50, null)).toBeNull();

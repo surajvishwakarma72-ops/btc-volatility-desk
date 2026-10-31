@@ -20,10 +20,12 @@ export function balanceDrift(cEntry: N, pEntry: N, cNow: N, pNow: N): N {
   return Math.abs(Math.log(cNow / pNow) - Math.log(cEntry / pEntry));
 }
 
-/** The leg whose premium grew more, when the now/entry ratios differ by at least heavyLegGap. */
+/** The only leg above its entry premium; when both rose or both fell, the one that grew more, if the now/entry ratios differ by at least heavyLegGap. */
 export function heavyLeg(cEntry: N, pEntry: N, cNow: N, pNow: N): 'call' | 'put' | null {
   if (!ok(cEntry) || !ok(pEntry) || !ok(cNow) || !ok(pNow)) return null;
   if (cEntry <= 0 || pEntry <= 0) return null;
+  const callUp = cNow > cEntry;
+  if (callUp !== pNow > pEntry) return callUp ? 'call' : 'put';
   const gap = cNow / cEntry - pNow / pEntry;
   // Tolerance so a gap of exactly heavyLegGap is not lost to float error.
   if (Math.abs(gap) < METRIC_CONFIG.heavyLegGap - 1e-12) return null;

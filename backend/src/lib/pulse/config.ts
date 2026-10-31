@@ -28,11 +28,9 @@ export const PULSE_CONFIG = {
 export const METRIC_CONFIG = {
   /** Minimum gap between call and put now/entry ratios before one leg counts as heavy. */
   heavyLegGap: 0.1,
-  /** Minimum absolute spot move (percent) for the delta shift index to be meaningful. */
+  /** Minimum absolute spot move (percent) for the Delta Stability Index to be meaningful. */
   minMovePct: 0.02,
-  /** Snapshot steps that make up the last hour. */
-  lastHourSteps: 4,
-  /** Delta band around the short strikes treated as near. */
+  /** Band around 25 delta within which the nearest option counts as the 25-delta quote for the risk reversal. */
   nearDeltaBand: 0.05,
   /** Fewest same-session samples before a baseline is trusted. */
   sessionMinSamples: 10,
@@ -48,4 +46,16 @@ export const METRIC_CONFIG = {
   spreadVetoMedianMultiple: 2,
   /** Newest samples counted for hedge-winner persistence. */
   persistenceWindow: 6,
+  /** Age (minutes after opened_at) at which each cohort's hedge winner is judged, so cohorts are compared like for like. */
+  persistenceAgeMinutes: 60,
+  /** Fewest judged cohorts before winner persistence gives a reading. */
+  persistenceMinCohorts: 4,
+  /** Fewest good steps before the efficiency ratio is reported; a short path reads as a straight line. */
+  minPathSteps: 4,
+  /** Fewest prior rows in the last 24h before a spread median exists, so the median-multiple veto cannot fire on thin history. */
+  spreadMedianMinSamples: 6,
+  /** A newest market grid older than this (ms) is stale: skew and term structure are not reported. */
+  marketStaleMs: 1_200_000,
+  /** Current ATM IV must exceed next by more than this (vol points) for the term structure to count as inverted. */
+  termInversionMinPts: 0.5,
 } as const;

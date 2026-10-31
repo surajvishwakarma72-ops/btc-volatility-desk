@@ -50,6 +50,7 @@ describe('leg metrics', () => {
     expect(spreadVeto(0.11, null)).toBe(true);
     expect(spreadVeto(0.05, 0.02)).toBe(true);
     expect(spreadVeto(0.04, 0.02)).toBe(false);
-    expect(spreadVeto(null, 0.02)).toBe(false);
+    expect(spreadVeto(null, 0.02)).toBeNull(); // unknown, not "no veto"
+    expect(spreadVeto(null, null)).toBeNull();
   });
 });
