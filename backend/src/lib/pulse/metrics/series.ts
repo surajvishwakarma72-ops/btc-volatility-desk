@@ -62,6 +62,16 @@ export interface StepMetrics {
   move_vs_breakeven: N;
   efficiency_ratio: N;
   speed: Record<string, N>;
+  /** BTC perp spot at this step. */
+  spot: number;
+  /** Signed BTC move since entry in percent, divided by the square root of hours held (a random walk scales with that), floored at 15 minutes. */
+  move_norm: N;
+  /** Change in |delta| per 15 minutes since the previous step; positive = the leg is getting closer to the money. */
+  delta_speed_call: N;
+  delta_speed_put: N;
+  /** Relative change in gamma per 15 minutes since the previous step. */
+  gamma_speed_call: N;
+  gamma_speed_put: N;
 }
 
 const SPEED_KEYS = [
@@ -141,6 +151,15 @@ export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): S
     const medianPut = medianOf('put');
     spreads.push({ sampled_ms: row.sampled_ms, call: spreadCall, put: spreadPut });
 
+    const per15 = (x: N): N => {
+      const minutes = prev ? (row.sampled_ms - prev.sampled_ms) / MINUTE_MS : 0;
+      return x === null || minutes <= 0 ? null : x / (minutes / PULSE_CONFIG.snapshotMinutes);
+    };
+    const absDelta = (d: N): N => (d === null || d === undefined ? null : Math.abs(d));
+    const relChange = (now: N, before: N | undefined): N => (now === null || before === null || before === undefined || before <= 0 ? null : (now - before) / before);
+    const heldHours = Math.max((row.sampled_ms - cohort.opened_at) / HOUR_MS, 0.25);
+    const moveNorm: N = cohort.spot_entry === null || cohort.spot_entry <= 0 ? null : (((row.spot - cohort.spot_entry) / cohort.spot_entry) * 100) / Math.sqrt(heldHours);
+
     const exitCost = exitCostPct(call.ask, put.ask, call.mid, put.mid, cohort.call_bid, cohort.put_bid);
 
     const step: StepMetrics = {
@@ -174,6 +193,12 @@ export function metricSeries(cohort: PulseCohort, rows: readonly CohortRow[]): S
       efficiency_ratio:
         futEntry === null || futPrices.length < METRIC_CONFIG.minPathSteps ? null : efficiencyRatio([futEntry, ...futPrices]),
       speed: {},
+      spot: row.spot,
+      move_norm: moveNorm,
+      delta_speed_call: per15(change(absDelta(call.delta), absDelta(prev?.call.delta ?? null))),
+      delta_speed_put: per15(change(absDelta(put.delta), absDelta(prev?.put.delta ?? null))),
+      gamma_speed_call: per15(relChange(call.gamma, prev?.call.gamma)),
+      gamma_speed_put: per15(relChange(put.gamma, prev?.put.gamma)),
     };
     step.speed = speeds(step, steps[i - 1]);
     steps.push(step);

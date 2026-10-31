@@ -282,23 +282,32 @@ export async function lastLegSnapshots(cohortId: string): Promise<Record<LegName
 
 /** A cohort's stored grids, oldest first. Cohort rows are read first: they are written after their legs, so each has both. */
 export async function cohortRows(cohortId: string): Promise<CohortRow[]> {
-  const snaps = await pool.query('SELECT * FROM pulse_cohort_snapshots WHERE cohort_id = $1 ORDER BY grid_ms', [cohortId]);
-  const legs = await pool.query('SELECT * FROM pulse_leg_snapshots WHERE cohort_id = $1', [cohortId]);
-  const byGrid = new Map<number, Partial<Record<LegName, LegRow>>>();
+  return (await cohortRowsMany([cohortId])).get(cohortId) ?? [];
+}
+
+/** cohortRows for many cohorts in two queries; every id is a key, empty when it has no rows. */
+export async function cohortRowsMany(ids: readonly string[]): Promise<Map<string, CohortRow[]>> {
+  const out = new Map<string, CohortRow[]>(ids.map((id) => [id, []]));
+  if (ids.length === 0) return out;
+  const snaps = await pool.query('SELECT * FROM pulse_cohort_snapshots WHERE cohort_id = ANY($1::uuid[]) ORDER BY grid_ms', [ids]);
+  const legs = await pool.query('SELECT * FROM pulse_leg_snapshots WHERE cohort_id = ANY($1::uuid[])', [ids]);
+  const byGrid = new Map<string, Partial<Record<LegName, LegRow>>>();
   for (const row of legs.rows as Row[]) {
     const leg = toLegRow(row);
-    byGrid.set(leg.grid_ms, { ...byGrid.get(leg.grid_ms), [leg.leg]: leg });
+    const key = leg.cohort_id + ':' + leg.grid_ms;
+    byGrid.set(key, { ...byGrid.get(key), [leg.leg]: leg });
   }
-  return (snaps.rows as Row[]).flatMap((r) => {
+  for (const r of snaps.rows as Row[]) {
     const grid = Number(r.grid_ms);
-    const { call, put } = byGrid.get(grid) ?? {};
-    if (!call || !put) return [];
-    return [{
+    const { call, put } = byGrid.get(String(r.cohort_id) + ':' + grid) ?? {};
+    if (!call || !put) continue;
+    out.get(String(r.cohort_id))?.push({
       grid_ms: grid, sampled_ms: Number(r.sampled_ms), spot: num(r.spot) as number, fut_price: num(r.fut_price) as number,
       net_delta: num(r.net_delta), fut_long_pnl: num(r.fut_long_pnl), fut_short_pnl: num(r.fut_short_pnl), data_ok: r.data_ok as boolean,
       call, put,
-    }];
-  });
+    });
+  }
+  return out;
 }
 
 /** Records the time a leg's stop was first hit. Never overwrites an earlier value. */

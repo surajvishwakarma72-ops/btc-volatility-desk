@@ -5,11 +5,13 @@ import { cohortSlotMs, HOUR_MS, SLOTS, type Slot } from '../lib/pulse/grid.js';
 import { termInverted } from '../lib/pulse/metrics/market.js';
 import { metricSeries, winnerAtAge, type CohortRow } from '../lib/pulse/metrics/series.js';
 import { breakevens, winnerPersistence } from '../lib/pulse/metrics/tape.js';
-import { readings, type CohortSteps, type LiveContext } from '../lib/pulse/score/score.js';
+import { linesAt, readings, type CohortSteps, type LiveContext } from '../lib/pulse/score/score.js';
 import type { PulseCohort } from '../lib/pulse/snapshot.js';
 import { pulseEngine } from '../services/pulse/pulse-engine.js';
 import { regimeService } from '../services/pulse/regime-service.js';
-import { cohortRows, latestMarketRows, pulseTablesExist, recentCohorts } from '../services/pulse/pulse-store.js';
+import { cohortRows, cohortRowsMany, latestMarketRows, pulseTablesExist, recentCohorts } from '../services/pulse/pulse-store.js';
+
+const speedsOf = (s: ReturnType<typeof metricSeries>[number] | undefined) => s && { deltaCall: s.delta_speed_call, deltaPut: s.delta_speed_put, gammaCall: s.gamma_speed_call, gammaPut: s.gamma_speed_put };
 
 /** A week of hourly cohorts: covers every open one (at most 24) and a long run of no_valid_strikes before the persistence window. */
 const RECENT_COHORTS = 168;
@@ -51,8 +53,10 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
     // Option cohorts feed the score steps; futures_only cohorts (no strike fit the delta band) only feed the futures reads and P&L.
     const traded = recent.filter((c) => c.status === 'open' || c.status === 'closed');
     const withFut = recent.filter((c) => c.status !== 'no_valid_strikes');
-    const rowsBy = new Map<string, CohortRow[]>(await Promise.all(withFut.map(async (c) => [c.id, await cohortRows(c.id)] as const)));
+    const rowsBy = await cohortRowsMany(withFut.map((c) => c.id));
     const cohorts: CohortSteps[] = traded.map((c) => ({ opened_at: c.opened_at, steps: metricSeries(c, rowsBy.get(c.id) ?? []) }));
+    // The direction lines also read futures-only cohorts (no strike fit the delta band that hour).
+    const dirCohorts: CohortSteps[] = withFut.map((c) => ({ opened_at: c.opened_at, steps: metricSeries(c, rowsBy.get(c.id) ?? []) }));
 
     const nowMs = Date.now();
     const grids = [...new Set(cohorts.flatMap((c) => c.steps.map((s) => s.grid_ms)))]
@@ -92,12 +96,17 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
         verdict: last.verdict, zone: last.zone, confidence: last.confidence, why: last.why, flips: last.flips, vetoes: last.vetoes, heavyLeg: last.heavyLeg,
         gate: { pass: gate.pass, reasons: gate.reasons },
         nextCohortMs: nextSlotMs(nowMs),
+        speeds: speedsOf(cohorts.find((c) => c.opened_at === open?.opened_at)?.steps.at(-1)),
         strikes: open && { call: open.call_strike, put: open.put_strike, callDelta: open.call_delta, putDelta: open.put_delta },
         premium: open && { credit, breakevens: breakevens(open.call_strike, open.put_strike, credit) },
         stopPremium: open && { call: open.call_bid === null ? null : open.call_bid * PULSE_CONFIG.stopMultiple, put: open.put_bid === null ? null : open.put_bid * PULSE_CONFIG.stopMultiple },
       },
       zones: { sellMin: SCORE_CONFIG.zones.sellMin, cautionMin: SCORE_CONFIG.zones.cautionMin },
-      points: list.map((r) => ({ t: r.t, c: r.confidence, z: r.zone })),
+      points: list.map((r) => {
+        const lo = linesAt(r.t, cohorts);
+        const ld = linesAt(r.t, dirCohorts);
+        return { t: r.t, c: r.confidence, z: r.zone, call: lo.call, put: lo.put, fl: ld.futLong, fs: ld.futShort };
+      }),
       changes,
       pnl,
       cohort: pnlCohort && { id: pnlCohort.id, status: pnlCohort.status, opened_at: pnlCohort.opened_at },

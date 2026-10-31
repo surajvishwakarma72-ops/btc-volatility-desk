@@ -1,5 +1,5 @@
 /** Strangle Pulse confidence score, zones and verdict. Pure: turns per-cohort metric steps into one reading per 15-minute grid. */
-import { SCORE_CONFIG } from '../config.js';
+import { LINE_CONFIG, SCORE_CONFIG } from '../config.js';
 import type { StepMetrics } from '../metrics/series.js';
 
 type N = number | null;
@@ -161,5 +161,58 @@ export function readings(gridTimes: readonly number[], cohorts: readonly CohortS
     }
     out.push({ ...r, zone: shown, verdict: VERDICT[shown] });
   });
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Risk lines: one 0-100 line each for the call leg, the put leg, the long futures and the short futures.
+
+export interface Lines { call: N; put: N; futLong: N; futShort: N }
+
+/** Calm-to-bad 0-100 map (higher = worse for a seller). */
+const rk = (x: N | undefined, [calm, bad]: readonly [number, number]): N => lin(x, [calm, bad]);
+
+/** A sold leg gets riskier as its IV rises, its decay stalls, its delta and gamma speed up, or buyers take the strike. */
+function legRisk(iv1h: N, de: N, deltaSpeed: N, gammaSpeed: N, oi: StepMetrics['oi_call']): N {
+  const m = LINE_CONFIG.map;
+  const oiR = oi && oi in LINE_CONFIG.oiRisk ? LINE_CONFIG.oiRisk[oi as keyof typeof LINE_CONFIG.oiRisk] : null;
+  return avg([rk(iv1h, m.ivChange1h), rk(de, m.decay), rk(deltaSpeed, m.deltaSpeed), rk(gammaSpeed, m.gammaSpeed), oiR]);
+}
+
+/** One step's four lines. The futures lines rise only on a move in their own direction, harder when the path is a straight line. */
+export function stepLines(s: StepMetrics): Lines {
+  const m = LINE_CONFIG.map;
+  const up = s.move_norm !== null && s.move_norm > 0;
+  const dn = s.move_norm !== null && s.move_norm < 0;
+  const dir = (on: boolean): N => (s.move_norm === null ? null : !on ? 0 : avg([rk(Math.abs(s.move_norm), m.moveNorm), rk(s.efficiency_ratio, m.efficiency)]));
+  return {
+    call: legRisk(s.iv_call_1h, s.de_call, s.delta_speed_call, s.gamma_speed_call, s.oi_call),
+    put: legRisk(s.iv_put_1h, s.de_put, s.delta_speed_put, s.gamma_speed_put, s.oi_put),
+    futLong: dir(up),
+    futShort: dir(dn),
+  };
+}
+
+/** Recency-weighted lines at grid time t. `cohorts` need not have option legs (a futures-only cohort has null leg inputs). */
+export function linesAt(t: number, cohorts: readonly CohortSteps[]): Lines {
+  const eligible = cohorts.filter((c) => c.opened_at <= t).sort((a, b) => b.opened_at - a.opened_at);
+  const fresh = eligible.flatMap((c) => {
+    const step = [...c.steps].reverse().find((x) => x.sampled_ms <= t);
+    return step && t - step.sampled_ms <= SCORE_CONFIG.staleStepMs ? [stepLines(step)] : [];
+  });
+  const out: Lines = { call: null, put: null, futLong: null, futShort: null };
+  for (const k of Object.keys(out) as (keyof Lines)[]) {
+    let acc = 0;
+    let w = 0;
+    let prev = 0;
+    for (const g of SCORE_CONFIG.recency) {
+      const vals = fresh.slice(prev, g.upTo).map((l) => l[k]).filter(ok);
+      prev = g.upTo;
+      if (vals.length === 0) continue;
+      acc += g.weight * (vals.reduce((a, b) => a + b, 0) / vals.length);
+      w += g.weight;
+    }
+    out[k] = w === 0 ? null : Math.round((acc / w) * 10) / 10;
+  }
   return out;
 }

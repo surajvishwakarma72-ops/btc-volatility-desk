@@ -132,5 +132,14 @@ export const SCORE_CONFIG = {
   /** Consecutive readings on the new side before the zone changes. */
   hysteresisReadings: 2,
   /** Hours of readings returned. */
-  historyHours: 24,
+  historyHours: 48,
+} as const;
+
+/** Strangle Pulse risk lines (0 = calm, in the green sell zone; 100 = unfavourable, in the no-sell zone). [calm value, bad value] maps. */
+export const LINE_CONFIG = {
+  map: {
+    ivChange1h: [-2, 2], decay: [1.0, 0.3], deltaSpeed: [0, 0.04], gammaSpeed: [0, 0.3], moveNorm: [0, 1.0], efficiency: [0.2, 0.6],
+  },
+  /** Threat score of an OI read on a sold leg: writers adding is calm, fresh buyers or covering is not. */
+  oiRisk: { short_buildup: 0, long_unwinding: 35, long_buildup: 100, short_covering: 100 },
 } as const;
