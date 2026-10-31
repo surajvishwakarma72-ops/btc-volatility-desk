@@ -357,8 +357,12 @@ export class PulseEngine {
         id: randomUUID(), slot, series_id: this.series[slot] as string, slot_ms: slotMs, expiry_ms: expiryMs, opened_at: now,
       };
       if (plan.kind === 'no_valid_strikes') {
-        const stored = await insertCohort(this.noStrikesCohort(base, plan.missing));
-        if (stored) await logEvent('NO_VALID_STRIKES', slot, { slotMs, expiryMs, missing: plan.missing });
+        // No strike fits the delta band: still run the paper futures long + short pair for this hour.
+        const stored = await insertCohort({ ...this.noStrikesCohort(base, plan.missing), status: 'futures_only', spot_entry: perp.spot, fut_entry_bid: perp.bid, fut_entry_ask: perp.ask });
+        if (stored) {
+          this.live[slot]++;
+          await logEvent('NO_VALID_STRIKES', slot, { slotMs, expiryMs, missing: plan.missing });
+        }
         continue;
       }
       const { call, put } = plan;

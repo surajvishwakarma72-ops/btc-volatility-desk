@@ -301,22 +301,28 @@ describe('opening', () => {
     expect(mocks.fetchOptionFeeRates).toHaveBeenCalledTimes(24);
   }, 240_000);
 
-  it('stores NO_VALID_STRIKES as a row and event, then continues', async () => {
+  it('stores NO_VALID_STRIKES as a futures-only cohort and an event, then keeps the futures pair running', async () => {
     h.noStrikes.add(E_NOV3);
     const e = engine();
     await at(e, '2026-11-01T00:00:00Z');
-    const row = (await q(`SELECT status, missing, net_pnl, call_symbol, fee FROM pulse_cohorts WHERE slot = 'n2n'`))[0];
-    expect(row).toMatchObject({ status: 'no_valid_strikes', missing: ['call', 'put'], net_pnl: null, call_symbol: null });
+    const row = (await q(`SELECT status, missing, net_pnl, call_symbol, fee, fut_entry_bid, fut_entry_ask FROM pulse_cohorts WHERE slot = 'n2n'`))[0];
+    expect(row).toMatchObject({ status: 'futures_only', missing: ['call', 'put'], net_pnl: null, call_symbol: null });
+    expect(row.fut_entry_bid).not.toBeNull();
+    expect(row.fut_entry_ask).not.toBeNull();
     expect(row.fee).toBeTruthy();
     expect(await events('NO_VALID_STRIKES')).toMatchObject([{ slot: 'n2n', detail: { missing: ['call', 'put'] } }]);
-    expect((await store.liveCohorts()).map((c) => c.slot).sort()).toEqual(['current', 'next']);
-    expect(e.status().slots.n2n.live).toBe(0);
+    expect((await store.liveCohorts()).map((c) => c.slot).sort()).toEqual(['current', 'n2n', 'next']);
+    expect(e.status().slots.n2n.live).toBe(1);
     expect(mocks.fetchOptionFeeRates.mock.calls[0]![0]).toHaveLength(4);
 
     await at(e, '2026-11-01T00:15:00Z');
     expect(await events('NO_VALID_STRIKES')).toHaveLength(1);
     expect(await count('FROM pulse_cohorts')).toBe(3);
-    expect(await count('FROM pulse_cohort_snapshots')).toBe(2);
+    expect(await count('FROM pulse_cohort_snapshots')).toBe(3);
+    const fut = (await q(`SELECT s.data_ok, s.fut_long_pnl, s.fut_short_pnl FROM pulse_cohort_snapshots s JOIN pulse_cohorts c ON c.id = s.cohort_id WHERE c.slot = 'n2n'`))[0];
+    expect(fut.data_ok).toBe(true);
+    expect(fut.fut_long_pnl).not.toBeNull();
+    expect(fut.fut_short_pnl).not.toBeNull();
   });
 
   it('does not call the fee endpoint when every slot has no valid strikes', async () => {

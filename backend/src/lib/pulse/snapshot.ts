@@ -14,7 +14,8 @@ export interface PulseCohort {
   series_id: string;
   slot_ms: number;
   expiry_ms: number;
-  status: 'open' | 'closed' | 'no_valid_strikes';
+  /** futures_only: no strike fit the delta band, so only the paper futures long + short pair runs. */
+  status: 'open' | 'closed' | 'no_valid_strikes' | 'futures_only';
   opened_at: number;
   closed_at: number | null;
   close_reason: 'ROLL' | 'EXPIRED' | null;
@@ -218,13 +219,14 @@ export function buildSnapshot(
 ): BuiltSnapshot {
   const call = buildLeg(cohort, 'call', chain, perp, prev.call, gridMs, nowMs);
   const put = buildLeg(cohort, 'put', chain, perp, prev.put, gridMs, nowMs);
-  const ok = call.data_ok && put.data_ok;
+  // A futures-only cohort has no option legs; its row is good whenever the perp quote is.
+  const ok = cohort.status === 'futures_only' ? true : call.data_ok && put.data_ok;
 
   let combinedPnl: number | null = null;
   let pnlPct: number | null = null;
   let netDelta: number | null = null;
   let combinedPremium: number | null = null;
-  if (ok) {
+  if (ok && cohort.status !== 'futures_only') {
     combinedPnl = (call.net_pnl as number) + (put.net_pnl as number);
     const collected = ((cohort.call_bid as number) + (cohort.put_bid as number)) * PULSE_CONFIG.lots * cohort.fee.contractValue;
     pnlPct = collected > 0 ? (combinedPnl / collected) * 100 : null;

@@ -185,7 +185,7 @@ function toCohort(r: Row): PulseCohort {
 }
 
 export async function liveCohorts(): Promise<PulseCohort[]> {
-  const r = await pool.query(`SELECT * FROM pulse_cohorts WHERE status = 'open' ORDER BY slot_ms, slot`);
+  const r = await pool.query(`SELECT * FROM pulse_cohorts WHERE status IN ('open', 'futures_only') ORDER BY slot_ms, slot`);
   return (r.rows as Row[]).map(toCohort);
 }
 
@@ -314,7 +314,7 @@ export async function closeCohorts(ids: string[], reason: 'ROLL' | 'EXPIRED', at
   if (ids.length === 0) return;
   await pool.query(
     `UPDATE pulse_cohorts SET status = 'closed', close_reason = $2, closed_at = to_timestamp($3::double precision / 1000.0), net_pnl = $4
-     WHERE id = ANY($1::uuid[]) AND status = 'open'`,
+     WHERE id = ANY($1::uuid[]) AND status IN ('open', 'futures_only')`,
     [ids, reason, atMs, netPnl],
   );
 }
@@ -337,7 +337,7 @@ export async function latestGridMs(): Promise<number | null> {
 /** True when a live cohort from before this grid has no cohort snapshot at it, as after a crash part-way through the grid. */
 export async function gridIncomplete(gridMs: number): Promise<boolean> {
   const r = await pool.query(
-    `SELECT 1 FROM pulse_cohorts c WHERE c.status = 'open' AND c.slot_ms < $1
+    `SELECT 1 FROM pulse_cohorts c WHERE c.status IN ('open', 'futures_only') AND c.slot_ms < $1
      AND NOT EXISTS (SELECT 1 FROM pulse_cohort_snapshots s WHERE s.cohort_id = c.id AND s.grid_ms = $1) LIMIT 1`,
     [gridMs],
   );

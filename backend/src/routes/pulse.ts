@@ -35,35 +35,6 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
   });
 
   /**
-   * P&L over time for one cohort of a slot (the open one with the newest entry, else the newest that traded).
-   * call / put are the short legs' USD P&L per lot; fut is the better of the two hedge futures sides; net is call + put.
-   */
-  fastify.get('/series', auth, async (req, reply) => {
-    const q = metricsQuery.safeParse(req.query);
-    if (!q.success) return reply.status(400).send({ success: false, error: 'slot must be current, next or n2n' });
-    const ready = await pulseTablesExist();
-    const recent = ready ? await recentCohorts(q.data.slot, 48) : [];
-    const traded = recent.filter((c) => c.status !== 'no_valid_strikes');
-    const cohort = traded.find((c) => c.status === 'open') ?? traded[0];
-    if (!cohort) return { success: true, slot: q.data.slot, cohort: null, points: [] };
-    const rows = await cohortRows(cohort.id);
-    const points = rows.filter((r) => r.data_ok).map((r) => {
-      const call = r.call.net_pnl;
-      const put = r.put.net_pnl;
-      const fl = r.fut_long_pnl;
-      const fs = r.fut_short_pnl;
-      const fut = fl === null && fs === null ? null : Math.max(fl ?? -Infinity, fs ?? -Infinity);
-      return { t: r.sampled_ms, call, put, fut, net: call === null || put === null ? null : call + put };
-    });
-    return {
-      success: true,
-      slot: q.data.slot,
-      cohort: { id: cohort.id, status: cohort.status, opened_at: cohort.opened_at, call_strike: cohort.call_strike, put_strike: cohort.put_strike },
-      points,
-    };
-  });
-
-  /**
    * The Strangle Pulse panel in one call: verdict card, confidence line with zones, zone changes and the newest cohort's P&L lines.
    * Computed on read from stored cohorts; cached for 45 s per slot. Confidence is uncalibrated until Phase 7.
    */
@@ -77,8 +48,10 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
 
     const ready = await pulseTablesExist();
     const recent = ready ? await recentCohorts(slot, SCORE_CONFIG.historyHours + 12) : [];
-    const traded = recent.filter((c) => c.status !== 'no_valid_strikes');
-    const rowsBy = new Map<string, CohortRow[]>(await Promise.all(traded.map(async (c) => [c.id, await cohortRows(c.id)] as const)));
+    // Option cohorts feed the score steps; futures_only cohorts (no strike fit the delta band) only feed the futures reads and P&L.
+    const traded = recent.filter((c) => c.status === 'open' || c.status === 'closed');
+    const withFut = recent.filter((c) => c.status !== 'no_valid_strikes');
+    const rowsBy = new Map<string, CohortRow[]>(await Promise.all(withFut.map(async (c) => [c.id, await cohortRows(c.id)] as const)));
     const cohorts: CohortSteps[] = traded.map((c) => ({ opened_at: c.opened_at, steps: metricSeries(c, rowsBy.get(c.id) ?? []) }));
 
     const nowMs = Date.now();
@@ -89,26 +62,27 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
     const market = ready ? await latestMarketRows() : [];
     const fresh = market.length > 0 && nowMs - market[0].grid_ms <= METRIC_CONFIG.marketStaleMs;
     const atm = (s: Slot) => market.find((m) => m.slot === s)?.atm_iv ?? null;
-    const scoredRecent = traded.slice(0, METRIC_CONFIG.persistenceWindow);
+    const scoredRecent = withFut.slice(0, METRIC_CONFIG.persistenceWindow);
     const winners = scoredRecent.flatMap((c) => { const j = winnerAtAge(c, rowsBy.get(c.id) ?? []); return j === null ? [] : [j.side]; });
     const live: LiveContext = {
       gatePass: gate.pass,
       killer: gate.inputs.find((i) => i.id === 'killer')?.ok === false ? true : null,
       termInverted: fresh ? termInverted(atm('current'), atm('next')) : null,
       persistence: winnerPersistence(winners),
-      noValidStrikes: recent[0]?.status === 'no_valid_strikes',
+      noValidStrikes: recent[0]?.status === 'no_valid_strikes' || recent[0]?.status === 'futures_only',
     };
     const list = readings(grids, cohorts, live);
     const last = list.at(-1) ?? null;
 
     const changes = list.flatMap((r, i) => (i > 0 && r.zone !== list[i - 1].zone ? [{ t: r.t, zone: r.zone, reason: r.why[0] ?? null }] : []));
     const open = traded.find((c) => c.status === 'open') ?? traded[0] ?? null;
+    const pnlCohort = withFut.find((c) => c.status === 'open' || c.status === 'futures_only') ?? open;
     const credit = open && open.call_bid !== null && open.put_bid !== null ? open.call_bid + open.put_bid : null;
-    const pnl = open
-      ? (rowsBy.get(open.id) ?? []).filter((r) => r.data_ok).map((r) => {
-          const fl = r.fut_long_pnl; const fs = r.fut_short_pnl;
-          return { t: r.sampled_ms, call: r.call.net_pnl, put: r.put.net_pnl, fut: fl === null && fs === null ? null : Math.max(fl ?? -Infinity, fs ?? -Infinity), net: r.call.net_pnl === null || r.put.net_pnl === null ? null : r.call.net_pnl + r.put.net_pnl };
-        })
+    const pnl = pnlCohort
+      ? (rowsBy.get(pnlCohort.id) ?? []).filter((r) => r.data_ok).map((r) => ({
+          t: r.sampled_ms, call: r.call.net_pnl, put: r.put.net_pnl, futLong: r.fut_long_pnl, futShort: r.fut_short_pnl,
+          net: r.call.net_pnl === null || r.put.net_pnl === null ? null : r.call.net_pnl + r.put.net_pnl,
+        }))
       : [];
     const body = {
       success: true,
@@ -126,7 +100,7 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
       points: list.map((r) => ({ t: r.t, c: r.confidence, z: r.zone })),
       changes,
       pnl,
-      cohort: open && { id: open.id, status: open.status, opened_at: open.opened_at },
+      cohort: pnlCohort && { id: pnlCohort.id, status: pnlCohort.status, opened_at: pnlCohort.opened_at },
     };
     scoreCache.set(slot, { at: Date.now(), body });
     return body;
