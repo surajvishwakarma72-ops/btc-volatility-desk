@@ -3,7 +3,9 @@ import { dsi, oiSignal, spreadPct, exitCostPct, median, liquidityBand, spreadVet
 
 describe('leg metrics', () => {
   it('dsi', () => {
-    expect(dsi(0.02, -0.01, 100000, 101000)).toBeCloseTo(0.03, 6);
+    expect(dsi(0.02, 0.01, 100000, 101000)).toBeCloseTo(0.03, 6);
+    expect(dsi(0.02, -0.01, 100000, 102000)).toBeCloseTo(0.015, 6);
+    expect(dsi(0.02, -0.01, 100000, 99000)).toBeCloseTo(0.03, 6);
     expect(dsi(0.02, 0.01, 100000, 100010)).toBeNull(); // 0.01% move, below minMovePct
     expect(dsi(null, 0.01, 100000, 101000)).toBeNull();
     expect(dsi(0.02, 0.01, 0, 101000)).toBeNull();
@@ -34,6 +36,8 @@ describe('leg metrics', () => {
     expect(median([3, 1, 2])).toBe(2);
     expect(median([1, 2, 3, 4])).toBe(2.5);
     expect(median([])).toBeNull();
+    expect(median([NaN, Infinity])).toBeNull();
+    expect(median([1, NaN, 3])).toBe(2);
   });
   it('liquidityBand', () => {
     expect(liquidityBand(0.049)).toBe('normal');

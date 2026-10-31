@@ -10,6 +10,7 @@ describe('premium metrics', () => {
   });
   it('balanceDrift', () => {
     expect(balanceDrift(100, 100, 200, 100)).toBeCloseTo(0.693147, 6);
+    expect(balanceDrift(100, 100, 100, 200)).toBeCloseTo(0.693147, 6);
     expect(balanceDrift(100, 100, 0, 100)).toBeNull();
     expect(balanceDrift(null, 100, 200, 100)).toBeNull();
   });
@@ -32,6 +33,8 @@ describe('premium metrics', () => {
     expect(rangeRatio([100000, 103000, 97094.3], 11811.4)).toBeCloseTo(0.5, 3);
     expect(rangeRatio([100000], null)).toBeNull();
     expect(rangeRatio([], 100)).toBeNull();
+    expect(rangeRatio([NaN], 100)).toBeNull();
+    expect(rangeRatio([1, NaN, 3], 4)).toBeCloseTo(0.5, 6);
     expect(rangeRatio([1, 2], 0)).toBeNull();
   });
 });

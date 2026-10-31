@@ -13,9 +13,9 @@ export function winnerSide(longPnl: N, shortPnl: N): Side | null {
   return longPnl > shortPnl ? 'long' : 'short';
 }
 
-/** Side that won most of the newest 6 samples (newest first); null on an empty window or a tied count. */
+/** Side that won most of the newest persistenceWindow samples (newest first); null on an empty window or a tied count. */
 export function winnerPersistence(winners: readonly (Side | null)[]): { side: Side; count: number } | null {
-  const recent = winners.slice(0, 6);
+  const recent = winners.slice(0, METRIC_CONFIG.persistenceWindow);
   const long = recent.filter((w) => w === 'long').length;
   const short = recent.filter((w) => w === 'short').length;
   if (long === short) return null;
@@ -30,14 +30,16 @@ export function breakevens(callStrike: N, putStrike: N, credit: N): { up: number
 
 /** Largest futures move from entry, as a share of the nearer breakeven distance. */
 export function moveVsBreakeven(spotEntry: N, futPrices: readonly number[], futEntry: N, be: { up: number; down: number } | null): N {
-  if (!ok(spotEntry) || !ok(futEntry) || !be || futPrices.length === 0) return null;
+  const fut = futPrices.filter(Number.isFinite);
+  if (!ok(spotEntry) || !ok(futEntry) || !be || fut.length === 0) return null;
   const room = Math.min(be.up - spotEntry, spotEntry - be.down);
   if (room <= 0) return null;
-  return Math.max(...futPrices.map((p) => Math.abs(p - futEntry))) / room;
+  return Math.max(...fut.map((p) => Math.abs(p - futEntry))) / room;
 }
 
 /** Net move over total path length: 1 is a straight line, near 0 is chop. */
-export function efficiencyRatio(prices: readonly number[]): N {
+export function efficiencyRatio(all: readonly number[]): N {
+  const prices = all.filter(Number.isFinite);
   if (prices.length < 2) return null;
   let path = 0;
   for (let i = 1; i < prices.length; i++) path += Math.abs(prices[i] - prices[i - 1]);
@@ -47,8 +49,9 @@ export function efficiencyRatio(prices: readonly number[]): N {
 
 /** Current value against the median of same-session history; null without enough samples or a positive median. */
 export function sessionBaseline(history: readonly number[], current: N): { median: number; ratio: number } | null {
-  if (history.length < METRIC_CONFIG.sessionMinSamples || !ok(current)) return null;
-  const m = median(history);
+  const h = history.filter(Number.isFinite);
+  if (h.length < METRIC_CONFIG.sessionMinSamples || !ok(current)) return null;
+  const m = median(h);
   if (m === null || m <= 0) return null;
   return { median: m, ratio: current / m };
 }

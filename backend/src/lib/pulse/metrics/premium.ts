@@ -13,11 +13,11 @@ export function decayEfficiency(entryMid: N, nowMid: N, thetaEntry: N, elapsedDa
   return (entryMid - nowMid) / expected;
 }
 
-/** ln of how much the call/put premium ratio has moved since entry. Positive: the call got heavier. */
+/** Size of the shift in call/put premium balance since entry: |ln(C_now/P_now) - ln(C_entry/P_entry)|. heavyLeg carries direction. */
 export function balanceDrift(cEntry: N, pEntry: N, cNow: N, pNow: N): N {
   if (!ok(cEntry) || !ok(pEntry) || !ok(cNow) || !ok(pNow)) return null;
   if (cEntry <= 0 || pEntry <= 0 || cNow <= 0 || pNow <= 0) return null;
-  return Math.log(cNow / cEntry) - Math.log(pNow / pEntry);
+  return Math.abs(Math.log(cNow / pNow) - Math.log(cEntry / pEntry));
 }
 
 /** The leg whose premium grew more, when the now/entry ratios differ by at least heavyLegGap. */
@@ -45,6 +45,7 @@ export function expectedMove(spot: N, ivPoints: N, elapsedDays: number): N {
 
 /** Realised spot range over the expected move: (max - min) / expected. */
 export function rangeRatio(spots: readonly number[], expected: N): N {
-  if (spots.length === 0 || !ok(expected) || expected <= 0) return null;
-  return (Math.max(...spots) - Math.min(...spots)) / expected;
+  const s = spots.filter(Number.isFinite);
+  if (s.length === 0 || !ok(expected) || expected <= 0) return null;
+  return (Math.max(...s) - Math.min(...s)) / expected;
 }

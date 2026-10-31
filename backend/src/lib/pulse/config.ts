@@ -38,4 +38,14 @@ export const METRIC_CONFIG = {
   sessionMinSamples: 10,
   /** Whether an OI signal needs rising volume to be confirmed. */
   volumeConfirmsOi: true,
+  /** Exit cost (fraction of premium) from which the liquidity score is penalised. */
+  exitCostPenalty: 0.05,
+  /** Exit cost above which liquidity vetoes the entry. */
+  exitCostVeto: 0.1,
+  /** Leg spread (fraction of mid) above which the spread vetoes the entry. */
+  spreadVetoPct: 0.1,
+  /** Spread veto when the spread exceeds this multiple of its 24h median. */
+  spreadVetoMedianMultiple: 2,
+  /** Newest samples counted for hedge-winner persistence. */
+  persistenceWindow: 6,
 } as const;

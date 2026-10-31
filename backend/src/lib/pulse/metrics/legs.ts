@@ -5,12 +5,12 @@ type N = number | null;
 
 const ok = (v: N): v is number => v !== null && Number.isFinite(v);
 
-/** Delta shift index: call delta change minus put delta change; null when spot barely moved. */
+/** Delta stability index: (|dCall| + |dPut|) / (|dS/S| x 100); null when spot barely moved. */
 export function dsi(dCallDelta: N, dPutDelta: N, spotPrev: N, spotNow: N): N {
   if (!ok(dCallDelta) || !ok(dPutDelta) || !ok(spotPrev) || !ok(spotNow) || spotPrev <= 0) return null;
   const movePct = (Math.abs(spotNow - spotPrev) / spotPrev) * 100;
   if (movePct < METRIC_CONFIG.minMovePct) return null;
-  return dCallDelta - dPutDelta;
+  return (Math.abs(dCallDelta) + Math.abs(dPutDelta)) / movePct;
 }
 
 export type OiSignal = 'short_buildup' | 'long_unwinding' | 'long_buildup' | 'short_covering' | 'unconfirmed' | null;
@@ -39,21 +39,21 @@ export function exitCostPct(callAsk: N, putAsk: N, callMid: N, putMid: N, callBi
 
 /** Median of a list, or null when empty. */
 export function median(values: readonly number[]): N {
-  if (values.length === 0) return null;
-  const s = [...values].sort((a, b) => a - b);
+  const s = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (s.length === 0) return null;
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
-/** Exit-cost band: below 0.05 normal, 0.05 to 0.10 penalty, above 0.10 veto. */
+/** Exit-cost band: below exitCostPenalty normal, up to exitCostVeto penalty, above it veto. */
 export function liquidityBand(exitCost: N): 'normal' | 'penalty' | 'veto' | null {
   if (!ok(exitCost)) return null;
-  if (exitCost < 0.05) return 'normal';
-  return exitCost <= 0.1 ? 'penalty' : 'veto';
+  if (exitCost < METRIC_CONFIG.exitCostPenalty) return 'normal';
+  return exitCost <= METRIC_CONFIG.exitCostVeto ? 'penalty' : 'veto';
 }
 
-/** True when the spread is above 0.10 or above twice its 24h median. A null spread is false (NO DATA handles it). */
+/** True when the spread is above spreadVetoPct or above spreadVetoMedianMultiple x its 24h median. A null spread is false (NO DATA handles it). */
 export function spreadVeto(spread: N, median24h: N): boolean {
   if (!ok(spread)) return false;
-  return spread > 0.1 || (ok(median24h) && spread > 2 * median24h);
+  return spread > METRIC_CONFIG.spreadVetoPct || (ok(median24h) && spread > METRIC_CONFIG.spreadVetoMedianMultiple * median24h);
 }
