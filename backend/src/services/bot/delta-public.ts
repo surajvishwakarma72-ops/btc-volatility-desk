@@ -233,12 +233,12 @@ export async function fetchPerpQuote(symbol = 'BTCUSD'): Promise<PerpQuote> {
   const bid = num(r?.quotes?.best_bid);
   const ask = num(r?.quotes?.best_ask);
   if (!(bid > 0) || !(ask > 0)) throw new Error(`Delta ticker ${symbol} has no valid bid/ask`);
+  const mark = num(r?.mark_price);
+  const spot = num(r?.spot_price);
   const tsUs = num(r?.timestamp);
-  return {
-    bid,
-    ask,
-    mark: num(r?.mark_price),
-    spot: num(r?.spot_price),
-    tsMs: Number.isFinite(tsUs) ? Math.floor(tsUs / 1000) : Date.now(),
-  };
+  if (!(mark > 0) || !(spot > 0)) throw new Error(`Delta ticker ${symbol} has no valid mark/spot`);
+  // A missing timestamp must not be stamped "now": it would look fresh and defeat the stale-quote check.
+  if (!(tsUs > 0)) throw new Error(`Delta ticker ${symbol} has no valid timestamp`);
+  return { bid, ask, mark, spot, tsMs: Math.floor(tsUs / 1000) };
 }
+

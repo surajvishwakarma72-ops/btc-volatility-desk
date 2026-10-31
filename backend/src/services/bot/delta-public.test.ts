@@ -46,4 +46,19 @@ describe('fetchPerpQuote', () => {
     stub({ mark_price: '1', spot_price: '1', quotes: { best_bid: '0', best_ask: '78001' } });
     await expect(fetchPerpQuote()).rejects.toThrow();
   });
+
+  const good = { mark_price: '78000.5', spot_price: '78010', quotes: { best_bid: '77999', best_ask: '78001' }, timestamp: 1793439259596683 };
+  it('throws on a missing or invalid timestamp', async () => {
+    stub({ ...good, timestamp: undefined });
+    await expect(fetchPerpQuote()).rejects.toThrow(/timestamp/);
+    stub({ ...good, timestamp: 0 });
+    await expect(fetchPerpQuote()).rejects.toThrow(/timestamp/);
+  });
+
+  it('throws on a missing or non-positive mark or spot', async () => {
+    stub({ ...good, mark_price: undefined });
+    await expect(fetchPerpQuote()).rejects.toThrow(/mark/);
+    stub({ ...good, spot_price: '0' });
+    await expect(fetchPerpQuote()).rejects.toThrow(/spot/);
+  });
 });
