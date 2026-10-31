@@ -32,6 +32,35 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
+  /**
+   * P&L over time for one cohort of a slot (the open one with the newest entry, else the newest that traded).
+   * call / put are the short legs' USD P&L per lot; fut is the better of the two hedge futures sides; net is call + put.
+   */
+  fastify.get('/series', auth, async (req, reply) => {
+    const q = metricsQuery.safeParse(req.query);
+    if (!q.success) return reply.status(400).send({ success: false, error: 'slot must be current, next or n2n' });
+    const ready = await pulseTablesExist();
+    const recent = ready ? await recentCohorts(q.data.slot, 48) : [];
+    const traded = recent.filter((c) => c.status !== 'no_valid_strikes');
+    const cohort = traded.find((c) => c.status === 'open') ?? traded[0];
+    if (!cohort) return { success: true, slot: q.data.slot, cohort: null, points: [] };
+    const rows = await cohortRows(cohort.id);
+    const points = rows.filter((r) => r.data_ok).map((r) => {
+      const call = r.call.net_pnl;
+      const put = r.put.net_pnl;
+      const fl = r.fut_long_pnl;
+      const fs = r.fut_short_pnl;
+      const fut = fl === null && fs === null ? null : Math.max(fl ?? -Infinity, fs ?? -Infinity);
+      return { t: r.sampled_ms, call, put, fut, net: call === null || put === null ? null : call + put };
+    });
+    return {
+      success: true,
+      slot: q.data.slot,
+      cohort: { id: cohort.id, status: cohort.status, opened_at: cohort.opened_at, call_strike: cohort.call_strike, put_strike: cohort.put_strike },
+      points,
+    };
+  });
+
   fastify.get('/metrics', auth, async (req, reply) => {
     const q = metricsQuery.safeParse(req.query);
     if (!q.success) return reply.status(400).send({ success: false, error: 'slot must be current, next or n2n' });
