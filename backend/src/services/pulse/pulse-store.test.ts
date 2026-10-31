@@ -193,6 +193,55 @@ describe('pulse-store', () => {
     expect((await store.missedOpenSlots('n2n', 0)).size).toBe(0);
   });
 
+  it('cohortRows pivots two leg rows and one cohort row per grid, oldest first, as numbers', async () => {
+    await store.insertCohort(mk());
+    const later = snap(GRID + 900_000);
+    later.legs.put.mid = 33;
+    later.cohort.data_ok = false;
+    await store.insertSnapshot(later);
+    await store.insertSnapshot(snap(GRID));
+    const rows = await store.cohortRows(mk().id);
+    expect(rows.map((r) => r.grid_ms)).toEqual([GRID, GRID + 900_000]);
+    const [first, second] = rows;
+    expect(first).toMatchObject({ sampled_ms: GRID + 5_000, spot: 80100, fut_price: 80110, net_delta: -0.05, fut_long_pnl: 1, fut_short_pnl: -1, data_ok: true });
+    expect(first.call).toEqual(leg('call', { grid_ms: GRID }));
+    expect(first.put).toEqual(leg('put', { grid_ms: GRID }));
+    expect(second.put.mid).toBe(33);
+    expect(second.put.leg).toBe('put');
+    expect(second.data_ok).toBe(false);
+    expect(await store.cohortRows('99999999-9999-9999-9999-999999999999')).toEqual([]);
+  });
+
+  it('cohortRows keeps null numerics null and drops a grid missing a leg', async () => {
+    await store.insertCohort(mk());
+    const s = snap(GRID);
+    s.cohort.net_delta = null;
+    s.legs.call.mid = null;
+    await store.insertSnapshot(s);
+    await store.insertSnapshot(snap(GRID + 900_000));
+    await pool.query('DELETE FROM pulse_leg_snapshots WHERE grid_ms = $1 AND leg = $2', [GRID + 900_000, 'put'] as never);
+    const rows = await store.cohortRows(mk().id);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].net_delta).toBeNull();
+    expect(rows[0].call.mid).toBeNull();
+  });
+
+  it('recentCohorts returns the slot newest first, any status, limited, converted like liveCohorts', async () => {
+    await store.insertCohort(mk());
+    await store.insertCohort(mk({ id: '22222222-2222-2222-2222-222222222222', slot_ms: SLOT + 3_600_000, status: 'closed' }));
+    await store.insertCohort(mk({ id: '33333333-3333-3333-3333-333333333333', slot_ms: SLOT + 7_200_000, status: 'no_valid_strikes' }));
+    await store.insertCohort(mk({ id: '44444444-4444-4444-4444-444444444444', slot: 'next', slot_ms: SLOT + 9_000_000 }));
+    const rows = await store.recentCohorts('current', 2);
+    expect(rows.map((c) => c.slot_ms)).toEqual([SLOT + 7_200_000, SLOT + 3_600_000]);
+    expect(rows.map((c) => c.status)).toEqual(['no_valid_strikes', 'closed']);
+    expect((await store.recentCohorts('current', 10))[2]).toEqual((await store.liveCohorts()).find((c) => c.slot === 'current'));
+    expect(rows[0]).toMatchObject({ opened_at: SLOT + 1000, call_bid: 100, spot_entry: 80000.5, call_sl_at: null });
+  });
+
+  it('pulseTablesExist reports the schema, and only reads', async () => {
+    expect(await store.pulseTablesExist()).toBe(true);
+  });
+
   it('dbSizeBytes returns a positive number', async () => {
     const n = await store.dbSizeBytes();
     expect(typeof n).toBe('number');

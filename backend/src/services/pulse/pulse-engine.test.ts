@@ -246,7 +246,7 @@ describe('PulseEngine lifecycle', () => {
 
   it('never imports an order module', () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const dirs = [here, join(here, '..', '..', 'lib', 'pulse')];
+    const dirs = [here, join(here, '..', '..', 'lib', 'pulse'), join(here, '..', '..', 'lib', 'pulse', 'metrics')];
     const files = dirs.flatMap((d) => readdirSync(d).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => join(d, f)));
     files.push(join(here, '..', '..', 'routes', 'pulse.ts'));
     expect(files.length).toBeGreaterThanOrEqual(7);

@@ -1,5 +1,6 @@
 import { pool } from '../../db/index.js';
 import type { MarketRow } from '../../lib/pulse/metrics/market.js';
+import type { CohortRow } from '../../lib/pulse/metrics/series.js';
 import type { Slot } from '../../lib/pulse/grid.js';
 import type { BuiltSnapshot, LegName, LegRow, PulseCohort } from '../../lib/pulse/snapshot.js';
 
@@ -188,6 +189,12 @@ export async function liveCohorts(): Promise<PulseCohort[]> {
   return (r.rows as Row[]).map(toCohort);
 }
 
+/** A slot's newest cohorts, any status, newest first. */
+export async function recentCohorts(slot: Slot, limit: number): Promise<PulseCohort[]> {
+  const r = await pool.query('SELECT * FROM pulse_cohorts WHERE slot = $1 ORDER BY slot_ms DESC LIMIT $2', [slot, limit]);
+  return (r.rows as Row[]).map(toCohort);
+}
+
 const LEG_COLS = [
   'cohort_id', 'grid_ms', 'sampled_ms', 'leg', 'minutes_since_entry', 'strike', 'expiry_ms', 'bid', 'ask', 'mark', 'mid', 'delta', 'gamma',
   'theta', 'vega', 'iv', 'oi', 'oi_band', 'oi_change', 'volume_raw', 'volume_change', 'net_pnl', 'sl_hit', 'data_ok',
@@ -256,6 +263,12 @@ const NUM_LEG_COLS = [
   'oi', 'oi_band', 'oi_change', 'volume_raw', 'volume_change', 'net_pnl',
 ] as const;
 
+function toLegRow(r: Row): LegRow {
+  const leg: Row = { ...r };
+  for (const k of NUM_LEG_COLS) leg[k] = num(r[k]);
+  return leg as unknown as LegRow;
+}
+
 /** The most recent stored leg row per leg for a cohort (used for OI / volume change). */
 export async function lastLegSnapshots(cohortId: string): Promise<Record<LegName, LegRow | undefined>> {
   const r = await pool.query(
@@ -263,12 +276,29 @@ export async function lastLegSnapshots(cohortId: string): Promise<Record<LegName
     [cohortId],
   );
   const out: Record<LegName, LegRow | undefined> = { call: undefined, put: undefined };
-  for (const row of r.rows as Row[]) {
-    const leg: Row = { ...row };
-    for (const k of NUM_LEG_COLS) leg[k] = num(row[k]);
-    out[row.leg as LegName] = leg as unknown as LegRow;
-  }
+  for (const row of r.rows as Row[]) out[row.leg as LegName] = toLegRow(row);
   return out;
+}
+
+/** A cohort's stored grids, oldest first. Cohort rows are read first: they are written after their legs, so each has both. */
+export async function cohortRows(cohortId: string): Promise<CohortRow[]> {
+  const snaps = await pool.query('SELECT * FROM pulse_cohort_snapshots WHERE cohort_id = $1 ORDER BY grid_ms', [cohortId]);
+  const legs = await pool.query('SELECT * FROM pulse_leg_snapshots WHERE cohort_id = $1', [cohortId]);
+  const byGrid = new Map<number, Partial<Record<LegName, LegRow>>>();
+  for (const row of legs.rows as Row[]) {
+    const leg = toLegRow(row);
+    byGrid.set(leg.grid_ms, { ...byGrid.get(leg.grid_ms), [leg.leg]: leg });
+  }
+  return (snaps.rows as Row[]).flatMap((r) => {
+    const grid = Number(r.grid_ms);
+    const { call, put } = byGrid.get(grid) ?? {};
+    if (!call || !put) return [];
+    return [{
+      grid_ms: grid, sampled_ms: Number(r.sampled_ms), spot: num(r.spot) as number, fut_price: num(r.fut_price) as number,
+      net_delta: num(r.net_delta), fut_long_pnl: num(r.fut_long_pnl), fut_short_pnl: num(r.fut_short_pnl), data_ok: r.data_ok as boolean,
+      call, put,
+    }];
+  });
 }
 
 /** Records the time a leg's stop was first hit. Never overwrites an earlier value. */
@@ -336,6 +366,12 @@ export async function missedOpenSlots(slot: Slot, fromMs: number): Promise<Set<n
     [slot, fromMs],
   );
   return new Set((r.rows as Row[]).map((row) => Number(row.slot_ms)));
+}
+
+/** Whether the collector has ever created its tables. Read routes use this because they must not run the DDL themselves. */
+export async function pulseTablesExist(): Promise<boolean> {
+  const r = await pool.query(`SELECT to_regclass('pulse_cohorts') IS NOT NULL AS ready`);
+  return (r.rows[0] as Row).ready === true;
 }
 
 export async function dbSizeBytes(): Promise<number> {
