@@ -4,7 +4,7 @@ import { PULSE_CONFIG } from './config.js';
 export type Slot = 'current' | 'next' | 'n2n';
 export const SLOTS: readonly Slot[] = ['current', 'next', 'n2n'];
 
-const HOUR_MS = 3_600_000;
+export const HOUR_MS = 3_600_000;
 const SNAPSHOT_MS = PULSE_CONFIG.snapshotMinutes * 60_000;
 
 /** Floors a timestamp to the UTC hour (cohort slot start). */

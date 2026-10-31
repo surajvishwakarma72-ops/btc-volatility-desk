@@ -19,8 +19,9 @@ export interface DeltaTicker {
   product_id?: number;
   oi_contracts?: string;
   volume?: number;
-  /** Quote time in microseconds. */
+  /** Response time in microseconds; it advances even when the book is frozen. */
   timestamp?: number;
+  product_trading_status?: string;
 }
 
 export interface ChainSnapshot {
@@ -82,7 +83,8 @@ export function parseTicker(t: DeltaTicker): (ChainOption & { gamma: number; the
     vega: num(t.greeks?.vega),
     oi: Number.isFinite(oi) ? oi : undefined,
     volume: Number.isFinite(volume) ? volume : undefined,
-    quoteTsMs: Number.isFinite(tsUs) ? Math.floor(tsUs / 1000) : undefined,
+    responseTsMs: Number.isFinite(tsUs) ? Math.floor(tsUs / 1000) : undefined,
+    tradingStatus: t.product_trading_status,
   };
 }
 

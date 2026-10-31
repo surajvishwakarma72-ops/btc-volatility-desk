@@ -3,7 +3,7 @@ import type { ChainOption } from '../bot/strike-picker.js';
 import type { FeeRates, PerpQuote } from '../../services/bot/delta-public.js';
 import { PULSE_CONFIG } from './config.js';
 import type { Slot } from './grid.js';
-import { delta2, futuresNetPnl, isStopHit, legNetPnl, oiBand } from './cohort.js';
+import { delta2, finiteOrNull, futuresNetPnl, isOperational, isStopHit, legNetPnl, oiBand, positiveOrNull } from './cohort.js';
 
 export type LegName = 'call' | 'put';
 
@@ -35,6 +35,13 @@ export interface PulseCohort {
   put_theta: number | null;
   call_iv: number | null;
   put_iv: number | null;
+  call_gamma: number | null;
+  put_gamma: number | null;
+  call_vega: number | null;
+  put_vega: number | null;
+  /** OI band at entry: the baseline for the first snapshot's oi_change. */
+  call_oi_band: number | null;
+  put_oi_band: number | null;
   fee: FeeRates;
   missing: unknown;
   call_sl_at: number | null;
@@ -45,7 +52,10 @@ export interface PulseCohort {
 /** One leg row of one snapshot (pulse_leg_snapshots). */
 export interface LegRow {
   cohort_id: string;
+  /** The grid this row belongs to. */
   grid_ms: number;
+  /** When the prices were actually read; later than grid_ms on a late first-healthy tick. */
+  sampled_ms: number;
   leg: LegName;
   minutes_since_entry: number;
   strike: number;
@@ -73,11 +83,15 @@ export interface BuiltSnapshot {
   cohortId: string;
   gridMs: number;
   cohort: {
+    sampled_ms: number;
     spot: number;
     fut_price: number;
+    /** Price units, not USD: the sum of the two asks, so the cost to close now. */
     combined_premium: number | null;
+    /** USD per lot, as are the leg and futures P&L fields. */
     combined_pnl: number | null;
     pnl_pct: number | null;
+    /** Call delta minus put delta: the long-strangle sign. The short position's delta is its negative. */
     net_delta: number | null;
     fut_long_pnl: number | null;
     fut_short_pnl: number | null;
@@ -86,7 +100,13 @@ export interface BuiltSnapshot {
   legs: Record<LegName, LegRow>;
 }
 
-const nn = (v: number | undefined): number | null => (v === undefined ? null : v);
+/** Whether the live quote hits this leg's stop right now. A leg with no usable quote cannot latch. */
+export function stopHitNow(c: PulseCohort, which: LegName, chain: readonly ChainOption[]): boolean {
+  const symbol = which === 'call' ? c.call_symbol : c.put_symbol;
+  const entryBid = which === 'call' ? c.call_bid : c.put_bid;
+  const o = symbol ? chain.find((x) => x.symbol === symbol) : undefined;
+  return !!o && entryBid !== null && isOperational(o) && isStopHit(entryBid, o.ask, o.mark);
+}
 
 function buildLeg(
   c: PulseCohort,
@@ -95,22 +115,30 @@ function buildLeg(
   perp: PerpQuote,
   prev: LegRow | undefined,
   gridMs: number,
+  nowMs: number,
 ): LegRow {
   const symbol = which === 'call' ? c.call_symbol : c.put_symbol;
   const strike = (which === 'call' ? c.call_strike : c.put_strike) ?? 0;
   const entryBid = which === 'call' ? c.call_bid : c.put_bid;
-  // Sticky: the row may hold a stop that never reached the cohort, and a lower ask must not erase it.
+  // Stops are tested every minute by the engine; a row only reports them. Sticky, because a row may hold a stop that never reached the cohort.
   const stopped = (which === 'call' ? c.call_sl_at : c.put_sl_at) !== null || prev?.sl_hit === true;
   const o = symbol ? chain.find((x) => x.symbol === symbol) : undefined;
-  const ok = !!o && o.ask > 0 && entryBid !== null;
+  const bid = positiveOrNull(o?.bid);
+  const ask = positiveOrNull(o?.ask);
+  const mark = positiveOrNull(o?.mark);
+  const iv = positiveOrNull(o?.iv);
+  // A null bid alone is allowed: P&L only needs the ask.
+  const ok = !!o && ask !== null && mark !== null && iv !== null && entryBid !== null && isOperational(o);
   const band = o ? oiBand(chain, which, c.expiry_ms, strike) : null;
-  const volume = o ? nn(o.volume) : null;
+  const volume = finiteOrNull(o?.volume);
+  const entryBand = which === 'call' ? c.call_oi_band : c.put_oi_band;
 
   const base = {
     cohort_id: c.id,
     grid_ms: gridMs,
+    sampled_ms: nowMs,
     leg: which,
-    minutes_since_entry: Math.round((gridMs - c.opened_at) / 60_000),
+    minutes_since_entry: Math.round((nowMs - c.opened_at) / 60_000),
     strike,
     expiry_ms: c.expiry_ms,
   };
@@ -123,22 +151,22 @@ function buildLeg(
   }
   return {
     ...base,
-    bid: o.bid,
-    ask: o.ask,
-    mark: o.mark,
-    mid: (o.bid + o.ask) / 2,
-    delta: o.delta,
-    gamma: nn(o.gamma),
-    theta: nn(o.theta),
-    vega: nn(o.vega),
-    iv: o.iv,
-    oi: nn(o.oi),
+    bid,
+    ask,
+    mark,
+    mid: bid === null || ask === null ? null : (bid + ask) / 2,
+    delta: finiteOrNull(o.delta),
+    gamma: finiteOrNull(o.gamma),
+    theta: finiteOrNull(o.theta),
+    vega: finiteOrNull(o.vega),
+    iv,
+    oi: finiteOrNull(o.oi),
     oi_band: band,
-    oi_change: delta2(band, prev?.oi_band ?? null),
+    oi_change: delta2(band, (prev ? prev.oi_band : entryBand) ?? null),
     volume_raw: volume,
     volume_change: delta2(volume, prev?.volume_raw ?? null, { nonNegative: true }),
-    net_pnl: ok ? legNetPnl({ entryBid: entryBid as number, ask: o.ask, spot: perp.spot, fee: c.fee }) : null,
-    sl_hit: stopped || (ok && isStopHit(entryBid as number, o.ask)),
+    net_pnl: ok ? legNetPnl({ entryBid: entryBid as number, ask: ask as number, spot: perp.spot, fee: c.fee }) : null,
+    sl_hit: stopped,
     data_ok: ok,
   };
 }
@@ -177,7 +205,8 @@ export function closeNetPnl(
 
 /**
  * Builds one snapshot (two leg rows plus the cohort row) from the live chain and perp quote.
- * Pure. A leg with a missing symbol or ask <= 0 is data_ok=false and carries no P&L or new stop.
+ * Pure. A leg missing its symbol, ask, mark or iv, or not operational, is data_ok=false and carries no P&L.
+ * gridMs labels the row; nowMs is when the prices were read.
  */
 export function buildSnapshot(
   cohort: PulseCohort,
@@ -185,10 +214,10 @@ export function buildSnapshot(
   perp: PerpQuote,
   prev: Partial<Record<LegName, LegRow>>,
   gridMs: number,
-  _nowMs: number,
+  nowMs: number,
 ): BuiltSnapshot {
-  const call = buildLeg(cohort, 'call', chain, perp, prev.call, gridMs);
-  const put = buildLeg(cohort, 'put', chain, perp, prev.put, gridMs);
+  const call = buildLeg(cohort, 'call', chain, perp, prev.call, gridMs, nowMs);
+  const put = buildLeg(cohort, 'put', chain, perp, prev.put, gridMs, nowMs);
   const ok = call.data_ok && put.data_ok;
 
   let combinedPnl: number | null = null;
@@ -212,6 +241,7 @@ export function buildSnapshot(
     cohortId: cohort.id,
     gridMs,
     cohort: {
+      sampled_ms: nowMs,
       spot: perp.spot,
       fut_price: perp.mark,
       combined_premium: combinedPremium,

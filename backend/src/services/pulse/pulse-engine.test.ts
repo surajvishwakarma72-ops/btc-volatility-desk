@@ -25,10 +25,16 @@ const h = vi.hoisted(() => ({
   /** Expiries a fresh chain leaves out, as when parseTicker drops their tickers. */
   hidden: new Set<number>(),
   ask: new Map<string, number>(),
+  mark: new Map<string, number>(),
+  tradingStatus: new Map<string, string>(),
+  callOi: 10,
+  /** Bumped per fetch so the book moves, as a live feed does. Holds still while frozen. */
+  seq: 0,
+  frozen: false,
   spot: 80_000,
   chainAgeMs: 0,
   perpAgeMs: 0,
-  noQuoteTs: false,
+  noResponseTs: false,
   gate: null as Promise<void> | null,
 }));
 
@@ -56,16 +62,18 @@ const CALL_FEE: FeeRates = { ...FEE, takerRate: 0.0003 };
 function mockChain(nowMs: number): ChainSnapshot {
   const expiries = EXPIRIES.filter((e) => e > nowMs).slice(0, h.listed).filter((e) => !h.hidden.has(e));
   const options: ChainOption[] = [];
-  const quoteTsMs = h.noQuoteTs ? undefined : nowMs - h.chainAgeMs;
+  const responseTsMs = h.noResponseTs ? undefined : nowMs - h.chainAgeMs;
+  if (!h.frozen) h.seq++;
+  if (expiries[0] !== undefined) options.push({ symbol: 'C-TICKER', type: 'call', strike: 99000, expiryMs: expiries[0], delta: 0.5, bid: 1 + h.seq, ask: 2 + h.seq, mark: 1, iv: 40, responseTsMs });
   for (const e of expiries) {
     const delta = h.noStrikes.has(e) ? 0.3 : 0.125;
     const callSym = `C-88000-${e}`;
     const putSym = `P-72000-${e}`;
     if (!h.gone.has(callSym)) {
-      options.push({ symbol: callSym, type: 'call', strike: 88000, expiryMs: e, delta, bid: 100, ask: h.ask.get(callSym) ?? 110, mark: 105, iv: 40, theta: -5, quoteTsMs, oi: 10, volume: 5 });
+      options.push({ symbol: callSym, type: 'call', strike: 88000, expiryMs: e, delta, bid: 100, ask: h.ask.get(callSym) ?? 110, mark: h.mark.get(callSym) ?? 105, iv: 40, theta: -5, gamma: 0.001, vega: 3, responseTsMs, oi: h.callOi, volume: 5, tradingStatus: h.tradingStatus.get(callSym) });
     }
     if (!h.gone.has(putSym)) {
-      options.push({ symbol: putSym, type: 'put', strike: 72000, expiryMs: e, delta, bid: 90, ask: h.ask.get(putSym) ?? 100, mark: 95, iv: 41, theta: -4, quoteTsMs, oi: 20, volume: 8 });
+      options.push({ symbol: putSym, type: 'put', strike: 72000, expiryMs: e, delta, bid: 90, ask: h.ask.get(putSym) ?? 100, mark: h.mark.get(putSym) ?? 95, iv: 41, theta: -4, gamma: 0.002, vega: 4, responseTsMs, oi: 20, volume: 8 });
     }
   }
   return { fetchedAt: nowMs, spot: h.spot, options, greeks: new Map(), expiries };
@@ -121,11 +129,13 @@ afterAll(async () => {
 });
 beforeEach(async () => {
   process.env.PULSE_ENABLED = 'true';
-  Object.assign(h, { queries: 0, failSql: null, chainDown: false, perpDown: false, listed: 3, spot: 80_000, chainAgeMs: 0, perpAgeMs: 0, noQuoteTs: false, gate: null });
+  Object.assign(h, { callOi: 10, frozen: false, queries: 0, failSql: null, chainDown: false, perpDown: false, listed: 3, spot: 80_000, chainAgeMs: 0, perpAgeMs: 0, noResponseTs: false, gate: null });
   h.noStrikes.clear();
   h.gone.clear();
   h.hidden.clear();
   h.ask.clear();
+  h.mark.clear();
+  h.tradingStatus.clear();
   mocks.fetchChain.mockReset().mockImplementation(async (nowMs: number) => {
     if (h.gate) await h.gate;
     if (h.chainDown) throw new Error('chain down');
@@ -210,7 +220,7 @@ describe('PulseEngine lifecycle', () => {
     const e = engine();
     await at(e, '2026-11-01T00:00:00Z');
     const s = e.status();
-    expect(s).toMatchObject({ enabled: true, lastTickAt: T('2026-11-01T00:00:00Z'), lastError: null, dataOk: true });
+    expect(s).toMatchObject({ enabled: true, lastTickAt: T('2026-11-01T00:00:00Z'), lastGoodTickAt: T('2026-11-01T00:00:00Z'), lastError: null, dataOk: true });
     expect(s.dbSizeBytes).toBeGreaterThan(0);
     expect(Object.keys(s.slots)).toEqual(['current', 'next', 'n2n']);
     const rows = await q(`SELECT slot, series_id FROM pulse_cohorts`);
@@ -230,7 +240,7 @@ describe('PulseEngine lifecycle', () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/pulse/status' })).statusCode).toBe(401);
     const res = await app.inject({ method: 'GET', url: '/api/v1/pulse/status', headers: { authorization: 'x' } });
     expect(res.statusCode).toBe(200);
-    expect(Object.keys(res.json()).sort()).toEqual(['dataOk', 'dbSizeBytes', 'enabled', 'lastError', 'lastTickAt', 'slots', 'success'].sort());
+    expect(Object.keys(res.json()).sort()).toEqual(['dataOk', 'dbSizeBytes', 'enabled', 'lastError', 'lastGoodTickAt', 'lastTickAt', 'slots', 'success'].sort());
     await app.close();
   });
 
@@ -260,6 +270,7 @@ describe('opening', () => {
       status: 'open', slot_ms: T('2026-11-01T00:00:00Z'), opened_at: T('2026-11-01T00:00:00Z'), spot_entry: 80_000, fut_entry_bid: 79_990, fut_entry_ask: 80_010,
       call_symbol: `C-88000-${E_NOV1}`, put_symbol: `P-72000-${E_NOV1}`, call_strike: 88000, put_strike: 72000, call_bid: 100, put_bid: 90, call_mid: 105, put_mid: 95,
       call_delta: 0.125, put_delta: 0.125, call_theta: -5, put_theta: -4, call_iv: 40, put_iv: 41, net_pnl: null,
+      call_gamma: 0.001, put_gamma: 0.002, call_vega: 3, put_vega: 4, call_oi_band: 10, put_oi_band: 20,
     });
     expect(c.fee).toEqual(CALL_FEE);
     expect(mocks.fetchOptionFeeRates).toHaveBeenCalledTimes(1);
@@ -372,15 +383,42 @@ describe('snapshots', () => {
     expect(leg.data_ok).toBe(true);
   });
 
-  it('sets stops through markStop at the grid, once', async () => {
+  it('records the sample time and minutes from it on a late first-healthy tick', async () => {
     const e = engine();
     await at(e, '2026-11-01T00:00:00Z');
-    h.ask.set(`C-88000-${E_NOV1}`, 200);
+    h.chainDown = true;
+    await at(e, '2026-11-01T00:15:00Z');
+    h.chainDown = false;
+    await at(e, '2026-11-01T00:22:00Z');
+    const grid = T('2026-11-01T00:15:00Z');
+    const leg = (await q('SELECT sampled_ms, minutes_since_entry FROM pulse_leg_snapshots WHERE grid_ms = $1 LIMIT 1', [grid]))[0];
+    expect(Number(leg.sampled_ms)).toBe(T('2026-11-01T00:22:00Z'));
+    expect(Number(leg.minutes_since_entry)).toBe(22);
+    const row = (await q('SELECT sampled_ms FROM pulse_cohort_snapshots WHERE grid_ms = $1 LIMIT 1', [grid]))[0];
+    expect(Number(row.sampled_ms)).toBe(T('2026-11-01T00:22:00Z'));
+  });
+
+  it('the first snapshot measures oi_change from the entry band', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.callOi = 16;
     await at(e, '2026-11-01T00:15:00Z');
     await at(e, '2026-11-01T00:30:00Z');
+    const rows = await q(`SELECT oi_change FROM pulse_leg_snapshots l JOIN pulse_cohorts c ON c.id = l.cohort_id WHERE c.slot = 'current' AND l.leg = 'call' ORDER BY grid_ms`);
+    expect(rows.map((r) => Number(r.oi_change))).toEqual([6, 0]);
+  });
+
+  it('a non-operational sold leg is stored data_ok=false and cannot latch a stop', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    const symbol = `C-88000-${E_NOV1}`;
+    h.tradingStatus.set(symbol, 'disrupted_post_only');
+    h.ask.set(symbol, 200);
+    h.mark.set(symbol, 190);
+    await at(e, '2026-11-01T00:15:00Z');
     const c = (await store.liveCohorts()).find((r) => r.slot === 'current')!;
-    expect(c.call_sl_at).toBe(T('2026-11-01T00:15:00Z'));
-    expect(c.put_sl_at).toBeNull();
+    expect(c.call_sl_at).toBeNull();
+    expect(await q(`SELECT data_ok, sl_hit FROM pulse_leg_snapshots WHERE cohort_id = $1 AND leg = 'call'`, [c.id])).toMatchObject([{ data_ok: false, sl_hit: false }]);
   });
 
   it('a skipped grid logs SNAPSHOT_GAP and snapshots only the current grid', async () => {
@@ -413,7 +451,7 @@ describe('stale data', () => {
     ['perp fetch fails', () => { h.perpDown = true; }],
     ['perp quote too old', () => { h.perpAgeMs = 120_001; }],
     ['newest chain quote too old', () => { h.chainAgeMs = 120_001; }],
-    ['no option has a quote time', () => { h.noQuoteTs = true; }],
+    ['no option has a quote time', () => { h.noResponseTs = true; }],
   ];
   it.each(cases)('%s: does nothing else that tick', async (_name, breakIt) => {
     const e = engine();
@@ -674,6 +712,143 @@ describe('restarts', () => {
   });
 });
 
+describe('minute stops', () => {
+  const symbol = `C-88000-${E_NOV1}`;
+  const current = async () => (await q(`SELECT call_sl_at, put_sl_at FROM pulse_cohorts WHERE slot = 'current' ORDER BY slot_ms LIMIT 1`))[0];
+  const touch = () => { h.ask.set(symbol, 200); h.mark.set(symbol, 190); };
+
+  it('a touch that recovers between grids sets the stop and the next snapshot shows it', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    touch();
+    await at(e, '2026-11-01T00:07:00Z');
+    h.ask.clear();
+    h.mark.clear();
+    await at(e, '2026-11-01T00:08:00Z');
+    expect(new Date((await current()).call_sl_at).getTime()).toBe(T('2026-11-01T00:07:00Z'));
+    expect((await current()).put_sl_at).toBeNull();
+    await at(e, '2026-11-01T00:15:00Z');
+    const sl = await q(`SELECT l.sl_hit FROM pulse_leg_snapshots l JOIN pulse_cohorts c ON c.id = l.cohort_id WHERE c.slot = 'current' AND l.leg = 'call'`);
+    expect(sl).toMatchObject([{ sl_hit: true }]);
+  });
+
+  it('a touch at 11:59 UTC is recorded before the 12:00 roll', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T11:00:00Z');
+    touch();
+    await at(e, '2026-11-01T11:59:00Z');
+    await at(e, '2026-11-01T12:00:00Z');
+    const row = (await q(`SELECT status, call_sl_at FROM pulse_cohorts WHERE slot = 'current' AND slot_ms = $1`, [T('2026-11-01T11:00:00Z')]))[0];
+    expect(row.status).toBe('closed');
+    expect(new Date(row.call_sl_at).getTime()).toBe(T('2026-11-01T11:59:00Z'));
+  });
+
+  it('a spiked ask with a normal mark does not latch', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.ask.set(symbol, 200); // mark stays 105
+    await at(e, '2026-11-01T00:01:00Z');
+    await at(e, '2026-11-01T00:15:00Z');
+    expect((await current()).call_sl_at).toBeNull();
+    expect(await count('FROM pulse_leg_snapshots WHERE sl_hit')).toBe(0);
+  });
+
+  it('no stop is tested on an unhealthy tick', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    touch();
+    h.perpDown = true;
+    await at(e, '2026-11-01T00:01:00Z');
+    expect((await current()).call_sl_at).toBeNull();
+  });
+});
+
+describe('frozen feed', () => {
+  const minute = (m: number) => `2026-11-01T00:${String(m).padStart(2, '0')}:00Z`;
+
+  it('five unchanged ticks are unhealthy: FEED_FROZEN once, nothing written, then recovers', async () => {
+    const e = engine();
+    await at(e, minute(0));
+    h.frozen = true;
+    for (let m = 1; m <= 4; m++) await at(e, minute(m));
+    expect(e.status().dataOk).toBe(true);
+    await at(e, minute(5));
+    expect(e.status().dataOk).toBe(false);
+    await at(e, minute(15)); // a grid
+    await at(e, minute(16));
+    expect(await events('FEED_FROZEN')).toHaveLength(1);
+    expect(await count('FROM pulse_cohort_snapshots')).toBe(0);
+
+    h.frozen = false;
+    await at(e, minute(17));
+    expect(e.status().dataOk).toBe(true);
+    expect(await count('FROM pulse_cohort_snapshots')).toBe(3);
+  });
+
+  it('a change resets the count', async () => {
+    const e = engine();
+    await at(e, minute(0));
+    h.frozen = true;
+    for (let m = 1; m <= 4; m++) await at(e, minute(m));
+    h.frozen = false;
+    await at(e, minute(5));
+    h.frozen = true;
+    for (let m = 6; m <= 9; m++) await at(e, minute(m));
+    expect(e.status().dataOk).toBe(true);
+    expect(await events('FEED_FROZEN')).toHaveLength(0);
+  });
+});
+
+describe('MISSED_OPEN walk', () => {
+  it('a multi-hour outage logs every missed hour once per slot, and a restart does not repeat them', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.chainDown = true;
+    await at(e, '2026-11-01T01:00:00Z');
+    h.chainDown = false;
+    await at(e, '2026-11-01T03:02:00Z'); // 03:00 is inside the grace and opens late
+    await at(e, '2026-11-01T03:03:00Z');
+    const missed = await events('MISSED_OPEN');
+    expect(missed.filter((m) => m.slot === 'current').map((m) => m.detail)).toEqual([
+      { slotMs: T('2026-11-01T01:00:00Z') },
+      { slotMs: T('2026-11-01T02:00:00Z') },
+    ]);
+    expect(missed).toHaveLength(6);
+    expect(await count('FROM pulse_cohorts WHERE slot_ms = $1', [T('2026-11-01T03:00:00Z')])).toBe(3);
+
+    e.stop();
+    vi.setSystemTime(T('2026-11-01T03:04:00Z'));
+    await engine().start();
+    expect(await events('MISSED_OPEN')).toHaveLength(6);
+  });
+
+  it('an hour past the grace is logged once across a restart', async () => {
+    const a = engine();
+    await at(a, '2026-11-01T00:06:00Z');
+    expect(await events('MISSED_OPEN')).toHaveLength(3);
+    a.stop();
+    vi.setSystemTime(T('2026-11-01T00:07:00Z'));
+    await engine().start();
+    expect(await events('MISSED_OPEN')).toHaveLength(3);
+  });
+
+  it('walks at most 72 hours', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    await at(e, '2026-11-06T00:02:00Z');
+    const hours = (await events('MISSED_OPEN')).filter((m) => m.slot === 'current').map((m) => m.detail.slotMs);
+    expect(hours).toHaveLength(72);
+    expect(Math.min(...hours)).toBe(T('2026-11-03T00:00:00Z'));
+  });
+
+  it('an unlisted slot logs none', async () => {
+    h.listed = 2;
+    const e = engine();
+    await at(e, '2026-11-01T00:06:00Z');
+    expect((await events('MISSED_OPEN')).map((m) => m.slot).sort()).toEqual(['current', 'next']);
+  });
+});
+
 describe('stops survive failure', () => {
   const stopSql = 'UPDATE pulse_cohorts SET call_sl_at';
   const callLeg = (id: string, grid: number) =>
@@ -684,6 +859,7 @@ describe('stops survive failure', () => {
     await at(e, '2026-11-01T00:00:00Z');
     const symbol = `C-88000-${E_NOV1}`;
     h.ask.set(symbol, 200);
+    h.mark.set(symbol, 190);
     h.failSql = stopSql;
     await at(e, '2026-11-01T00:15:00Z');
     expect(e.status().lastError).toContain('db down');
@@ -699,13 +875,10 @@ describe('stops survive failure', () => {
   it('a later snapshot in a new process heals a stop the row recorded, and sl_hit stays true', async () => {
     const a = engine();
     await at(a, '2026-11-01T00:00:00Z');
-    const symbol = `C-88000-${E_NOV1}`;
-    h.ask.set(symbol, 200);
-    h.failSql = stopSql;
     await at(a, '2026-11-01T00:15:00Z');
     a.stop();
-    h.failSql = null;
-    h.ask.set(symbol, 110);
+    const seeded = (await store.liveCohorts()).find((r) => r.slot === 'current')!;
+    await pool.query(`UPDATE pulse_leg_snapshots SET sl_hit = true WHERE cohort_id = $1 AND leg = 'call'`, [seeded.id] as never);
     vi.setSystemTime(T('2026-11-01T00:30:00Z'));
     const b = engine();
     await b.start();
@@ -817,9 +990,13 @@ describe('resilience', () => {
     h.failSql = 'INSERT INTO pulse_cohort_snapshots';
     await expect(at(e, '2026-11-01T00:15:00Z')).resolves.toBeUndefined();
     expect(e.status().lastError).toContain('db down');
-    expect(e.status().dataOk).toBe(true);
+    expect(e.status().dataOk).toBe(false);
+    expect(e.status().lastTickAt).toBe(T('2026-11-01T00:15:00Z'));
+    expect(e.status().lastGoodTickAt).toBe(T('2026-11-01T00:00:00Z'));
     h.failSql = null;
     await at(e, '2026-11-01T00:16:00Z');
+    expect(e.status().dataOk).toBe(true);
+    expect(e.status().lastGoodTickAt).toBe(T('2026-11-01T00:16:00Z'));
     expect(e.status().lastError).toBeNull();
     expect(await count('FROM pulse_cohort_snapshots')).toBe(3);
     expect(await count('FROM pulse_leg_snapshots')).toBe(6);

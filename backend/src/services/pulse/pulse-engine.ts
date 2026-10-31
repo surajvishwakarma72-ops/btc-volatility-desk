@@ -1,22 +1,27 @@
 import { randomUUID } from 'node:crypto';
-import { closeNetPnl, buildSnapshot, type LegName, type PulseCohort } from '../../lib/pulse/snapshot.js';
-import { planOpen, type OpenPlan } from '../../lib/pulse/cohort.js';
+import { closeNetPnl, buildSnapshot, stopHitNow, type LegName, type PulseCohort } from '../../lib/pulse/snapshot.js';
+import { feedFingerprint, finiteOrNull, oiBand, planOpen, positiveOrNull, type OpenPlan } from '../../lib/pulse/cohort.js';
 import { PULSE_CONFIG } from '../../lib/pulse/config.js';
-import { SLOTS, cohortSlotMs, resolveSlots, snapshotGridMs, type Slot } from '../../lib/pulse/grid.js';
+import { HOUR_MS, SLOTS, cohortSlotMs, resolveSlots, snapshotGridMs, type Slot } from '../../lib/pulse/grid.js';
 import {
   DEFAULT_OPTION_FEES, fetchChain, fetchOptionFeeRates, fetchPerpQuote, type ChainSnapshot, type FeeRates, type PerpQuote,
 } from '../bot/delta-public.js';
 import {
-  closeCohorts, dbSizeBytes, ensurePulseSchema, gridIncomplete, hasCohort, insertCohort, insertSnapshot, lastLegSnapshots, latestGridMs,
-  latestSeries, liveCohorts, logEvent, markStop,
+  closeCohorts, dbSizeBytes, ensurePulseSchema, gridIncomplete, insertCohort, insertSnapshot, lastLegSnapshots, latestGridMs,
+  latestSeries, latestSlotMs, liveCohorts, logEvent, markStop, missedOpenSlots,
 } from './pulse-store.js';
 
 const TICK_MS = 60_000;
 const GRID_MS = PULSE_CONFIG.snapshotMinutes * 60_000;
+/** How far back a healthy tick looks for hours that got no cohort. */
+const MISSED_OPEN_LOOKBACK_MS = 72 * HOUR_MS;
+const LEGS = ['call', 'put'] as const satisfies readonly LegName[];
 
 export interface PulseStatus {
   enabled: boolean;
   lastTickAt: number | null;
+  /** The last tick that finished with good data and every write done. */
+  lastGoodTickAt: number | null;
   lastError: string | null;
   dataOk: boolean;
   slots: Record<Slot, { expiryMs: number | null; live: number; seriesId: string | null }>;
@@ -32,12 +37,12 @@ const errText = (e: unknown): string => {
 
 const zeroCounts = (): Record<Slot, number> => ({ current: 0, next: 0, n2n: 0 });
 
-/** Why this chain and perp quote cannot be trusted, or null if they are fresh. */
+/** Why this chain and perp response cannot be trusted, or null if the API is live. This cannot see a frozen book; see FEED_FROZEN. */
 function staleReason(chain: ChainSnapshot, perp: PerpQuote, nowMs: number): string | null {
-  if (nowMs - perp.tsMs > PULSE_CONFIG.staleQuoteMs) return 'perp quote too old';
-  const times = chain.options.flatMap((o) => (o.quoteTsMs === undefined ? [] : [o.quoteTsMs]));
-  if (times.length === 0) return 'no option has a quote time';
-  if (nowMs - Math.max(...times) > PULSE_CONFIG.staleQuoteMs) return 'chain quotes too old';
+  if (nowMs - perp.tsMs > PULSE_CONFIG.staleQuoteMs) return 'perp response too old';
+  const times = chain.options.flatMap((o) => (o.responseTsMs === undefined ? [] : [o.responseTsMs]));
+  if (times.length === 0) return 'no option has a response time';
+  if (nowMs - Math.max(...times) > PULSE_CONFIG.staleQuoteMs) return 'chain response too old';
   return null;
 }
 
@@ -45,10 +50,11 @@ function staleReason(chain: ChainSnapshot, perp: PerpQuote, nowMs: number): stri
  * Strangle Pulse collector: opens one paper cohort per expiry slot each UTC hour and snapshots every live
  * cohort on the 15-minute grid. It reads public market data and writes only its own pulse_ tables, so nothing
  * here can reach the exchange's order API. The maths is pure (lib/pulse); this class schedules and persists.
- * State that matters is in the database; what is held in memory only removes repeated events.
+ * State that matters is in the database; what is held in memory removes repeated events and holds stops not yet written.
  */
 export class PulseEngine {
   lastTickAt: number | null = null;
+  lastGoodTickAt: number | null = null;
   lastError: string | null = null;
   dataOk = false;
   private dbSize: number | null = null;
@@ -69,10 +75,13 @@ export class PulseEngine {
   private slots: Slots = {};
   private live = zeroCounts();
 
-  /** DATA_STALE and CHAIN_INCOMPLETE already logged in this outage. */
+  /** Unhealthy event types already logged in this outage. */
   private outageLogged = new Set<string>();
   private slotsLogged = new Set<Slot>();
-  private missedLogged: Partial<Record<Slot, number>> = {};
+  private fingerprint: string | null = null;
+  private unchangedTicks = 0;
+  /** Stops seen but not yet written, so a failed write survives the ask falling back. */
+  private pendingStops = new Map<string, number>();
   private dbSizeHour: number | null = null;
 
   get enabled(): boolean {
@@ -123,6 +132,7 @@ export class PulseEngine {
     return {
       enabled: this.enabled,
       lastTickAt: this.lastTickAt,
+      lastGoodTickAt: this.lastGoodTickAt,
       lastError: this.lastError,
       dataOk: this.dataOk,
       slots: { current: slot('current'), next: slot('next'), n2n: slot('n2n') },
@@ -157,6 +167,7 @@ export class PulseEngine {
     try {
       await this.runTick(nowMs);
     } catch (e) {
+      this.dataOk = false;
       this.lastError = errText(e);
       console.error('[pulse] tick failed:', this.lastError);
     } finally {
@@ -176,6 +187,14 @@ export class PulseEngine {
     const stale = staleReason(chain, perp, now);
     if (stale) return this.markUnhealthy('DATA_STALE', `market data stale: ${stale}`, { reason: stale });
 
+    // A live API can serve a dead book: response times advance, prices do not.
+    const fingerprint = feedFingerprint(chain.options, perp);
+    this.unchangedTicks = fingerprint === this.fingerprint ? this.unchangedTicks + 1 : 0;
+    this.fingerprint = fingerprint;
+    if (this.unchangedTicks >= PULSE_CONFIG.frozenTicks) {
+      return this.markUnhealthy('FEED_FROZEN', `feed frozen: book unchanged for ${this.unchangedTicks} ticks`, { ticks: this.unchangedTicks });
+    }
+
     // parseTicker drops bad tickers, so an expiry can vanish for a tick and shift every later slot into a false, irreversible roll.
     // A lapsed expiry fails the `> now` test, so the real 12:00 roll passes.
     const live = await liveCohorts();
@@ -189,6 +208,7 @@ export class PulseEngine {
     this.slots = slots;
     await this.logMissingSlots(slots, chain.expiries);
 
+    await this.checkStops(now, live, chain);
     const stillLive = await this.roll(now, live, slots, chain, perp);
     this.live = this.countLive(stillLive);
     this.rotateSeries(slots);
@@ -196,9 +216,10 @@ export class PulseEngine {
     await this.open(now, slots, chain, perp);
     await this.logDbSize(now);
     this.lastError = null;
+    this.lastGoodTickAt = now;
   }
 
-  private async markUnhealthy(type: 'DATA_STALE' | 'CHAIN_INCOMPLETE', error: string, detail: unknown): Promise<void> {
+  private async markUnhealthy(type: 'DATA_STALE' | 'CHAIN_INCOMPLETE' | 'FEED_FROZEN', error: string, detail: unknown): Promise<void> {
     this.dataOk = false;
     this.lastError = error;
     if (this.outageLogged.has(type)) return;
@@ -213,6 +234,28 @@ export class PulseEngine {
       } else if (!this.slotsLogged.has(slot)) {
         await logEvent('SLOT_MISSING', slot, { expiries });
         this.slotsLogged.add(slot);
+      }
+    }
+  }
+
+  /** Tests every open leg against the live chain, so a touch between grids or just before the roll is not lost. */
+  private async checkStops(now: number, live: readonly PulseCohort[], chain: ChainSnapshot): Promise<void> {
+    const key = (c: PulseCohort, leg: LegName) => `${c.id}:${leg}`;
+    const stopAt = (c: PulseCohort, leg: LegName) => (leg === 'call' ? c.call_sl_at : c.put_sl_at);
+    // Everything hit is noted before anything is written, so one failed write cannot lose another leg's touch.
+    for (const c of live) {
+      for (const leg of LEGS) {
+        if (stopAt(c, leg) === null && !this.pendingStops.has(key(c, leg)) && stopHitNow(c, leg, chain.options)) this.pendingStops.set(key(c, leg), now);
+      }
+    }
+    for (const c of live) {
+      for (const leg of LEGS) {
+        const at = this.pendingStops.get(key(c, leg));
+        if (at === undefined) continue;
+        await markStop(c.id, leg, at);
+        this.pendingStops.delete(key(c, leg));
+        if (leg === 'call') c.call_sl_at = at;
+        else c.put_sl_at = at;
       }
     }
   }
@@ -256,11 +299,10 @@ export class PulseEngine {
       const prev = await lastLegSnapshots(c.id);
       const built = buildSnapshot(c, chain.options, perp, prev, grid, now);
       try {
-        for (const leg of ['call', 'put'] as const satisfies readonly LegName[]) {
+        for (const leg of LEGS) {
           const stopAt = leg === 'call' ? c.call_sl_at : c.put_sl_at;
           if (!built.legs[leg].sl_hit || stopAt !== null) continue;
-          const before = prev[leg];
-          await markStop(c.id, leg, before?.sl_hit ? before.grid_ms : grid); // a healed stop keeps the grid that hit it
+          await markStop(c.id, leg, prev[leg]?.grid_ms ?? grid); // heals a stop only a row holds, at the grid that row records
         }
       } finally {
         // Stored even if markStop failed: this row's sticky sl_hit is what lets a later tick recover the stop.
@@ -275,15 +317,12 @@ export class PulseEngine {
     const late = now - slotMs > PULSE_CONFIG.lateOpenGraceMs;
     const due: Array<{ slot: Slot; expiryMs: number; plan: OpenPlan }> = [];
     for (const slot of SLOTS) {
-      if (await hasCohort(slot, slotMs)) continue;
-      if (late) {
-        if (this.missedLogged[slot] === slotMs) continue;
-        await logEvent('MISSED_OPEN', slot, { slotMs, expiryMs: slots[slot] ?? null });
-        this.missedLogged[slot] = slotMs;
-        continue;
-      }
       const expiryMs = slots[slot];
-      if (expiryMs !== undefined) due.push({ slot, expiryMs, plan: planOpen(chain.options, expiryMs) });
+      if (expiryMs === undefined) continue; // an unlisted slot could not have opened, so it missed nothing
+      const newest = await latestSlotMs(slot);
+      if (newest === slotMs) continue;
+      await this.logMissedOpens(now, slot, newest);
+      if (!late) due.push({ slot, expiryMs, plan: planOpen(chain.options, expiryMs) });
     }
 
     const symbols = due.flatMap(({ plan }) => (plan.kind === 'open' ? [plan.call.symbol, plan.put.symbol] : []));
@@ -299,19 +338,34 @@ export class PulseEngine {
         continue;
       }
       const { call, put } = plan;
+      const band = (o: typeof call) => oiBand(chain.options, o.type, expiryMs, o.strike);
       const stored = await insertCohort({
         ...base,
         status: 'open', closed_at: null, close_reason: null,
         spot_entry: perp.spot, fut_entry_bid: perp.bid, fut_entry_ask: perp.ask,
         call_symbol: call.symbol, put_symbol: put.symbol, call_strike: call.strike, put_strike: put.strike,
-        call_bid: call.bid, put_bid: put.bid, call_mid: (call.bid + call.ask) / 2, put_mid: (put.bid + put.ask) / 2,
-        call_delta: call.delta, put_delta: put.delta, call_theta: call.theta ?? null, put_theta: put.theta ?? null,
-        call_iv: call.iv, put_iv: put.iv,
+        call_bid: positiveOrNull(call.bid), put_bid: positiveOrNull(put.bid), call_mid: (call.bid + call.ask) / 2, put_mid: (put.bid + put.ask) / 2,
+        call_delta: call.delta, put_delta: put.delta, call_theta: finiteOrNull(call.theta), put_theta: finiteOrNull(put.theta),
+        call_iv: positiveOrNull(call.iv), put_iv: positiveOrNull(put.iv),
+        call_gamma: finiteOrNull(call.gamma), put_gamma: finiteOrNull(put.gamma), call_vega: finiteOrNull(call.vega), put_vega: finiteOrNull(put.vega),
+        call_oi_band: band(call), put_oi_band: band(put),
         fee: fees.get(call.symbol) ?? DEFAULT_OPTION_FEES, missing: null,
         call_sl_at: null, put_sl_at: null, net_pnl: null,
       });
       if (stored) this.live[slot]++;
     }
+  }
+
+  /** Logs each hour since the slot's newest row that has no cohort and is past its grace. The events are the dedupe, so restarts cannot repeat one. */
+  private async logMissedOpens(now: number, slot: Slot, newest: number | null): Promise<void> {
+    const current = cohortSlotMs(now);
+    // A slot with no rows has no history to walk: only this hour can be said to be missed.
+    const from = newest === null ? current : Math.max(newest + HOUR_MS, current - MISSED_OPEN_LOOKBACK_MS);
+    const hours: number[] = [];
+    for (let h = from; h <= current; h += HOUR_MS) if (now - h > PULSE_CONFIG.lateOpenGraceMs) hours.push(h);
+    if (hours.length === 0) return;
+    const logged = await missedOpenSlots(slot, from);
+    for (const slotMs of hours) if (!logged.has(slotMs)) await logEvent('MISSED_OPEN', slot, { slotMs });
   }
 
   private noStrikesCohort(
@@ -325,6 +379,7 @@ export class PulseEngine {
       call_symbol: null, put_symbol: null, call_strike: null, put_strike: null,
       call_bid: null, put_bid: null, call_mid: null, put_mid: null,
       call_delta: null, put_delta: null, call_theta: null, put_theta: null, call_iv: null, put_iv: null,
+      call_gamma: null, put_gamma: null, call_vega: null, put_vega: null, call_oi_band: null, put_oi_band: null,
       fee: DEFAULT_OPTION_FEES, missing,
       call_sl_at: null, put_sl_at: null, net_pnl: null,
     };

@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS pulse_cohorts (
   put_theta numeric,
   call_iv numeric,
   put_iv numeric,
+  call_gamma numeric,
+  put_gamma numeric,
+  call_vega numeric,
+  put_vega numeric,
+  call_oi_band numeric,
+  put_oi_band numeric,
   fee jsonb NOT NULL,
   missing jsonb,
   call_sl_at timestamptz,
@@ -46,6 +52,7 @@ CREATE INDEX IF NOT EXISTS pulse_cohorts_status_idx ON pulse_cohorts (status, sl
 CREATE TABLE IF NOT EXISTS pulse_leg_snapshots (
   cohort_id uuid NOT NULL,
   grid_ms bigint NOT NULL,
+  sampled_ms bigint NOT NULL,
   leg text NOT NULL,
   minutes_since_entry numeric,
   strike numeric,
@@ -73,6 +80,7 @@ CREATE TABLE IF NOT EXISTS pulse_leg_snapshots (
 CREATE TABLE IF NOT EXISTS pulse_cohort_snapshots (
   cohort_id uuid NOT NULL,
   grid_ms bigint NOT NULL,
+  sampled_ms bigint NOT NULL,
   spot numeric,
   fut_price numeric,
   combined_premium numeric,
@@ -116,13 +124,15 @@ const ms = (v: unknown): number | null => (v === null || v === undefined ? null 
 const COHORT_COLS = [
   'id', 'slot', 'series_id', 'slot_ms', 'expiry_ms', 'status', 'opened_at', 'closed_at', 'close_reason', 'spot_entry',
   'fut_entry_bid', 'fut_entry_ask', 'call_symbol', 'put_symbol', 'call_strike', 'put_strike', 'call_bid', 'put_bid',
-  'call_mid', 'put_mid', 'call_delta', 'put_delta', 'call_theta', 'put_theta', 'call_iv', 'put_iv', 'fee', 'missing',
+  'call_mid', 'put_mid', 'call_delta', 'put_delta', 'call_theta', 'put_theta', 'call_iv', 'put_iv',
+  'call_gamma', 'put_gamma', 'call_vega', 'put_vega', 'call_oi_band', 'put_oi_band', 'fee', 'missing',
   'call_sl_at', 'put_sl_at', 'net_pnl',
 ] as const;
 
 const NUM_COHORT_COLS = [
   'spot_entry', 'fut_entry_bid', 'fut_entry_ask', 'call_strike', 'put_strike', 'call_bid', 'put_bid', 'call_mid', 'put_mid',
-  'call_delta', 'put_delta', 'call_theta', 'put_theta', 'call_iv', 'put_iv', 'net_pnl',
+  'call_delta', 'put_delta', 'call_theta', 'put_theta', 'call_iv', 'put_iv', 'call_gamma', 'put_gamma', 'call_vega', 'put_vega',
+  'call_oi_band', 'put_oi_band', 'net_pnl',
 ] as const;
 
 /** Inserts a cohort. Returns false when one already exists for this (slot, slot_ms). */
@@ -165,12 +175,12 @@ export async function liveCohorts(): Promise<PulseCohort[]> {
 }
 
 const LEG_COLS = [
-  'cohort_id', 'grid_ms', 'leg', 'minutes_since_entry', 'strike', 'expiry_ms', 'bid', 'ask', 'mark', 'mid', 'delta', 'gamma',
+  'cohort_id', 'grid_ms', 'sampled_ms', 'leg', 'minutes_since_entry', 'strike', 'expiry_ms', 'bid', 'ask', 'mark', 'mid', 'delta', 'gamma',
   'theta', 'vega', 'iv', 'oi', 'oi_band', 'oi_change', 'volume_raw', 'volume_change', 'net_pnl', 'sl_hit', 'data_ok',
 ] as const;
 
 const COHORT_SNAP_COLS = [
-  'cohort_id', 'grid_ms', 'spot', 'fut_price', 'combined_premium', 'combined_pnl', 'pnl_pct', 'net_delta', 'fut_long_pnl',
+  'cohort_id', 'grid_ms', 'sampled_ms', 'spot', 'fut_price', 'combined_premium', 'combined_pnl', 'pnl_pct', 'net_delta', 'fut_long_pnl',
   'fut_short_pnl', 'data_ok',
 ] as const;
 
@@ -201,7 +211,7 @@ export async function insertSnapshot(s: BuiltSnapshot): Promise<void> {
 }
 
 const NUM_LEG_COLS = [
-  'grid_ms', 'minutes_since_entry', 'strike', 'expiry_ms', 'bid', 'ask', 'mark', 'mid', 'delta', 'gamma', 'theta', 'vega', 'iv',
+  'grid_ms', 'sampled_ms', 'minutes_since_entry', 'strike', 'expiry_ms', 'bid', 'ask', 'mark', 'mid', 'delta', 'gamma', 'theta', 'vega', 'iv',
   'oi', 'oi_band', 'oi_change', 'volume_raw', 'volume_change', 'net_pnl',
 ] as const;
 
@@ -271,10 +281,20 @@ export async function latestSeries(): Promise<Partial<Record<Slot, string>>> {
   return out;
 }
 
-/** True when any row, including no_valid_strikes, exists for this (slot, slot_ms). */
-export async function hasCohort(slot: Slot, slotMs: number): Promise<boolean> {
-  const r = await pool.query('SELECT 1 FROM pulse_cohorts WHERE slot = $1 AND slot_ms = $2 LIMIT 1', [slot, slotMs]);
-  return r.rows.length > 0;
+/** The newest slot_ms with any row for this slot, including no_valid_strikes, or null if it has none. */
+export async function latestSlotMs(slot: Slot): Promise<number | null> {
+  const r = await pool.query('SELECT max(slot_ms) AS slot_ms FROM pulse_cohorts WHERE slot = $1', [slot]);
+  return num((r.rows[0] as Row | undefined)?.slot_ms);
+}
+
+/** The hours from fromMs on that already have a MISSED_OPEN event for this slot. */
+export async function missedOpenSlots(slot: Slot, fromMs: number): Promise<Set<number>> {
+  const r = await pool.query(
+    `SELECT (detail->>'slotMs')::bigint AS slot_ms FROM pulse_events
+     WHERE type = 'MISSED_OPEN' AND slot = $1 AND (detail->>'slotMs')::bigint >= $2`,
+    [slot, fromMs],
+  );
+  return new Set((r.rows as Row[]).map((row) => Number(row.slot_ms)));
 }
 
 export async function dbSizeBytes(): Promise<number> {

@@ -4,10 +4,14 @@ export const PULSE_CONFIG = {
   snapshotMinutes: 15,
   /** How late (ms) a cohort may still be opened after its slot start. */
   lateOpenGraceMs: 300_000,
-  /** Quotes older than this (ms) are treated as stale. */
+  /** API responses older than this (ms) are treated as stale. This shows the API is alive, not that the book moved. */
   staleQuoteMs: 120_000,
   /** Per-leg stop as a multiple of entry premium. */
   stopMultiple: 2,
+  /** A stop needs ask <= this multiple of mark, so a spiked ask on a thin book does not latch. */
+  maxAskToMark: 1.5,
+  /** Consecutive ticks with an unchanged book before the feed counts as frozen. */
+  frozenTicks: 5,
   /** Assumed slippage as a fraction of premium (estimate, not measured). */
   slippagePct: 0.01,
   lots: 1,

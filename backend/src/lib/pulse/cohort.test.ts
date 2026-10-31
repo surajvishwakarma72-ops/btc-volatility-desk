@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { ChainOption } from '../bot/strike-picker.js';
-import { planOpen, legNetPnl, futuresNetPnl, isStopHit, oiBand, delta2 } from './cohort.js';
+import { planOpen, legNetPnl, futuresNetPnl, isStopHit, oiBand, delta2, feedFingerprint } from './cohort.js';
 
 const EXP = 1_800_000_000_000;
 
@@ -17,6 +17,19 @@ describe('planOpen', () => {
       expect(plan.call.strike).toBe(79000);
       expect(plan.put.strike).toBe(70000);
     }
+  });
+
+  it('counts a zero ask, an unusable iv or a non-operational status as a missing side', () => {
+    const put = opt('put', 70000, 0.12);
+    for (const bad of [{ ask: 0 }, { iv: Number.NaN }, { iv: 0 }, { tradingStatus: 'disrupted_post_only' }]) {
+      expect(planOpen([opt('call', 79000, 0.12, bad), put], EXP)).toEqual({ kind: 'no_valid_strikes', missing: ['call'] });
+    }
+    expect(planOpen([opt('call', 79000, 0.12, { tradingStatus: 'operational' }), put], EXP).kind).toBe('open');
+  });
+
+  it('skips an unusable strike for a usable one', () => {
+    const plan = planOpen([opt('call', 79000, 0.125, { ask: 0 }), opt('call', 80000, 0.11), opt('put', 70000, 0.12)], EXP);
+    expect(plan.kind === 'open' && plan.call.strike).toBe(80000);
   });
 
   it('returns no_valid_strikes naming the missing side', () => {
@@ -47,8 +60,17 @@ describe('futuresNetPnl', () => {
 
 describe('isStopHit', () => {
   it('flags stop exactly at 2x', () => {
-    expect(isStopHit(100, 200)).toBe(true);
-    expect(isStopHit(100, 199.9)).toBe(false);
+    expect(isStopHit(100, 200, 190)).toBe(true);
+    expect(isStopHit(100, 199.9, 190)).toBe(false);
+  });
+  it('ignores a spiked ask more than 1.5x the mark', () => {
+    expect(isStopHit(100, 300, 200)).toBe(true);
+    expect(isStopHit(100, 300.1, 200)).toBe(false);
+  });
+  it('needs a valid mark', () => {
+    expect(isStopHit(100, 200, 0)).toBe(false);
+    expect(isStopHit(100, 200, -5)).toBe(false);
+    expect(isStopHit(100, 200, Number.NaN)).toBe(false);
   });
 });
 
@@ -72,6 +94,22 @@ describe('oiBand', () => {
     const partial = [opt('call', 71000, 0.1), opt('call', 72000, 0.1, { oi: 7 }), opt('call', 73000, 0.1, { oi: 3 })];
     expect(oiBand(partial, 'call', EXP, 72000)).toBe(10);
     expect(oiBand([opt('call', 72000, 0.1)], 'call', EXP, 72000)).toBeNull();
+  });
+});
+
+describe('feedFingerprint', () => {
+  const perp = { bid: 1, ask: 2 };
+  const a = opt('call', 70000, 0.1);
+  const b = opt('put', 70000, 0.1);
+  it('ignores option order and non-book fields', () => {
+    expect(feedFingerprint([a, b], perp)).toBe(feedFingerprint([{ ...b, mark: 99, iv: 9 }, a], perp));
+  });
+  it('changes with any option or perp bid or ask', () => {
+    const fp = feedFingerprint([a, b], perp);
+    expect(feedFingerprint([{ ...a, bid: 11 }, b], perp)).not.toBe(fp);
+    expect(feedFingerprint([a, { ...b, ask: 13 }], perp)).not.toBe(fp);
+    expect(feedFingerprint([a, b], { bid: 1.5, ask: 2 })).not.toBe(fp);
+    expect(feedFingerprint([a, b], { bid: 1, ask: 2.5 })).not.toBe(fp);
   });
 });
 

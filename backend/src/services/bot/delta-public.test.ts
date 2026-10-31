@@ -10,23 +10,28 @@ const base = {
   quotes: { best_bid: '198', best_ask: '203', mark_iv: '0.2356' },
 };
 
-describe('parseTicker OI, volume and quote time', () => {
+describe('parseTicker OI, volume and response time', () => {
+  it('reads product_trading_status when present', () => {
+    expect(parseTicker({ ...base, product_trading_status: 'operational' })?.tradingStatus).toBe('operational');
+    expect(parseTicker(base)?.tradingStatus).toBeUndefined();
+  });
+
   it('reads oi_contracts, volume and timestamp (microseconds)', () => {
     const p = parseTicker({ ...base, oi_contracts: '5629', volume: 13.801, timestamp: 1793439259596683 });
     expect(p?.oi).toBe(5629);
     expect(p?.volume).toBeCloseTo(13.801);
-    expect(p?.quoteTsMs).toBe(1793439259596);
+    expect(p?.responseTsMs).toBe(1793439259596);
   });
 
   it('leaves the fields undefined when missing or non-numeric', () => {
     const p = parseTicker(base);
     expect(p?.oi).toBeUndefined();
     expect(p?.volume).toBeUndefined();
-    expect(p?.quoteTsMs).toBeUndefined();
+    expect(p?.responseTsMs).toBeUndefined();
     const q = parseTicker({ ...base, oi_contracts: 'abc', volume: undefined, timestamp: Number.NaN });
     expect(q?.oi).toBeUndefined();
     expect(q?.volume).toBeUndefined();
-    expect(q?.quoteTsMs).toBeUndefined();
+    expect(q?.responseTsMs).toBeUndefined();
   });
 });
 

@@ -32,7 +32,8 @@ function mk(over: Partial<PulseCohort> = {}): PulseCohort {
     opened_at: SLOT + 1000, closed_at: null, close_reason: null, spot_entry: 80000.5, fut_entry_bid: 79990, fut_entry_ask: 80010,
     call_symbol: 'C-1', put_symbol: 'P-1', call_strike: 82000, put_strike: 78000,
     call_bid: 100, put_bid: 90, call_mid: 101, put_mid: 91, call_delta: 0.12, put_delta: 0.13,
-    call_theta: -5, put_theta: -4, call_iv: 40, put_iv: 41,
+    call_theta: -5, put_theta: -4, call_iv: 40, put_iv: 41, call_gamma: 0.001, put_gamma: 0.002, call_vega: 3, put_vega: 4,
+    call_oi_band: 50, put_oi_band: 60,
     fee: { takerRate: 0.0001, makerRate: 0.0001, premiumCapRate: 0.035, contractValue: 0.001 }, missing: null,
     call_sl_at: null, put_sl_at: null, net_pnl: null, ...over,
   };
@@ -40,7 +41,7 @@ function mk(over: Partial<PulseCohort> = {}): PulseCohort {
 
 function leg(which: 'call' | 'put', over: Partial<LegRow> = {}): LegRow {
   return {
-    cohort_id: mk().id, grid_ms: GRID, leg: which, minutes_since_entry: 15, strike: 82000, expiry_ms: EXP,
+    cohort_id: mk().id, grid_ms: GRID, sampled_ms: GRID + 5_000, leg: which, minutes_since_entry: 15, strike: 82000, expiry_ms: EXP,
     bid: 70, ask: 80, mark: 75, mid: 75, delta: 0.1, gamma: 1e-5, theta: -5, vega: 2, iv: 40,
     oi: 10, oi_band: 50, oi_change: null, volume_raw: 7, volume_change: null, net_pnl: 0.01, sl_hit: false, data_ok: true, ...over,
   };
@@ -49,7 +50,7 @@ function leg(which: 'call' | 'put', over: Partial<LegRow> = {}): LegRow {
 function snap(grid = GRID): BuiltSnapshot {
   return {
     cohortId: mk().id, gridMs: grid,
-    cohort: { spot: 80100, fut_price: 80110, combined_premium: 145, combined_pnl: 0.02, pnl_pct: 10, net_delta: -0.05, fut_long_pnl: 1, fut_short_pnl: -1, data_ok: true },
+    cohort: { sampled_ms: grid + 5_000, spot: 80100, fut_price: 80110, combined_premium: 145, combined_pnl: 0.02, pnl_pct: 10, net_delta: -0.05, fut_long_pnl: 1, fut_short_pnl: -1, data_ok: true },
     legs: { call: leg('call', { grid_ms: grid }), put: leg('put', { grid_ms: grid }) },
   };
 }
@@ -98,6 +99,7 @@ describe('pulse-store', () => {
     expect(c.spot_entry).toBe(80000.5);
     expect(c.call_sl_at).toBeNull();
     expect(c.fee.contractValue).toBe(0.001);
+    expect(c).toMatchObject({ call_oi_band: 50, put_oi_band: 60, call_gamma: 0.001, put_gamma: 0.002, call_vega: 3, put_vega: 4 });
   });
 
   it('lastLegSnapshots returns the latest row per leg as numbers', async () => {
@@ -110,6 +112,7 @@ describe('pulse-store', () => {
     expect(last.call?.grid_ms).toBe(GRID + 900_000);
     expect(last.call?.oi_band).toBe(77);
     expect(last.call?.expiry_ms).toBe(EXP);
+    expect(last.call?.sampled_ms).toBe(GRID + 5_000);
     expect(last.put?.volume_raw).toBe(7);
     expect(await store.lastLegSnapshots('99999999-9999-9999-9999-999999999999')).toEqual({ call: undefined, put: undefined });
   });
@@ -172,11 +175,21 @@ describe('pulse-store', () => {
     expect(await store.gridIncomplete(GRID)).toBe(false);
   });
 
-  it('hasCohort matches on slot and slot_ms, any status', async () => {
-    await store.insertCohort(mk({ status: 'no_valid_strikes' }));
-    expect(await store.hasCohort('current', SLOT)).toBe(true);
-    expect(await store.hasCohort('next', SLOT)).toBe(false);
-    expect(await store.hasCohort('current', SLOT + 3_600_000)).toBe(false);
+  it('latestSlotMs is the newest slot_ms for the slot, any status, or null', async () => {
+    expect(await store.latestSlotMs('current')).toBeNull();
+    await store.insertCohort(mk());
+    await store.insertCohort(mk({ id: '88888888-8888-8888-8888-888888888888', slot_ms: SLOT + 3_600_000, status: 'no_valid_strikes' }));
+    expect(await store.latestSlotMs('current')).toBe(SLOT + 3_600_000);
+    expect(await store.latestSlotMs('next')).toBeNull();
+  });
+
+  it('missedOpenSlots returns the logged hours for the slot from a given hour on', async () => {
+    await store.logEvent('MISSED_OPEN', 'current', { slotMs: SLOT });
+    await store.logEvent('MISSED_OPEN', 'current', { slotMs: SLOT + 3_600_000 });
+    await store.logEvent('MISSED_OPEN', 'next', { slotMs: SLOT + 7_200_000 });
+    await store.logEvent('DATA_STALE', 'current', { slotMs: SLOT + 7_200_000 });
+    expect([...(await store.missedOpenSlots('current', SLOT + 1))]).toEqual([SLOT + 3_600_000]);
+    expect((await store.missedOpenSlots('n2n', 0)).size).toBe(0);
   });
 
   it('dbSizeBytes returns a positive number', async () => {

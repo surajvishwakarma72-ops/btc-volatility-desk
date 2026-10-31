@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { fetchChain, fetchPerpQuote, fetchOptionFeeRates, DEFAULT_OPTION_FEES, type FeeRates } from '../services/bot/delta-public.js';
 import { resolveSlots, SLOTS, cohortSlotMs, snapshotGridMs } from '../lib/pulse/grid.js';
-import { planOpen } from '../lib/pulse/cohort.js';
+import { oiBand, planOpen } from '../lib/pulse/cohort.js';
 import { buildSnapshot, type PulseCohort } from '../lib/pulse/snapshot.js';
 
 const f = (v: number | null | undefined, d = 4): string => (v === null || v === undefined ? 'null' : v.toFixed(d));
@@ -43,6 +43,8 @@ async function main(): Promise<void> {
       call_bid: call.bid, put_bid: put.bid, call_mid: (call.bid + call.ask) / 2, put_mid: (put.bid + put.ask) / 2,
       call_delta: call.delta, put_delta: put.delta, call_theta: call.theta ?? null, put_theta: put.theta ?? null,
       call_iv: call.iv, put_iv: put.iv,
+      call_gamma: call.gamma ?? null, put_gamma: put.gamma ?? null, call_vega: call.vega ?? null, put_vega: put.vega ?? null,
+      call_oi_band: oiBand(chain.options, 'call', expiryMs, call.strike), put_oi_band: oiBand(chain.options, 'put', expiryMs, put.strike),
       fee: fees.get(call.symbol) ?? DEFAULT_OPTION_FEES, missing: null,
       call_sl_at: null, put_sl_at: null, net_pnl: null,
     };

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChainOption } from '../bot/strike-picker.js';
 import type { FeeRates, PerpQuote } from '../../services/bot/delta-public.js';
 import { legNetPnl, futuresNetPnl } from './cohort.js';
-import { buildSnapshot, closeNetPnl, type PulseCohort, type LegRow } from './snapshot.js';
+import { buildSnapshot, closeNetPnl, stopHitNow, type PulseCohort, type LegRow } from './snapshot.js';
 
 const EXP = Date.parse('2026-10-31T12:00:00Z');
 const SLOT = Date.parse('2026-10-31T08:00:00Z');
@@ -14,7 +14,8 @@ const cohort: PulseCohort = {
   opened_at: SLOT, closed_at: null, close_reason: null, spot_entry: 80000, fut_entry_bid: 79990, fut_entry_ask: 80010,
   call_symbol: 'C-1', put_symbol: 'P-1', call_strike: 82000, put_strike: 78000,
   call_bid: 100, put_bid: 90, call_mid: 101, put_mid: 91, call_delta: 0.12, put_delta: 0.13,
-  call_theta: -5, put_theta: -4, call_iv: 40, put_iv: 41, fee: FEE, missing: null,
+  call_theta: -5, put_theta: -4, call_iv: 40, put_iv: 41, call_gamma: 0.001, put_gamma: 0.002, call_vega: 3, put_vega: 4,
+  call_oi_band: null, put_oi_band: null, fee: FEE, missing: null,
   call_sl_at: null, put_sl_at: null, net_pnl: null,
 };
 const perp: PerpQuote = { bid: 80100, ask: 80120, mark: 80110, spot: 80105, tsMs: GRID };
@@ -62,9 +63,59 @@ describe('buildSnapshot', () => {
     expect(s.legs.call.sl_hit).toBe(false);
   });
 
-  it('flags a fresh stop when ask reaches 2x entry bid', () => {
-    const s = buildSnapshot(cohort, [call, { ...put, ask: 180 }], perp, {}, GRID, GRID);
-    expect(s.legs.put.sl_hit).toBe(true);
+  it('sl_hit follows the cohort and prev, not the live ask', () => {
+    const s = buildSnapshot(cohort, [call, { ...put, ask: 180, mark: 170 }], perp, {}, GRID, GRID);
+    expect(s.legs.put.sl_hit).toBe(false);
+  });
+
+  it('records when prices were sampled and measures minutes from there', () => {
+    const late = GRID + 7 * 60_000;
+    const s = buildSnapshot(cohort, [call, put], perp, {}, GRID, late);
+    expect(s.legs.call).toMatchObject({ grid_ms: GRID, sampled_ms: late, minutes_since_entry: 37 });
+    expect(s.cohort.sampled_ms).toBe(late);
+  });
+
+  it('a NaN iv is stored null and fails the leg', () => {
+    const s = buildSnapshot(cohort, [call, { ...put, iv: Number.NaN }], perp, {}, GRID, GRID);
+    expect(s.legs.put).toMatchObject({ iv: null, data_ok: false, net_pnl: null });
+    expect(s.cohort.data_ok).toBe(false);
+  });
+
+  it('a zero mark is stored null and fails the leg', () => {
+    const s = buildSnapshot(cohort, [{ ...call, mark: 0 }, put], perp, {}, GRID, GRID);
+    expect(s.legs.call).toMatchObject({ mark: null, data_ok: false, net_pnl: null });
+  });
+
+  it('a zero bid is stored null with a null mid, and the leg stays usable', () => {
+    const s = buildSnapshot(cohort, [{ ...call, bid: 0 }, put], perp, {}, GRID, GRID);
+    expect(s.legs.call).toMatchObject({ bid: null, mid: null, data_ok: true });
+    expect(s.legs.call.net_pnl).not.toBeNull();
+  });
+
+  it('a zero ask is stored null with a null mid', () => {
+    const s = buildSnapshot(cohort, [{ ...call, ask: 0 }, put], perp, {}, GRID, GRID);
+    expect(s.legs.call).toMatchObject({ ask: null, mid: null, data_ok: false });
+  });
+
+  it('a non-finite greek never reaches a row', () => {
+    const s = buildSnapshot(cohort, [{ ...call, gamma: Number.NaN, theta: Number.POSITIVE_INFINITY }, put], perp, {}, GRID, GRID);
+    expect(s.legs.call).toMatchObject({ gamma: null, theta: null });
+  });
+
+  it('a non-operational sold leg is data_ok=false; an operational or absent status is fine', () => {
+    expect(buildSnapshot(cohort, [{ ...call, tradingStatus: 'disrupted_post_only' }, put], perp, {}, GRID, GRID).legs.call).toMatchObject({ data_ok: false, net_pnl: null });
+    expect(buildSnapshot(cohort, [{ ...call, tradingStatus: 'operational' }, put], perp, {}, GRID, GRID).legs.call.data_ok).toBe(true);
+  });
+
+  it('the first snapshot measures oi_change from the entry band', () => {
+    const c = { ...cohort, call_oi_band: 4 };
+    const s = buildSnapshot(c, [call, put], perp, {}, GRID, GRID);
+    expect(s.legs.call.oi_change).toBe(10 - 4);
+    expect(s.legs.put.oi_change).toBeNull();
+    const later = buildSnapshot(c, [call, put], perp, { call: { oi_band: 7 } as LegRow }, GRID, GRID);
+    expect(later.legs.call.oi_change).toBe(3);
+    const noPrevBand = buildSnapshot(c, [call, put], perp, { call: { oi_band: null } as LegRow }, GRID, GRID);
+    expect(noPrevBand.legs.call.oi_change).toBeNull();
   });
 
   it('pnl_pct is combined P&L over premium collected', () => {
@@ -98,6 +149,23 @@ describe('buildSnapshot', () => {
     expect(s.legs.put.oi_change).toBeNull();
     const rolled = buildSnapshot(cohort, [call, put], perp, { call: { oi_band: 1, volume_raw: 9 } as LegRow }, GRID, GRID);
     expect(rolled.legs.call.volume_change).toBeNull();
+  });
+});
+
+describe('stopHitNow', () => {
+  const hit = { ...call, ask: 200, mark: 190 };
+  it('tests the live quote against the entry bid', () => {
+    expect(stopHitNow(cohort, 'call', [hit])).toBe(true);
+    expect(stopHitNow(cohort, 'call', [call])).toBe(false);
+    expect(stopHitNow(cohort, 'put', [hit])).toBe(false);
+  });
+  it('does not latch on a spiked ask, a bad mark, or a non-operational leg', () => {
+    expect(stopHitNow(cohort, 'call', [{ ...hit, mark: 105 }])).toBe(false);
+    expect(stopHitNow(cohort, 'call', [{ ...hit, mark: 0 }])).toBe(false);
+    expect(stopHitNow(cohort, 'call', [{ ...hit, tradingStatus: 'disrupted_cancel_only' }])).toBe(false);
+  });
+  it('does not latch without entry data', () => {
+    expect(stopHitNow({ ...cohort, call_bid: null }, 'call', [hit])).toBe(false);
   });
 });
 

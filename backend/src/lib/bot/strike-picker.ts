@@ -20,8 +20,10 @@ export interface ChainOption {
   oi?: number;
   /** 24h volume (from volume). */
   volume?: number;
-  /** Quote time, epoch ms (Delta sends microseconds). */
-  quoteTsMs?: number;
+  /** Delta's ticker `timestamp`, epoch ms: when the response was built, not when the quote last changed. Proves API liveness only. */
+  responseTsMs?: number;
+  /** Delta's product_trading_status, e.g. 'operational'. Absent in replayed chains. */
+  tradingStatus?: string;
 }
 
 export interface DeltaBand {

@@ -8,10 +8,23 @@ export type OpenPlan =
   | { kind: 'open'; call: ChainOption; put: ChainOption }
   | { kind: 'no_valid_strikes'; missing: Array<'call' | 'put'> };
 
-/** Picks the short call and put strictly inside the delta band; reports which sides had no strike. */
+/** A finite value, or null. Keeps NaN out of SQL. */
+export const finiteOrNull = (v: number | undefined): number | null => (v === undefined || !Number.isFinite(v) ? null : v);
+
+/** A finite positive value, or null. Delta's 0 means "no quote" for a price or iv. */
+export const positiveOrNull = (v: number | undefined): number | null => (v !== undefined && Number.isFinite(v) && v > 0 ? v : null);
+
+/** An absent status counts as tradable; only an explicit other status does not. */
+export const isOperational = (o: ChainOption): boolean => o.tradingStatus === undefined || o.tradingStatus === 'operational';
+
+/**
+ * Picks the short call and put strictly inside the delta band; reports which sides had no strike.
+ * A strike needs a bid (the picker's rule), an ask, a positive iv and an operational status.
+ */
 export function planOpen(chain: readonly ChainOption[], expiryMs: number): OpenPlan {
-  const call = pickBodyLeg(chain, 'call', expiryMs, SHORT_BAND, 0, 0);
-  const put = pickBodyLeg(chain, 'put', expiryMs, SHORT_BAND, 0, 0);
+  const usable = chain.filter((o) => o.ask > 0 && positiveOrNull(o.iv) !== null && isOperational(o));
+  const call = pickBodyLeg(usable, 'call', expiryMs, SHORT_BAND, 0, 0);
+  const put = pickBodyLeg(usable, 'put', expiryMs, SHORT_BAND, 0, 0);
   if (call && put) return { kind: 'open', call, put };
   const missing: Array<'call' | 'put'> = [];
   if (!call) missing.push('call');
@@ -39,9 +52,16 @@ export function futuresNetPnl(i: { side: 'long' | 'short'; entry: number; exit: 
   return gross - feeFor(i.entry) - feeFor(i.exit);
 }
 
-/** True when the ask has reached the stop multiple of the entry premium. */
-export function isStopHit(entryBid: number, ask: number): boolean {
-  return ask >= PULSE_CONFIG.stopMultiple * entryBid;
+/** True when the ask has reached the stop multiple of the entry premium and the mark agrees it is a real price. */
+export function isStopHit(entryBid: number, ask: number, mark: number): boolean {
+  if (!Number.isFinite(mark) || mark <= 0) return false;
+  return ask >= PULSE_CONFIG.stopMultiple * entryBid && ask <= PULSE_CONFIG.maxAskToMark * mark;
+}
+
+/** Identifies the whole book: the perp and every option's bid and ask. Equal fingerprints mean nothing moved. */
+export function feedFingerprint(chain: readonly ChainOption[], perp: { bid: number; ask: number }): string {
+  const options = chain.map((o) => `${o.symbol}:${o.bid}:${o.ask}`).sort();
+  return [`${perp.bid}:${perp.ask}`, ...options].join('|');
 }
 
 /**
