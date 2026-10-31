@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ChainOption } from '../bot/strike-picker.js';
 import type { FeeRates, PerpQuote } from '../../services/bot/delta-public.js';
 import { legNetPnl, futuresNetPnl } from './cohort.js';
-import { buildSnapshot, type PulseCohort, type LegRow } from './snapshot.js';
+import { buildSnapshot, closeNetPnl, type PulseCohort, type LegRow } from './snapshot.js';
 
 const EXP = Date.parse('2026-10-31T12:00:00Z');
 const SLOT = Date.parse('2026-10-31T08:00:00Z');
@@ -91,5 +91,40 @@ describe('buildSnapshot', () => {
     expect(s.legs.put.oi_change).toBeNull();
     const rolled = buildSnapshot(cohort, [call, put], perp, { call: { oi_band: 1, volume_raw: 9 } as LegRow }, GRID, GRID);
     expect(rolled.legs.call.volume_change).toBeNull();
+  });
+});
+
+describe('closeNetPnl', () => {
+  const leg = (net: number | null) => ({ net_pnl: net }) as LegRow;
+  const net = (entryBid: number, ask: number, spot: number) => legNetPnl({ entryBid, ask, spot, fee: FEE });
+
+  it('EXPIRED uses intrinsic against spot: call in the money, put worthless', () => {
+    const got = closeNetPnl(cohort, 'EXPIRED', [], 82500, {});
+    expect(got).toBeCloseTo(net(100, 500, 82500) + net(90, 0, 82500), 10);
+  });
+
+  it('EXPIRED uses intrinsic against spot: put in the money, call worthless', () => {
+    const got = closeNetPnl(cohort, 'EXPIRED', [call, put], 77000, {});
+    expect(got).toBeCloseTo(net(100, 0, 77000) + net(90, 1000, 77000), 10);
+  });
+
+  it('EXPIRED ignores any chain quote and stored P&L', () => {
+    const got = closeNetPnl(cohort, 'EXPIRED', [{ ...call, ask: 9999 }], 80000, { call: leg(5), put: leg(5) });
+    expect(got).toBeCloseTo(net(100, 0, 80000) + net(90, 0, 80000), 10);
+  });
+
+  it('ROLL uses the current ask of each leg', () => {
+    expect(closeNetPnl(cohort, 'ROLL', [call, put], 80105, {})).toBeCloseTo(net(100, 80, 80105) + net(90, 65, 80105), 10);
+  });
+
+  it('ROLL falls back to the stored leg P&L when the symbol is gone or its ask is 0', () => {
+    expect(closeNetPnl(cohort, 'ROLL', [put], 80105, { call: leg(0.25) })).toBeCloseTo(0.25 + net(90, 65, 80105), 10);
+    expect(closeNetPnl(cohort, 'ROLL', [call, { ...put, ask: 0 }], 80105, { put: leg(-0.5) })).toBeCloseTo(net(100, 80, 80105) - 0.5, 10);
+  });
+
+  it('ROLL is null when a leg has neither a quote nor a stored P&L', () => {
+    expect(closeNetPnl(cohort, 'ROLL', [call], 80105, {})).toBeNull();
+    expect(closeNetPnl(cohort, 'ROLL', [call], 80105, { put: leg(null) })).toBeNull();
+    expect(closeNetPnl(cohort, 'ROLL', [], 80105, { put: leg(0.1) })).toBeNull();
   });
 });

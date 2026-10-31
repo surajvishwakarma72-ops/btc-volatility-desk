@@ -144,6 +144,29 @@ describe('pulse-store', () => {
     expect(rows[1].slot).toBeNull();
   });
 
+  it('latestGridMs is null when empty, then the newest stored grid as a number', async () => {
+    expect(await store.latestGridMs()).toBeNull();
+    await store.insertCohort(mk());
+    await store.insertSnapshot(snap(GRID + 900_000));
+    await store.insertSnapshot(snap(GRID));
+    expect(await store.latestGridMs()).toBe(GRID + 900_000);
+  });
+
+  it('latestSeries returns the series of the newest cohort per slot, any status', async () => {
+    expect(await store.latestSeries()).toEqual({});
+    await store.insertCohort(mk({ series_id: 'old' }));
+    await store.insertCohort(mk({ id: '44444444-4444-4444-4444-444444444444', slot_ms: SLOT + 3_600_000, series_id: 'new', status: 'no_valid_strikes' }));
+    await store.insertCohort(mk({ id: '55555555-5555-5555-5555-555555555555', slot: 'n2n', series_id: 'other' }));
+    expect(await store.latestSeries()).toEqual({ current: 'new', n2n: 'other' });
+  });
+
+  it('hasCohort matches on slot and slot_ms, any status', async () => {
+    await store.insertCohort(mk({ status: 'no_valid_strikes' }));
+    expect(await store.hasCohort('current', SLOT)).toBe(true);
+    expect(await store.hasCohort('next', SLOT)).toBe(false);
+    expect(await store.hasCohort('current', SLOT + 3_600_000)).toBe(false);
+  });
+
   it('dbSizeBytes returns a positive number', async () => {
     const n = await store.dbSizeBytes();
     expect(typeof n).toBe('number');

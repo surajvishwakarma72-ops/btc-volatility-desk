@@ -1,4 +1,5 @@
 import { pool } from '../../db/index.js';
+import type { Slot } from '../../lib/pulse/grid.js';
 import type { BuiltSnapshot, LegName, LegRow, PulseCohort } from '../../lib/pulse/snapshot.js';
 
 /**
@@ -244,6 +245,26 @@ export async function logEvent(type: string, slot: string | null, detail: unknow
     slot,
     detail === undefined ? null : JSON.stringify(detail),
   ]);
+}
+
+/** The newest snapshot grid stored, or null before the first one. */
+export async function latestGridMs(): Promise<number | null> {
+  const r = await pool.query('SELECT max(grid_ms) AS grid FROM pulse_cohort_snapshots');
+  return num((r.rows[0] as Row | undefined)?.grid);
+}
+
+/** The series of the newest cohort row per slot, whatever its status. */
+export async function latestSeries(): Promise<Partial<Record<Slot, string>>> {
+  const r = await pool.query('SELECT DISTINCT ON (slot) slot, series_id FROM pulse_cohorts ORDER BY slot, slot_ms DESC');
+  const out: Partial<Record<Slot, string>> = {};
+  for (const row of r.rows as Row[]) out[row.slot as Slot] = row.series_id as string;
+  return out;
+}
+
+/** True when any row, including no_valid_strikes, exists for this (slot, slot_ms). */
+export async function hasCohort(slot: Slot, slotMs: number): Promise<boolean> {
+  const r = await pool.query('SELECT 1 FROM pulse_cohorts WHERE slot = $1 AND slot_ms = $2 LIMIT 1', [slot, slotMs]);
+  return r.rows.length > 0;
 }
 
 export async function dbSizeBytes(): Promise<number> {

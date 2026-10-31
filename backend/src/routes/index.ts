@@ -21,6 +21,7 @@ import { feedbackRoutes } from './feedback.js';
 import { fillsRoutes } from './fills.js';
 import { pnlRoutes } from './pnl.js';
 import { shadowRoutes } from './shadow.js';
+import { pulseRoutes } from './pulse.js';
 import { adminRoutes } from './admin.js';
 import { ivRoutes } from './iv.js';
 import { feedRoutes } from './feed.js';
@@ -53,6 +54,7 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(fillsRoutes, { prefix: '/fills' });
   await fastify.register(pnlRoutes, { prefix: '/pnl' });
   await fastify.register(shadowRoutes, { prefix: '/shadow' });
+  await fastify.register(pulseRoutes, { prefix: '/pulse' });
   await fastify.register(adminRoutes, { prefix: '/admin' });
   await fastify.register(ivRoutes, { prefix: '/iv' });
   await fastify.register(feedRoutes, { prefix: '/feed' });

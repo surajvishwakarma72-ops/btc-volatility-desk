@@ -143,6 +143,37 @@ function buildLeg(
 }
 
 /**
+ * A cohort's final net P&L, option legs only. EXPIRED prices each leg at intrinsic against spot. ROLL uses the
+ * leg's current ask, else its last stored net P&L; null if any leg has neither, never a partial total.
+ */
+export function closeNetPnl(
+  c: PulseCohort,
+  reason: 'ROLL' | 'EXPIRED',
+  chain: readonly ChainOption[],
+  spot: number,
+  last: Partial<Record<LegName, LegRow>>,
+): number | null {
+  let total = 0;
+  for (const which of ['call', 'put'] as const) {
+    const entryBid = which === 'call' ? c.call_bid : c.put_bid;
+    const strike = which === 'call' ? c.call_strike : c.put_strike;
+    const symbol = which === 'call' ? c.call_symbol : c.put_symbol;
+    if (entryBid === null || strike === null) return null;
+    let pnl: number | null;
+    if (reason === 'EXPIRED') {
+      const ask = Math.max(which === 'call' ? spot - strike : strike - spot, 0);
+      pnl = legNetPnl({ entryBid, ask, spot, fee: c.fee });
+    } else {
+      const ask = chain.find((o) => o.symbol === symbol)?.ask ?? 0;
+      pnl = ask > 0 ? legNetPnl({ entryBid, ask, spot, fee: c.fee }) : last[which]?.net_pnl ?? null;
+    }
+    if (pnl === null) return null;
+    total += pnl;
+  }
+  return total;
+}
+
+/**
  * Builds one snapshot (two leg rows plus the cohort row) from the live chain and perp quote.
  * Pure. A leg with a missing symbol or ask <= 0 is data_ok=false and carries no P&L or new stop.
  */
