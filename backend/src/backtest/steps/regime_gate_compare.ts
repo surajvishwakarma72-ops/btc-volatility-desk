@@ -36,6 +36,9 @@ const DELTA = 0.125;
 const STOP = 2;
 const MAX_BARS = 9300; // newest completed hour bars handed to regimeState
 const MIN_N = 120; // fewer passed cohorts than this in a period = THIN
+// Fewer distinct rolls than this in a period = LOW-ROLLS. Cohorts sharing a roll share most of their path, so the roll is
+// the real unit of independent outcomes; under ~30 rolls the roll-clustered SE itself is too unstable to compare on.
+const MIN_ROLLS = 30;
 const NL = String.fromCharCode(10);
 const tStart = Date.now();
 
@@ -263,8 +266,12 @@ const MAIN: Gate[] = [
 const SINGLE: Gate[] = [C.ivrv24_13, C.ivrv24_10, C.adx15, C.adx25, C.adx40, C.notKiller, C.dvol65].map((c) => mkGate(c.name, [c]));
 
 // ---------- stats ----------
-interface St { entries: number; n: number; days: number; unavail: number; mean: number; total: number; mgMean: number; win: number; stop: number; dayMean: number; se: number }
-const dSum = new Float64Array(nDays), dN = new Uint32Array(nDays);
+// Cluster key: the 12:00 UTC roll that closes the cohort (expiriesAfter(te)[0]), as a day index from FIRST.
+const rollIdx = new Int32Array(NH);
+for (let i = 0; i < NH; i++) rollIdx[i] = Math.floor((expiriesAfter(teOf(i))[0]! - FIRST) / DAY);
+const NR = nDays + 1;
+interface St { entries: number; n: number; rolls: number; unavail: number; mean: number; total: number; mgMean: number; win: number; stop: number; rollMean: number; se: number }
+const dSum = new Float64Array(NR), dN = new Uint32Array(NR);
 function stat(g: Gate, e: number, from: number, to: number, filter?: (i: number) => boolean): St {
   dSum.fill(0); dN.fill(0);
   const a = pnl[e]!, s = stp[e]!, m = mg[e]!;
@@ -279,22 +286,23 @@ function stat(g: Gate, e: number, from: number, to: number, filter?: (i: number)
     if (r === 2) un++;
     if (r !== 1) continue;
     n++; sum += v; ms += m[i]!; if (v > 0) w++; sp += s[i]!;
-    const d = Math.floor(i / 24); dSum[d] += v; dN[d]++;
+    const d = rollIdx[i]!; dSum[d] += v; dN[d]++;
   }
-  let days = 0, dm = 0, dq = 0;
-  for (let d = 0; d < nDays; d++) if (dN[d]) { const x = dSum[d]! / dN[d]!; days++; dm += x; dq += x * x; }
-  const dayMean = days ? dm / days : NaN;
-  const sd = days > 1 ? Math.sqrt(Math.max((dq - days * dayMean * dayMean) / (days - 1), 0)) : NaN;
-  return { entries, n, days, unavail: un, mean: n ? sum / n : NaN, total: sum, mgMean: n ? ms / n : NaN, win: n ? w / n : NaN, stop: n ? sp / n : NaN, dayMean, se: days > 1 ? sd / Math.sqrt(days) : NaN };
+  let rolls = 0, dm = 0, dq = 0;
+  for (let d = 0; d < NR; d++) if (dN[d]) { const x = dSum[d]! / dN[d]!; rolls++; dm += x; dq += x * x; }
+  const rollMean = rolls ? dm / rolls : NaN;
+  const sd = rolls > 1 ? Math.sqrt(Math.max((dq - rolls * rollMean * rollMean) / (rolls - 1), 0)) : NaN;
+  return { entries, n, rolls, unavail: un, mean: n ? sum / n : NaN, total: sum, mgMean: n ? ms / n : NaN, win: n ? w / n : NaN, stop: n ? sp / n : NaN, rollMean, se: rolls > 1 ? sd / Math.sqrt(rolls) : NaN };
 }
 const usd = (v: number, d = 2) => (Number.isFinite(v) ? `${v < 0 ? '-' : ''}$${Math.abs(v).toFixed(d)}` : 'n/a');
 const pct = (v: number, d = 1) => (Number.isFinite(v) ? `${(v * 100).toFixed(d)}%` : 'n/a');
 const num = (v: number, d = 2) => (Number.isFinite(v) ? v.toFixed(d) : 'n/a');
-const thin = (s: St) => (s.n < MIN_N ? 'THIN' : '');
-const HEAD = '| Gate | Expiry | Period | Entries | Passed | Days | Pass % | Unavail | Mean/cohort | % of margin | Total | Win | Stop | Day-mean | SE (day) | Day-mean/SE | Flag |';
+const thin = (s: St) => [s.n < MIN_N ? 'THIN' : '', s.rolls < MIN_ROLLS ? 'LOW-ROLLS' : ''].filter(Boolean).join(' ');
+const comparable = (s: St) => s.n >= MIN_N && s.rolls >= MIN_ROLLS;
+const HEAD = '| Gate | Expiry | Period | Entries | Passed | Rolls | Pass % | Unavail | Mean/cohort | % of margin | Total (cohort-weighted) | Win | Stop | Roll-mean | SE (roll) | Roll-mean/SE | Flag |';
 const SEP = '|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|';
 const rowOf = (g: Gate, e: number, per: string, s: St) =>
-  `| ${g.name} | ${EXP_NAME[e]} | ${per} | ${s.entries} | ${s.n} | ${s.days} | ${pct(s.n / s.entries)} | ${s.unavail} | ${usd(s.mean)} | ${pct(s.mean / s.mgMean, 3)} | ${usd(s.total, 0)} | ${pct(s.win, 0)} | ${pct(s.stop, 0)} | ${usd(s.dayMean)} | ${usd(s.se)} | ${num(s.dayMean / s.se)} | ${thin(s)} |`;
+  `| ${g.name} | ${EXP_NAME[e]} | ${per} | ${s.entries} | ${s.n} | ${s.rolls} | ${pct(s.n / s.entries)} | ${s.unavail} | ${usd(s.mean)} | ${pct(s.mean / s.mgMean, 3)} | ${usd(s.total, 0)} | ${pct(s.win, 0)} | ${pct(s.stop, 0)} | ${usd(s.rollMean)} | ${usd(s.se)} | ${num(s.rollMean / s.se)} | ${thin(s)} |`;
 
 const lines: string[] = [];
 const out = (s = '') => lines.push(s);
@@ -317,21 +325,21 @@ out(`- Gate inputs at entry time te, with no lookahead: hour bars built from the
 out('- Gates: `none`; `spec` = IV/RV24 > 1.3 AND ADX < 15 AND not killer AND DVOL < 65; `spec-RV7` = same with IV/RV7; `study` = IV/RV24 > 1.0 AND ADX < 40 AND not killer AND DVOL < 65; `spec-no-ADX15` = IV/RV24 > 1.3 AND ADX < 25 AND not killer AND DVOL < 65. A gate passes only when all its inputs are available; an unavailable input fails the gate and is counted in "Unavail".');
 out();
 out('### How to read the tables');
-out(`- **Entries**: hourly entries in the period that had a valid price path for that expiry. **Passed**: cohorts (entries) the gate allowed. **Days**: distinct UTC days with at least one passed cohort. **Pass %** = Passed / Entries. **Unavail**: entries the gate failed because an input was missing.`);
-out('- **Mean/cohort**: mean net P&L per passed cohort (USD, 100 lots per leg). **% of margin** = mean P&L / mean portfolio margin of the passed cohorts. **Total** = sum over passed cohorts. **Win** = share with P&L > 0. **Stop** = share closed by the 2x stop.');
-out('- **Day-mean**: average P&L per UTC day (each day averaged over its passed cohorts first), then averaged across days. **SE (day)**: standard error of that day-mean across days (day-clustered). **Day-mean/SE** is a rough t-like ratio. Hourly cohorts overlap in time (they share the same roll), so cohorts are not independent trades.');
-out(`- **THIN**: fewer than ${MIN_N} passed cohorts in the period. THIN rows are not compared or ranked anywhere in this report. No row is ranked in any case.`);
+out(`- **Entries**: hourly entries in the period that had a valid price path for that expiry (entry hours with no path, mostly DVOL holes, are not counted; see Limits). **Passed**: cohorts (entries) the gate allowed. **Rolls**: distinct 12:00 UTC rolls that close at least one passed cohort. **Pass %** = Passed / Entries. **Unavail**: entries the gate failed because an input was missing.`);
+out('- **Mean/cohort**: mean net P&L per passed cohort (USD, 100 lots per leg). **% of margin** = mean P&L / mean portfolio margin of the passed cohorts. **Total (cohort-weighted)** = sum over passed cohorts; it grows with the number of cohorts, so it is not comparable across gates with different trade counts. **Win** = share with P&L > 0. **Stop** = share closed by the 2x stop.');
+out('- **Roll-mean**: every cohort is closed at (or stopped before) one 12:00 UTC roll, and cohorts sharing a roll share most of their price path. So the passed cohorts of each roll are averaged first, and those roll averages are then averaged. It is the P&L of a typical traded roll, whatever the number of hours that passed. **SE (roll)**: standard error of the roll-mean across rolls (roll-clustered). **Roll-mean/SE** is a rough t-value. The roll-mean is the main figure for comparing gates; the per-cohort mean is shown second.');
+out(`- **THIN**: fewer than ${MIN_N} passed cohorts in the period. **LOW-ROLLS**: fewer than ${MIN_ROLLS} distinct rolls in the period. Flagged rows are not compared anywhere in this report, and no row is ranked.`);
 out();
 
 out('## Headline table: every gate x expiry x period');
 out();
 out(HEAD); out(SEP);
 console.log('');
-console.log('Headline (gate | expiry | period | passed/entries | days | mean | stop | day-mean +/- SE | flag)');
+console.log('Headline (gate | expiry | period | passed/entries | rolls | mean/cohort | stop | roll-mean +/- SE | flag)');
 for (const g of MAIN) for (let e = 0; e < EXPIRIES.length; e++) for (const [pn] of PERIODS) {
   const s = R(g.name, e, pn);
   out(rowOf(g, e, pn, s));
-  console.log(`${g.name.padEnd(14)} ${EXP_NAME[e]!.padEnd(4)} ${pn.padEnd(7)} ${String(s.n).padStart(6)}/${String(s.entries).padEnd(6)} days ${String(s.days).padStart(4)} mean ${usd(s.mean).padStart(8)} stop ${pct(s.stop, 0).padStart(4)} day-mean ${usd(s.dayMean)} +/- ${usd(s.se)} ${thin(s)}`);
+  console.log(`${g.name.padEnd(14)} ${EXP_NAME[e]!.padEnd(4)} ${pn.padEnd(7)} ${String(s.n).padStart(6)}/${String(s.entries).padEnd(6)} rolls ${String(s.rolls).padStart(4)} mean ${usd(s.mean).padStart(8)} stop ${pct(s.stop, 0).padStart(4)} roll-mean ${usd(s.rollMean)} +/- ${usd(s.se)} ${thin(s)}`);
 }
 out();
 
@@ -354,19 +362,29 @@ out('Pass rate by IST weekday of the entry, all three periods together, over hou
 out();
 out(`| Gate | ${WD.join(' | ')} | Fri eve |`);
 out(`|---|${WD.map(() => '---:').join('|')}|---:|`);
+const wdExtremes: string[] = [];
 for (const g of MAIN.concat(SINGLE)) {
-  const cells = WDI.map((w) => { const s = stat(g, 0, FIRST, END, (i) => istDay(i) === w); return `${pct(s.n / s.entries)} (${s.n})`; });
+  const rates = WDI.map((w) => stat(g, 0, FIRST, END, (i) => istDay(i) === w));
+  const cells = rates.map((s) => `${pct(s.n / s.entries)} (${s.n})`);
   const f = stat(g, 0, FIRST, END, fridayEve);
   out(`| ${g.name} | ${cells.join(' | ')} | ${pct(f.n / f.entries)} (${f.n}/${f.entries}) |`);
+  if (g.name === 'none') continue;
+  const r = rates.map((s) => s.n / s.entries);
+  const hi = r.indexOf(Math.max(...r)), lo = r.indexOf(Math.min(...r));
+  wdExtremes.push(`- \`${g.name}\`: highest on ${WD[hi]} (${pct(r[hi]!)}), lowest on ${WD[lo]} (${pct(r[lo]!)}).`);
 }
 out();
-out('Friday evening P&L (UTC 15-18 entries on IST Friday), all five years together, per gate and expiry:');
+out('Highest and lowest IST-weekday pass rate per gate (from the table above):');
 out();
-out('| Gate | Expiry | Entries | Passed | Days | Mean/cohort | Total | Win | Stop | Day-mean | SE (day) | Flag |');
+for (const l of wdExtremes) out(l);
+out();
+out('Friday evening P&L (UTC 15-18 entries on IST Friday), all five years together, per gate and expiry. All four Friday-evening hours close at the same Saturday 12:00 UTC roll, so Rolls here is the number of Fridays traded:');
+out();
+out('| Gate | Expiry | Entries | Passed | Rolls | Mean/cohort | Total (cohort-weighted) | Win | Stop | Roll-mean | SE (roll) | Flag |');
 out('|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|');
 for (const g of MAIN) for (let e = 0; e < EXPIRIES.length; e++) {
   const s = stat(g, e, FIRST, END, fridayEve);
-  out(`| ${g.name} | ${EXP_NAME[e]} | ${s.entries} | ${s.n} | ${s.days} | ${usd(s.mean)} | ${usd(s.total, 0)} | ${pct(s.win, 0)} | ${pct(s.stop, 0)} | ${usd(s.dayMean)} | ${usd(s.se)} | ${thin(s)} |`);
+  out(`| ${g.name} | ${EXP_NAME[e]} | ${s.entries} | ${s.n} | ${s.rolls} | ${usd(s.mean)} | ${usd(s.total, 0)} | ${pct(s.win, 0)} | ${pct(s.stop, 0)} | ${usd(s.rollMean)} | ${usd(s.se)} | ${thin(s)} |`);
 }
 out();
 
@@ -399,36 +417,66 @@ out();
 // ---------- what this says (generated from the numbers; no recommendation) ----------
 out('## What this says');
 out();
-out('Each gate compared with taking every entry (`none`), in plain words. These are tradeoffs, not a ranking; THIN rows are not compared. Being selective has a cost: a gate that improves the mean per cohort can still make less in total because it trades less, and fewer cohorts means a wider error band. The weekday table shows that the IV/RV and ADX rules pass far more often on Sunday and Saturday IST (and, for IV/RV, Monday) than on Tuesday to Friday, so a selective gate is partly a weekend filter.');
+out('Each gate compared with taking every entry (`none`), in plain words. The roll-mean is the primary comparison (with both SEs); the per-cohort mean is secondary. These are tradeoffs, not a ranking; THIN and LOW-ROLLS rows are not compared. Being selective has costs: fewer rolls traded and a wider error band. Totals are cohort-weighted and are not used to compare gates. Pass rates differ by IST weekday; see the weekday table and the per-gate highest/lowest lines.');
 out();
+const sd = (v: number) => `${v >= 0 ? '+' : '-'}${usd(Math.abs(v))}`;
 for (let e = 0; e < EXPIRIES.length; e++) {
   out(`### ${EXP_NAME[e]} expiry`);
   for (const [pn] of PERIODS) {
     const b = R('none', e, pn);
-    out(`- **${pn}**: taking every entry: ${b.n} cohorts over ${b.days} days, mean ${usd(b.mean)} per cohort (day-mean ${usd(b.dayMean)} +/- ${usd(b.se)}), stop rate ${pct(b.stop, 0)}, total ${usd(b.total, 0)}.`);
+    out(`- **${pn}**: taking every entry: roll-mean ${usd(b.rollMean)} +/- ${usd(b.se)} over ${b.rolls} rolls (${b.n} cohorts), stop rate ${pct(b.stop, 0)}; per-cohort mean ${usd(b.mean)}.`);
     for (const g of MAIN.slice(1)) {
       const s = R(g.name, e, pn);
-      if (s.n < MIN_N) { out(`  - \`${g.name}\`: THIN (${s.n} cohorts on ${s.days} days, ${pct(s.n / s.entries)} of entries). Too few cohorts to compare with \`none\`; its mean ${usd(s.mean)} is not evidence either way.`); continue; }
-      const dMean = s.mean - b.mean, dStop = s.stop - b.stop;
-      out(`  - \`${g.name}\`: keeps ${pct(s.n / s.entries)} of entries (${s.n} cohorts, ${s.days} days). Stop rate ${pct(s.stop, 0)} (${dStop >= 0 ? '+' : ''}${(dStop * 100).toFixed(0)} points vs \`none\`). Mean ${usd(s.mean)} per cohort (${dMean >= 0 ? '+' : '-'}${usd(Math.abs(dMean))} vs \`none\`), day-mean ${usd(s.dayMean)} +/- ${usd(s.se)}. Total ${usd(s.total, 0)} vs ${usd(b.total, 0)} for \`none\`.${Math.abs(s.mean - s.dayMean) > s.se ? ` Per-cohort mean and day-mean differ by more than one SE: days with many passing hours carry the per-cohort mean, so the day-mean is the better guide to a typical traded day.` : ''}`);
+      if (!comparable(s)) { out(`  - \`${g.name}\`: ${thin(s)} (${s.n} cohorts on ${s.rolls} rolls, ${pct(s.n / s.entries)} of entries). Too few to compare with \`none\`; its roll-mean ${usd(s.rollMean)} is not evidence either way.`); continue; }
+      const dRoll = s.rollMean - b.rollMean, dMean = s.mean - b.mean, dStop = s.stop - b.stop;
+      const verdict = dRoll < 0 ? 'worse than taking every entry on the roll-mean' : 'better than taking every entry on the roll-mean';
+      out(`  - \`${g.name}\`: roll-mean ${usd(s.rollMean)} +/- ${usd(s.se)} vs ${usd(b.rollMean)} +/- ${usd(b.se)} for \`none\`: ${sd(dRoll)}, ${verdict}. Keeps ${pct(s.n / s.entries)} of entries (${s.n} cohorts, ${s.rolls} of ${b.rolls} rolls). Stop rate ${pct(s.stop, 0)} (${dStop >= 0 ? '+' : ''}${(dStop * 100).toFixed(0)} points vs \`none\`). Secondary: per-cohort mean ${usd(s.mean)} (${sd(dMean)} vs \`none\`).${Math.abs(s.mean - s.rollMean) > s.se ? ' The per-cohort mean and roll-mean differ by more than one SE: rolls with many passing hours carry the per-cohort mean.' : ''}`);
     }
-    const signs = (g: string) => PERIODS.map(([pn]) => { const s = R(g, e, pn); return s.n < MIN_N ? 'THIN' : s.dayMean >= 0 ? '+' : '-'; }).join(' / ');
-    if (pn === 'HOLDOUT') out(`- **Day-mean sign TRAIN / VALID / HOLDOUT**: ${MAIN.map((g) => `\`${g.name}\` ${signs(g.name)}`).join('; ')}.`);
   }
+  const signs = (g: string) => PERIODS.map(([pn]) => {
+    const s = R(g, e, pn);
+    if (!comparable(s)) return thin(s);
+    const t = s.rollMean / s.se;
+    return `${Math.abs(t) < 2 ? '~0' : t > 0 ? '+' : '-'} (t ${t.toFixed(1)})`;
+  }).join(' / ');
+  out(`- **Roll-mean sign TRAIN / VALID / HOLDOUT** ('~0' when |t| < 2): ${MAIN.map((g) => `\`${g.name}\` ${signs(g.name)}`).join('; ')}.`);
   out();
 }
-out('Read each line as: how much trading is given up, what that buys in stop rate and mean P&L, and whether the result holds across TRAIN, VALID and HOLDOUT. A mean that changes sign between periods, or whose day-mean is within about two SE of zero, is not a stable edge in this model.');
+out('Read each line as: how much trading is given up, what that buys in stop rate and roll-mean P&L, and whether the result holds across TRAIN, VALID and HOLDOUT. A roll-mean that changes sign between periods, or that is within about two SE of zero, is not a stable edge in this model.');
 out();
+
+// ---------- DVOL hole facts (computed from the cache) ----------
+const isoDay = (t: number) => new Date(t).toISOString().slice(0, 10);
+const holes: Array<{ from: number; hours: number }> = [];
+for (let j = 1; j < dvMs.length; j++) {
+  const gap = dvMs[j]! - dvMs[j - 1]!;
+  if (gap > HOUR) holes.push({ from: dvMs[j - 1]! + HOUR, hours: Math.round(gap / HOUR) - 1 });
+}
+const holeHours = holes.reduce((s, h) => s + h.hours, 0);
+const hMin = holes.length ? Math.min(...holes.map((h) => h.hours)) : 0, hMax = holes.length ? Math.max(...holes.map((h) => h.hours)) : 0;
+const holeSize = hMin === hMax ? String(hMin) : `${hMin} to ${hMax}`;
+const spacing = holes.slice(1).map((h, k) => (h.from - holes[k]!.from) / DAY).sort((a, b) => a - b);
+const medianGapDays = spacing.length ? spacing[spacing.length >> 1]!.toFixed(0) : 'n/a';
+let entryHours = 0, noPathHours = 0, dvolUnavail = 0;
+for (let i = 0; i < NH; i++) {
+  if (!holdOf[i]) continue;
+  entryHours++;
+  if (!Number.isFinite(pnl[0]![i]!)) noPathHours++;
+  else if (Number.isNaN(inDvol[i]!)) dvolUnavail++;
+}
+console.log(`DVOL holes ${holes.length}, ${holeHours}h; entry hours ${entryHours}, no Next path ${noPathHours}, valid-path but DVOL unavailable ${dvolUnavail}`);
 
 // ---------- limits ----------
 out('## Limits');
 out();
 out(`- **IV is a flat proxy**: DVOL x K (K = ${K.toFixed(4)}), the same for every strike and both expiries, so skew and term structure are ignored. The earlier real-IV re-check (\`strangle_final_5y_realiv.md\`) found that rules positive on this proxy were negative with real archived IV over the last 13 months, so positive numbers here can overstate the real result.`);
 out('- **Pricing reads DVOL as the harness does**: the copied pricing marks options with the DVOL row stamped at or before each mark time, and a row is the close of the hour that starts at that stamp, so marks can use a DVOL value up to one hour newer than the mark time. This affects option marks only, not the gate inputs (those use DVOL candles that had closed by te). It was kept so the trade model matches `strangle_final_5y.ts`.');
-out('- **One path**: five years of one BTC history. Gates were defined beforehand, but TRAIN/VALID/HOLDOUT are still one sequence of markets, and overlapping hourly cohorts share their exits, so the SE understates the true uncertainty.');
+out('- **One path**: five years of one BTC history. Gates were defined beforehand, but TRAIN/VALID/HOLDOUT are still one sequence of markets. The SE is clustered by roll, which handles cohorts that share an exit, but volatility regimes persist across neighbouring rolls, so the SE still understates the true uncertainty.');
 out('- **Not backtestable, excluded**: the event calendar (macro stress) and GEX. Any gate that uses them live will behave differently from what is shown.');
 out(`- **Roll skip**: entries with fewer than 12 bars (3 hours) to the 12:00 UTC roll are skipped (UTC 10:00 and 11:00). Hold length depends on entry hour (from 12 bars at 09:00 UTC to 96 at 12:00 UTC).`);
-out('- **Unavailable inputs**: early in TRAIN the regime state needs 60 completed UTC days of RV, and DVOL has gaps; those entries fail every gate that needs the input and are counted in "Unavail".');
+out(`- **DVOL holes drop entries silently**: the DVOL cache has ${holes.length} holes of ${holeSize} hours each, ${holeHours.toLocaleString('en-US')} missing hours in total, from ${holes.length ? isoDay(holes[0]!.from) : 'n/a'} to ${holes.length ? isoDay(holes[holes.length - 1]!.from) : 'n/a'}, about one every ${medianGapDays} days (median spacing between holes). The cause: \`fetch-5y.ts\` requests DVOL in 50-day chunks (1,200 hourly candles), the API returns about 1,000 candles per call, and so part of each chunk is never fetched. The data was not re-fetched. During a hole the price path has no IV, so ${noPathHours.toLocaleString('en-US')} of ${entryHours.toLocaleString('en-US')} entry hours (${pct(noPathHours / entryHours)}) have no Next-expiry price path. They drop out of Entries, Rolls and every statistic, without appearing anywhere else. Only ${dvolUnavail} entries with a valid path have no gate DVOL (DVOL as of te is older than 6h), and those land in "Unavail". The holes follow the calendar (fetch chunk boundaries), not market conditions, so they remove the same hours for every gate. The same holes exist in \`strangle_final_5y.ts\` and in its K calibration.`);
+out('- **Unavailable inputs**: early in TRAIN the regime state needs 60 completed UTC days of RV; those entries fail every gate that needs ADX or killer and are counted in "Unavail".');
+out(`- **K overlaps HOLDOUT**: K is calibrated on 2025-10-05 to 2026-10-17, which overlaps HOLDOUT. The IV-based gates (IV/RV) are therefore slightly fitted to the holdout. K is the same constant for every gate.`);
 out('- **Spreads and fees are assumed** (1.2% half-spread, min $1), not recorded quotes.');
 out();
 
@@ -509,8 +557,7 @@ out();
 out('| Entry (UTC) | Bars used | DVOL | IV/RV24 | IV/RV7 | ADX | Killer | vs loop |');
 out('|---|---:|---:|---:|---:|---:|---|---|');
 for (const s of spot) out(s);
-out();
-out(`Run time: main loop ${loopSec.toFixed(0)}s, total ${totalSec.toFixed(0)}s.`);
+console.log(`Run time: main loop ${loopSec.toFixed(0)}s, total ${totalSec.toFixed(0)}s (console only, not in the report).`);
 
 console.log('');
 for (const c of checks) console.log(c);
