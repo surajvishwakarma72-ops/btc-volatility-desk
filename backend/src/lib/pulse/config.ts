@@ -107,4 +107,6 @@ export const REGIME_GATE_CONFIG = {
   barsMaxAgeMs: 9_000_000,
   backfillBars: 9500,
   barsKept: 9300,
+  /** Fewest completed bars before bar inputs are trusted: 372 days, as the browser's RVP window needs 366 rolling 7-day values. */
+  minBars: 8928,
 } as const;

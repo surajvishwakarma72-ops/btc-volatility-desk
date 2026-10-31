@@ -246,10 +246,14 @@ describe('PulseEngine lifecycle', () => {
 
   it('never imports an order module', () => {
     const here = dirname(fileURLToPath(import.meta.url));
-    const dirs = [here, join(here, '..', '..', 'lib', 'pulse'), join(here, '..', '..', 'lib', 'pulse', 'metrics')];
+    const dirs = [here, join(here, '..', '..', 'lib', 'pulse'), join(here, '..', '..', 'lib', 'pulse', 'metrics'), join(here, '..', '..', 'lib', 'pulse', 'regime')];
     const files = dirs.flatMap((d) => readdirSync(d).filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts')).map((f) => join(d, f)));
     files.push(join(here, '..', '..', 'routes', 'pulse.ts'));
     expect(files.length).toBeGreaterThanOrEqual(7);
+    const names = files.map((f) => f.replace(/\\/g, '/'));
+    for (const want of ['lib/pulse/regime/gate.ts', 'lib/pulse/regime/indicators.ts', 'services/pulse/regime-service.ts', 'services/pulse/hourly-bars.ts', 'routes/pulse.ts']) {
+      expect(names.some((n) => n.endsWith(want)), `scan covers ${want}`).toBe(true);
+    }
     for (const f of files) {
       const src = readFileSync(f, 'utf8');
       for (const banned of ['paper-broker', 'live-entry', 'brokers', 'stop-order', 'delta-keys', 'bot-engine']) {

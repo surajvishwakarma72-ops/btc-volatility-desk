@@ -7,6 +7,7 @@ export class DeribitFlowWorker {
   private isRunning: boolean = false;
   private pollInterval: NodeJS.Timeout | null = null;
   public currentDvol: number | null = null;
+  public lastDvolAt: number | null = null;
   public lastPollTime: Date | null = null;
   private lastTradeSeq: number | null = null;
   private prevDvol: number | null = null;
@@ -65,6 +66,7 @@ export class DeribitFlowWorker {
         const dvolValue = parseFloat(latest[4]);
         if (Number.isFinite(dvolValue)) {
           this.currentDvol = dvolValue;
+          this.lastDvolAt = Date.now();
           const ivChangePct = computeIvChangePct(this.prevDvol, dvolValue);
           this.prevDvol = dvolValue;
           if (ivChangePct != null) {

@@ -1,12 +1,13 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { METRIC_CONFIG } from '../lib/pulse/config.js';
+import { METRIC_CONFIG, REGIME_GATE_CONFIG } from '../lib/pulse/config.js';
 import { SLOTS, type Slot } from '../lib/pulse/grid.js';
 import { termInverted } from '../lib/pulse/metrics/market.js';
 import { metricSeries, winnerAtAge, type CohortRow } from '../lib/pulse/metrics/series.js';
 import { winnerPersistence } from '../lib/pulse/metrics/tape.js';
 import type { PulseCohort } from '../lib/pulse/snapshot.js';
 import { pulseEngine } from '../services/pulse/pulse-engine.js';
+import { regimeService } from '../services/pulse/regime-service.js';
 import { cohortRows, latestMarketRows, pulseTablesExist, recentCohorts } from '../services/pulse/pulse-store.js';
 
 /** A week of hourly cohorts: covers every open one (at most 24) and a long run of no_valid_strikes before the persistence window. */
@@ -19,6 +20,17 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: (fastify as any).authenticate };
 
   fastify.get('/status', auth, async () => ({ success: true, ...pulseEngine.status() }));
+
+  fastify.get('/regime', auth, async () => {
+    const g = REGIME_GATE_CONFIG;
+    return {
+      success: true,
+      enabled: process.env.PULSE_ENABLED === 'true',
+      ...regimeService.snapshot(),
+      gate: { id: g.gateId, ivRvMin: g.ivRvMin, adxMax: g.adxMax, dvolMax: g.dvolMax, ivScaleK: g.ivScaleK, rvHours: g.rvHours },
+      note: 'Uses completed hourly bars only; the desk screen also counts the forming bar, so values can differ slightly.',
+    };
+  });
 
   fastify.get('/metrics', auth, async (req, reply) => {
     const q = metricsQuery.safeParse(req.query);

@@ -91,6 +91,40 @@ beforeEach(async () => {
   await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_cohorts; DELETE FROM pulse_market_snapshots;');
 });
 
+describe('GET /pulse/regime', () => {
+  const regime = (headers: Record<string, string> = AUTH) => app.inject({ method: 'GET', url: '/api/v1/pulse/regime', headers });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('401 without a session', async () => {
+    expect((await regime({})).statusCode).toBe(401);
+  });
+
+  it('200 with the gate shape and only the expected top-level keys', async () => {
+    vi.stubEnv('PULSE_ENABLED', 'true');
+    const res = await regime();
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(Object.keys(body).sort()).toEqual(['asOf', 'bars', 'blackout', 'enabled', 'gate', 'gateId', 'inputs', 'note', 'pass', 'reasons', 'success'].sort());
+    expect(body.success).toBe(true);
+    expect(body.enabled).toBe(true);
+    expect(body.gateId).toBe('spec-adx25');
+    expect(body.gate).toEqual({ id: 'spec-adx25', ivRvMin: 1.3, adxMax: 25, dvolMax: 65, ivScaleK: 0.8811, rvHours: 24 });
+    expect(body.note).toBe('Uses completed hourly bars only; the desk screen also counts the forming bar, so values can differ slightly.');
+    expect(Object.keys(body.bars).sort()).toEqual(['count', 'lastError', 'lastOkAt', 'newestOpenMs']);
+    expect(body.inputs.map((x: { id: string }) => x.id)).toEqual(['iv_rv', 'adx', 'killer', 'dvol', 'events', 'gex', 'deribit_expiry']);
+  });
+
+  it('with PULSE_ENABLED unset it returns enabled false and pass null', async () => {
+    vi.stubEnv('PULSE_ENABLED', undefined as unknown as string);
+    const body = (await regime()).json();
+    expect(body.enabled).toBe(false);
+    expect(body.pass).toBeNull();
+  });
+});
+
 const get = (slot: string) => app.inject({ method: 'GET', url: `/api/v1/pulse/metrics?slot=${slot}`, headers: AUTH });
 
 describe('GET /pulse/metrics', () => {
