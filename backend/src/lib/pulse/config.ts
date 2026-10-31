@@ -23,3 +23,19 @@ export const PULSE_CONFIG = {
   /** BTC per futures contract. */
   futuresContractValue: 0.001,
 } as const;
+
+/** Strangle Pulse metric thresholds. Every cut-off used by the pure metric functions lives here. */
+export const METRIC_CONFIG = {
+  /** Minimum gap between call and put now/entry ratios before one leg counts as heavy. */
+  heavyLegGap: 0.1,
+  /** Minimum absolute spot move (percent) for the delta shift index to be meaningful. */
+  minMovePct: 0.02,
+  /** Snapshot steps that make up the last hour. */
+  lastHourSteps: 4,
+  /** Delta band around the short strikes treated as near. */
+  nearDeltaBand: 0.05,
+  /** Fewest same-session samples before a baseline is trusted. */
+  sessionMinSamples: 10,
+  /** Whether an OI signal needs rising volume to be confirmed. */
+  volumeConfirmsOi: true,
+} as const;
