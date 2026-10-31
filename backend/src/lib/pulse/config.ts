@@ -87,3 +87,24 @@ export const REGIME_CONFIG = {
   /** Hours per year used to annualise realised vol. */
   hoursPerYear: 8760,
 } as const;
+
+/** Live regime gate (spec-adx25): IV/RV24 above, ADX below, not killer, DVOL below. Thresholds are strict, as backtested. */
+export const REGIME_GATE_CONFIG = {
+  gateId: 'spec-adx25',
+  /** IV/RV24 must be strictly above this. */
+  ivRvMin: 1.3,
+  /** ADX must be strictly below this. */
+  adxMax: 25,
+  /** DVOL must be strictly below this. */
+  dvolMax: 65,
+  /** DVOL to ATM-IV scale used by the backtest. */
+  ivScaleK: 0.8811,
+  /** Hours in the realised-vol window. */
+  rvHours: 24,
+  /** A DVOL reading older than this (ms) is unavailable (10 minutes). */
+  dvolMaxAgeMs: 600_000,
+  /** Newest hourly bar open older than this (ms) makes bar inputs unavailable (2.5 hours). */
+  barsMaxAgeMs: 9_000_000,
+  backfillBars: 9500,
+  barsKept: 9300,
+} as const;
