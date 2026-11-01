@@ -1,7 +1,8 @@
 import type { WatchLeg } from '../../lib/watch/classify.js';
 import { botEngine } from '../bot/bot-engine.js';
 import { DESK_USER_ID } from '../auth-store.js';
-import { loadDeltaKey, usersWithDeltaKey } from '../delta-keys.js';
+import { watchedAccounts } from '../accounts.js';
+import { usersWithDeltaKey } from '../delta-keys.js';
 import { activePaperIds, marketFeed, peekPaper } from '../paper/paper-terminal.js';
 import { expiryOf, fetchOptionPositions, LiveExit, realLiveExitDeps, type OptionPosition } from './live-exit.js';
 import { AutoStop, realAutoStopDeps } from './auto-stop.js';
@@ -16,27 +17,6 @@ const expiryLabel = (code: string): string => (/^\d{6}$/.test(code) ? `Delta · 
 const ticks = new Map<string, number>();
 const posCache = new Map<string, { at: number; list: OptionPosition[] }>();
 let userCache: { at: number; ids: string[] } | null = null;
-
-async function realCreds(userId: string): Promise<{ key: string; secret: string } | null> {
-  const own = await loadDeltaKey(userId, 'read');
-  if (own) return own;
-  // the owner may still rely on the server's own key until a personal one is saved
-  if (userId === DESK_USER_ID && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET) return { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET };
-  return null;
-}
-
-/**
- * The accounts to watch: the read key's account and, when the trading key belongs to a different account (a sub-account), that one too.
- * Legs from the read account are watch-only when the two differ: they get their own group (":watch") that the hard exit never acts on,
- * because the hard exit only ever sends orders with the trading key.
- */
-async function watchedAccounts(userId: string): Promise<Array<{ creds: { key: string; secret: string }; watchOnly: boolean; account: string }>> {
-  const read = await realCreds(userId);
-  const trade = await loadDeltaKey(userId, 'trade');
-  if (read && trade && read.key !== trade.key) return [{ creds: read, watchOnly: true, account: 'main' }, { creds: trade, watchOnly: false, account: 'sub' }];
-  const one = trade ?? read;
-  return one ? [{ creds: one, watchOnly: false, account: 'account' }] : [];
-}
 
 async function realLegs(userId: string, stopMultiple: number): Promise<WatchLeg[] | null> {
   const accounts = await watchedAccounts(userId);

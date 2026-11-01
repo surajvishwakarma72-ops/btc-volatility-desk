@@ -219,7 +219,8 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
         if (creds) usedKind = altKind;
       }
     } catch { return reply.status(500).send({ success: false, error: 'Could not read your saved Delta key' }); }
-    if (!creds && (isOwner(request) || !request.headers.authorization) && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET) {
+    // The server key is a read key: answering a 'trade' request with it would show one account as both.
+    if (!creds && qp.kind !== 'trade' && (isOwner(request) || !request.headers.authorization) && process.env.DELTA_API_KEY && process.env.DELTA_API_SECRET) {
       creds = { key: process.env.DELTA_API_KEY, secret: process.env.DELTA_API_SECRET };
     }
     if (!creds) return reply.status(409).send({ success: false, error: 'no_delta_key', message: 'Save your Delta API key in Settings first' });

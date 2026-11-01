@@ -195,6 +195,7 @@ describe('each user keeps their own Delta key', () => {
     const sam = (await app.inject({ method: 'POST', url: '/auth/login', payload: { email: 'sam@example.com', password: 'a-long-password' } })).json().token;
     expect((await app.inject({ method: 'GET', url: '/delta/signed?path=/v2/fills', headers: bearer(owner) })).statusCode).toBe(200);
     expect((f.mock.calls.at(-1) as any)[1].headers['api-key']).toBe('SERVER-KEY-0000');
+    expect((await app.inject({ method: 'GET', url: '/delta/signed?kind=trade&path=/v2/fills', headers: bearer(owner) })).statusCode).toBe(409);
     expect((await app.inject({ method: 'GET', url: '/delta/signed?path=/v2/fills', headers: bearer(sam) })).statusCode).toBe(409);
     delete process.env.DELTA_API_KEY;
     delete process.env.DELTA_API_SECRET;

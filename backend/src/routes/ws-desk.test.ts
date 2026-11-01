@@ -83,13 +83,13 @@ describe('WebSocket Streams (Task T2.2)', () => {
   it('b. authenticated connection receives positions message within 3s', async () => {
     setWsPositionsProvider(() => [
       {
-        symbol: 'BTC-27DEC24-100000-C',
-        size: 5,
-        entry_price: 1200,
-        mark_price: 1350,
-        unrealized_pnl: 75,
-        delta: 0.15,
-        expiry: '27DEC24',
+        account: 'main',
+        kind: 'read',
+        health: 'connected',
+        error: null,
+        lastOkAt: 1,
+        serverTs: 1,
+        positions: [{ symbol: 'BTC-27DEC24-100000-C', size: 5 }],
       },
     ]);
 
@@ -106,7 +106,7 @@ describe('WebSocket Streams (Task T2.2)', () => {
       ws.on('message', (raw) => {
         try {
           const parsed = JSON.parse(raw.toString());
-          if (parsed.type === 'positions') {
+          if (parsed.type === 'accounts') {
             clearTimeout(timer);
             resolve(parsed);
           }
@@ -116,10 +116,9 @@ describe('WebSocket Streams (Task T2.2)', () => {
       });
     });
 
-    expect(msg.type).toBe('positions');
-    expect(Array.isArray(msg.data)).toBe(true);
-    expect(msg.data.length).toBeGreaterThan(0);
-    expect(msg.data[0].symbol).toBe('BTC-27DEC24-100000-C');
+    expect(msg.type).toBe('accounts');
+    expect(msg.data[0].account).toBe('main');
+    expect(msg.data[0].positions[0].symbol).toBe('BTC-27DEC24-100000-C');
     ws.close();
   });
 

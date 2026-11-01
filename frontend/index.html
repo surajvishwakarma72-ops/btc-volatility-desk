@@ -64653,10 +64653,10 @@ body.light #vUniversalFloatingPnl,
     tradeCurve: null,
     deltaPositionsReadOnly: null,
     deltaPositionsReadTrade: null,
+    accounts: [],
     deltaFillsReadOnly: null,
     deltaFillsReadTrade: null,
     tickerGreeks: {},
-    lastPolledPositions: 0,
     lastPolledFills: 0,
     lastPolledTickers: 0
   };
@@ -64910,40 +64910,6 @@ body.light #vUniversalFloatingPnl,
       if (tr) tr.after(btn);
       else nav.appendChild(btn);
     }
-  }
-
-  /** Poll Delta positions */
-  function pollDeltaPositions() {
-    if (Date.now() - S.lastPolledPositions < 2000) return;
-    S.lastPolledPositions = Date.now();
-
-    const tok = getJwt();
-    const headers = { Accept: 'application/json' };
-    if (tok) headers.Authorization = 'Bearer ' + tok;
-
-    // Read-Only positions
-    const uRo = '/api/v1/delta/signed?kind=read&path=/v2/positions/margined&query=' + encodeURIComponent('contract_types=call_options,put_options');
-    fetch(uRo, { headers })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data || !data.result) return;
-        const res = Array.isArray(data.result) ? data.result : (data.result.positions || []);
-        S.deltaPositionsReadOnly = res.filter(p => Math.abs(+p.size || 0) > 0);
-        scheduleRedraw();
-      })
-      .catch(() => {});
-
-    // Read+Trade positions
-    const uRt = '/api/v1/delta/signed?kind=trade&path=/v2/positions/margined&query=' + encodeURIComponent('contract_types=call_options,put_options');
-    fetch(uRt, { headers })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data || !data.result) return;
-        const res = Array.isArray(data.result) ? data.result : (data.result.positions || []);
-        S.deltaPositionsReadTrade = res.filter(p => Math.abs(+p.size || 0) > 0);
-        scheduleRedraw();
-      })
-      .catch(() => {});
   }
 
   /** Poll Delta fills */
@@ -65295,9 +65261,7 @@ body.light #vUniversalFloatingPnl,
     try { localStorage.setItem('v_pnl_view_mode', mode); } catch {}
     const card = $('vLivePnlTick');
     if (card) card.__renderedKey = null;
-    S.lastPolledPositions = 0;
     S.lastPolledFills = 0;
-    pollDeltaPositions();
     pollDeltaFills();
     pollDeltaTickers();
     scheduleRedraw();
@@ -65340,7 +65304,8 @@ body.light #vUniversalFloatingPnl,
     const pos = getActiveModeOpenPosition();
     const lastTrade = !pos.open ? getActiveModeLastClosedTrade() : null;
 
-    const stateKey = activeViewMode + '|' + (isLight ? 'light' : 'dark') + '|' + (pos.open
+    const warning = accountWarning(activeViewMode);
+    const stateKey = activeViewMode + '|' + warning + '|' + (isLight ? 'light' : 'dark') + '|' + (pos.open
       ? ('open|' + pos.id + '|' + pos.totalPnl + '|' + (pos.callLeg ? pos.callLeg.pnl : 0) + '|' + (pos.putLeg ? pos.putLeg.pnl : 0) + '|' + (pos.greeks ? pos.greeks.delta : '') + '|' + (S.tradeCurve ? S.tradeCurve.length : 0))
       : (lastTrade ? ('closed|' + lastTrade.id + '|' + lastTrade.pnl + '|' + (S.tradeCurve ? S.tradeCurve.length : 0)) : 'empty'));
 
@@ -65365,7 +65330,7 @@ body.light #vUniversalFloatingPnl,
             '</button>' +
           '</div>' +
           '<div class="v-mode-status">' +
-            (pos.open ? '<span class="v-live-tag">● LIVE POSITION ACTIVE</span>' : '<span class="v-idle-tag">○ FLAT' + (lastTrade ? ' (LAST REAL TRADE)' : '') + '</span>') +
+            (pos.open ? '<span class="v-live-tag">● LIVE POSITION ACTIVE</span>' : '<span class="v-idle-tag">○ FLAT' + (lastTrade ? ' (LAST REAL TRADE)' : '') + '</span>') + (warning ? '<span class="v-idle-tag">' + warning + '</span>' : '') +
           '</div>' +
         '</div>' +
       '</div>';
@@ -65839,7 +65804,6 @@ body.light #vUniversalFloatingPnl,
   /*
   // Polling intervals (legacy fallback - replaced by WebSocket streams in T2.2)
   setInterval(() => {
-    pollDeltaPositions();
   }, 3500);
 
   setInterval(() => {
@@ -65865,7 +65829,6 @@ body.light #vUniversalFloatingPnl,
     setMode: m => {
       switchPnlAccountMode(m);
     },
-    pollDeltaPositions,
     pollDeltaFills,
     pollDeltaTickers,
     navigateToPnl
@@ -65873,6 +65836,28 @@ body.light #vUniversalFloatingPnl,
 
   
   /** Live Position Tracker Rendering (#vPositionTracker) */
+  /** Stores the server's report per account. A failed read has no positions: the last good ones stay, and the warning says why. */
+  function applyAccounts(list) {
+    S.accounts = list;
+    const main = list.find(a => a.account !== 'sub');
+    const sub = list.find(a => a.account !== 'main');
+    const open = a => a.positions.filter(p => Math.abs(+p.size || 0) > 0);
+    if (!main) S.deltaPositionsReadOnly = null;
+    else if (Array.isArray(main.positions)) S.deltaPositionsReadOnly = open(main);
+    if (!sub) S.deltaPositionsReadTrade = null;
+    else if (sub === main) S.deltaPositionsReadTrade = S.deltaPositionsReadOnly;
+    else if (Array.isArray(sub.positions)) S.deltaPositionsReadTrade = open(sub);
+  }
+
+  /** Why the shown account cannot be trusted right now, or empty when it is fine. */
+  function accountWarning(mode) {
+    const a = (S.accounts || []).find(x => x.account === 'account' || x.account === (mode === 'readonly' ? 'main' : 'sub'));
+    if (!a || a.health === 'connected') return '';
+    const why = { auth_failed: 'key rejected by Delta', ip_not_whitelisted: 'server IP not whitelisted on Delta', rate_limited: 'rate-limited by Delta', stale: 'cannot reach Delta' }[a.health] || 'read failed';
+    const age = a.lastOkAt ? ', last update ' + Math.max(0, Math.round((a.serverTs - a.lastOkAt) / 1000)) + 's ago' : '';
+    return '⚠ ' + why + age;
+  }
+
   function renderPositionTracker() {
     const tracker = document.getElementById('vPositionTracker');
     if (!tracker) return;
@@ -65890,23 +65875,17 @@ body.light #vUniversalFloatingPnl,
     if (!tbody) return;
 
     const map = new Map();
-    if (Array.isArray(S.apiPositions) && S.apiPositions.length > 0) {
-      S.apiPositions.forEach(p => {
-        const sym = p.symbol || p.product_symbol;
-        if (sym && Math.abs(+p.size || +p.qty || 0) > 0) map.set(sym, p);
-      });
-    }
-    if (Array.isArray(S.deltaPositionsReadOnly)) {
-      S.deltaPositionsReadOnly.forEach(p => {
+    const addRows = (list, label) => {
+      (list || []).forEach(p => {
         const sym = p.product_symbol || p.symbol;
-        if (sym && Math.abs(+p.size || 0) > 0 && !map.has(sym)) map.set(sym, p);
+        if (sym && Math.abs(+p.size || 0) > 0) map.set(label + '|' + sym, { ...p, accountLabel: label });
       });
-    }
-    if (Array.isArray(S.deltaPositionsReadTrade)) {
-      S.deltaPositionsReadTrade.forEach(p => {
-        const sym = p.product_symbol || p.symbol;
-        if (sym && Math.abs(+p.size || 0) > 0 && !map.has(sym)) map.set(sym, p);
-      });
+    };
+    if (S.deltaPositionsReadOnly === S.deltaPositionsReadTrade) {
+      addRows(S.deltaPositionsReadOnly, '');
+    } else {
+      addRows(S.deltaPositionsReadOnly, 'MAIN');
+      addRows(S.deltaPositionsReadTrade, 'SUB');
     }
 
     const positions = Array.from(map.values());
@@ -65925,7 +65904,7 @@ body.light #vUniversalFloatingPnl,
       const size = +p.size || +p.qty || 0;
       const isLong = size > 0;
       const isShort = size < 0;
-      const sideText = isLong ? 'LONG' : (isShort ? 'SHORT' : (p.side ? String(p.side).toUpperCase() : '—'));
+      const sideText = (isLong ? 'LONG' : (isShort ? 'SHORT' : (p.side ? String(p.side).toUpperCase() : '—'))) + (p.accountLabel ? ' · ' + p.accountLabel : '');
       const sideClass = isLong ? 'v-pos-side-long' : (isShort ? 'v-pos-side-short' : '');
       const qty = Math.abs(size);
 
@@ -66071,10 +66050,9 @@ body.light #vUniversalFloatingPnl,
         const msg = JSON.parse(event.data);
         if (!msg || (!msg.type && !msg.event)) return;
 
-        if (msg.type === 'positions') {
+        if (msg.type === 'accounts') {
           if (Array.isArray(msg.data)) {
-            S.apiPositions = msg.data;
-            S.deltaPositionsReadOnly = msg.data.filter(p => Math.abs(+p.size || 0) > 0);
+            applyAccounts(msg.data);
             renderPositionTracker();
             scheduleRedraw();
           }
@@ -66168,7 +66146,6 @@ body.light #vUniversalFloatingPnl,
   setTimeout(() => {
     installHooks();
     ensurePnlNav();
-    pollDeltaPositions();
     pollDeltaTickers();
     pollDeltaFills();
     scheduleRedraw();

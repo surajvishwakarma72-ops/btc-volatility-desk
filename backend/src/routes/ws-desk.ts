@@ -3,8 +3,7 @@ import type { WebSocket } from 'ws';
 import { deskEvents } from '../services/desk-events.js';
 import { isTokenRevoked, sessionStillValid } from '../services/session-guard.js';
 import { DESK_USER_ID } from '../services/auth-store.js';
-import { loadDeltaKey } from '../services/delta-keys.js';
-import { deltaSignedGet } from './delta.js';
+import { accountReader, type AccountState } from '../services/account-state.js';
 import { isDeskHalted } from '../services/kill-switch.js';
 
 function parseCookies(header?: string): Record<string, string> {
@@ -88,7 +87,7 @@ export function broadcastStrikeAlert(alert: Record<string, unknown>): void {
   }
 }
 
-type PositionsProvider = (userId: string) => Promise<any[]> | any[];
+type PositionsProvider = (userId: string) => Promise<AccountState[]> | AccountState[];
 type TickersProvider = () => Promise<any[]> | any[];
 
 let customPositionsProvider: PositionsProvider | null = null;
@@ -104,20 +103,6 @@ export function setWsTickersProvider(fn: TickersProvider | null): void {
 
 let cachedTickers: any[] = [];
 let lastTickersFetch = 0;
-
-async function defaultPositionsProvider(userId: string): Promise<any[]> {
-  try {
-    const key = (await loadDeltaKey(userId, 'trade')) ?? (await loadDeltaKey(userId, 'read'));
-    if (key) {
-      const res = await deltaSignedGet(key.key, key.secret, '/v2/positions/margined', 'contract_types=call_options,put_options');
-      if (res.ok && res.body && typeof res.body === 'object') {
-        const list = Array.isArray((res.body as any).result) ? (res.body as any).result : ((res.body as any).result?.positions || []);
-        return list;
-      }
-    }
-  } catch {}
-  return [];
-}
 
 async function defaultTickersProvider(): Promise<any[]> {
   const now = Date.now();
@@ -141,9 +126,9 @@ async function defaultTickersProvider(): Promise<any[]> {
   return cachedTickers;
 }
 
-async function getPositions(userId: string): Promise<any[]> {
+async function getAccounts(userId: string): Promise<AccountState[]> {
   if (customPositionsProvider) return customPositionsProvider(userId);
-  return defaultPositionsProvider(userId);
+  return accountReader.read(userId);
 }
 
 async function getTickers(): Promise<any[]> {
@@ -204,11 +189,14 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
   const sendPositions = async () => {
     if (socket.readyState !== 1) return; // 1 === WebSocket.OPEN
     try {
-      const data = await getPositions(userId);
+      const data = await getAccounts(userId);
       if (socket.readyState === 1) {
-        socket.send(JSON.stringify({ type: 'positions', data }));
+        socket.send(JSON.stringify({ type: 'accounts', data }));
       }
-    } catch {}
+    } catch (err) {
+      // nothing is sent, so the browser keeps its last figures instead of showing an empty account
+      console.warn('[ws-desk] account read failed:', err instanceof Error ? err.message : err);
+    }
   };
 
   const sendTickers = async () => {
