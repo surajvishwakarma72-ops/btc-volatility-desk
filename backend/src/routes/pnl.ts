@@ -136,10 +136,25 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
 
   // GET /api/v1/pnl/session — returns today's aggregated P&L from fills table (Task T4.3)
   fastify.get('/session', async (request: FastifyRequest, reply: FastifyReply) => {
+    const token = getSessionToken(request);
+    if (!token || isTokenRevoked(token)) {
+      return reply.status(401).send({ success: false, error: 'Unauthorized: Session required' });
+    }
+    let decoded: any = null;
     try {
-      const query = (request.query || {}) as { since?: string; date?: string };
+      decoded = fastify.jwt.verify(token);
+    } catch {
+      return reply.status(401).send({ success: false, error: 'Invalid session token' });
+    }
+    const uid = decoded?.sub || decoded?.id || DESK_USER_ID;
+    if (!(await sessionStillValid(uid, decoded?.iat))) {
+      return reply.status(401).send({ success: false, error: 'Session invalidated' });
+    }
+
+    try {
+      const query = (request.query || {}) as { since?: string; date?: string; account?: string };
       const since = query.since || query.date;
-      const result = await getSessionPnl(since);
+      const result = await getSessionPnl(uid, since, query.account);
       return reply.status(200).send({
         total_pnl: result.total_pnl,
         delta_pnl: result.delta_pnl,

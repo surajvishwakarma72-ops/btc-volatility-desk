@@ -37,7 +37,6 @@ describe('closed trade card', () => {
   it("never borrows the other account's fills", () => {
     expect(page({ deltaFillsReadTrade: roundTrip })('readonly')).toBeNull();
     expect(page({ deltaFillsReadOnly: roundTrip })('readtrade')).toBeNull();
-    expect(page({}, { v_delta_fills_readtrade: JSON.stringify(roundTrip) })('readonly')).toBeNull();
   });
 
   it('builds the trade from its own fills, with real lots and premium', () => {

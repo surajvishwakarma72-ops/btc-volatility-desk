@@ -42683,7 +42683,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         const NAME = { main: 'Main account (read-only key)', sub: 'Sub-account (read + trade key)', account: 'Delta account' };
         const ST = { connected: ['✓', 'Connected', 'pos'], auth_failed: ['✕', 'Key rejected by Delta', 'neg'], ip_not_whitelisted: ['✕', 'Server IP not whitelisted on Delta', 'neg'], rate_limited: ['!', 'Rate-limited by Delta', 'neg'], stale: ['!', 'Cannot reach Delta, figures are stale', 'neg'] };
         const ago = a => { if (!a.lastOkAt) return 'no successful read yet'; const s = Math.max(0, Math.round((a.serverTs - a.lastOkAt) / 1000)); return 'last good read ' + (s < 5 ? 'just now' : s < 90 ? s + 's ago' : Math.round(s / 60) + ' min ago'); };
-        return `<section class="v18c v18" id="dkHealth"><div class="v18h"><h3>Key Health</h3></div>${list.map(a => { const s = ST[a.health] || ['!', 'Read failed', 'neg']; return `<p><b>${esc(NAME[a.account] || a.account)}</b>${a.keyLast4 ? ` <span class="s">key …${esc(a.keyLast4)}</span>` : ''}<br><span class="${s[2]}">${s[0]} ${s[1]}</span> <span class="s">· ${ago(a)}</span>${a.error ? `<br><span class="s">Delta said: ${esc(a.error)}</span>` : ''}</p>`; }).join('')}</section>`;
+        return `<section class="v18c v18" id="dkHealth"><div class="v18h"><h3>Key Health</h3></div>${list.map(a => { const s = ST[a.health] || ['!', 'Read failed', 'neg']; return `<p><b>${esc(NAME[a.account] || a.account)}</b>${a.keyLast4 ? ` <span class="s">key …${esc(a.keyLast4)}</span>` : ''}<br><span class="${s[2]}">${s[0]} ${s[1]}</span> <span class="s">· ${ago(a)}</span>${a.error ? `<br><span class="s">Delta said: ${esc(a.error)}</span>` : ''}${a.reconcile ? `<br><span class="${a.reconcile.state === 'ok' ? 's' : 'neg'}">${a.reconcile.state === 'ok' ? '✓ Positions match fills' : '⚠ Positions differ from fills: ' + esc(a.reconcile.symbols.join(', '))}</span>` : ''}</p>`; }).join('')}</section>`;
       }
       function dkForm() {
         if (!dkTok()) return ''; dkLoad(false); const st = DK.st, conn = !!(st && st.connected);
@@ -64921,38 +64921,27 @@ body.light #vUniversalFloatingPnl,
     }
   }
 
-  /** Poll Delta fills */
+  /** Loads each account's stored fills from the server. The server syncs them whether or not this page is open. */
   function pollDeltaFills() {
-    if (Date.now() - S.lastPolledFills < 6000) return;
+    if (Date.now() - S.lastPolledFills < 30000) return;
+    const accounts = S.accounts || [];
+    if (!accounts.length) return;
     S.lastPolledFills = Date.now();
-
     const tok = getJwt();
     const headers = { Accept: 'application/json' };
     if (tok) headers.Authorization = 'Bearer ' + tok;
-
-    const uRo = '/api/v1/delta/signed?kind=read&path=/v2/fills&query=' + encodeURIComponent('contract_types=call_options,put_options&page_size=100');
-    fetch(uRo, { headers })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && data.result && Array.isArray(data.result) && data.result.length > 0) {
-          S.deltaFillsReadOnly = data.result;
-          try { localStorage.setItem('v_delta_fills_readonly', JSON.stringify(data.result)); } catch {}
+    accounts.forEach(acc => {
+      fetch('/api/v1/fills?limit=500&account_kind=' + encodeURIComponent(acc.account), { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || !Array.isArray(d.fills)) return;
+          const list = d.fills.map(f => (typeof f.raw === 'string' ? JSON.parse(f.raw) : f.raw)).filter(Boolean);
+          if (acc.account !== 'sub') S.deltaFillsReadOnly = list;
+          if (acc.account !== 'main') S.deltaFillsReadTrade = list;
           scheduleRedraw();
-        }
-      })
-      .catch(() => {});
-
-    const uRt = '/api/v1/delta/signed?kind=trade&path=/v2/fills&query=' + encodeURIComponent('contract_types=call_options,put_options&page_size=100');
-    fetch(uRt, { headers })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data && data.result && Array.isArray(data.result) && data.result.length > 0) {
-          S.deltaFillsReadTrade = data.result;
-          try { localStorage.setItem('v_delta_fills_readtrade', JSON.stringify(data.result)); } catch {}
-          scheduleRedraw();
-        }
-      })
-      .catch(() => {});
+        })
+        .catch(() => {});
+    });
   }
 
   /** Poll live Greeks & mark IV from Delta tickers */
@@ -65124,13 +65113,7 @@ body.light #vUniversalFloatingPnl,
   /** One account's last closed trade, from its own Delta fills. No fills means no trade: nothing is borrowed or filled in. */
   function lastClosedTrade(mode) {
     const readonly = mode === 'readonly';
-    let fills = readonly ? S.deltaFillsReadOnly : S.deltaFillsReadTrade;
-    if (!fills || fills.length === 0) {
-      try {
-        const raw = localStorage.getItem(readonly ? 'v_delta_fills_readonly' : 'v_delta_fills_readtrade');
-        if (raw) fills = JSON.parse(raw);
-      } catch {}
-    }
+    const fills = readonly ? S.deltaFillsReadOnly : S.deltaFillsReadTrade;
     const closed = groupFillsToTrades(fills).filter(t => !t.open);
     return closed.length ? { ...closed[0], source: 'delta-fills', mode } : null;
   }
@@ -65402,7 +65385,7 @@ body.light #vUniversalFloatingPnl,
           '<div class="v-head-left">' +
             '<div class="v-title">' +
               stratDesc +
-              '<span class="v-badge live">LIVE · ' + (pos.kind === 'readonly' ? 'READ-ONLY' : 'READ+TRADE') + '</span>' +
+              '<span class="v-badge live">' + sourceLabel(pos.kind) + '</span>' +
             '</div>' +
             '<div class="v-sub">Live mark-to-market, before fees</div>' +
           '</div>' +
@@ -65530,7 +65513,7 @@ body.light #vUniversalFloatingPnl,
           '<div class="v-head-left">' +
             '<div class="v-title">' +
               'Short Strangle · ' + px(lastTrade.Kp) + ' Put / ' + px(lastTrade.Kc) + ' Call' +
-              '<span class="v-badge hist">CLOSED REAL TRADE · ' + (lastTrade.mode === 'readonly' ? 'READ-ONLY' : 'READ+TRADE') + '</span>' +
+              '<span class="v-badge hist">CLOSED · ' + sourceLabel(lastTrade.mode) + '</span>' +
             '</div>' +
             '<div class="v-sub">From Delta fills · ' + when(lastTrade.openedAt) + ' → ' + when(lastTrade.closedAt) + ' IST</div>' +
           '</div>' +
@@ -65824,6 +65807,8 @@ body.light #vUniversalFloatingPnl,
   }, 12000);
   */
 
+  setInterval(pollDeltaFills, 60000);
+
   setInterval(() => {
     installHooks();
     initPositionTracker();
@@ -65858,10 +65843,17 @@ body.light #vUniversalFloatingPnl,
     else if (Array.isArray(sub.positions)) S.deltaPositionsReadTrade = open(sub);
   }
 
+  /** Which account a figure comes from. */
+  function sourceLabel(mode) {
+    if ((S.accounts || []).some(a => a.account === 'account')) return 'LIVE';
+    return mode === 'readonly' ? 'LIVE-MAIN' : 'LIVE-SUB';
+  }
+
   /** Why the shown account cannot be trusted right now, or empty when it is fine. */
   function accountWarning(mode) {
     const a = (S.accounts || []).find(x => x.account === 'account' || x.account === (mode === 'readonly' ? 'main' : 'sub'));
-    if (!a || a.health === 'connected') return '';
+    if (!a) return '';
+    if (a.health === 'connected') return a.reconcile && a.reconcile.state === 'mismatch' ? '⚠ positions differ from fills: ' + a.reconcile.symbols.join(', ') : '';
     const why = { auth_failed: 'key rejected by Delta', ip_not_whitelisted: 'server IP not whitelisted on Delta', rate_limited: 'rate-limited by Delta', stale: 'cannot reach Delta' }[a.health] || 'read failed';
     const age = a.lastOkAt ? ', last update ' + Math.max(0, Math.round((a.serverTs - a.lastOkAt) / 1000)) + 's ago' : '';
     return '⚠ ' + why + age;
@@ -66062,6 +66054,7 @@ body.light #vUniversalFloatingPnl,
         if (msg.type === 'accounts') {
           if (Array.isArray(msg.data)) {
             applyAccounts(msg.data);
+            pollDeltaFills();
             renderPositionTracker();
             scheduleRedraw();
           }
@@ -68308,9 +68301,11 @@ body.light #vUniversalFloatingPnl,
 
       async function fetchSessionPnl() {
         try {
+          const headers = { 'Accept': 'application/json' };
+          try { const tok = JSON.parse(localStorage.getItem('desk_jwt')); if (tok) headers.Authorization = 'Bearer ' + tok; } catch (e) { }
           const res = await fetch('/api/v1/pnl/session', {
             method: 'GET',
-            headers: { 'Accept': 'application/json' },
+            headers,
             cache: 'no-store'
           });
           if (!res.ok) return;

@@ -52,6 +52,18 @@ afterAll(async () => {
   }
 });
 
+describe('fills privacy', () => {
+  it('shows each user only their own fills', async () => {
+    const app = await buildApp();
+    await app.ready();
+    await pool.query(`INSERT INTO fills (exchange_fill_id, account_kind, user_id, instrument, symbol, side, qty, price, filled_at) VALUES ('own-1','account','${OWNER}','option','C-BTC-1-011126','buy',1,1,now()),('own-2','account','${TRADER}','option','C-BTC-2-011126','buy',1,1,now())`);
+    const list = async (id: string, role: string) => (await app.inject({ method: 'GET', url: '/api/v1/fills', headers: { authorization: `Bearer ${app.jwt.sign({ sub: id, role })}` } })).json().fills.map((f: { symbol: string }) => f.symbol);
+    expect(await list(TRADER, 'trader')).toEqual(['C-BTC-2-011126']);
+    expect(await list(OWNER, 'admin')).not.toContain('C-BTC-2-011126');
+    await pool.query(`DELETE FROM fills WHERE exchange_fill_id IN ('own-1','own-2')`);
+  });
+});
+
 describe('Fills Table and Ingest API (Task T2.1)', () => {
   it('(a) GET /fills returns 401 without session', async () => {
     const app = await buildApp();

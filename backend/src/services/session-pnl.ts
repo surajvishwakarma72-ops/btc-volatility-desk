@@ -1,5 +1,6 @@
 import { pool } from '../db/index.js';
 import { ensureFillsSchema } from '../routes/fills.js';
+import { DESK_USER_ID } from './auth-store.js';
 
 export interface SessionPnlSummary {
   total_pnl: number;
@@ -37,14 +38,17 @@ function resolveNum(colVal: any, rawVal1: any, rawVal2?: any): number | null {
  * Filter: filled_at >= today 00:00 UTC (or custom sinceUtc)
  * Returns: { total_pnl, delta_pnl, gamma_pnl, theta_pnl, vega_pnl, other_pnl, fill_count }
  */
-export async function getSessionPnl(sinceUtc?: string): Promise<SessionPnlSummary> {
+export async function getSessionPnl(userId: string, sinceUtc?: string, account?: string): Promise<SessionPnlSummary> {
   await ensureFillsSchema();
 
   const filterTs = sinceUtc || getTodayUtcStart();
 
+  // Only this user's fills. The owner also sees older rows saved without a user.
   const res = await pool.query(
-    `SELECT * FROM fills WHERE filled_at >= $1 ORDER BY filled_at ASC`,
-    [filterTs]
+    `SELECT * FROM fills
+     WHERE filled_at >= $1 AND (user_id = $2 OR ($2::uuid = $3::uuid AND user_id IS NULL)) AND ($4::text IS NULL OR account_kind = $4)
+     ORDER BY filled_at ASC`,
+    [filterTs, userId, DESK_USER_ID, account ?? null]
   );
 
   const rows = res?.rows || [];

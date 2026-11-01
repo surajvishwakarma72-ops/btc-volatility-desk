@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import fastify, { FastifyInstance } from 'fastify';
+import jwt from '@fastify/jwt';
 import { PGlite } from '@electric-sql/pglite';
 
 const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function; close?: Function } }));
@@ -30,6 +31,8 @@ const { pool } = await import('../db/index.js');
 
 describe('Task T4.3 — Session P&L Summary Panel', () => {
   let app: FastifyInstance;
+  let ownerToken = '';
+  const OWNER = '00000000-0000-0000-0000-000000000001';
 
   beforeAll(async () => {
     resetFillsSchemaCache();
@@ -38,8 +41,10 @@ describe('Task T4.3 — Session P&L Summary Panel', () => {
     await ensureFillsSchema();
 
     app = fastify({ logger: false });
+    await app.register(jwt, { secret: 'test-secret' });
     await app.register(pnlRoutes, { prefix: '/api/v1/pnl' });
     await app.ready();
+    ownerToken = app.jwt.sign({ sub: OWNER, role: 'admin' });
   });
 
   afterAll(async () => {
@@ -57,6 +62,7 @@ describe('Task T4.3 — Session P&L Summary Panel', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/pnl/session',
+      headers: { authorization: 'Bearer ' + ownerToken },
     });
 
     expect(res.statusCode).toBe(200);
@@ -83,6 +89,7 @@ describe('Task T4.3 — Session P&L Summary Panel', () => {
     const resEmpty = await app.inject({
       method: 'GET',
       url: '/api/v1/pnl/session',
+      headers: { authorization: 'Bearer ' + ownerToken },
     });
     expect(resEmpty.statusCode).toBe(200);
     expect(resEmpty.json()).toEqual({
@@ -108,6 +115,7 @@ describe('Task T4.3 — Session P&L Summary Panel', () => {
     const resYesterday = await app.inject({
       method: 'GET',
       url: '/api/v1/pnl/session',
+      headers: { authorization: 'Bearer ' + ownerToken },
     });
     expect(resYesterday.statusCode).toBe(200);
     expect(resYesterday.json()).toEqual({
@@ -162,6 +170,7 @@ describe('Task T4.3 — Session P&L Summary Panel', () => {
     const res = await app.inject({
       method: 'GET',
       url: '/api/v1/pnl/session',
+      headers: { authorization: 'Bearer ' + ownerToken },
     });
 
     expect(res.statusCode).toBe(200);
@@ -187,7 +196,7 @@ describe('Task T4.3 — Session P&L Summary Panel', () => {
       ['fill-direct-1', 'main', 'options', 'C-BTC-100000', 'buy', 1, 1000, today, 10, 5, 2, -1, 3, 1]
     );
 
-    const result = await getSessionPnl();
+    const result = await getSessionPnl(OWNER);
     expect(result.fill_count).toBe(1);
     expect(result.total_pnl).toBe(10);
     expect(result.delta_pnl).toBe(5);

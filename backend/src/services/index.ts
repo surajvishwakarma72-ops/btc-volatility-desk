@@ -10,6 +10,7 @@ import { paperTerminal } from './paper/paper-terminal.js';
 import { watchService } from './watch/sources.js';
 import { algoEngine, seriesSampler } from './algo/algo-runtime.js';
 import { paperMarks } from './paper/paper-marks.js';
+import { fillsSync } from './fills-sync.js';
 
 export { alertService } from './alert-service.js';
 export { binanceWorker } from './binance-market-worker.js';
@@ -40,6 +41,7 @@ export class WorkerManager {
     paperTerminal.start(); // the user's own paper account: working orders, stops, expiry (idle when nothing is open)
     watchService.start(); // the stop alarm: watches every open position (bot, paper strategies, real Delta) for its stop
     paperMarks.start(); // one PnL sample a minute for every open Paper strategy (the minute graph)
+    fillsSync.start(); // copies each account's Delta fills to the server for P&L and reconciliation (read-only)
     seriesSampler.start(); // ATM IV / DVOL history for the falling and IV-vs-clock conditions
     algoEngine.start(); // the Algo panel: waits for each armed strategy's window and conditions, enters once, manages the exit
   }
@@ -60,6 +62,7 @@ export class WorkerManager {
     algoEngine.stop();
     seriesSampler.stop();
     paperMarks.stop();
+    fillsSync.stop();
   }
 
   getStatus() {

@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS real_runs (
   exited_at timestamptz,
   net_pnl numeric
 );
+ALTER TABLE real_runs ADD COLUMN IF NOT EXISTS pnl_source text;
 CREATE INDEX IF NOT EXISTS real_runs_user_idx ON real_runs (user_id, status);
 CREATE TABLE IF NOT EXISTS algo_defaults (
   user_id uuid PRIMARY KEY,

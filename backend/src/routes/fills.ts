@@ -33,6 +33,8 @@ export async function ensureFillsSchema(): Promise<void> {
         );
         CREATE INDEX IF NOT EXISTS idx_fills_filled_at ON fills(filled_at DESC);
         CREATE INDEX IF NOT EXISTS idx_fills_symbol ON fills(symbol);
+        -- the desk owner may have no users row (env-password login), and that must not block their fills
+        ALTER TABLE fills DROP CONSTRAINT IF EXISTS fills_user_id_fkey;
         ALTER TABLE fills ADD COLUMN IF NOT EXISTS total_pnl numeric;
         ALTER TABLE fills ADD COLUMN IF NOT EXISTS delta_pnl numeric;
         ALTER TABLE fills ADD COLUMN IF NOT EXISTS gamma_pnl numeric;
@@ -166,8 +168,10 @@ export const fillsRoutes: FastifyPluginAsync = async (fastify) => {
       limit?: string | number;
     };
 
-    const conditions: string[] = [];
-    const params: unknown[] = [];
+    // Everyone sees only their own fills. The owner also sees older rows saved without a user.
+    const uid = auth.user.sub || auth.user.id || DESK_USER_ID;
+    const params: unknown[] = [uid];
+    const conditions: string[] = [isOwner(auth.user) ? '(user_id = $1 OR user_id IS NULL)' : 'user_id = $1'];
 
     if (query.symbol && typeof query.symbol === 'string' && query.symbol.trim()) {
       params.push(query.symbol.trim());

@@ -259,6 +259,7 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
         keyLast4: saved.connected ? saved.keyLast4 : null,
         lastOkAt: a.lastOkAt ?? (saved.connected && saved.lastOkAt ? Date.parse(saved.lastOkAt) : null),
         serverTs: a.serverTs,
+        reconcile: a.reconcile ?? null,
       };
     }));
     return { success: true, accounts };

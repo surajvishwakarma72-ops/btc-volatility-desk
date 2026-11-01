@@ -210,6 +210,8 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
   };
 
   const onFill = (fillRow: any) => {
+    // a fill goes only to the user it belongs to
+    if (fillRow?.user_id && fillRow.user_id !== userId) return;
     if (subscribedChannels.has('fills') && socket.readyState === 1) {
       socket.send(JSON.stringify({ type: 'fill', data: fillRow }));
     }

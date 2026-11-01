@@ -1,6 +1,7 @@
 import { deltaSignedGet } from '../routes/delta.js';
 import { watchedAccounts, type AccountId, type DeskAccount } from './accounts.js';
 import { noteDeltaResult, type KeyKind } from './delta-keys.js';
+import { reconcileStatus, type ReconcileStatus } from './reconcile-state.js';
 
 /**
  * The live state of each of a user's Delta accounts, kept apart and labelled. The server reads it; the browser only displays it.
@@ -20,6 +21,8 @@ export interface AccountState {
   lastOkAt: number | null;
   /** When the server made this report. */
   serverTs: number;
+  /** Latest check of positions against fills. Null until one has run. */
+  reconcile?: ReconcileStatus | null;
 }
 
 export function classifyDeltaFailure(status: number, errorText: string): AccountHealth {
@@ -75,7 +78,7 @@ export class AccountReader {
       this.lastHealth.set(id, health);
       void this.deps.note(userId, !!list, error, a.kind);
     }
-    return { account: a.account, kind: a.kind, health, error, positions: list, lastOkAt: this.lastOk.get(id) ?? null, serverTs };
+    return { account: a.account, kind: a.kind, health, error, positions: list, lastOkAt: this.lastOk.get(id) ?? null, serverTs, reconcile: reconcileStatus(userId, a.account) };
   }
 }
 
