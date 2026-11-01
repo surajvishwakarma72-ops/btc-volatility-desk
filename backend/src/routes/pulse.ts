@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { METRIC_CONFIG, PULSE_CONFIG, REGIME_GATE_CONFIG, SCORE_CONFIG } from '../lib/pulse/config.js';
 import { cohortSlotMs, HOUR_MS, SLOTS, type Slot } from '../lib/pulse/grid.js';
 import { termInverted } from '../lib/pulse/metrics/market.js';
+import { pulseMomentum } from '../lib/pulse/metrics/momentum.js';
 import { metricSeries, winnerAtAge, type CohortRow } from '../lib/pulse/metrics/series.js';
 import { breakevens, winnerPersistence } from '../lib/pulse/metrics/tape.js';
 import { linesAt, readings, type CohortSteps, type LiveContext } from '../lib/pulse/score/score.js';
@@ -88,6 +89,11 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
           net: r.call.net_pnl === null || r.put.net_pnl === null ? null : r.call.net_pnl + r.put.net_pnl,
         }))
       : [];
+    const points = list.map((r) => {
+      const lo = linesAt(r.t, cohorts);
+      const ld = linesAt(r.t, dirCohorts);
+      return { t: r.t, c: r.confidence, z: r.zone, call: lo.call, put: lo.put, fl: ld.futLong, fs: ld.futShort };
+    });
     const body = {
       success: true,
       slot,
@@ -102,10 +108,10 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
         stopPremium: open && { call: open.call_bid === null ? null : open.call_bid * PULSE_CONFIG.stopMultiple, put: open.put_bid === null ? null : open.put_bid * PULSE_CONFIG.stopMultiple },
       },
       zones: { sellMin: SCORE_CONFIG.zones.sellMin, cautionMin: SCORE_CONFIG.zones.cautionMin },
-      points: list.map((r) => {
-        const lo = linesAt(r.t, cohorts);
-        const ld = linesAt(r.t, dirCohorts);
-        return { t: r.t, c: r.confidence, z: r.zone, call: lo.call, put: lo.put, fl: ld.futLong, fs: ld.futShort };
+      points,
+      // Display only: the verdict does not read this, it has not been backtested.
+      momentum: pulseMomentum(withFut.map((c) => ({ opened_at: c.opened_at, rows: rowsBy.get(c.id) ?? [] })), {
+        call: points.map((p) => p.call), put: points.map((p) => p.put), futLong: points.map((p) => p.fl), futShort: points.map((p) => p.fs),
       }),
       changes,
       pnl,

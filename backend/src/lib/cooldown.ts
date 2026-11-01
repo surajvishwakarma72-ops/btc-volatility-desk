@@ -30,6 +30,11 @@ export class LoginCooldownTracker {
     this.attempts.set(ip, history);
   }
 
+  /** Removes only the newest attempt. Clearing the whole history here would let someone with a valid login wipe their wrong guesses. */
+  forgetLast(ip: string): void {
+    this.attempts.get(ip)?.pop();
+  }
+
   reset(ip?: string): void {
     if (ip) this.attempts.delete(ip);
     else this.attempts.clear();

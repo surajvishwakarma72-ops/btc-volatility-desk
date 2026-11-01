@@ -240,41 +240,33 @@ describe('a password reset ends the earlier sign-ins of that account', () => {
   });
 });
 
-describe('instant password reset (no code required)', () => {
-  it('instantly resets password for a registered friend with email and new password', async () => {
+describe('a reset always needs proof', () => {
+  it('refuses a friend reset with only an email and a new password', async () => {
     const app = await build();
-    const friend = (await createUser('instant@example.com', await hashPassword('old-instant-pw-123'), 'Instant User'))!;
-    const r = await reset(app, { email: 'instant@example.com', newPassword: 'brand-new-instant-pw' });
-    expect(r.statusCode).toBe(200);
-    const j = r.json();
-    expect(j.token).toBeTruthy();
-    expect(j.user.email).toBe('instant@example.com');
-    // new password works to login
-    expect((await login(app, 'instant@example.com', 'brand-new-instant-pw')).statusCode).toBe(200);
-    // old password no longer works
-    expect((await login(app, 'instant@example.com', 'old-instant-pw-123')).statusCode).toBe(401);
+    await createUser('noproof@example.com', await hashPassword('old-noproof-pw-123'), 'No Proof');
+    const r = await reset(app, { email: 'noproof@example.com', newPassword: 'attacker-chosen-pw' });
+    expect(r.statusCode).toBe(403);
+    expect(r.json().token).toBeUndefined();
+    expect((await login(app, 'noproof@example.com', 'attacker-chosen-pw')).statusCode).toBe(401);
+    expect((await login(app, 'noproof@example.com', 'old-noproof-pw-123')).statusCode).toBe(200);
     await app.close();
   });
 
-  it('instantly resets password for the desk owner when leaving email empty', async () => {
+  it('refuses to reset the desk owner with an empty email, the owner address, or the old "instant" code', async () => {
     const app = await build();
-    const r = await reset(app, { email: '', newPassword: 'new-owner-secret-pw' });
-    expect(r.statusCode).toBe(200);
-    const j = r.json();
-    expect(j.token).toBeTruthy();
-    expect(j.user.role).toBe('admin');
-    // Owner can log in with new password without email
-    const ownLogin = await app.inject({ method: 'POST', url: '/auth/login', payload: { password: 'new-owner-secret-pw' } });
-    expect(ownLogin.statusCode).toBe(200);
-    expect(ownLogin.json().user.role).toBe('admin');
+    for (const payload of [{ email: '', newPassword: 'attacker-chosen-pw' }, { newPassword: 'attacker-chosen-pw' }, { email: 'desk@local', newPassword: 'attacker-chosen-pw' }, { email: 'desk@local', code: 'instant', newPassword: 'attacker-chosen-pw' }]) {
+      const r = await reset(app, payload);
+      expect(r.statusCode).toBe(403);
+      expect(r.json().token).toBeUndefined();
+    }
+    expect((await app.inject({ method: 'POST', url: '/auth/login', payload: { password: 'attacker-chosen-pw' } })).statusCode).toBe(401);
     await app.close();
   });
 
-  it('returns 404 if instant reset is attempted with an unknown email', async () => {
+  it('answers the same for an unknown email, so it cannot be used to find accounts', async () => {
     const app = await build();
     const r = await reset(app, { email: 'unknown-user@example.com', newPassword: 'some-new-password' });
-    expect(r.statusCode).toBe(404);
-    expect(r.json().error).toMatch(/No account/i);
+    expect(r.statusCode).toBe(403);
     await app.close();
   });
 });

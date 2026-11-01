@@ -469,6 +469,27 @@
 <html lang="en" data-theme="light">
 
 <head>
+  <script data-module="vHoldUntilUnlocked">
+    /* Market requests wait until the terminal is unlocked. A browser opens only a few connections to one server, so loading them
+       behind the sign-in screen left the sign-in itself queued for half a minute. Sign-in always goes first now. */
+    (function () {
+      const realFetch = window.fetch, MAX_HELD = 64;
+      let held = 0, release = null, waiting = null;
+      const unlocked = function () { return waiting || (waiting = new Promise(function (r) { release = r; })); };
+      window.addEventListener('terminal:unlocked', function () { if (release) { release(); release = null; waiting = null; held = 0; } });
+      window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url) || String(input);
+        if (window.__vTerminalAuthenticated || url.indexOf('/api/v1/mkt') < 0) return realFetch.call(window, input, init);
+        if (held >= MAX_HELD) return Promise.reject(new TypeError('Terminal locked'));   // pollers retry; a long lock must not build a backlog
+        held++;
+        const signal = init && init.signal;
+        return new Promise(function (resolve, reject) {
+          if (signal) signal.addEventListener('abort', function () { held = Math.max(0, held - 1); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+          unlocked().then(function () { if (signal && signal.aborted) return; realFetch.call(window, input, init).then(resolve, reject); });
+        });
+      };
+    })();
+  </script>
   <script src="data/shadow_backtest_dataset.js"></script>
   <script src="data/rulebook.js"></script>
   <script src="data/backtest_days.js"></script>
@@ -19807,6 +19828,12 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         --vtg-warn-border: rgba(227, 174, 69, 0.3);
         font-family: var(--font, "Barlow Semi Condensed", "Barlow", system-ui, sans-serif);
       }
+      #vTerminalLockGate .vtg-alert-ok {
+        background: rgba(74, 222, 128, 0.12);
+        color: #4ade80;
+        border: 1px solid rgba(74, 222, 128, 0.3);
+      }
+
       #vTerminalLockGate * {
         box-sizing: border-box;
       }
@@ -20085,7 +20112,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
             <input type="checkbox" id="vGateRemember" class="vtg-checkbox" checked>
             <span>Remember this device</span>
           </label>
-          <a href="#" id="vGateResetLink" class="vtg-link">Request Password Reset</a>
+          <a href="#" id="vGateResetLink" class="vtg-link">Forgot password?</a>
         </div>
 
         <div id="vGateAlert" class="vtg-alert"></div>
@@ -20098,18 +20125,18 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
 
       <!-- Password Reset Form View (Hidden by default) -->
       <form id="vGateResetForm" class="vtg-form" style="display:none;" onsubmit="return false;">
-        <div style="font-size:13px; color:var(--vtg-muted); line-height:1.4;">
-          Enter your email and the 12-character one-time reset code issued by the desk owner.
+        <div id="vGateResetIntro" style="font-size:13px; color:var(--vtg-muted); line-height:1.4;">
+          Ask the desk owner for a reset link and open it. If you were given a code instead, enter it here.
         </div>
 
-        <div class="vtg-group">
+        <div class="vtg-group" data-reset-manual>
           <label class="vtg-label" for="vGateResetEmail">Account Email</label>
           <div class="vtg-input-wrap">
             <input type="text" id="vGateResetEmail" class="vtg-input" style="padding-left:14px;" placeholder="friend@example.com">
           </div>
         </div>
 
-        <div class="vtg-group">
+        <div class="vtg-group" data-reset-manual>
           <label class="vtg-label" for="vGateResetCode">Reset Code (from Owner)</label>
           <div class="vtg-input-wrap">
             <input type="text" id="vGateResetCode" class="vtg-input" style="padding-left:14px; font-family:var(--font-mono, monospace);" placeholder="12-character code">
@@ -20119,13 +20146,20 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         <div class="vtg-group">
           <label class="vtg-label" for="vGateResetNewPw">New Password (min 10 chars)</label>
           <div class="vtg-input-wrap">
-            <input type="password" id="vGateResetNewPw" class="vtg-input" style="padding-left:14px;" placeholder="Enter new password">
+            <input type="password" id="vGateResetNewPw" class="vtg-input" style="padding-left:14px;" placeholder="Enter new password" autocomplete="new-password">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateResetConfirm">Confirm New Password</label>
+          <div class="vtg-input-wrap">
+            <input type="password" id="vGateResetConfirm" class="vtg-input" style="padding-left:14px;" placeholder="Type it again" autocomplete="new-password">
           </div>
         </div>
 
         <div id="vGateResetAlert" class="vtg-alert"></div>
 
-        <button type="button" id="vGateResetSubmit" class="vtg-btn">Submit Password Reset</button>
+        <button type="button" id="vGateResetSubmit" class="vtg-btn">Save new password</button>
 
         <div style="text-align:center; margin-top:4px;">
           <a href="#" id="vGateResetBack" class="vtg-link">← Back to Sign In</a>
@@ -20304,6 +20338,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
       // Initial validation on page load
       async function initCheck() {
         updateCooldownUI();
+        if (resetInvite) { lockSession('init'); openResetInvite(); return; }
         const token = getStoredToken();
         if (!token) {
           lockSession('init');
@@ -20459,54 +20494,75 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
       if (resetBack && loginForm && resetForm) {
         resetBack.addEventListener('click', function (e) {
           e.preventDefault();
+          clearResetHash();
+          document.querySelectorAll('#vGateResetForm [data-reset-manual]').forEach(function (el) { el.style.display = ''; });
           resetForm.style.display = 'none';
           loginForm.style.display = 'flex';
           if (resetAlert) resetAlert.style.display = 'none';
         });
       }
 
-      // Password Reset submission (v2 route: /api/v1/auth/password-reset/request)
+      // A reset link from the desk owner: /#reset=<code>&email=<email>. The part after # never reaches the server or its logs.
+      const resetInvite = (function () {
+        const m = /^#reset=([^&]+)&email=(.+)$/.exec(location.hash);
+        if (!m) return null;
+        try { return { code: decodeURIComponent(m[1]), email: decodeURIComponent(m[2]) }; } catch (e) { return null; }
+      })();
+      const clearResetHash = function () { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } };
+      function openResetInvite() {
+        const set = function (id, v) { const el = document.getElementById(id); if (el) el.value = v; };
+        set('vGateResetEmail', resetInvite.email);
+        set('vGateResetCode', resetInvite.code);
+        document.querySelectorAll('#vGateResetForm [data-reset-manual]').forEach(function (el) { el.style.display = 'none'; });
+        const intro = document.getElementById('vGateResetIntro');
+        if (intro) intro.textContent = 'Choose a new password for ' + resetInvite.email + '.';
+        if (loginForm) loginForm.style.display = 'none';
+        if (resetForm) resetForm.style.display = 'flex';
+        const pw = document.getElementById('vGateResetNewPw');
+        if (pw) pw.focus();
+      }
+
+      // Password reset: email + the one-time code from the desk owner + the new password. A valid code signs the person straight in.
+      function showResetAlert(msg, ok) {
+        if (!resetAlert) return;
+        resetAlert.className = ok ? 'vtg-alert vtg-alert-ok' : 'vtg-alert vtg-alert-error';
+        resetAlert.style.display = 'flex';
+        resetAlert.textContent = msg;
+      }
       if (resetSubmit) {
         resetSubmit.addEventListener('click', async function () {
-          const email = (document.getElementById('vGateResetEmail')?.value || '').trim();
-          if (!email) {
-            if (resetAlert) {
-              resetAlert.className = 'vtg-alert vtg-alert-error';
-              resetAlert.style.display = 'flex';
-              resetAlert.innerHTML = '<span>Please enter your registered email.</span>';
-            }
-            return;
-          }
+          const val = function (id) { const el = document.getElementById(id); return el ? el.value : ''; };
+          const email = val('vGateResetEmail').trim();
+          const code = val('vGateResetCode').trim();
+          const newPassword = val('vGateResetNewPw');
+          if (!email) return showResetAlert('Please enter your registered email.');
+          if (!code) return showResetAlert('Please enter the reset code from the desk owner.');
+          if (newPassword.length < 10) return showResetAlert('The new password needs at least 10 characters.');
+          if (val('vGateResetConfirm') !== newPassword) return showResetAlert('The two passwords do not match.');
           resetSubmit.disabled = true;
           try {
-            const r = await fetch('/api/v1/auth/password-reset/request', {
+            const r = await fetch('/api/v1/auth/reset-password', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: email })
+              body: JSON.stringify({ email: email, code: code, newPassword: newPassword })
             });
             const j = await r.json().catch(function () { return null; });
-            if (r.ok && j && j.success) {
-              if (resetAlert) {
-                resetAlert.className = 'vtg-alert';
-                resetAlert.style.background = 'rgba(74, 222, 128, 0.12)';
-                resetAlert.style.color = '#4ade80';
-                resetAlert.style.border = '1px solid rgba(74, 222, 128, 0.3)';
-                resetAlert.style.display = 'flex';
-                resetAlert.innerHTML = '<span>' + (j.message || 'Reset request submitted. Desk owner approval required.') + '</span>';
-              }
+            if (r.ok && j && j.success && j.token) {
+              try {
+                const prev = JSON.parse(localStorage.getItem('desk_user') || 'null');
+                if (window.deskAuth && (!prev || !j.user || prev.id !== j.user.id)) window.deskAuth.clearPersonal(); // another person's desk data must not carry over
+                localStorage.setItem('desk_jwt', JSON.stringify(j.token));
+                if (j.user) localStorage.setItem('desk_user', JSON.stringify(j.user));
+                localStorage.removeItem('vTerminalLockFails');
+              } catch (e) { }
+              showResetAlert('Password changed. Signing you in…', true);
+              clearResetHash();
+              location.reload();
               return;
             }
-            if (resetAlert) {
-              resetAlert.className = 'vtg-alert vtg-alert-error';
-              resetAlert.style.display = 'flex';
-              resetAlert.innerHTML = '<span>' + ((j && j.error) || 'Failed to submit reset request.') + '</span>';
-            }
+            showResetAlert((j && j.error) || (r.status === 429 ? 'Too many tries. Wait a minute and try again.' : 'Could not reset the password.'));
           } catch (e) {
-            if (resetAlert) {
-              resetAlert.className = 'vtg-alert vtg-alert-error';
-              resetAlert.style.display = 'flex';
-              resetAlert.innerHTML = '<span>Network error during reset request.</span>';
-            }
+            showResetAlert('Network error. Check your connection and try again.');
           } finally {
             resetSubmit.disabled = false;
           }
@@ -32169,6 +32225,18 @@ Signs follow Settings → Dealer positioning.`;
         return G;
       }
 
+      /* The news gate reads IV and price only. It must never say "sell" on a day the desk does not enter: Sat / Sun are hold only and
+         Thursday is no trade. The day rolls at 07:00 IST, the same as the header chip. */
+      function dayRule(G) {
+        if (G.st !== 'open' && G.st !== 'small') return G;
+        const dow = new Date(G.now + IST_OFFSET_MS - 7 * HR).getUTCDay();
+        const label = dow === 6 ? 'Saturday: hold only' : dow === 0 ? 'Sunday: hold only' : dow === 4 ? 'Thursday: no trade' : null;
+        if (!label) return G;
+        G.st = 'closed'; G.sub = label; G.exp = null;
+        G.why = `${label}. No new entries today, whatever IV is doing.`;
+        return G;
+      }
+
       /* ---------- alerts on a change of gate state ---------- */
       let lastSt = null;
       function alertOn(G) {
@@ -32196,7 +32264,7 @@ Signs follow Settings → Dealer positioning.`;
           // fetch BTC for the prints that matter, then decide again with it
           const need = [G.anchor, G.printed && G.printed[0]].filter(c => c && now >= c.t - 5 * MIN);
           if (need.length) { await Promise.all(need.map(c => loadPx(c, now).catch(() => null))); G = decide(Date.now()); }
-          alertOn(G);
+          alertOn(dayRule(G));
         } catch (e) { console.warn('news gate', e); }
         finally { busy = false; }
       }
@@ -42706,11 +42774,11 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
     <div class="v18btns"><button type="button" class="v18btn pri" data-dk="invite">Create invite code</button></div>
     ${DK.code ? `<p class="pos">New code, shown only now: <code>${esc(DK.code)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.code)}">Copy</button></p>` : ''}
     ${rows ? `<div style="margin-top:8px">${rows}</div>` : '<p class="s">No invite codes yet.</p>'}
-    <div style="margin-top:14px;border-top:1px solid var(--line,#eee);padding-top:10px"><b>A friend forgot the password?</b>
-    <p>Make a one-time reset code for their email and send it to them. On the sign-in window they press "Forgot password?", type their email, the code and a new password. The code works once and expires in 60 minutes.</p>
-    <label class="v18f">Friend's email<input id="dkResetEmail" type="email" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <div class="v18btns"><button type="button" class="v18btn pri" data-dk="resetcode">Make reset code</button></div>
-    ${DK.reset ? `<p class="pos">Reset code for ${esc(DK.reset.email)}, shown only now: <code>${esc(DK.reset.code)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.reset.code)}">Copy</button></p>` : ''}</div></section>`;
+    <div style="margin-top:14px;border-top:1px solid var(--line,#eee);padding-top:10px"><b>Someone forgot their password?</b>
+    <p>Type their email and send them the link. They open it and choose a new password. The link works once and expires in 60 minutes. This also works for your own second account.</p>
+    <label class="v18f">Account email<input id="dkResetEmail" type="email" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-dk="resetcode">Make reset link</button></div>
+    ${DK.reset ? `<p class="pos">Reset link for ${esc(DK.reset.email)}, shown only now: <button type="button" class="v18btn pri" data-v118copy="${esc(DK.reset.link)}">Copy link</button><br><code style="word-break:break-all">${esc(DK.reset.link)}</code></p>` : ''}</div></section>`;
       }
       D.addEventListener('click', async e => {
         const b = e.target.closest && e.target.closest('[data-dk]'); if (!b) return; const a = b.dataset.dk, val = id => ((D.getElementById(id) || {}).value || '').trim();
@@ -42734,9 +42802,9 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
           await dkApi('/auth/invites/' + encodeURIComponent(b.dataset.id), 'DELETE'); DK.at = 0; await dkLoad(true); redraw();
         } else if (a === 'resetcode') {
           const email = val('dkResetEmail');
-          if (!email) { DK.msg = { k: 'bad', t: "Type your friend's email first." }; redraw(); return; }
+          if (!email) { DK.msg = { k: 'bad', t: 'Type the account email first.' }; redraw(); return; }
           const r = await dkApi('/auth/reset-codes', 'POST', { email });
-          DK.reset = r.ok ? { code: r.j.code, email: r.j.email } : null; DK.msg = r.ok ? null : { k: 'bad', t: r.j.error || 'Could not make the reset code' }; redraw();
+          DK.reset = r.ok ? { email: r.j.email, link: location.origin + '/#reset=' + encodeURIComponent(r.j.code) + '&email=' + encodeURIComponent(r.j.email) } : null; DK.msg = r.ok ? null : { k: 'bad', t: r.j.error || 'Could not make the reset link' }; redraw();
         }
       });
       /* Stop alarm and hard exit settings */
@@ -47702,7 +47770,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const axId = W.__v138Axis ? W.__v138Axis() : null, axX = axId && lanes.some(l => l.id === axId) ? 24 : 0;
         // v150: ATM IV gets 2.2 lane shares, Speed vs IV and ADX 1.4, every other lane one; the lanes' part of the panel
         // grows with the extra shares (33 % at equal shares, at most 48 %), the candles take the rest
-        const wt = l => l.id === 'v138Iv' ? (phone ? 3 : 2.2) : l.id === 'v151Risk' ? 3.2 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
+        const wt = l => l.id === 'v138Iv' ? (phone ? 3 : 2.2) : l.id === 'v151Risk' || l.id === 'v153Pulse' ? 3.2 : l.id === 'cvLane' ? 1.4 : 1, ADXW = 1.4, nW = lanes.reduce((n, l) => n + wt(l), 0) + (adxOn ? ADXW : 0);
         const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.5 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
@@ -52426,28 +52494,43 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         }
         if (k === 'pulse') {   // Strangle Pulse: risk lines on ONE right axis (0 calm = green sell zone at the bottom, 100 = red no-sell zone at the top); no left axis, so the plot lines up with the BTC chart
           const FIX = { autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) };
-          o.b = Ln('#E3AE45', 1.6, pf(0)); o.c = Ln('#4C9BE8', 1.6, pf(0)); o.d = Ln('#8B5CF6', 1.6, pf(0)); o.f = Ln('#EC4899', 1.6, pf(0)); o.a = Ln('#0f172a', 3, pf(0));
-          for (const s of [o.b, o.c, o.d, o.f, o.a]) s.applyOptions({ lineType: 2, lastValueVisible: false, crosshairMarkerVisible: false, ...FIX });
-          o.a.applyOptions({ lastValueVisible: true, crosshairMarkerVisible: true });
-          if (!D.getElementById('v153Css')) { const st0 = D.createElement('style'); st0.id = 'v153Css'; st0.textContent = '#v153Pulse .v8l{white-space:normal;line-height:1.25}@media (max-width:760px){#v153Pulse .v8l .pu-x{display:none}#v153Pulse .v8l{font-size:11px;gap:2px 8px}}'; D.head.appendChild(st0); }
-          o.pd = { sell: 70, caution: 45, marks: [] };
+          o.pd = { sell: 70, caution: 45, marks: [], at: new Map(), now: null, show: puShow() };
+          // every axis label uses this one format. Automatic ticks fall on round numbers of the display scale, where a true value would look odd, so they stay blank; the zone limits and the line labels never land on one.
+          const real = { type: 'custom', formatter: v => { const r = v / 2.5; return v > 0 && v < 100 && Math.abs(r - Math.round(r)) < 1e-6 ? '' : String(Math.round(puToReal(o, v))); }, minMove: 0.01 };
+          o.car.applyOptions({ priceFormat: real, ...FIX });   // the carrier always has data, so the 0 to 100 scale holds whichever lines are hidden
+          ch.priceScale('right').applyOptions({ scaleMargins: { top: 0.03, bottom: 0.03 } });
+          o.b = Ln(PU_COL.call, 2, real); o.c = Ln(PU_COL.put, 2, real); o.d = Ln(PU_COL.fl, 2, real); o.f = Ln(PU_COL.fs, 2, real); o.a = Ln(puRiskCol(), 3, real);
+          for (const l of PU_LINES) { const s = o[l.s]; s.applyOptions({ lineType: 0, lineStyle: l.k === 'risk' ? 0 : 2, title: l.name, lastValueVisible: true, crosshairMarkerVisible: l.k === 'risk', visible: !!o.pd.show[l.k], ...FIX }); }
+          if (!D.getElementById('v153Css')) { const st0 = D.createElement('style'); st0.id = 'v153Css'; st0.textContent = PU_CSS; D.head.appendChild(st0); }
           o.prim = new Prim(sc => {
             const c = sc.context, vr = sc.verticalPixelRatio, hr = sc.horizontalPixelRatio, w = sc.bitmapSize.width, h = sc.bitmapSize.height, P = o.pd;
             const Y = v => { const y = o.a.priceToCoordinate(v); return y == null ? null : y * vr; };
-            const cut1 = 100 - P.sell, cut2 = 100 - P.caution;   // risk = 100 - confidence: green 0..cut1, amber cut1..cut2, red cut2..100
-            const ys = [Y(0), Y(cut1), Y(cut2), Y(100)]; if (ys.some(v => v == null)) return;
+            const ys = [Y(0), Y(100 / 3), Y(200 / 3), Y(100)]; if (ys.some(v => v == null)) return;   // risk = 100 - confidence: three equal bands, see puToScreen
             const band = (a, b, col) => { c.fillStyle = col; c.fillRect(0, Math.min(a, b), w, Math.abs(b - a)); };
-            band(ys[0], ys[1], 'rgba(34,160,107,0.13)'); band(ys[1], ys[2], 'rgba(227,174,69,0.12)'); band(ys[2], ys[3], 'rgba(224,82,82,0.12)');
-            c.save(); c.font = 'bold ' + (9 * hr) + 'px sans-serif'; c.textBaseline = 'middle';
-            c.fillStyle = 'rgba(21,128,61,0.75)'; c.fillText('SELL ZONE', 6 * hr, (ys[0] + ys[1]) / 2);
-            c.fillStyle = 'rgba(180,120,20,0.75)'; c.fillText('CAUTION', 6 * hr, (ys[1] + ys[2]) / 2);
-            c.fillStyle = 'rgba(185,28,28,0.75)'; c.fillText('NO SELL', 6 * hr, (ys[2] + ys[3]) / 2);
-            c.setLineDash([4 * hr, 3 * hr]); c.lineWidth = Math.max(1, hr); c.textBaseline = 'alphabetic';
+            band(ys[0], ys[1], 'rgba(34,160,107,0.16)'); band(ys[1], ys[2], 'rgba(227,174,69,0.16)'); band(ys[2], ys[3], 'rgba(224,82,82,0.15)');
+            const divider = (y, col, px) => { const th = Math.max(1, Math.round(px * vr)); c.fillStyle = col; c.fillRect(0, Math.round(y - th / 2), w, th); };
+            divider(ys[1], '#22A06B', 2); divider(ys[2], '#E05252', 2); divider(ys[3], 'rgba(224,82,82,0.55)', 1); divider(ys[0], 'rgba(34,160,107,0.55)', 1);
+            c.save(); c.font = '700 ' + (10 * hr) + 'px Inter, sans-serif'; c.textBaseline = 'middle'; c.textAlign = 'right'; const zx = w - 90 * hr;
+            c.fillStyle = 'rgba(34,160,107,0.85)'; c.fillText('SELL ZONE', zx, (ys[0] + ys[1]) / 2);
+            c.fillStyle = 'rgba(202,138,4,0.9)'; c.fillText('CAUTION', zx, (ys[1] + ys[2]) / 2);
+            c.fillStyle = 'rgba(224,82,82,0.85)'; c.fillText('NO SELL', zx, (ys[2] + ys[3]) / 2);
+            c.textAlign = 'left'; c.setLineDash([4 * hr, 3 * hr]); c.lineWidth = Math.max(1, hr); c.textBaseline = 'alphabetic';
             for (const m of P.marks) { const x = o.ch.timeScale().timeToCoordinate(m.time); if (x == null) continue; c.strokeStyle = m.color; c.beginPath(); c.moveTo(x * hr, 0); c.lineTo(x * hr, h); c.stroke(); }
             c.restore();
           }, 'bottom');
           o.a.attachPrimitive(o.prim);
-          box.addEventListener('click', e => { if (e.target.closest('.v8l')) { e.stopPropagation(); pulsePop(o); } });
+          box.addEventListener('click', e => {
+            const key = e.target.closest('[data-pu]');
+            if (key) { e.stopPropagation(); puToggle(o, key.dataset.pu); return; }
+            if (e.target.closest('[data-pu-info]')) { e.stopPropagation(); puInfoOpen(o); return; }
+            if (e.target.closest('.v8l')) { e.stopPropagation(); pulsePop(o); }
+          });
+          src.subscribeCrosshairMove(p => {
+            if (!o.box.isConnected || o.box.classList.contains('v127-off')) return;
+            const v = p && p.time != null ? o.pd.at.get(p.time) : null;
+            try { if (v && v.risk != null) o.ch.setCrosshairPosition(puToScreen(o, v.risk), p.time, o.a); else o.ch.clearCrosshairPosition(); } catch (e) { }
+            puValues(o, v || o.pd.now);
+          });
         }
         if ((k === 'day' || k === 'crush') && W.v145x) try { W.v145x.lane(k, o, { H, Ln, pf }); } catch (e) { console.warn('v145 lane', e); }
         if (k === 'fut' && W.v146f) try { W.v146f.lane(o, { H, Ln, pf }); } catch (e) { console.warn('v146 lane', e); }
@@ -52461,6 +52544,127 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       function st(o, s) { if (o.box.dataset.st !== s) o.box.dataset.st = s; }
       function sync(o) { try { const pw = W.paChart().priceScale('right').width(); if (pw) o.ch.applyOptions({ rightPriceScale: { minimumWidth: Math.max(78, pw) } }); const r = W.paChart().timeScale().getVisibleLogicalRange(); if (r) o.ch.timeScale().setVisibleLogicalRange(r); } catch (e) { } }
       const blank = (B, i) => ({ time: B.b[i].time });
+      /* Short Strangle lane: which line is which, and which are shown. Risk, Call and Put by default; the futures lines are one tap away. */
+      const PU_COL = { call: '#D9920A', put: '#2F7CC0', fl: '#8B5CF6', fs: '#EC4899' };
+      /* Display scale only: each zone gets a third of the height, so a narrow zone is still readable. Real values and the limits are unchanged. */
+      const puCuts = o => [100 - o.pd.sell, 100 - o.pd.caution];
+      const puPiece = (v, xs, ys) => { for (let i = 1; i < xs.length; i++) if (v <= xs[i] || i === xs.length - 1) return ys[i - 1] + (v - xs[i - 1]) * (ys[i] - ys[i - 1]) / (xs[i] - xs[i - 1]); return v; };
+      const puToScreen = (o, v) => { const [a, b] = puCuts(o); return puPiece(v, [0, a, b, 100], [0, 100 / 3, 200 / 3, 100]); };
+      const puToReal = (o, v) => { const [a, b] = puCuts(o); return puPiece(v, [0, 100 / 3, 200 / 3, 100], [0, a, b, 100]); };
+      const PU_LINES = [{ k: 'risk', s: 'a', name: 'Risk' }, { k: 'call', s: 'b', name: 'Call' }, { k: 'put', s: 'c', name: 'Put' }, { k: 'fl', s: 'd', name: 'Fut long' }, { k: 'fs', s: 'f', name: 'Fut short' }];
+      const puRiskCol = () => (D.documentElement.dataset.theme === 'light' ? '#0f172a' : '#E6EAF0');
+      const puColOf = k => (k === 'risk' ? puRiskCol() : PU_COL[k]);
+      function puShow() {
+        const dflt = { risk: true, call: false, put: false, fl: false, fs: false };   // the zones judge Risk only, so it stands alone until asked
+        try { return Object.assign(dflt, JSON.parse(localStorage.getItem('v153_lines2') || '{}')); } catch (e) { return dflt; }
+      }
+      function puToggle(o, k) {
+        const l = PU_LINES.find(x => x.k === k); if (!l) return;
+        o.pd.show[k] = !o.pd.show[k];
+        try { o[l.s].applyOptions({ visible: o.pd.show[k] }); localStorage.setItem('v153_lines2', JSON.stringify(o.pd.show)); } catch (e) { }
+        paint('pulse');
+      }
+      /* Momentum keeps tracking in the background; it is only shown in the i panel. Display only, the verdict does not read it. */
+      const PU_WORD = { up: 'Rising', down: 'Falling', flat: 'Flat' };
+      const PU_ARW = { up: '▲', down: '▼', flat: '▬' };
+      function puCell(m) {
+        if (!m || m.rsi == null) return '<td class="pu-muted">' + (m ? Math.min(m.samples, m.needed) : 0) + '/' + (m ? m.needed : 15) + '</td>';
+        const trend = m.adx == null ? '' : ' · ' + Math.round(m.adx);
+        return '<td>' + (PU_ARW[m.direction] || '') + ' ' + Math.round(m.rsi) + trend + '</td>';
+      }
+      function puTrend(m) {
+        if (!m || m.rsi == null) return 'Warming up';
+        if (m.adx == null) return PU_WORD[m.direction] || 'Flat';
+        if (m.adx < 20) return 'No trend';
+        return (m.adx >= 25 ? 'Strong ' : '') + (PU_WORD[m.direction] || 'Flat').toLowerCase();
+      }
+      function puInfoHtml(o) {
+        const m = o.pd.mo || {}, c = m.call || {}, p = m.put || {}, l = m.futLong || {}, s = m.futShort || {};
+        const row = (name, x, cells) => '<tr><td>' + name + '</td><td>' + esc(puTrend(x)) + '</td>' + cells + '</tr>';
+        const sellBelow = 100 - o.pd.sell, noSellFrom = 100 - o.pd.caution;
+        return '<header><b>Short Strangle: how to use it</b><button type="button" class="pu-x" data-pu-close aria-label="Close">×</button></header>' +
+          '<section><h4>Momentum now</h4><table><thead><tr><th>Line</th><th>Trend</th><th>Line</th><th>Delta</th><th>Gamma</th><th>Theta</th><th>Vega</th><th>Price</th></tr></thead><tbody>' +
+          row('Call', c.line, puCell(c.line) + puCell(c.delta) + puCell(c.gamma) + puCell(c.theta) + puCell(c.vega) + '<td>—</td>') +
+          row('Put', p.line, puCell(p.line) + puCell(p.delta) + puCell(p.gamma) + puCell(p.theta) + puCell(p.vega) + '<td>—</td>') +
+          row('Fut long', l.line, puCell(l.line) + '<td colspan="4" class="pu-muted">no option greeks</td>' + puCell(l.price)) +
+          row('Fut short', s.line, puCell(s.line) + '<td colspan="4" class="pu-muted">no option greeks</td>' + puCell(s.price)) +
+          '</tbody></table><p class="pu-muted">Each cell shows direction, RSI, then ADX (▲ 62 · 31). 3/15 means it is still collecting: RSI needs 15 samples and ADX needs 27, one sample every 15 minutes. Momentum is tracked in the background and is not used in the verdict, because it has not been backtested.</p></section>' +
+          '<section><h4>Start here</h4><ul><li>Read the coloured word in the header first: <b>SELL NOW</b>, <b>WAIT</b>, <b>AVOID</b> or <b>NO DATA</b>. It is the decision; everything else explains it.</li><li>The reason beside it says what is holding the verdict back.</li><li>Tap the header for the full details: why, what would flip it, strikes, premium, stops and the regime gate.</li></ul></section>' +
+          '<section><h4>The three zones</h4><p><b>The zones judge the thick Risk line only.</b> Risk runs from 0 (calm) to 100 (bad for a seller). The bold lines are the borders, and the axis shows their true values. The three zones are drawn at equal height so each is easy to read; on the real 0 to 100 scale they are not equal.</p><ul>' +
+          '<li><i class="pu-zn" style="background:#22A06B"></i><b>SELL ZONE, Risk under ' + sellBelow + '.</b> SELL NOW also needs the regime gate to pass; without it the verdict stays WAIT.</li>' +
+          '<li><i class="pu-zn" style="background:#E3AE45"></i><b>CAUTION, Risk ' + sellBelow + ' to ' + noSellFrom + '.</b> WAIT. Do not enter yet.</li>' +
+          '<li><i class="pu-zn" style="background:#E05252"></i><b>NO SELL, Risk ' + noSellFrom + ' or more.</b> AVOID.</li></ul>' +
+          '<p>A normal zone change needs two readings in a row on the new side, so one spike does not flip it. NO DATA, a failed regime gate and the AVOID conditions below apply at once. Dashed vertical lines mark each change.</p>' +
+          '<p>These force AVOID whatever the score: a spread too wide on a leg, no valid strikes, futures trending one way, the killer pattern, inverted term structure, or a failed regime gate.</p></section>' +
+          '<section><h4>The lines</h4><ul><li><b>Risk</b> (thick): the overall reading, and the only line the zones and the verdict use. It shows alone by default.</li><li><b>Call / Put:</b> danger to that sold leg. They rise when its IV rises, its decay stalls, its delta and gamma speed up, or buyers take the strike.</li><li><b>Fut long / Fut short:</b> rise only when BTC moves in that direction, and harder when the move is a straight line.</li></ul><p>Tap a name in the header to show or hide its line. The other lines are dashed because they are supporting detail: a dashed line inside a coloured zone does not mean that leg is in that zone. The numbers show the latest value, or the value under your cursor on the BTC chart.</p></section>' +
+          '<section><h4>Reading momentum</h4><ul><li><b>RSI</b> above 50 means the value has been rising recently, below 50 falling. Above 70 or under 30 is a stretched move.</li><li><b>ADX</b> is how strong the trend is, not its direction: under 20 no trend, 25 or more strong.</li><li><b>Delta rising:</b> the leg is moving closer to the money.</li><li><b>Gamma rising:</b> delta will change faster on the next move.</li><li><b>Theta rising:</b> time decay is speeding up, which helps a seller.</li><li><b>Vega rising:</b> the leg is more exposed to a rise in IV.</li><li><b>Price:</b> futures momentum. Fut short mirrors Fut long.</li></ul><p>Greek momentum is measured inside one contract, so a change of strike does not count as a move.</p></section>' +
+          '<section><h4>Keep in mind</h4><ul><li>A sample is taken every 15 minutes, so these lines move slower than candles. The header shows how old the latest sample is.</li><li>The score is not calibrated yet. Treat the Risk number as a guide, not a probability.</li><li>On NO DATA, do not trade.</li><li>The day rule in the desk header still applies.</li></ul></section>';
+      }
+      function puInfoClose() { const el = D.getElementById('v153Info'); if (el) el.remove(); D.removeEventListener('keydown', puInfoKey); }
+      function puInfoKey(e) { if (e.key === 'Escape') puInfoClose(); }
+      function puInfoOpen(o) {
+        if (D.getElementById('v153Info')) { puInfoClose(); return; }
+        const el = D.createElement('div'); el.id = 'v153Info'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'How to use the Short Strangle indicator'); el.innerHTML = puInfoHtml(o);
+        el.addEventListener('click', e => { if (e.target.closest('[data-pu-close]')) puInfoClose(); });
+        D.body.appendChild(el); D.addEventListener('keydown', puInfoKey);
+      }
+      /* writes the numbers into the key: the latest values, or the values under the cursor on the BTC chart */
+      function puValues(o, v) {
+        for (const l of PU_LINES) {
+          const el = o.leg.querySelector('[data-pu="' + l.k + '"] .pu-v'); if (!el) continue;
+          const n = v ? v[l.k] : null; el.textContent = n == null ? '—' : String(Math.round(n));
+        }
+      }
+      const PU_CSS = `
+        #v153Pulse.v138-lane { min-height: 176px !important; }
+        body #paneG>#v153Pulse.v138-lane, body.v138 #paneG>#v153Pulse.v138-lane, body.v143 #paneG>#v153Pulse.v138-lane { margin-top: 8px !important; border-radius: 10px !important; box-shadow: none !important; overflow: hidden; }
+        #v153Pulse::after { content: ''; position: absolute; inset: 0; z-index: 8; pointer-events: none; box-sizing: border-box; border: 1px solid var(--line2, #cbd5e1); border-top: 3px solid #8FA3B5; border-radius: 10px; }
+        #v153Pulse[data-st="g"]::after { border-top-color: #22A06B; }
+        #v153Pulse[data-st="a"]::after { border-top-color: #E3AE45; }
+        #v153Pulse[data-st="r"]::after { border-top-color: #E05252; }
+        body #paneG>#v153Pulse.v138-lane .v8c { top: 42px !important; }
+        body #paneG>#v153Pulse.v138-lane .v8l { position: absolute; top: 0 !important; left: 0 !important; right: 0; box-sizing: border-box; height: 42px; max-width: none; display: flex !important; flex-wrap: nowrap; align-items: center; gap: 4px 10px; overflow: hidden; white-space: nowrap; line-height: 1.3; pointer-events: auto; cursor: pointer; padding: 5px 12px 2px; border-radius: 0; border-bottom: 1px solid var(--line2, #e2e8f0); background: var(--panel, #fff); box-shadow: none; font: 500 12px var(--font, Inter, sans-serif); color: var(--text, #0f172a); }
+        #v153Pulse .pu-i { width: 22px; height: 22px; flex: 0 0 22px; margin-left: 2px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--line2, #d0d5dd); border-radius: 50%; background: transparent; color: var(--text, #0f172a); font: italic 700 13px Georgia, serif; cursor: pointer; }
+        #v153Pulse .pu-i:hover { border-color: #2F7CC0; color: #2F7CC0; }
+        #v153Pulse .pu-i:focus-visible { outline: 2px solid #2F7CC0; outline-offset: 1px; }
+        #v153Info { position: fixed; z-index: 9500; top: 50%; left: 50%; transform: translate(-50%, -50%); box-sizing: border-box; width: min(760px, 94vw); max-height: 86vh; overflow: auto; border: 1px solid var(--line2, #cbd5e1); border-radius: 12px; background: var(--panel, #fff); color: var(--text, #0f172a); box-shadow: 0 18px 50px rgba(0, 0, 0, .35); font: 400 13px/1.5 var(--font, Inter, sans-serif); }
+        #v153Info header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--line2, #e2e8f0); background: var(--panel, #fff); }
+        #v153Info header b { font-size: 15px; }
+        #v153Info .pu-x { width: 28px; height: 28px; border: 0; border-radius: 6px; background: transparent; color: var(--text, #0f172a); font-size: 18px; cursor: pointer; }
+        #v153Info .pu-x:hover { background: var(--panel2, #f1f5f9); }
+        #v153Info section { padding: 12px 16px; border-bottom: 1px solid var(--line2, #e2e8f0); }
+        #v153Info section:last-child { border-bottom: 0; }
+        #v153Info h4 { margin: 0 0 6px; font-size: 13px; }
+        #v153Info p { margin: 4px 0; }
+        #v153Info ul { margin: 4px 0; padding-left: 18px; }
+        #v153Info li { margin: 2px 0; }
+        #v153Info table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        #v153Info th, #v153Info td { padding: 5px 6px; border-bottom: 1px solid var(--line2, #e2e8f0); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        #v153Info th:first-child, #v153Info td:first-child { text-align: left; font-weight: 700; }
+        #v153Info th { color: var(--muted, #667085); font-weight: 600; font-size: 11px; }
+        #v153Info .pu-zn { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 2px; }
+        #v153Info .pu-muted { color: var(--muted, #667085); font-size: 12px; }
+        #v153Pulse .pu-empty { position: absolute; left: 0; right: 88px; top: 42px; bottom: 28px; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; pointer-events: none; text-align: center; color: var(--muted, #667085); font: 500 12px var(--font, Inter, sans-serif); }
+        #v153Pulse .pu-empty b { color: var(--text, #0f172a); font-size: 13px; }
+        #v153Pulse .pu-empty[hidden] { display: none; }
+        body.v139 #paneG>#v153Pulse.v138-lane .v8l>span, body #paneG>#v153Pulse.v138-lane .v8l>span { display: inline-flex !important; align-items: center; gap: 6px; }
+        #v153Pulse .pu-pill { color: #fff; font-weight: 800; padding: 2px 10px; border-radius: 5px; font-size: 13px; letter-spacing: .02em; }
+        #v153Pulse .pu-act { font-weight: 700; font-size: 13px; }
+        #v153Pulse .pu-why, #v153Pulse .pu-age { color: var(--muted, #667085); font-weight: 500; }
+        #v153Pulse .pu-keys { flex-wrap: wrap; gap: 4px !important; }
+        #v153Pulse .pu-k { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border: 1px solid var(--line2, #d0d5dd); border-radius: 999px; background: transparent; color: var(--text, #0f172a); font: 600 11.5px var(--font, Inter, sans-serif); cursor: pointer; }
+        #v153Pulse .pu-k:hover { border-color: var(--muted, #667085); }
+        #v153Pulse .pu-k:focus-visible { outline: 2px solid #2F7CC0; outline-offset: 1px; }
+        #v153Pulse .pu-k[aria-pressed="false"] { opacity: .5; }
+        #v153Pulse .pu-k[aria-pressed="false"] .pu-sw { background: transparent !important; }
+        #v153Pulse .pu-sw { width: 14px; height: 3px; border-radius: 2px; }
+        #v153Pulse .pu-sw.pu-main { height: 4px; }
+        #v153Pulse .pu-v { font-variant-numeric: tabular-nums; font-weight: 800; }
+        #v153Pop { background: var(--panel, #fff) !important; color: var(--text, #0f172a) !important; border-color: var(--line2, #cbd5e1) !important; }
+        #v153Pop hr { border-top-color: var(--line2, #e2e8f0) !important; }
+        @media (max-width: 1100px) { #v153Pulse .pu-age, #v153Pulse .pu-why { display: none !important; } }
+        @media (max-width: 760px) { #v153Pulse.v138-lane { height: 268px !important; min-height: 268px !important; } body #paneG>#v153Pulse.v138-lane .v8l { height: 78px; flex-wrap: wrap; white-space: normal; align-content: center; } body #paneG>#v153Pulse.v138-lane .v8c { top: 78px !important; } #v153Pulse .pu-empty { top: 78px; right: 78px; } }
+      `;
       /* Strangle Pulse data: read-only, refreshed every 60 s while the lane is ticked; the slot follows the desk's expiry selector (0 Current, 1 Next, 2 N2N; auto = N2N) */
       const PU = { s: null, slot: null, err: null, at: 0, busy: false };
       const puSlot = () => { try { const v = localStorage.getItem('v89_slot'); return v === '0' ? 'current' : v === '1' ? 'next' : 'n2n'; } catch (e) { return 'n2n'; } };
@@ -52484,7 +52688,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const f = (v, n) => (v == null ? '—' : Number(v).toFixed(n == null ? 0 : n));
         const sg = (v, n) => (v == null ? '—' : (v > 0 ? '+' : '') + Number(v).toFixed(n));
         const p = D.createElement('div'); p.id = 'v153Pop'; const r = o.box.getBoundingClientRect();
-        p.style.cssText = 'position:fixed;z-index:9000;max-width:min(330px,92vw);max-height:70vh;overflow:auto;background:var(--chart-bg,#fff);color:#0f172a;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.45 Inter,sans-serif;padding:8px 10px;left:' + Math.max(8, Math.min(r.left + 8, innerWidth - 340)) + 'px;top:' + Math.max(8, r.top - 6) + 'px;transform:translateY(-100%)';
+        p.style.cssText = 'position:fixed;z-index:9000;max-width:min(330px,92vw);max-height:70vh;overflow:auto;border:1px solid;border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.18);font:12px/1.45 Inter,sans-serif;padding:8px 10px;left:' + Math.max(8, Math.min(r.left + 8, innerWidth - 340)) + 'px;top:' + Math.max(8, r.top - 6) + 'px;transform:translateY(-100%)';
         const li = a => (a || []).map(x => '<div>• ' + esc(x) + '</div>').join('') || '<div>—</div>';
         const rl = o.pd && o.pd.rl, sp = c.speeds, pl = o.pd && o.pd.pl;
         p.innerHTML = '<b>' + esc(c.verdict) + '</b> · ' + (c.confidence == null ? 'no reading' : 'risk ' + f(100 - c.confidence) + ' of 100 (uncalibrated)') + '<hr style="margin:4px 0;border:0;border-top:1px solid #e2e8f0">'
@@ -52850,7 +53054,16 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const P = pulseGet(), d = P.s, card = d && d.card;
           const barOf = t => { if (!B.n || t0ms(B.b[0]) > t) return -1; let lo = 0, hi = B.n - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (t0ms(B.b[m]) <= t) lo = m; else hi = m - 1; } return t < t0ms(B.b[lo]) + B.tf ? lo : -1; };
           // one value per chart bar, straight-joined between the 15-minute samples so every line is unbroken and sits on the BTC chart's own time axis
-          const put = (series, list, get) => { const a = new Array(B.n).fill(null); for (const p of list || []) { const v = get(p); const i = v == null ? -1 : barOf(p.t); if (i >= 0) a[i] = v; } let prev = -1; for (let i = 0; i < B.n; i++) { if (a[i] == null) continue; if (prev >= 0 && i - prev > 1) for (let j = prev + 1; j < i; j++) a[j] = a[prev] + (a[i] - a[prev]) * (j - prev) / (i - prev); prev = i; } series.setData(B.b.flatMap((b, i) => (a[i] == null ? [] : [{ time: b.time, value: a[i] }]))); return a; };
+          const put = (series, list, get) => { const a = new Array(B.n).fill(null); for (const p of list || []) { const v = get(p); const i = v == null ? -1 : barOf(p.t); if (i >= 0) a[i] = v; } let prev = -1; for (let i = 0; i < B.n; i++) { if (a[i] == null) continue; if (prev >= 0 && i - prev > 1) for (let j = prev + 1; j < i; j++) a[j] = a[prev] + (a[i] - a[prev]) * (j - prev) / (i - prev); prev = i; } series.setData(B.b.flatMap((b, i) => (a[i] == null ? [] : [{ time: b.time, value: puToScreen(o, a[i]) }]))); return a; };
+          if (d && d.zones) { o.pd.sell = d.zones.sellMin; o.pd.caution = d.zones.cautionMin; }
+          { // the axis shows the true limits at the zone borders; no other grid lines compete with them
+            const [c1, c2] = puCuts(o), key = c1 + '|' + c2;
+            o.ch.applyOptions({ grid: { horzLines: { visible: false } } });
+            if (o.pd.axisKey !== key) {
+              o.pd.axisKey = key; for (const pl of o.pd.axis || []) o.a.removePriceLine(pl);
+              o.pd.axis = [[0, '#8FA3B5'], [c1, '#22A06B'], [c2, '#E05252'], [100, '#8FA3B5']].map(([v, color]) => o.a.createPriceLine({ price: puToScreen(o, v), color, lineVisible: false, axisLabelVisible: true, title: '' }));
+            }
+          }
           const pts = d && d.points;
           const ar = put(o.a, pts, p => (p.c == null ? null : 100 - p.c)), ac = put(o.b, pts, p => p.call), ap = put(o.c, pts, p => p.put), af = put(o.d, pts, p => p.fl), as = put(o.f, pts, p => p.fs);
           const ZC = { sell: '#22A06B', caution: '#E3AE45', avoid: '#E05252', nodata: '#8FA3B5' }, ZL = { sell: 'SELL', caution: 'WAIT', avoid: 'AVOID', nodata: 'NO DATA' };
@@ -52860,11 +53073,25 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const n0 = v => (v == null ? '—' : Math.round(v));
           const lp = d && d.pnl && d.pnl.length ? d.pnl[d.pnl.length - 1] : null;
           o.pd.pl = lp; o.pd.rl = { risk: last(ar), call: last(ac), put: last(ap), fl: last(af), fs: last(as) };
+          o.pd.now = o.pd.rl; o.pd.at = new Map(); B.b.forEach((b, i) => { if (ar[i] != null || ac[i] != null || ap[i] != null) o.pd.at.set(b.time, { risk: ar[i], call: ac[i], put: ap[i], fl: af[i], fs: as[i] }); });
+          { const rc = puRiskCol(); if (o.pd.rc !== rc) { o.pd.rc = rc; o.a.applyOptions({ color: rc }); } }
           const z = card ? card.zone : 'nodata'; st(o, z === 'sell' ? 'g' : z === 'avoid' ? 'r' : 'a');
-          const verdict = card ? card.verdict : P.err ? 'OFFLINE' : 'LOADING';
+          const verdict = card ? card.verdict : P.err ? 'OFFLINE' : d ? 'NO DATA' : 'LOADING';
           const ACT = { sell: 'Sell the strangle now', caution: 'Wait: not ready yet', avoid: 'Do not sell now', nodata: 'No reliable data: do not trade' };
           const reason = !card ? '' : z === 'sell' ? 'every check passes' : (card.why && card.why[0]) || '';
-          setLeg(o, `<span style="background:${ZC[z]};color:#fff;font-weight:800;padding:1px 9px;border-radius:4px;font-size:1.2em;letter-spacing:.02em">${esc(verdict)}</span><b style="color:${ZC[z]}">${esc(ACT[z] || verdict)}</b>${reason ? `<span class="m">because ${esc(reason)}</span>` : ''}${card && card.confidence != null ? `<span>Risk ${n0(100 - card.confidence)}</span>` : ''}<span class="pu-x"><i style="color:#E3AE45;font-style:normal">Call ${n0(last(ac))}</i> <i style="color:#4C9BE8;font-style:normal">Put ${n0(last(ap))}</i> <i style="color:#8B5CF6;font-style:normal">Fut long ${n0(last(af))}</i> <i style="color:#EC4899;font-style:normal">Fut short ${n0(last(as))}</i></span>${P.err && !card ? `<span class="m">${esc(P.err)}</span>` : '<span class="m">tap for details</span>'}`);
+          const lastT = pts && pts.length ? pts[pts.length - 1].t : null;
+          const age = lastT == null ? '' : Math.max(0, Math.round((Date.now() - lastT) / MIN));
+          const keys = PU_LINES.map(l => `<button type="button" class="pu-k" data-pu="${l.k}" aria-pressed="${o.pd.show[l.k] ? 'true' : 'false'}" title="${o.pd.show[l.k] ? 'Hide' : 'Show'} the ${l.name} line"><i class="pu-sw${l.k === 'risk' ? ' pu-main' : ''}" style="background:${puColOf(l.k)}"></i>${l.name} <b class="pu-v">—</b></button>`).join('');
+          setLeg(o, `<span class="pu-pill" style="background:${ZC[z]}">${esc(verdict)}</span><span class="pu-act" style="color:${ZC[z]}">${esc(ACT[z] || verdict)}</span>${reason ? `<span class="pu-why">because ${esc(reason)}</span>` : ''}<span class="pu-keys">${keys}</span>${age === '' ? '' : `<span class="pu-age">sample ${age} min ago · details</span>`}<button type="button" class="pu-i" data-pu-info aria-label="How to use this indicator" title="How to use this indicator, and live momentum">i</button>${P.err && !card ? `<span class="pu-why">${esc(P.err)}</span>` : ''}`);
+          puValues(o, o.pd.now);
+          o.pd.mo = d && d.momentum;
+          { const info = D.getElementById('v153Info'); if (info) { const top = info.scrollTop; info.innerHTML = puInfoHtml(o); info.scrollTop = top; } }
+          {
+            let em = o.box.querySelector('.pu-empty'); if (!em) { em = D.createElement('div'); em.className = 'pu-empty'; o.box.appendChild(em); }
+            const hasLines = !!(pts && pts.some(p => p.c != null || p.call != null || p.put != null));
+            em.hidden = hasLines;
+            if (!hasLines) { const msg = P.err ? ['Short Strangle is offline', P.err] : d ? ['Collecting readings', 'Lines appear after the first samples are stored. Samples are taken every 15 minutes.'] : ['Loading…', '']; const html = '<b>' + esc(msg[0]) + '</b><span>' + esc(msg[1]) + '</span>'; if (em.innerHTML !== html) em.innerHTML = html; }
+          }
           try { const key = B.n + '|' + B.b[0].time + '|' + B.b[B.n - 1].time; if (o.carK !== key) { o.carK = key; o.car.setData(B.b.map(b => ({ time: b.time, value: 0 }))); } } catch (e) { }
           try { o.prim && o.prim.req(); } catch (e) { }
           S.vals[k] = vals; sync(o); return;
@@ -61445,8 +61672,10 @@ document.addEventListener('click', function(e) {
         if (!newPassword) throw new Error('Please enter a new password.');
         if (newPassword.length < 10) throw new Error('The new password needs at least 10 characters.');
         if (confirmPw && newPassword !== confirmPw) throw new Error('Passwords do not match. Please re-enter.');
-        const email = v('daEmail');
-        j = await post('reset-password', { email, newPassword }); // instant reset: signs in at once
+        const email = v('daEmail'), code = v('daResetCode');
+        if (!email) throw new Error('Please enter your email.');
+        if (!code) throw new Error('Please enter the reset code from the desk owner.');
+        j = await post('reset-password', { email, code, newPassword }); // a valid code signs the person straight in
       } else {
         const email = v('daEmail'), password = (D.getElementById('daPw') || {}).value || '';
         if (!email) throw new Error('Please enter your email.');
@@ -61493,19 +61722,20 @@ document.addEventListener('click', function(e) {
   function paint() {
     let ov = D.getElementById('daOv');
     if (!ov) { ov = D.createElement('div'); ov.id = 'daOv'; ov.hidden = true; D.body.appendChild(ov); }
-    const keep = ['daEmail', 'daPw', 'daPwConfirm', 'daName', 'daCode'].map(id => [id, (D.getElementById(id) || {}).value]);
+    const keep = ['daEmail', 'daPw', 'daPwConfirm', 'daName', 'daCode', 'daResetCode'].map(id => [id, (D.getElementById(id) || {}).value]);
     const up = mode === 'up', rs = mode === 'reset';
     ov.innerHTML = '<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : rs ? 'Reset password' : 'Sign in') + '</h2>' +
       (rs ? '' : '<div class="daSeg"><button type="button" data-da-mode="in" class="' + (up ? '' : 'on') + '">Sign in</button><button type="button" data-da-mode="up" class="' + (up ? 'on' : '') + '">Create account</button></div>') +
-      (rs ? '<div class="daNote" style="margin:4px 0 10px;padding:8px 10px;background:rgba(47,124,192,.08);border-left:3px solid #2F7CC0;border-radius:4px;color:var(--text,#111);font-size:12px;line-height:1.4"><b>⚡ Instant Reset:</b> Enter your registered email (or leave empty for desk owner) and choose a new password. You will be reset and signed in immediately.</div>' : '') +
+      (rs ? '<div class="daNote" style="margin:4px 0 10px;padding:8px 10px;background:rgba(47,124,192,.08);border-left:3px solid #2F7CC0;border-radius:4px;color:var(--text,#111);font-size:12px;line-height:1.4">Ask the desk owner for a one-time reset code, then enter it here with your email and a new password. Desk owner: sign in with the server password instead.</div>' : '') +
       (up ? '<label>Your name<input id="daName" autocomplete="name" maxlength="60" placeholder="Your name"></label>' : '') +
-      '<label>Email' + (up ? '' : rs ? ' <span style="font-weight:400">(leave empty for desk owner)</span>' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" placeholder="you@example.com (or empty for owner)" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      '<label>Email' + (up || rs ? '' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" placeholder="you@example.com" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      (rs ? '<label>Reset code from the desk owner<input id="daResetCode" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Reset code"></label>' : '') +
       '<label>' + (up ? 'Password (at least 10 characters)' : rs ? 'New password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" placeholder="' + (rs ? 'New password' : 'Password') + '" autocomplete="' + (up || rs ? 'new-password' : 'current-password') + '"></label>' +
       (rs ? '<label>Confirm new password<input id="daPwConfirm" type="password" placeholder="Confirm new password" autocomplete="new-password"></label>' : '') +
       (up ? '<label>Invite code<input id="daCode" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Invite code"></label><div class="daNote">You need an invite code from the person who runs this desk. You get your own Paper Trade account, and you can add your own Delta API key in Settings.</div>' : '') +
       (err ? '<div class="daErr">' + esc(err) + '</div>' : '') +
-      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? '⚡ Reset & Sign In' : 'Sign in') + '</button>' +
-      (rs ? '<button type="button" class="daLink" data-da-mode="in">← Back to sign in</button>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password? (Instant reset)</button>') + '</div>';
+      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? 'Reset and sign in' : 'Sign in') + '</button>' +
+      (rs ? '<button type="button" class="daLink" data-da-mode="in">← Back to sign in</button>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password?</button>') + '</div>';
     for (const [id, val] of keep) { const el = D.getElementById(id); if (el && val) el.value = val; }
   }
 

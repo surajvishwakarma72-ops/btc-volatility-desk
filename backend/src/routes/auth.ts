@@ -175,6 +175,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(401).send({ success: false, error: 'Wrong email or password' });
       }
       void logAudit(pool, u.id, 'login', 'success', ip);
+      if (isV1) loginCooldown.forgetLast(ip); // a correct login does not count, but earlier wrong guesses stay counted
       const token = await sign(reply, { id: u.id, role: u.id === DESK_USER_ID ? 'admin' : u.role, email: u.email });
       reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
       return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
@@ -195,11 +196,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (!ok) {
       void logAudit(pool, DESK_USER_ID, 'login', 'failed', ip);
       if (!hasDbPw && !expected) {
-        return reply.status(503).send({ success: false, error: 'Login not configured on server. Use "Forgot password?" to set an owner password.' });
+        return reply.status(503).send({ success: false, error: 'Login not configured on server. Set DESK_PASSWORD on the server to sign in as the desk owner.' });
       }
       return reply.status(401).send({ success: false, error: 'Wrong password. If you have a friend account, type your email too: only the desk owner leaves the email empty.' });
     }
     void logAudit(pool, DESK_USER_ID, 'login', 'success', ip);
+    if (isV1) loginCooldown.forgetLast(ip);
     const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: owner?.email || 'desk@local' });
     reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
     return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: owner?.email || 'desk@local', displayName: owner?.displayName || 'Desk', role: 'admin' } });
@@ -225,7 +227,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     return reply.status(201).send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
   });
 
-  // Password reset: instant reset (direct email + newPassword) or one-time code from the owner.
+  // Password reset: always needs the one-time code from the owner. Knowing an email is not proof of owning the account.
+  // The owner has no code route: the DESK_PASSWORD server password always signs the owner in.
   fastify.post('/reset-password', { config: { rateLimit: { max: 15, timeWindow: '1 minute' } } }, async (request, reply) => {
     const b = resetBody.safeParse(request.body);
     if (!b.success) return reply.status(400).send({ success: false, error: b.error.issues[0]?.message ?? 'Send your new password (at least 10 characters)' });
@@ -233,41 +236,9 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     await ensureAuthSchema().catch(() => undefined);
 
-    const hasCode = !!code && code !== 'instant';
-
-    // 1. Code-based verification if code was explicitly supplied
-    if (hasCode) {
-      const u = email ? await findUserByEmail(email) : null;
-      const ok = u && u.id !== DESK_USER_ID ? await consumeResetCode(u.id, code) : (await decoyHash(), false);
-      if (!u || !ok) return reply.status(403).send({ success: false, error: 'That reset code is not valid (wrong email, unknown, already used or expired). Ask the desk owner for a new one.' });
-      await setPasswordHash(u.id, await hashPassword(newPassword));
-      const token = await sign(reply, { id: u.id, role: u.role, email: u.email });
-      reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
-      return reply.send({ success: true, token, user: { id: u.id, email: u.email, displayName: u.displayName, role: u.role } });
-    }
-
-    // 2. Instant reset (no code required):
-    const isOwner = !email || email === 'desk@local' || email === 'desk@example.com';
-    if (isOwner) {
-      await setPasswordHash(DESK_USER_ID, await hashPassword(newPassword));
-      const owner = await findUserById(DESK_USER_ID);
-      const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: owner?.email || 'desk@local' });
-      reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
-      return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: owner?.email || 'desk@local', displayName: owner?.displayName || 'Desk', role: 'admin' } });
-    }
-
-    const u = await findUserByEmail(email);
-    if (!u) {
-      return reply.status(404).send({ success: false, error: 'No account has that email. Check the spelling or create an account.' });
-    }
-
-    if (u.id === DESK_USER_ID) {
-      await setPasswordHash(DESK_USER_ID, await hashPassword(newPassword));
-      const token = await sign(reply, { id: DESK_USER_ID, role: 'admin', email: u.email });
-      reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
-      return reply.send({ success: true, token, user: { id: DESK_USER_ID, email: u.email, displayName: u.displayName || 'Desk', role: 'admin' } });
-    }
-
+    const u = email ? await findUserByEmail(email) : null;
+    const ok = code && u && u.id !== DESK_USER_ID ? await consumeResetCode(u.id, code) : (await decoyHash(), false);
+    if (!u || !ok) return reply.status(403).send({ success: false, error: 'That reset code is not valid (wrong email, unknown, already used or expired). Ask the desk owner for a new one.' });
     await setPasswordHash(u.id, await hashPassword(newPassword));
     const token = await sign(reply, { id: u.id, role: u.role, email: u.email });
     reply.header('Set-Cookie', `desk_token=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
