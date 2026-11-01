@@ -40,7 +40,10 @@ export async function ensureFillsSchema(): Promise<void> {
         ALTER TABLE fills ADD COLUMN IF NOT EXISTS vega_pnl numeric;
         ALTER TABLE fills ADD COLUMN IF NOT EXISTS other_pnl numeric;
       `);
-    })();
+    })().catch((e) => {
+      schemaReady = null; // a failed attempt must not be remembered, or one database blip stops fills until a restart
+      throw e;
+    });
   }
   return schemaReady;
 }
