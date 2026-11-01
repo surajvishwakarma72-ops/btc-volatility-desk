@@ -152,28 +152,40 @@ export const DEFAULT_OPTION_FEES: FeeRates = { takerRate: 0.0001, makerRate: 0.0
 export async function fetchOptionFeeRates(symbols: string[]): Promise<Map<string, FeeRates>> {
   const out = new Map<string, FeeRates>();
   try {
-    const j = await getJson<{
-      result?: Array<{
-        symbol: string;
-        taker_commission_rate?: string;
-        maker_commission_rate?: string;
-        contract_value?: string;
-        product_specs?: { premium_commission_rate?: number };
-      }>;
-    }>('/v2/products?contract_types=call_options,put_options&underlying_asset_symbols=BTC&states=live&page_size=500', 20_000);
-    for (const p of j.result ?? []) {
-      if (!symbols.includes(p.symbol)) continue;
-      out.set(p.symbol, {
-        takerRate: num(p.taker_commission_rate) || DEFAULT_OPTION_FEES.takerRate,
-        makerRate: num(p.maker_commission_rate) || DEFAULT_OPTION_FEES.makerRate,
-        premiumCapRate: num(p.product_specs?.premium_commission_rate) || DEFAULT_OPTION_FEES.premiumCapRate,
-        contractValue: num(p.contract_value) || DEFAULT_OPTION_FEES.contractValue,
-      });
-    }
-  } catch {
-    /* fall back to defaults per symbol below */
+    let after: string | null | undefined;
+    do {
+      const cursor: string = after ? `&after=${encodeURIComponent(after)}` : '';
+      const j: {
+        result?: Array<{
+          symbol: string;
+          taker_commission_rate?: string;
+          maker_commission_rate?: string;
+          contract_value?: string;
+          product_specs?: { premium_commission_rate?: number };
+        }>;
+        meta?: { after?: string | null };
+      } = await getJson(`/v2/products?contract_types=call_options,put_options&underlying_asset_symbols=BTC&states=live&page_size=500${cursor}`, 20_000);
+      for (const p of j.result ?? []) {
+        if (!symbols.includes(p.symbol)) continue;
+        out.set(p.symbol, {
+          takerRate: num(p.taker_commission_rate) || DEFAULT_OPTION_FEES.takerRate,
+          makerRate: num(p.maker_commission_rate) || DEFAULT_OPTION_FEES.makerRate,
+          premiumCapRate: num(p.product_specs?.premium_commission_rate) || DEFAULT_OPTION_FEES.premiumCapRate,
+          contractValue: num(p.contract_value) || DEFAULT_OPTION_FEES.contractValue,
+        });
+      }
+      after = j.meta?.after;
+    } while (after && symbols.some((s) => !out.has(s)));
+  } catch (e) {
+    console.warn('[delta-public] option fee lookup failed:', e instanceof Error ? e.message : e);
   }
-  for (const s of symbols) if (!out.has(s)) out.set(s, DEFAULT_OPTION_FEES);
+  for (const s of symbols) {
+    if (out.has(s)) continue;
+    // The defaults are BTC's real values. Any other asset has a different lot, so a guess would give a wrong P&L.
+    if (!s.includes('-BTC-')) throw new Error(`No fee data for ${s}, and BTC defaults do not apply to it`);
+    console.warn(`[delta-public] using default option fees for ${s}`);
+    out.set(s, DEFAULT_OPTION_FEES);
+  }
   return out;
 }
 
@@ -201,23 +213,29 @@ export const DEFAULT_PERP: PerpInfo = { symbol: 'BTCUSD', contractValue: 0.001, 
 
 /** Contract size and fee rates for the BTC perpetual, from the products API. */
 export async function fetchPerpInfo(symbol = 'BTCUSD'): Promise<PerpInfo> {
-  try {
-    const j = await getJson<{
-      result?: { symbol: string; contract_value?: string; taker_commission_rate?: string; maker_commission_rate?: string; default_leverage?: string; tick_size?: string };
-    }>(`/v2/products/${encodeURIComponent(symbol)}`);
-    const r = j.result;
-    if (!r) return DEFAULT_PERP;
-    return {
-      symbol: r.symbol,
-      contractValue: num(r.contract_value) || DEFAULT_PERP.contractValue,
-      takerRate: num(r.taker_commission_rate) || DEFAULT_PERP.takerRate,
-      makerRate: num(r.maker_commission_rate) || DEFAULT_PERP.makerRate,
-      maxLeverage: num(r.default_leverage) || DEFAULT_PERP.maxLeverage,
-      tick: num(r.tick_size) || DEFAULT_PERP.tick,
-    };
-  } catch {
+  // The defaults are BTCUSD's real values and must never stand in for another perpetual.
+  const fallback = (why: string): PerpInfo => {
+    if (symbol !== DEFAULT_PERP.symbol) throw new Error(`No contract data for ${symbol}: ${why}`);
+    console.warn(`[delta-public] using default perpetual data for ${symbol}: ${why}`);
     return DEFAULT_PERP;
+  };
+  let r: { symbol: string; contract_value?: string; taker_commission_rate?: string; maker_commission_rate?: string; default_leverage?: string; tick_size?: string } | undefined;
+  try {
+    const j = await getJson<{ result?: typeof r }>(`/v2/products/${encodeURIComponent(symbol)}`);
+    r = j.result;
+  } catch (e) {
+    return fallback(e instanceof Error ? e.message : String(e));
   }
+  if (!r) return fallback('empty response');
+  if (symbol !== DEFAULT_PERP.symbol && !(num(r.contract_value) > 0 && num(r.taker_commission_rate) > 0)) return fallback('incomplete product data');
+  return {
+    symbol: r.symbol,
+    contractValue: num(r.contract_value) || DEFAULT_PERP.contractValue,
+    takerRate: num(r.taker_commission_rate) || DEFAULT_PERP.takerRate,
+    makerRate: num(r.maker_commission_rate) || DEFAULT_PERP.makerRate,
+    maxLeverage: num(r.default_leverage) || DEFAULT_PERP.maxLeverage,
+    tick: num(r.tick_size) || DEFAULT_PERP.tick,
+  };
 }
 
 export interface PerpQuote {
