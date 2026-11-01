@@ -64874,7 +64874,8 @@ body.light #vUniversalFloatingPnl,
         Kp: g.Kp,
         callSym: g.callSym,
         putSym: g.putSym,
-        lots: Math.max(g.callSell, g.putSell, 5)
+        lots: Math.max(g.callSell, g.putSell),
+        premium: +(g.callSv + g.putSv).toFixed(4)
       });
     }
 
@@ -65145,97 +65146,22 @@ body.light #vUniversalFloatingPnl,
     }
   }
 
-  /**
-   * Get last closed trade for Read-Only mode from real Delta fills
-   * Exact fills verified from Delta Exchange API:
-   * Call C-BTC-83600-311026: Sold @ 135, Closed @ 98 -> +0.185 USD (+37 pts * 0.005)
-   * Put  P-BTC-78400-311026: Sold @ 134, Closed @ 102 -> +0.160 USD (+32 pts * 0.005)
-   * Total Realized Gross Cashflow: +$0.345 USD | Commission: $0.097 USD | Net Realized: +$0.248 USD (~+$0.25 USD)
-   */
-  function getReadOnlyLastClosedTrade() {
-    let fills = S.deltaFillsReadOnly;
+  /** One account's last closed trade, from its own Delta fills. No fills means no trade: nothing is borrowed or filled in. */
+  function lastClosedTrade(mode) {
+    const readonly = mode === 'readonly';
+    let fills = readonly ? S.deltaFillsReadOnly : S.deltaFillsReadTrade;
     if (!fills || fills.length === 0) {
       try {
-        const raw = localStorage.getItem('v_delta_fills_readonly');
+        const raw = localStorage.getItem(readonly ? 'v_delta_fills_readonly' : 'v_delta_fills_readtrade');
         if (raw) fills = JSON.parse(raw);
       } catch {}
     }
-    // Fallback to trade fills if read-only fills array is empty
-    if (!fills || fills.length === 0) {
-      fills = S.deltaFillsReadTrade;
-      if (!fills || fills.length === 0) {
-        try {
-          const raw = localStorage.getItem('v_delta_fills_readtrade');
-          if (raw) fills = JSON.parse(raw);
-        } catch {}
-      }
-    }
-
-    if (fills && fills.length > 0) {
-      const trades = groupFillsToTrades(fills);
-      const closed = trades.filter(t => !t.open);
-      if (closed.length > 0) {
-        return {
-          id: closed[0].id,
-          source: 'delta-fills',
-          mode: 'readonly',
-          exp: closed[0].exp,
-          pnl: closed[0].pnl,
-          grossPnl: closed[0].grossPnl || +(closed[0].callPnl + closed[0].putPnl).toFixed(4),
-          callPnl: closed[0].callPnl,
-          putPnl: closed[0].putPnl,
-          callSellPx: closed[0].callSellPx || 135,
-          callBuyPx: closed[0].callBuyPx || 98,
-          putSellPx: closed[0].putSellPx || 134,
-          putBuyPx: closed[0].putBuyPx || 102,
-          fee: closed[0].fee || 0.097,
-          Kc: closed[0].Kc || 83600,
-          Kp: closed[0].Kp || 78400,
-          callSym: closed[0].callSym || 'C-BTC-83600-311026',
-          putSym: closed[0].putSym || 'P-BTC-78400-311026',
-          openedAt: closed[0].openedAt,
-          closedAt: closed[0].closedAt,
-          lots: closed[0].lots || 5
-        };
-      }
-    }
-
-    // 100% Verified Delta Exchange Historical Fills
-    return {
-      id: 'oct28-strangle-dex',
-      source: 'delta-fills',
-      mode: 'readonly',
-      exp: '2026-10-31',
-      pnl: 0.25,
-      grossPnl: 0.35,
-      callPnl: 0.185,
-      putPnl: 0.160,
-      callSellPx: 135,
-      callBuyPx: 98,
-      putSellPx: 134,
-      putBuyPx: 102,
-      fee: 0.10,
-      Kc: 83600,
-      Kp: 78400,
-      callSym: 'C-BTC-83600-311026',
-      putSym: 'P-BTC-78400-311026',
-      openedAt: new Date('2026-10-28T19:00:08Z').getTime(),
-      closedAt: new Date('2026-10-29T01:30:09Z').getTime(),
-      lots: 5
-    };
-  }
-
-  /** Get last closed trade for Read+Trade mode */
-  function getReadTradeLastClosedTrade() {
-    return getReadOnlyLastClosedTrade(); // both reference verified real fills
+    const closed = groupFillsToTrades(fills).filter(t => !t.open);
+    return closed.length ? { ...closed[0], source: 'delta-fills', mode } : null;
   }
 
   function getActiveModeLastClosedTrade() {
-    if (activeViewMode === 'readonly') {
-      return getReadOnlyLastClosedTrade();
-    } else {
-      return getReadTradeLastClosedTrade();
-    }
+    return lastClosedTrade(activeViewMode);
   }
 
   /**
@@ -65251,6 +65177,7 @@ body.light #vUniversalFloatingPnl,
     const t1 = isLive ? Date.now() : (tradeOrPos.closedAt || Date.now());
 
     if (!pSym || !cSym || !t0) return null;
+    if (!isLive && !(tradeOrPos.putSellPx > 0 && tradeOrPos.callSellPx > 0 && tradeOrPos.lots > 0)) return null;
 
     const cacheKey = (isLive ? 'live_' : 'closed_') + pSym + '_' + cSym + '_' + Math.floor(t0 / 60000) + (isLive ? ('_' + Math.floor(t1 / 15000)) : ('_' + Math.floor(t1 / 60000)));
 
@@ -65284,9 +65211,9 @@ body.light #vUniversalFloatingPnl,
 
       const allTimes = Array.from(new Set([...pCandles.map(x => x.time), ...cCandles.map(x => x.time)])).sort((a, b) => a - b);
 
-      const pEntry = isLive ? tradeOrPos.putLeg.entry : (tradeOrPos.putSellPx || 134);
-      const cEntry = isLive ? tradeOrPos.callLeg.entry : (tradeOrPos.callSellPx || 135);
-      const lots = isLive ? tradeOrPos.size : (tradeOrPos.lots || 5);
+      const pEntry = isLive ? tradeOrPos.putLeg.entry : tradeOrPos.putSellPx;
+      const cEntry = isLive ? tradeOrPos.callLeg.entry : tradeOrPos.callSellPx;
+      const lots = isLive ? tradeOrPos.size : tradeOrPos.lots;
       const cv = 0.001;
 
       const curve = [];
@@ -65343,224 +65270,6 @@ body.light #vUniversalFloatingPnl,
     return null;
   }
 
-  /** Update Draggable Universal Floating PnL Pill & Greeks Card */
-  function updateFloatingPnl(openPos) {
-    return; // Replaced by Greek P&L Attribution Floating Panel (Task T2.4)
-    let flEl = $('vUniversalFloatingPnl');
-    if (!flEl) {
-      flEl = D.createElement('div');
-      flEl.id = 'vUniversalFloatingPnl';
-      flEl.innerHTML =
-        '<div class="v-fpnl-main" id="vFpnlMain">' +
-          '<div class="v-fpnl-dot pulse" id="vFpnlDot"></div>' +
-          '<span class="v-fpnl-lbl" id="vFpnlLbl">DELTA (RT)</span>' +
-          '<span class="v-fpnl-val zero" id="vFpnlVal">-$0.09</span>' +
-          '<span class="v-fpnl-badge" id="vFpnlQuickGreek">Δ +0.18 · 27% IV</span>' +
-          '<span class="v-fpnl-expand-btn" id="vFpnlExpandBtn" title="Toggle Greeks & Details">▾ Details</span>' +
-        '</div>' +
-        '<div class="v-fpnl-details" id="vFpnlDetails">' +
-          '<div class="v-fpnl-row"><span style="color:#94a3b8;">Account:</span><strong id="vFpnlAcc">Delta (Read+Trade)</strong></div>' +
-          '<div class="v-fpnl-row"><span style="color:#94a3b8;">Strategy:</span><strong id="vFpnlStrat">Short Strangle</strong></div>' +
-          '<div class="v-fpnl-row"><span style="color:#94a3b8;">Size:</span><strong id="vFpnlSize">5 lots (0.005 BTC)</strong></div>' +
-          '<div class="v-fpnl-greeks-box" id="vFpnlGreeksBox">' +
-            '<div class="v-fpnl-gcol"><span class="v-fpnl-glbl">DELTA</span><span class="v-fpnl-gval" id="vFpnlGDelta">+0.18</span></div>' +
-            '<div class="v-fpnl-gcol"><span class="v-fpnl-glbl">THETA</span><span class="v-fpnl-gval" id="vFpnlGTheta" style="color:#16c784;">+$0.66/d</span></div>' +
-            '<div class="v-fpnl-gcol"><span class="v-fpnl-glbl">VEGA</span><span class="v-fpnl-gval" id="vFpnlGVega">-$0.13</span></div>' +
-            '<div class="v-fpnl-gcol"><span class="v-fpnl-glbl">MARK IV</span><span class="v-fpnl-gval" id="vFpnlGIv" style="color:#38bdf8;">27.4%</span></div>' +
-          '</div>' +
-          '<div class="v-fpnl-row"><span style="color:#60a5fa;" id="vFpnlCallTitle">CALL 83600:</span><strong id="vFpnlCallVal">+$0.12 (+35.7%)</strong></div>' +
-          '<div class="v-fpnl-row"><span style="color:#f59e0b;" id="vFpnlPutTitle">PUT 78800:</span><strong id="vFpnlPutVal">-$0.21 (-44.8%)</strong></div>' +
-          '<div class="v-fpnl-row"><span style="color:#94a3b8;">Total Entry:</span><strong id="vFpnlPrem">$0.825 USD</strong></div>' +
-          '<button type="button" class="v-fpnl-jump" id="vFpnlJump">Open Full P&L Analysis ↗</button>' +
-        '</div>';
-
-      D.body.appendChild(flEl);
-
-      // Restore position if valid
-      try {
-        const savedPos = JSON.parse(localStorage.getItem('v_fpnl_pos'));
-        if (savedPos && savedPos.left && savedPos.top) {
-          const lNum = parseInt(savedPos.left, 10);
-          const tNum = parseInt(savedPos.top, 10);
-          if (!isNaN(lNum) && !isNaN(tNum) && lNum >= 0 && lNum < window.innerWidth && tNum >= 0 && tNum < window.innerHeight) {
-            flEl.style.left = savedPos.left;
-            flEl.style.top = savedPos.top;
-            flEl.style.right = 'auto';
-            flEl.style.bottom = 'auto';
-          }
-        }
-      } catch {}
-
-      makeDraggable(flEl);
-
-      const jmp = $('vFpnlJump');
-      if (jmp) {
-        jmp.addEventListener('click', e => {
-          e.stopPropagation();
-          navigateToPnl();
-        });
-      }
-
-      flEl.addEventListener('click', e => {
-        if (flEl.__hasMoved) return;
-        if (e.target && e.target.closest('#vFpnlJump')) return;
-        flEl.classList.toggle('expanded');
-        const expBtn = $('vFpnlExpandBtn');
-        if (expBtn) expBtn.textContent = flEl.classList.contains('expanded') ? '▴ Close' : '▾ Details';
-      });
-    }
-
-    flEl.classList.toggle('v-light', isUniversalLight());
-
-    if (!openPos || !openPos.open) {
-      flEl.style.display = 'none';
-      return;
-    }
-
-    flEl.style.display = 'flex';
-    const dot = $('vFpnlDot');
-    const lbl = $('vFpnlLbl');
-    const val = $('vFpnlVal');
-
-    if (dot) dot.className = 'v-fpnl-dot pulse';
-    if (lbl) lbl.textContent = openPos.kind === 'readonly' ? 'Delta (RO)' : 'Delta (RT)';
-    if (val) {
-      val.className = 'v-fpnl-val ' + (openPos.totalPnl > 0 ? 'pos' : (openPos.totalPnl < 0 ? 'neg' : 'zero'));
-      val.textContent = fmtMoney(openPos.totalPnl);
-    }
-
-    const grk = openPos.greeks;
-    const qBadge = $('vFpnlQuickGreek');
-    if (qBadge && grk) {
-      qBadge.textContent = grk.delta + ' · ' + grk.avgIv;
-    }
-
-    if (grk) {
-      const gDel = $('vFpnlGDelta'); if (gDel) gDel.textContent = grk.delta;
-      const gThe = $('vFpnlGTheta'); if (gThe) gThe.textContent = grk.theta;
-      const gVeg = $('vFpnlGVega'); if (gVeg) gVeg.textContent = grk.vega;
-      const gIv = $('vFpnlGIv'); if (gIv) gIv.textContent = grk.avgIv;
-    }
-
-    const acc = $('vFpnlAcc');
-    if (acc) acc.textContent = openPos.kind === 'readonly' ? 'Delta (Read-Only)' : 'Delta (Read+Trade)';
-
-    const strat = $('vFpnlStrat');
-    if (strat) {
-      strat.textContent = (openPos.putLeg && openPos.callLeg) ? 'Strangle ' + (openPos.putLeg.sym.split('-')[2] || '') + '/' + (openPos.callLeg.sym.split('-')[2] || '') : 'Option Position';
-    }
-    const sz = $('vFpnlSize');
-    if (sz) sz.textContent = (openPos.size || 5) + ' lots (' + ((openPos.size || 5) * 0.001).toFixed(3) + ' BTC)';
-
-    const prem = $('vFpnlPrem');
-    if (prem) prem.textContent = fmtMoney(openPos.totalEntryPrem || 0.825) + ' USD';
-
-    if (openPos.callLeg) {
-      const cTit = $('vFpnlCallTitle');
-      const cVal = $('vFpnlCallVal');
-      if (cTit) cTit.textContent = 'CALL ' + (openPos.callLeg.sym.split('-')[2] || '') + ':';
-      if (cVal) {
-        cVal.style.color = openPos.callLeg.pnl >= 0 ? '#16c784' : '#f6465d';
-        const extra = openPos.callLeg.iv ? ' · ' + openPos.callLeg.iv + '% IV' : '';
-        cVal.textContent = fmtMoney(openPos.callLeg.pnl) + ' (' + (openPos.callLeg.roi >= 0 ? '+' : '') + openPos.callLeg.roi + '%)' + extra;
-      }
-    }
-    if (openPos.putLeg) {
-      const pTit = $('vFpnlPutTitle');
-      const pVal = $('vFpnlPutVal');
-      if (pTit) pTit.textContent = 'PUT ' + (openPos.putLeg.sym.split('-')[2] || '') + ':';
-      if (pVal) {
-        pVal.style.color = openPos.putLeg.pnl >= 0 ? '#16c784' : '#f6465d';
-        const extra = openPos.putLeg.iv ? ' · ' + openPos.putLeg.iv + '% IV' : '';
-        pVal.textContent = fmtMoney(openPos.putLeg.pnl) + ' (' + (openPos.putLeg.roi >= 0 ? '+' : '') + openPos.putLeg.roi + '%)' + extra;
-      }
-    }
-  }
-
-  /** Make floating element smoothly draggable across touch and mouse */
-  function makeDraggable(el) {
-    let isDragging = false;
-    let startX = 0, startY = 0;
-    let initX = 0, initY = 0;
-    let hasMoved = false;
-
-    const onDown = e => {
-      if (e.target && e.target.closest('#vFpnlJump')) return;
-      isDragging = true;
-      hasMoved = false;
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      startX = clientX;
-      startY = clientY;
-
-      const rect = el.getBoundingClientRect();
-      initX = rect.left;
-      initY = rect.top;
-
-      if (e.pointerId && el.setPointerCapture) {
-        try { el.setPointerCapture(e.pointerId); } catch {}
-      }
-
-      window.addEventListener('pointermove', onMove, { passive: false });
-      window.addEventListener('touchmove', onMove, { passive: false });
-      window.addEventListener('pointerup', onUp);
-      window.addEventListener('touchend', onUp);
-      window.addEventListener('pointercancel', onUp);
-    };
-
-    const onMove = e => {
-      if (!isDragging) return;
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const dx = clientX - startX;
-      const dy = clientY - startY;
-
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        hasMoved = true;
-        if (e.cancelable) e.preventDefault();
-      }
-
-      if (hasMoved) {
-        const maxX = Math.max(10, window.innerWidth - el.offsetWidth - 10);
-        const maxY = Math.max(60, window.innerHeight - el.offsetHeight - 65);
-        const newX = Math.max(10, Math.min(maxX, initX + dx));
-        const newY = Math.max(60, Math.min(maxY, initY + dy));
-
-        el.style.left = newX + 'px';
-        el.style.top = newY + 'px';
-        el.style.right = 'auto';
-        el.style.bottom = 'auto';
-      }
-    };
-
-    const onUp = e => {
-      if (!isDragging) return;
-      isDragging = false;
-      if (e && e.pointerId && el.releasePointerCapture) {
-        try { el.releasePointerCapture(e.pointerId); } catch {}
-      }
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('touchmove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('touchend', onUp);
-      window.removeEventListener('pointercancel', onUp);
-
-      if (hasMoved) {
-        el.__hasMoved = true;
-        setTimeout(() => { el.__hasMoved = false; }, 120);
-        try {
-          localStorage.setItem('v_fpnl_pos', JSON.stringify({
-            left: el.style.left,
-            top: el.style.top
-          }));
-        } catch {}
-      }
-    };
-
-    el.addEventListener('pointerdown', onDown);
-    el.addEventListener('touchstart', onDown, { passive: true });
-  }
-
   /** Robust navigation to P&L page */
   function navigateToPnl() {
     if (W.v80Layout && typeof W.v80Layout.show === 'function') {
@@ -65606,10 +65315,6 @@ body.light #vUniversalFloatingPnl,
   /** Draw the panel fixed at the top of #pgPnl */
   function drawPanel() {
     const isLight = isUniversalLight();
-
-    // Universal floating pill updates
-    const anyOpen = getAnyOpenPosition();
-    updateFloatingPnl(anyOpen);
 
     const host = ensurePnlHost();
     if (!host) return;
@@ -65660,7 +65365,7 @@ body.light #vUniversalFloatingPnl,
             '</button>' +
           '</div>' +
           '<div class="v-mode-status">' +
-            (pos.open ? '<span class="v-live-tag">● LIVE POSITION ACTIVE</span>' : '<span class="v-idle-tag">○ FLAT (LAST REAL TRADE)</span>') +
+            (pos.open ? '<span class="v-live-tag">● LIVE POSITION ACTIVE</span>' : '<span class="v-idle-tag">○ FLAT' + (lastTrade ? ' (LAST REAL TRADE)' : '') + '</span>') +
           '</div>' +
         '</div>' +
       '</div>';
@@ -65806,8 +65511,8 @@ body.light #vUniversalFloatingPnl,
       const gradId = isNeg ? 'vPnlGradNeg' : 'vPnlGradPos';
 
       const ticks = (curve && curve.length >= 2) ? curve : [
-        { t: lastTrade.openedAt, pnl: 0, spot: 80999 },
-        { t: lastTrade.closedAt, pnl: lastTrade.pnl, spot: 81250 }
+        { t: lastTrade.openedAt, pnl: 0 },
+        { t: lastTrade.closedAt, pnl: lastTrade.pnl }
       ];
 
       const pnls = ticks.map(k => k.pnl);
@@ -65840,38 +65545,42 @@ body.light #vUniversalFloatingPnl,
       const curY = yFn(lastTick.pnl);
 
       const durMins = Math.round((lastTrade.closedAt - lastTrade.openedAt) / 60000);
+      const when = t => new Date(t).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+      const px = v => (v == null ? '—' : v);
+      const legCls = v => (v > 0 ? 'pos' : (v < 0 ? 'neg' : 'zero'));
+      const roi = lastTrade.premium > 0 ? (lastTrade.pnl / lastTrade.premium) * 100 : null;
 
       card.innerHTML =
         modeBarHtml +
         '<div class="v-head">' +
           '<div class="v-head-left">' +
             '<div class="v-title">' +
-              'Short Strangle · ' + (lastTrade.Kp || '78400') + ' Put / ' + (lastTrade.Kc || '83600') + ' Call' +
+              'Short Strangle · ' + px(lastTrade.Kp) + ' Put / ' + px(lastTrade.Kc) + ' Call' +
               '<span class="v-badge hist">CLOSED REAL TRADE · ' + (lastTrade.mode === 'readonly' ? 'READ-ONLY' : 'READ+TRADE') + '</span>' +
             '</div>' +
-            '<div class="v-sub">100% Genuine Delta Exchange Fills · Oct 28 19:00 → Oct 29 01:30 UTC</div>' +
+            '<div class="v-sub">From Delta fills · ' + when(lastTrade.openedAt) + ' → ' + when(lastTrade.closedAt) + ' IST</div>' +
           '</div>' +
         '</div>' +
         '<div class="v-kpis">' +
-          '<div class="v-kpi"><span class="v-kpi-lbl">Net Realized P&L</span><span class="v-kpi-num ' + colClass + '">' + fmtMoney(lastTrade.pnl) + '</span><span class="v-kpi-sub">+18.4% Net ROI</span></div>' +
-          '<div class="v-kpi"><span class="v-kpi-lbl">Gross Cashflow</span><span class="v-kpi-num pos">+' + fmtMoney(lastTrade.grossPnl || 0.35) + '</span><span class="v-kpi-sub">Spread Premium</span></div>' +
-          '<div class="v-kpi"><span class="v-kpi-lbl">Fee Paid</span><span class="v-kpi-num">' + fmtMoney(lastTrade.fee || 0.10) + '</span><span class="v-kpi-sub">Delta Exchange</span></div>' +
-          '<div class="v-kpi"><span class="v-kpi-lbl">Duration</span><span class="v-kpi-num" style="font-size:13.5px;">' + Math.floor(durMins / 60) + 'h ' + (durMins % 60) + 'm</span><span class="v-kpi-sub">6h 30m Real Cycle</span></div>' +
+          '<div class="v-kpi"><span class="v-kpi-lbl">Net Realized P&L</span><span class="v-kpi-num ' + colClass + '">' + fmtMoney(lastTrade.pnl) + '</span><span class="v-kpi-sub">' + (roi == null ? '—' : (roi >= 0 ? '+' : '') + roi.toFixed(1) + '% of premium') + '</span></div>' +
+          '<div class="v-kpi"><span class="v-kpi-lbl">Gross Cashflow</span><span class="v-kpi-num ' + legCls(lastTrade.grossPnl) + '">' + fmtMoney(lastTrade.grossPnl) + '</span><span class="v-kpi-sub">Before fees</span></div>' +
+          '<div class="v-kpi"><span class="v-kpi-lbl">Fee Paid</span><span class="v-kpi-num">$' + Number(lastTrade.fee).toFixed(2) + '</span><span class="v-kpi-sub">Delta Exchange</span></div>' +
+          '<div class="v-kpi"><span class="v-kpi-lbl">Duration</span><span class="v-kpi-num" style="font-size:13.5px;">' + Math.floor(durMins / 60) + 'h ' + (durMins % 60) + 'm</span><span class="v-kpi-sub">Entry to exit</span></div>' +
         '</div>' +
         '<div class="v-legs-grid">' +
           '<div class="v-leg-box">' +
             '<div class="v-leg-info">' +
-              '<span class="v-leg-title" style="color:#60a5fa;">CALL ' + (lastTrade.Kc || '83600') + '</span>' +
-              '<span class="v-leg-detail">Sell @ ' + (lastTrade.callSellPx || 135) + ' · Buyback @ ' + (lastTrade.callBuyPx || 98) + '</span>' +
+              '<span class="v-leg-title" style="color:#60a5fa;">CALL ' + px(lastTrade.Kc) + '</span>' +
+              '<span class="v-leg-detail">Sell @ ' + px(lastTrade.callSellPx) + ' · Buyback @ ' + px(lastTrade.callBuyPx) + '</span>' +
             '</div>' +
-            '<span class="v-leg-pnl pos">+' + fmtMoney(lastTrade.callPnl || 0.185) + '</span>' +
+            '<span class="v-leg-pnl ' + legCls(lastTrade.callPnl) + '">' + fmtMoney(lastTrade.callPnl) + '</span>' +
           '</div>' +
           '<div class="v-leg-box">' +
             '<div class="v-leg-info">' +
-              '<span class="v-leg-title" style="color:#f59e0b;">PUT ' + (lastTrade.Kp || '78400') + '</span>' +
-              '<span class="v-leg-detail">Sell @ ' + (lastTrade.putSellPx || 134) + ' · Buyback @ ' + (lastTrade.putBuyPx || 102) + '</span>' +
+              '<span class="v-leg-title" style="color:#f59e0b;">PUT ' + px(lastTrade.Kp) + '</span>' +
+              '<span class="v-leg-detail">Sell @ ' + px(lastTrade.putSellPx) + ' · Buyback @ ' + px(lastTrade.putBuyPx) + '</span>' +
             '</div>' +
-            '<span class="v-leg-pnl pos">+' + fmtMoney(lastTrade.putPnl || 0.160) + '</span>' +
+            '<span class="v-leg-pnl ' + legCls(lastTrade.putPnl) + '">' + fmtMoney(lastTrade.putPnl) + '</span>' +
           '</div>' +
         '</div>' +
         '<div class="v-chart-wrap" id="vChartWrap">' +
@@ -65906,6 +65615,13 @@ body.light #vUniversalFloatingPnl,
         '</div>';
 
       attachContinuousCrosshair(ticks, Wd, Ht, L, R, T, B, lo, hi, t0, spanT, isLight);
+    } else {
+      card.innerHTML =
+        modeBarHtml +
+        '<div class="v-head"><div class="v-head-left">' +
+          '<div class="v-title">No closed trades</div>' +
+          '<div class="v-sub">This account has no closed trade in its Delta fills.</div>' +
+        '</div></div>';
     }
 
     // Direct button bindings (local only)
@@ -66134,11 +65850,6 @@ body.light #vUniversalFloatingPnl,
     pollDeltaFills();
   }, 12000);
   */
-
-  setInterval(() => {
-    const anyOpen = getAnyOpenPosition();
-    updateFloatingPnl(anyOpen);
-  }, 4000);
 
   setInterval(() => {
     installHooks();
@@ -66389,7 +66100,6 @@ body.light #vUniversalFloatingPnl,
         } else if (msg.type === 'STRIKE_ALERT' || msg.type === 'strike_alert' || msg.event === 'alert' || msg.event === 'strike_alert') {
           if (typeof window.handleStrikeAlertWs === 'function') {
             window.handleStrikeAlertWs(msg);
-          }
           }
         }
       } catch (err) {

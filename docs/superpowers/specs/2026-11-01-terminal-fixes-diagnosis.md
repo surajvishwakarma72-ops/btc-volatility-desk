@@ -3,6 +3,12 @@
 Brief: `terminal_fixes_build_prompt.md`, sections 1 (API keys), 2 (accurate P&L), 3 (tick recording) and 4 (floating P&L).
 Surveyed `feat/multi-asset-phase-1` on 2026-11-01. Everything below comes from reading the code. The live database could not be checked, so section 6 lists what is still unconfirmed.
 
+## Update after step 1: the main cause
+
+Commit 5d3d559 (2026-10-30) added a stray `}` inside the `vLivePnlTick` script block in `frontend/index.html`. A syntax error makes a browser skip the whole block, and the live site had the same error when checked on 2026-11-01. So from that commit on, the P&L card, position tracker and `/ws/desk` connection in that block did not run at all. Fixed in step 1, not yet deployed.
+
+This changes how the findings below read. K1, K2, P1, P2 and P5 are real defects in that block, but they were not what you were seeing, because the block was not running. They become live once the fix is deployed, so K1 (sub-account shown as main) must be fixed in step 2 before or with that deploy. The floating panel (F1-F3, F5) is in a separate block and was already running.
+
 ## Headline
 
 The two keys are probably not what is broken. The P&L pipeline is:
@@ -16,7 +22,7 @@ The two keys are probably not what is broken. The P&L pipeline is:
 
 | # | Severity | Location | What is wrong | Proposed fix |
 | --- | --- | --- | --- | --- |
-| K1 | **High: accounts mixed** | `routes/ws-desk.ts:110`, `frontend/index.html:66366` | The server WebSocket sends the trade key's (sub) positions when a trade key exists. The browser stores them in the read-only (main) slot. The browser's own poll (`:64924`) then writes main back. So the "main" view flips between accounts every few seconds. | Send one labelled message per account, using the account logic already correct in `watch/sources.ts:33`. Browser stores by label. |
+| K1 | **High: accounts mixed** | `routes/ws-desk.ts:110`, `frontend/index.html:66366` | The server WebSocket sends the trade key's (sub) positions when a trade key exists. The browser stores them in the read-only (main) slot, so "main" shows the sub-account whenever a trade key exists. Corrected 2026-11-01: this does not flip. The browser's repeating polls are commented out (`:66123`), so it polls only at startup and on a tab switch (`:66461`, `:65591`). Read + Trade positions and all fills are therefore frozen between those moments. | Send one labelled message per account, using the account logic already correct in `watch/sources.ts:33`. Browser stores by label. |
 | K2 | **High: silent nothing** | `index.html:64926,64938,64960,64972` | `r.ok ? r.json() : null`, then return. A rejected key shows no error, and the last positions stay on screen. This is exactly "silently showing nothing". | Replace with the Key Health state in K5. |
 | K3 | High: silent empty | `ws-desk.ts:113-119` | Any failure returns `[]`. The browser then shows "no positions" on a live position. | Send the failure as a failure. Never turn an error into an empty list. |
 | K4 | Medium: masked identity | `routes/delta.ts:222` | If no key is saved for a kind and `DELTA_API_KEY` is set, the server key answers. It answers for `kind=read` and `kind=trade` alike, so one account can appear as both. | Use the server key only when no kind was requested, and label it. |
