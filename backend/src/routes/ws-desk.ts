@@ -30,6 +30,14 @@ function getSessionToken(request: FastifyRequest): string | null {
   return null;
 }
 
+const MAX_BUFFERED_BYTES = 256 * 1024;
+const HEARTBEAT_MS = 30_000;
+
+/** Skips a push when the client has not read the last ones, so a slow or sleeping device cannot pile data up in server memory. */
+export function canSend(socket: Pick<WebSocket, 'readyState' | 'bufferedAmount'>): boolean {
+  return socket.readyState === 1 && socket.bufferedAmount < MAX_BUFFERED_BYTES;
+}
+
 // User connection tracker: max 10 concurrent connections per user session
 const userConnections = new Map<string, Set<WebSocket>>();
 
@@ -187,7 +195,7 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
   const subscribedChannels = new Set<string>();
 
   const sendPositions = async () => {
-    if (socket.readyState !== 1) return; // 1 === WebSocket.OPEN
+    if (!canSend(socket)) return;
     try {
       const data = await getAccounts(userId);
       if (socket.readyState === 1) {
@@ -200,7 +208,7 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
   };
 
   const sendTickers = async () => {
-    if (socket.readyState !== 1) return;
+    if (!canSend(socket)) return;
     try {
       const data = await getTickers();
       if (socket.readyState === 1) {
@@ -257,6 +265,15 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     }
   }, 4000);
 
+  // A sleeping phone can hold a socket open without reading it. No pong by the next ping means it is gone.
+  let alive = true;
+  socket.on('pong', () => { alive = true; });
+  const heartbeat = setInterval(() => {
+    if (!alive) { socket.terminate(); return; }
+    alive = false;
+    try { socket.ping(); } catch {}
+  }, HEARTBEAT_MS);
+
   // Clean-up handler
   let cleanedUp = false;
   const cleanup = () => {
@@ -264,6 +281,7 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     cleanedUp = true;
     clearInterval(positionsInterval);
     clearInterval(tickersInterval);
+    clearInterval(heartbeat);
     deskEvents.removeListener('fill', onFill);
     deskEvents.removeListener('kill_switch', onKillSwitch);
     deskEvents.removeListener('strike_alert', onStrikeAlert);

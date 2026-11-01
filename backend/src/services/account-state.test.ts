@@ -77,6 +77,15 @@ describe('AccountReader', () => {
   });
 });
 
+describe('canSend', () => {
+  it('stops pushing to a client that is not reading', async () => {
+    const { canSend } = await import('../routes/ws-desk.js');
+    expect(canSend({ readyState: 1, bufferedAmount: 0 })).toBe(true);
+    expect(canSend({ readyState: 1, bufferedAmount: 300 * 1024 })).toBe(false);
+    expect(canSend({ readyState: 3, bufferedAmount: 0 })).toBe(false);
+  });
+});
+
 describe('classifyDeltaFailure', () => {
   it('names each failure', () => {
     expect(classifyDeltaFailure(403, 'ip_not_whitelisted_for_api_key')).toBe('ip_not_whitelisted');
