@@ -62,6 +62,21 @@ beforeEach(async () => {
 const rows = async () => (await pool.query('SELECT exchange_fill_id, account_kind, fee, total_pnl FROM fills ORDER BY filled_at', [])).rows as any[];
 
 describe('FillsSync', () => {
+  it('survives a database outage and recovers on the next round', async () => {
+    const live = h.db;
+    const { s } = sync({ 'K-MAIN': [[fill(1, 'sell', 135, '2026-10-28T19:00:00Z')]] });
+    resetFillsSchemaCache();
+    const down = async () => { throw new Error('connect ECONNREFUSED'); };
+    h.db = { ...live, exec: down, query: down } as never;
+    try {
+      await expect(s.runOnce()).resolves.toBeUndefined();
+    } finally {
+      h.db = live;
+    }
+    await s.runOnce();
+    expect((await rows()).map((r) => r.exchange_fill_id)).toEqual(['1']);
+  });
+
   it('stores fills per account with real P&L', async () => {
     const { s } = sync({ 'K-MAIN': [[fill(1, 'sell', 135, '2026-10-28T19:00:00Z'), fill(2, 'buy', 98, '2026-10-29T01:00:00Z')]] });
     await s.runOnce();

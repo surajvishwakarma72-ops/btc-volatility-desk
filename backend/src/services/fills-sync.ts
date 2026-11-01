@@ -110,6 +110,10 @@ export class FillsSync {
             .catch((e) => console.warn(`[fills-sync] ${a.account}:`, e instanceof Error ? e.message : e));
         }
       }
+    } catch (e) {
+      // runOnce is fired without a caller (`void`), so anything thrown here would be an unhandled rejection and stop the process.
+      // A database outage must only skip this round; the next timer tick tries again.
+      console.warn('[fills-sync] round skipped:', e instanceof Error ? e.message : e);
     } finally {
       this.busy = false;
     }
