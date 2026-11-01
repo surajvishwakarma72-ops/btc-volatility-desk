@@ -469,6 +469,27 @@
 <html lang="en" data-theme="light">
 
 <head>
+  <script data-module="vHoldUntilUnlocked">
+    /* Market requests wait until the terminal is unlocked. A browser opens only a few connections to one server, so loading them
+       behind the sign-in screen left the sign-in itself queued for half a minute. Sign-in always goes first now. */
+    (function () {
+      const realFetch = window.fetch, MAX_HELD = 64;
+      let held = 0, release = null, waiting = null;
+      const unlocked = function () { return waiting || (waiting = new Promise(function (r) { release = r; })); };
+      window.addEventListener('terminal:unlocked', function () { if (release) { release(); release = null; waiting = null; held = 0; } });
+      window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url) || String(input);
+        if (window.__vTerminalAuthenticated || url.indexOf('/api/v1/mkt') < 0) return realFetch.call(window, input, init);
+        if (held >= MAX_HELD) return Promise.reject(new TypeError('Terminal locked'));   // pollers retry; a long lock must not build a backlog
+        held++;
+        const signal = init && init.signal;
+        return new Promise(function (resolve, reject) {
+          if (signal) signal.addEventListener('abort', function () { held = Math.max(0, held - 1); reject(new DOMException('Aborted', 'AbortError')); }, { once: true });
+          unlocked().then(function () { if (signal && signal.aborted) return; realFetch.call(window, input, init).then(resolve, reject); });
+        });
+      };
+    })();
+  </script>
   <script src="data/shadow_backtest_dataset.js"></script>
   <script src="data/rulebook.js"></script>
   <script src="data/backtest_days.js"></script>

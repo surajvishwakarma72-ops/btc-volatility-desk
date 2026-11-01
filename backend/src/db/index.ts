@@ -40,7 +40,8 @@ export function isConnectFailure(e: unknown): boolean {
   const codes = ['ETIMEDOUT', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH', 'EAI_AGAIN'];
   if (err.code && codes.includes(err.code)) return true;
   if (Array.isArray(err.errors) && err.errors.length && err.errors.every((x) => isConnectFailure(x))) return true;
-  return /timeout exceeded when trying to connect|Connection terminated unexpectedly/i.test(err.message ?? '') && !/statement/i.test(err.message ?? '');
+  // pg-pool's wording for a connection that timed out while opening is "Connection terminated due to connection timeout"
+  return /timeout exceeded when trying to connect|Connection terminated (unexpectedly|due to connection timeout)/i.test(err.message ?? '') && !/statement/i.test(err.message ?? '');
 }
 
 // every query gets one more try when the connection could not be made
