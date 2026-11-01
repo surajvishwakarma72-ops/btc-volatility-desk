@@ -1,0 +1,2 @@
+date,phase,setup,tasks,requests,output,cache_write,cache_read,subagents,model,effort,graphify
+2026-11-01,phase1-3,baseline,5,540,829804,5252638,84716127,36,opus-5-5+sonnet-5-5+haiku-5-5,unrecorded,no
