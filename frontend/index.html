@@ -19807,6 +19807,12 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         --vtg-warn-border: rgba(227, 174, 69, 0.3);
         font-family: var(--font, "Barlow Semi Condensed", "Barlow", system-ui, sans-serif);
       }
+      #vTerminalLockGate .vtg-alert-ok {
+        background: rgba(74, 222, 128, 0.12);
+        color: #4ade80;
+        border: 1px solid rgba(74, 222, 128, 0.3);
+      }
+
       #vTerminalLockGate * {
         box-sizing: border-box;
       }
@@ -20085,7 +20091,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
             <input type="checkbox" id="vGateRemember" class="vtg-checkbox" checked>
             <span>Remember this device</span>
           </label>
-          <a href="#" id="vGateResetLink" class="vtg-link">Request Password Reset</a>
+          <a href="#" id="vGateResetLink" class="vtg-link">Forgot password?</a>
         </div>
 
         <div id="vGateAlert" class="vtg-alert"></div>
@@ -20098,18 +20104,18 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
 
       <!-- Password Reset Form View (Hidden by default) -->
       <form id="vGateResetForm" class="vtg-form" style="display:none;" onsubmit="return false;">
-        <div style="font-size:13px; color:var(--vtg-muted); line-height:1.4;">
-          Enter your email and the 12-character one-time reset code issued by the desk owner.
+        <div id="vGateResetIntro" style="font-size:13px; color:var(--vtg-muted); line-height:1.4;">
+          Ask the desk owner for a reset link and open it. If you were given a code instead, enter it here.
         </div>
 
-        <div class="vtg-group">
+        <div class="vtg-group" data-reset-manual>
           <label class="vtg-label" for="vGateResetEmail">Account Email</label>
           <div class="vtg-input-wrap">
             <input type="text" id="vGateResetEmail" class="vtg-input" style="padding-left:14px;" placeholder="friend@example.com">
           </div>
         </div>
 
-        <div class="vtg-group">
+        <div class="vtg-group" data-reset-manual>
           <label class="vtg-label" for="vGateResetCode">Reset Code (from Owner)</label>
           <div class="vtg-input-wrap">
             <input type="text" id="vGateResetCode" class="vtg-input" style="padding-left:14px; font-family:var(--font-mono, monospace);" placeholder="12-character code">
@@ -20119,13 +20125,20 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         <div class="vtg-group">
           <label class="vtg-label" for="vGateResetNewPw">New Password (min 10 chars)</label>
           <div class="vtg-input-wrap">
-            <input type="password" id="vGateResetNewPw" class="vtg-input" style="padding-left:14px;" placeholder="Enter new password">
+            <input type="password" id="vGateResetNewPw" class="vtg-input" style="padding-left:14px;" placeholder="Enter new password" autocomplete="new-password">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateResetConfirm">Confirm New Password</label>
+          <div class="vtg-input-wrap">
+            <input type="password" id="vGateResetConfirm" class="vtg-input" style="padding-left:14px;" placeholder="Type it again" autocomplete="new-password">
           </div>
         </div>
 
         <div id="vGateResetAlert" class="vtg-alert"></div>
 
-        <button type="button" id="vGateResetSubmit" class="vtg-btn">Submit Password Reset</button>
+        <button type="button" id="vGateResetSubmit" class="vtg-btn">Save new password</button>
 
         <div style="text-align:center; margin-top:4px;">
           <a href="#" id="vGateResetBack" class="vtg-link">← Back to Sign In</a>
@@ -20304,6 +20317,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
       // Initial validation on page load
       async function initCheck() {
         updateCooldownUI();
+        if (resetInvite) { lockSession('init'); openResetInvite(); return; }
         const token = getStoredToken();
         if (!token) {
           lockSession('init');
@@ -20459,54 +20473,75 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
       if (resetBack && loginForm && resetForm) {
         resetBack.addEventListener('click', function (e) {
           e.preventDefault();
+          clearResetHash();
+          document.querySelectorAll('#vGateResetForm [data-reset-manual]').forEach(function (el) { el.style.display = ''; });
           resetForm.style.display = 'none';
           loginForm.style.display = 'flex';
           if (resetAlert) resetAlert.style.display = 'none';
         });
       }
 
-      // Password Reset submission (v2 route: /api/v1/auth/password-reset/request)
+      // A reset link from the desk owner: /#reset=<code>&email=<email>. The part after # never reaches the server or its logs.
+      const resetInvite = (function () {
+        const m = /^#reset=([^&]+)&email=(.+)$/.exec(location.hash);
+        if (!m) return null;
+        try { return { code: decodeURIComponent(m[1]), email: decodeURIComponent(m[2]) }; } catch (e) { return null; }
+      })();
+      const clearResetHash = function () { try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { } };
+      function openResetInvite() {
+        const set = function (id, v) { const el = document.getElementById(id); if (el) el.value = v; };
+        set('vGateResetEmail', resetInvite.email);
+        set('vGateResetCode', resetInvite.code);
+        document.querySelectorAll('#vGateResetForm [data-reset-manual]').forEach(function (el) { el.style.display = 'none'; });
+        const intro = document.getElementById('vGateResetIntro');
+        if (intro) intro.textContent = 'Choose a new password for ' + resetInvite.email + '.';
+        if (loginForm) loginForm.style.display = 'none';
+        if (resetForm) resetForm.style.display = 'flex';
+        const pw = document.getElementById('vGateResetNewPw');
+        if (pw) pw.focus();
+      }
+
+      // Password reset: email + the one-time code from the desk owner + the new password. A valid code signs the person straight in.
+      function showResetAlert(msg, ok) {
+        if (!resetAlert) return;
+        resetAlert.className = ok ? 'vtg-alert vtg-alert-ok' : 'vtg-alert vtg-alert-error';
+        resetAlert.style.display = 'flex';
+        resetAlert.textContent = msg;
+      }
       if (resetSubmit) {
         resetSubmit.addEventListener('click', async function () {
-          const email = (document.getElementById('vGateResetEmail')?.value || '').trim();
-          if (!email) {
-            if (resetAlert) {
-              resetAlert.className = 'vtg-alert vtg-alert-error';
-              resetAlert.style.display = 'flex';
-              resetAlert.innerHTML = '<span>Please enter your registered email.</span>';
-            }
-            return;
-          }
+          const val = function (id) { const el = document.getElementById(id); return el ? el.value : ''; };
+          const email = val('vGateResetEmail').trim();
+          const code = val('vGateResetCode').trim();
+          const newPassword = val('vGateResetNewPw');
+          if (!email) return showResetAlert('Please enter your registered email.');
+          if (!code) return showResetAlert('Please enter the reset code from the desk owner.');
+          if (newPassword.length < 10) return showResetAlert('The new password needs at least 10 characters.');
+          if (val('vGateResetConfirm') !== newPassword) return showResetAlert('The two passwords do not match.');
           resetSubmit.disabled = true;
           try {
-            const r = await fetch('/api/v1/auth/password-reset/request', {
+            const r = await fetch('/api/v1/auth/reset-password', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: email })
+              body: JSON.stringify({ email: email, code: code, newPassword: newPassword })
             });
             const j = await r.json().catch(function () { return null; });
-            if (r.ok && j && j.success) {
-              if (resetAlert) {
-                resetAlert.className = 'vtg-alert';
-                resetAlert.style.background = 'rgba(74, 222, 128, 0.12)';
-                resetAlert.style.color = '#4ade80';
-                resetAlert.style.border = '1px solid rgba(74, 222, 128, 0.3)';
-                resetAlert.style.display = 'flex';
-                resetAlert.innerHTML = '<span>' + (j.message || 'Reset request submitted. Desk owner approval required.') + '</span>';
-              }
+            if (r.ok && j && j.success && j.token) {
+              try {
+                const prev = JSON.parse(localStorage.getItem('desk_user') || 'null');
+                if (window.deskAuth && (!prev || !j.user || prev.id !== j.user.id)) window.deskAuth.clearPersonal(); // another person's desk data must not carry over
+                localStorage.setItem('desk_jwt', JSON.stringify(j.token));
+                if (j.user) localStorage.setItem('desk_user', JSON.stringify(j.user));
+                localStorage.removeItem('vTerminalLockFails');
+              } catch (e) { }
+              showResetAlert('Password changed. Signing you in…', true);
+              clearResetHash();
+              location.reload();
               return;
             }
-            if (resetAlert) {
-              resetAlert.className = 'vtg-alert vtg-alert-error';
-              resetAlert.style.display = 'flex';
-              resetAlert.innerHTML = '<span>' + ((j && j.error) || 'Failed to submit reset request.') + '</span>';
-            }
+            showResetAlert((j && j.error) || (r.status === 429 ? 'Too many tries. Wait a minute and try again.' : 'Could not reset the password.'));
           } catch (e) {
-            if (resetAlert) {
-              resetAlert.className = 'vtg-alert vtg-alert-error';
-              resetAlert.style.display = 'flex';
-              resetAlert.innerHTML = '<span>Network error during reset request.</span>';
-            }
+            showResetAlert('Network error. Check your connection and try again.');
           } finally {
             resetSubmit.disabled = false;
           }
@@ -42697,11 +42732,11 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
     <div class="v18btns"><button type="button" class="v18btn pri" data-dk="invite">Create invite code</button></div>
     ${DK.code ? `<p class="pos">New code, shown only now: <code>${esc(DK.code)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.code)}">Copy</button></p>` : ''}
     ${rows ? `<div style="margin-top:8px">${rows}</div>` : '<p class="s">No invite codes yet.</p>'}
-    <div style="margin-top:14px;border-top:1px solid var(--line,#eee);padding-top:10px"><b>A friend forgot the password?</b>
-    <p>Make a one-time reset code for their email and send it to them. On the sign-in window they press "Forgot password?", type their email, the code and a new password. The code works once and expires in 60 minutes.</p>
-    <label class="v18f">Friend's email<input id="dkResetEmail" type="email" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
-    <div class="v18btns"><button type="button" class="v18btn pri" data-dk="resetcode">Make reset code</button></div>
-    ${DK.reset ? `<p class="pos">Reset code for ${esc(DK.reset.email)}, shown only now: <code>${esc(DK.reset.code)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.reset.code)}">Copy</button></p>` : ''}</div></section>`;
+    <div style="margin-top:14px;border-top:1px solid var(--line,#eee);padding-top:10px"><b>Someone forgot their password?</b>
+    <p>Type their email and send them the link. They open it and choose a new password. The link works once and expires in 60 minutes. This also works for your own second account.</p>
+    <label class="v18f">Account email<input id="dkResetEmail" type="email" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+    <div class="v18btns"><button type="button" class="v18btn pri" data-dk="resetcode">Make reset link</button></div>
+    ${DK.reset ? `<p class="pos">Reset link for ${esc(DK.reset.email)}, shown only now: <button type="button" class="v18btn pri" data-v118copy="${esc(DK.reset.link)}">Copy link</button><br><code style="word-break:break-all">${esc(DK.reset.link)}</code></p>` : ''}</div></section>`;
       }
       D.addEventListener('click', async e => {
         const b = e.target.closest && e.target.closest('[data-dk]'); if (!b) return; const a = b.dataset.dk, val = id => ((D.getElementById(id) || {}).value || '').trim();
@@ -42725,9 +42760,9 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
           await dkApi('/auth/invites/' + encodeURIComponent(b.dataset.id), 'DELETE'); DK.at = 0; await dkLoad(true); redraw();
         } else if (a === 'resetcode') {
           const email = val('dkResetEmail');
-          if (!email) { DK.msg = { k: 'bad', t: "Type your friend's email first." }; redraw(); return; }
+          if (!email) { DK.msg = { k: 'bad', t: 'Type the account email first.' }; redraw(); return; }
           const r = await dkApi('/auth/reset-codes', 'POST', { email });
-          DK.reset = r.ok ? { code: r.j.code, email: r.j.email } : null; DK.msg = r.ok ? null : { k: 'bad', t: r.j.error || 'Could not make the reset code' }; redraw();
+          DK.reset = r.ok ? { email: r.j.email, link: location.origin + '/#reset=' + encodeURIComponent(r.j.code) + '&email=' + encodeURIComponent(r.j.email) } : null; DK.msg = r.ok ? null : { k: 'bad', t: r.j.error || 'Could not make the reset link' }; redraw();
         }
       });
       /* Stop alarm and hard exit settings */
@@ -61352,8 +61387,10 @@ document.addEventListener('click', function(e) {
         if (!newPassword) throw new Error('Please enter a new password.');
         if (newPassword.length < 10) throw new Error('The new password needs at least 10 characters.');
         if (confirmPw && newPassword !== confirmPw) throw new Error('Passwords do not match. Please re-enter.');
-        const email = v('daEmail');
-        j = await post('reset-password', { email, newPassword }); // instant reset: signs in at once
+        const email = v('daEmail'), code = v('daResetCode');
+        if (!email) throw new Error('Please enter your email.');
+        if (!code) throw new Error('Please enter the reset code from the desk owner.');
+        j = await post('reset-password', { email, code, newPassword }); // a valid code signs the person straight in
       } else {
         const email = v('daEmail'), password = (D.getElementById('daPw') || {}).value || '';
         if (!email) throw new Error('Please enter your email.');
@@ -61400,19 +61437,20 @@ document.addEventListener('click', function(e) {
   function paint() {
     let ov = D.getElementById('daOv');
     if (!ov) { ov = D.createElement('div'); ov.id = 'daOv'; ov.hidden = true; D.body.appendChild(ov); }
-    const keep = ['daEmail', 'daPw', 'daPwConfirm', 'daName', 'daCode'].map(id => [id, (D.getElementById(id) || {}).value]);
+    const keep = ['daEmail', 'daPw', 'daPwConfirm', 'daName', 'daCode', 'daResetCode'].map(id => [id, (D.getElementById(id) || {}).value]);
     const up = mode === 'up', rs = mode === 'reset';
     ov.innerHTML = '<div class="da" role="dialog" aria-label="Sign in"><button type="button" class="daX" data-da-close aria-label="Close">×</button><h2>' + (up ? 'Create your account' : rs ? 'Reset password' : 'Sign in') + '</h2>' +
       (rs ? '' : '<div class="daSeg"><button type="button" data-da-mode="in" class="' + (up ? '' : 'on') + '">Sign in</button><button type="button" data-da-mode="up" class="' + (up ? 'on' : '') + '">Create account</button></div>') +
-      (rs ? '<div class="daNote" style="margin:4px 0 10px;padding:8px 10px;background:rgba(47,124,192,.08);border-left:3px solid #2F7CC0;border-radius:4px;color:var(--text,#111);font-size:12px;line-height:1.4"><b>⚡ Instant Reset:</b> Enter your registered email (or leave empty for desk owner) and choose a new password. You will be reset and signed in immediately.</div>' : '') +
+      (rs ? '<div class="daNote" style="margin:4px 0 10px;padding:8px 10px;background:rgba(47,124,192,.08);border-left:3px solid #2F7CC0;border-radius:4px;color:var(--text,#111);font-size:12px;line-height:1.4">Ask the desk owner for a one-time reset code, then enter it here with your email and a new password. Desk owner: sign in with the server password instead.</div>' : '') +
       (up ? '<label>Your name<input id="daName" autocomplete="name" maxlength="60" placeholder="Your name"></label>' : '') +
-      '<label>Email' + (up ? '' : rs ? ' <span style="font-weight:400">(leave empty for desk owner)</span>' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" placeholder="you@example.com (or empty for owner)" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      '<label>Email' + (up || rs ? '' : ' <span style="font-weight:400">(desk owner: leave empty)</span>') + '<input id="daEmail" type="email" placeholder="you@example.com" autocomplete="email" autocapitalize="off" spellcheck="false"></label>' +
+      (rs ? '<label>Reset code from the desk owner<input id="daResetCode" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Reset code"></label>' : '') +
       '<label>' + (up ? 'Password (at least 10 characters)' : rs ? 'New password (at least 10 characters)' : 'Password') + '<input id="daPw" type="password" placeholder="' + (rs ? 'New password' : 'Password') + '" autocomplete="' + (up || rs ? 'new-password' : 'current-password') + '"></label>' +
       (rs ? '<label>Confirm new password<input id="daPwConfirm" type="password" placeholder="Confirm new password" autocomplete="new-password"></label>' : '') +
       (up ? '<label>Invite code<input id="daCode" autocapitalize="off" spellcheck="false" autocomplete="off" placeholder="Invite code"></label><div class="daNote">You need an invite code from the person who runs this desk. You get your own Paper Trade account, and you can add your own Delta API key in Settings.</div>' : '') +
       (err ? '<div class="daErr">' + esc(err) + '</div>' : '') +
-      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? '⚡ Reset & Sign In' : 'Sign in') + '</button>' +
-      (rs ? '<button type="button" class="daLink" data-da-mode="in">← Back to sign in</button>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password? (Instant reset)</button>') + '</div>';
+      '<button type="button" class="daGo" data-da-go' + (busy ? ' disabled' : '') + '>' + (busy ? 'Please wait…' : up ? 'Create account' : rs ? 'Reset and sign in' : 'Sign in') + '</button>' +
+      (rs ? '<button type="button" class="daLink" data-da-mode="in">← Back to sign in</button>' : up ? '' : '<button type="button" class="daLink" data-da-mode="reset">Forgot password?</button>') + '</div>';
     for (const [id, val] of keep) { const el = D.getElementById(id); if (el && val) el.value = val; }
   }
 
