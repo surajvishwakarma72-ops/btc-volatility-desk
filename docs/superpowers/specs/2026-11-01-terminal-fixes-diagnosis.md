@@ -9,6 +9,10 @@ Commit 5d3d559 (2026-10-30) added a stray `}` inside the `vLivePnlTick` script b
 
 This changes how the findings below read. K1, K2, P1, P2 and P5 are real defects in that block, but they were not what you were seeing, because the block was not running. They become live once the fix is deployed, so K1 (sub-account shown as main) must be fixed in step 2 before or with that deploy. The floating panel (F1-F3, F5) is in a separate block and was already running.
 
+**Second correction, found in step 3: there are two floating P&L panels.** F1-F3 below describe the newer `vGreekPnlFloating` panel, which always shows $0.00. The everyday "LIVE P&L · [READ+TRADE]" panel is a different, older one (`index.html`, `v100` `apiPoll` and `apiFresh`). It does work, but it runs in the browser: it polls every 30 seconds with no account chosen, `tick()` stops when the page is hidden, a reading older than 150 seconds becomes "Position not confirmed", and it recognises BTC symbols only. This fits the screen-off staleness in section 4 of the brief far better than the $0.00 panel does. Step 6 must cover this panel. It also already shows Delta's error reasons, so K2 applied only to the dead block.
+
+`routes/algo.ts:222` still reads one account with `trade ?? read`. It is a display list and sends no orders, but it shows only the sub-account when both keys exist. Fix with step 6.
+
 ## Headline
 
 The two keys are probably not what is broken. The P&L pipeline is:

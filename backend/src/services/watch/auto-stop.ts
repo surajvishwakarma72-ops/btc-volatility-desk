@@ -1,5 +1,5 @@
 import { deltaSignedDelete, deltaSignedGet, deltaSignedPost } from '../../routes/delta.js';
-import { loadDeltaKey } from '../delta-keys.js';
+import { loadOrderKey } from '../delta-keys.js';
 import { getWatchConfig, logWatchEvent } from './watch-store.js';
 import { expiryOf, type OptionPosition } from './live-exit.js';
 import { placeStop, stopLimitPrice } from './stop-order.js';
@@ -156,7 +156,7 @@ export const realAutoStopDeps = (tickOf: (s: string) => number, closeGroup?: Aut
   now: () => Date.now(),
   liveEnabled: () => process.env.LIVE_TRADING_ENABLED === 'true',
   cfg: (uid) => getWatchConfig(uid, 0),
-  tradeKey: (uid) => loadDeltaKey(uid, 'trade'),
+  tradeKey: (uid) => loadOrderKey(uid),
   async pendingStops(key, secret) {
     const r = await deltaSignedGet(key, secret, '/v2/orders', 'states=pending&contract_types=call_options,put_options&order_types=all_stop');
     if (!r.ok) throw new Error(r.errorText || String(r.status));

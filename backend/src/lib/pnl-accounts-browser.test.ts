@@ -56,6 +56,35 @@ describe('browser account state', () => {
   });
 });
 
+describe('Key Health panel', () => {
+  const start = html.indexOf('function dkHealth(');
+  const source = html.slice(start, html.indexOf('\r\n      }\r\n', start) + 9);
+  const esc = (x: unknown) => String(x).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+  const render = (health: unknown) => new Function('DK', 'esc', `${source}\nreturn dkHealth();`)({ health }, esc) as string;
+  const row = { serverTs: 100_000, lastOkAt: 87_000, error: null, keyLast4: 'a4f2' };
+
+  it('shows nothing until the server has answered', () => {
+    expect(render(null)).toBe('');
+  });
+
+  it('shows each account by icon and words, with the real age', () => {
+    const out = render([{ ...row, account: 'main', health: 'connected' }, { ...row, account: 'sub', health: 'ip_not_whitelisted', error: 'ip_not_whitelisted_for_api_key' }]);
+    expect(out).toContain('Main account (read-only key)');
+    expect(out).toContain('✓ Connected');
+    expect(out).toContain('✕ Server IP not whitelisted on Delta');
+    expect(out).toContain('last good read 13s ago');
+    expect(out).toContain('key …a4f2');
+  });
+
+  it('says so when a key has never worked', () => {
+    expect(render([{ ...row, account: 'account', health: 'auth_failed', lastOkAt: null }])).toContain('no successful read yet');
+  });
+
+  it("escapes Delta's error text", () => {
+    expect(render([{ ...row, account: 'sub', health: 'stale', error: '<img src=x>' }])).not.toContain('<img');
+  });
+});
+
 describe('page wiring', () => {
   it('has one writer for positions', () => {
     expect(html).not.toContain('pollDeltaPositions');

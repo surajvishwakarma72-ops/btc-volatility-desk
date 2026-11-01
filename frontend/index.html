@@ -42672,13 +42672,22 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
       async function dkLoad(force) {
         if (!dkTok() || (!force && Date.now() - DK.at < 30000)) return; DK.at = Date.now();
         try { const s1 = await dkApi('/delta/credentials'); if (s1.ok) DK.st = s1.j; } catch (e) { }
+        try { const s4 = await dkApi('/delta/health'); DK.health = s4.ok ? s4.j.accounts : null; } catch (e) { DK.health = null; }
         try { const s2 = await dkApi('/delta/ip'); if (s2.ok) DK.ip = s2.j.serverIp || null; } catch (e) { }
         if (dkAdmin()) { try { const s3 = await dkApi('/auth/invites'); if (s3.ok) DK.inv = s3.j.invites; } catch (e) { } }
         try { setHtml = ''; render(); } catch (e) { }
       }
+      /* Key Health: one line per Delta account. State is shown by icon and words, not colour alone. */
+      function dkHealth() {
+        const list = DK.health; if (!list || !list.length) return '';
+        const NAME = { main: 'Main account (read-only key)', sub: 'Sub-account (read + trade key)', account: 'Delta account' };
+        const ST = { connected: ['✓', 'Connected', 'pos'], auth_failed: ['✕', 'Key rejected by Delta', 'neg'], ip_not_whitelisted: ['✕', 'Server IP not whitelisted on Delta', 'neg'], rate_limited: ['!', 'Rate-limited by Delta', 'neg'], stale: ['!', 'Cannot reach Delta, figures are stale', 'neg'] };
+        const ago = a => { if (!a.lastOkAt) return 'no successful read yet'; const s = Math.max(0, Math.round((a.serverTs - a.lastOkAt) / 1000)); return 'last good read ' + (s < 5 ? 'just now' : s < 90 ? s + 's ago' : Math.round(s / 60) + ' min ago'); };
+        return `<section class="v18c v18" id="dkHealth"><div class="v18h"><h3>Key Health</h3></div>${list.map(a => { const s = ST[a.health] || ['!', 'Read failed', 'neg']; return `<p><b>${esc(NAME[a.account] || a.account)}</b>${a.keyLast4 ? ` <span class="s">key …${esc(a.keyLast4)}</span>` : ''}<br><span class="${s[2]}">${s[0]} ${s[1]}</span> <span class="s">· ${ago(a)}</span>${a.error ? `<br><span class="s">Delta said: ${esc(a.error)}</span>` : ''}</p>`; }).join('')}</section>`;
+      }
       function dkForm() {
         if (!dkTok()) return ''; dkLoad(false); const st = DK.st, conn = !!(st && st.connected);
-        return `<section class="v18c v18" id="dkCard"><div class="v18h"><h3>Your Delta API key</h3>${conn ? `<span class="r">key …${esc(st.keyLast4)}</span>` : ''}</div>
+        return `${dkHealth()}<section class="v18c v18" id="dkCard"><div class="v18h"><h3>Your Delta API key</h3>${conn ? `<span class="r">key …${esc(st.keyLast4)}</span>` : ''}</div>
     <p>${conn ? '✓ Saved, encrypted on this server. It is used only to read your own positions and fills.' : 'Not saved yet. Add your own Delta India API key and secret to see your own positions and P&amp;L.'}</p>
     <p class="s">Create the key on Delta India (Account → API keys) with <b>Read</b> permission only: no trading, no withdrawal. Delta accepts a key only from addresses you whitelist, so add this server's address${DK.ip ? ` <code>${esc(DK.ip)}</code> <button type="button" class="v18btn" data-v118copy="${esc(DK.ip)}">Copy</button>` : ''} to the key's IP list. The secret is sent once, stored encrypted and never shown again.</p>
     ${st && st.encryptionReady === false ? '<p class="neg">The server has no encryption key set yet, so keys cannot be saved. Ask the owner.</p>' : ''}
@@ -65395,7 +65404,7 @@ body.light #vUniversalFloatingPnl,
               stratDesc +
               '<span class="v-badge live">LIVE · ' + (pos.kind === 'readonly' ? 'READ-ONLY' : 'READ+TRADE') + '</span>' +
             '</div>' +
-            '<div class="v-sub">Exact Delta Mark-to-Market Real Fills & Live Greeks Engine</div>' +
+            '<div class="v-sub">Live mark-to-market, before fees</div>' +
           '</div>' +
         '</div>' +
         '<div class="v-kpis">' +

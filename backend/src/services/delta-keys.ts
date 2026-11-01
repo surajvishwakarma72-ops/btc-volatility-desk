@@ -62,6 +62,11 @@ export async function loadDeltaKey(userId: string, kind: KeyKind = 'read'): Prom
   };
 }
 
+/** The only key an order may be signed with. Comes from the trade slot alone, so a read-only key can never reach an order call. */
+export function loadOrderKey(userId: string): Promise<{ key: string; secret: string } | null> {
+  return loadDeltaKey(userId, 'trade');
+}
+
 export async function noteDeltaResult(userId: string, ok: boolean, error: string | null, kind: KeyKind = 'read'): Promise<void> {
   await pool.query(
     ok ? `UPDATE ${table(kind)} SET last_ok_at = now(), last_error = NULL WHERE user_id = $1` : `UPDATE ${table(kind)} SET last_error = $2 WHERE user_id = $1`,

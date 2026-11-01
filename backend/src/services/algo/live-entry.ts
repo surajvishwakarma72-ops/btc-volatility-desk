@@ -4,7 +4,7 @@ import { deltaSignedDelete, deltaSignedGet, deltaSignedPost } from '../../routes
 import { placeStop, stopLimitPrice } from '../watch/stop-order.js';
 import { describeEvents, type PathEvent } from '../../lib/algo/event-path.js';
 import { eventsForTrade } from './event-guard.js';
-import { loadDeltaKey } from '../delta-keys.js';
+import { loadOrderKey } from '../delta-keys.js';
 import { logWatchEvent, getWatchConfig } from '../watch/watch-store.js';
 import { buildClosingOrders, expiryOf, fetchOptionPositions, LiveExit, OPTION_EXPIRY, realLiveExitDeps, type OptionPosition } from '../watch/live-exit.js';
 import { marketFeed } from '../paper/paper-terminal.js';
@@ -232,7 +232,7 @@ const productIds = new Map<string, number>();
 export const realLiveEntryDeps: LiveEntryDeps = {
   liveEnabled: () => process.env.LIVE_TRADING_ENABLED === 'true',
   cfg: (uid) => getWatchConfig(uid, 0),
-  tradeKey: (uid) => loadDeltaKey(uid, 'trade'),
+  tradeKey: (uid) => loadOrderKey(uid),
   eventsInPath: (rule, plan) => eventsForTrade(rule, plan),
   positions: fetchOptionPositions,
   book: (s) => fetchBook(s, 20),
@@ -300,7 +300,7 @@ export async function cancelPendingOrders(userId: string, creds: { key: string; 
 
 export async function killAllLive(userId: string, opts: { market?: boolean; cancelPending?: boolean } = {}, api: OrderApi = realOrderApi): Promise<{ sent: boolean; message: string; cancelled?: number }> {
   const cfg = await getWatchConfig(userId, 0);
-  const creds = await loadDeltaKey(userId, 'trade');
+  const creds = await loadOrderKey(userId);
   if (!creds) return { sent: false, message: 'No trading key is saved, so no real position can be closed from here.' };
   await refreshTicks().catch(() => undefined);
   const positions = await fetchOptionPositions(creds.key, creds.secret);

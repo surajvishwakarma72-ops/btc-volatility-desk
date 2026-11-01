@@ -1,7 +1,7 @@
 import { deltaSignedGet, deltaSignedPost } from '../../routes/delta.js';
 import type { WatchSettings } from '../../lib/watch/classify.js';
 import { fetchBook, type Book } from '../bot/delta-public.js';
-import { loadDeltaKey } from '../delta-keys.js';
+import { loadOrderKey } from '../delta-keys.js';
 import { logWatchEvent } from './watch-store.js';
 import type { WatchGroup } from './watch.js';
 
@@ -165,7 +165,7 @@ export class LiveExit {
 export function realLiveExitDeps(tickOf: (symbol: string) => number): LiveExitDeps {
   return {
     liveEnabled: () => process.env.LIVE_TRADING_ENABLED === 'true',
-    tradeKey: (uid) => loadDeltaKey(uid, 'trade'),
+    tradeKey: (uid) => loadOrderKey(uid),
     positions: fetchOptionPositions,
     book: (s) => fetchBook(s, 20),
     tickOf,

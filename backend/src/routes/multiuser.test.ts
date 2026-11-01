@@ -196,6 +196,12 @@ describe('each user keeps their own Delta key', () => {
     expect((await app.inject({ method: 'GET', url: '/delta/signed?path=/v2/fills', headers: bearer(owner) })).statusCode).toBe(200);
     expect((f.mock.calls.at(-1) as any)[1].headers['api-key']).toBe('SERVER-KEY-0000');
     expect((await app.inject({ method: 'GET', url: '/delta/signed?kind=trade&path=/v2/fills', headers: bearer(owner) })).statusCode).toBe(409);
+    const health = await app.inject({ method: 'GET', url: '/delta/health', headers: bearer(owner) });
+    expect(health.statusCode).toBe(200);
+    expect(health.json().accounts[0]).toMatchObject({ account: 'account', kind: 'read', keyLast4: null });
+    expect(health.body).not.toContain('SERVER-KEY');
+    expect(health.json().accounts[0]).not.toHaveProperty('positions');
+    expect((await app.inject({ method: 'GET', url: '/delta/health' })).statusCode).toBe(401);
     expect((await app.inject({ method: 'GET', url: '/delta/signed?path=/v2/fills', headers: bearer(sam) })).statusCode).toBe(409);
     delete process.env.DELTA_API_KEY;
     delete process.env.DELTA_API_SECRET;

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { MasterKeyMissing, masterKeyConfigured } from '../lib/crypto.js';
 import { userId } from '../lib/guards.js';
 import { DESK_USER_ID } from '../services/auth-store.js';
+import { accountReader } from '../services/account-state.js';
 import { deleteDeltaKey, deltaKeyStatus, loadDeltaKey, noteDeltaResult, saveDeltaKey } from '../services/delta-keys.js';
 
 /**
@@ -243,6 +244,24 @@ export const deltaRoutes: FastifyPluginAsync = async (fastify) => {
       return { success: true, encryptionReady: masterKeyConfigured(), keyKind: 'trade', ...trade };
     }
     return { success: true, encryptionReady: masterKeyConfigured(), connected: false };
+  });
+
+  // Key Health: one entry per account, live from the server. Never includes a key, a secret or positions.
+  fastify.get('/health', authOnly, async (request) => {
+    const uid = userId(request);
+    const accounts = await Promise.all((await accountReader.read(uid)).map(async (a) => {
+      const saved = await deltaKeyStatus(uid, a.kind);
+      return {
+        account: a.account,
+        kind: a.kind,
+        health: a.health,
+        error: a.error,
+        keyLast4: saved.connected ? saved.keyLast4 : null,
+        lastOkAt: a.lastOkAt ?? (saved.connected && saved.lastOkAt ? Date.parse(saved.lastOkAt) : null),
+        serverTs: a.serverTs,
+      };
+    }));
+    return { success: true, accounts };
   });
 
   fastify.put('/credentials', { ...authOnly, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (request, reply) => {

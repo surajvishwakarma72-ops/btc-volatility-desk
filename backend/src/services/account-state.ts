@@ -81,7 +81,7 @@ export class AccountReader {
 
 export const accountReader = new AccountReader({
   accounts: watchedAccounts,
-  get: deltaSignedGet,
+  get: (key, secret, path, query) => deltaSignedGet(key, secret, path, query),
   note: noteDeltaResult,
   now: () => Date.now(),
 });
