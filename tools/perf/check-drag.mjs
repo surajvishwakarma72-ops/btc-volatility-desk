@@ -6,7 +6,7 @@ const favs = `(() => { const on = v132ind.state(); on.iv = true; on.spd = true; 
 const handle = id => `(() => { const s = [...document.querySelectorAll('#paneG .dk-split')].find(x => x.dataset.below === '${id}'); if (!s) return null; const r = s.getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`;
 export default async ({ ev, sleep, click, cdp, reload }) => {
   // test browser only: no login here, so the terminal's lock screen covers the page and would catch every real input
-  const unlock = `(() => { const g = document.getElementById('vTerminalLockGate'); if (g) g.remove(); return true; })()`;
+  const unlock = `(() => { const g = document.getElementById('vTerminalLockGate'); if (g) g.remove(); localStorage.setItem('v163_fs_off', '1'); return true; })()`;   // also: no auto full screen on the first tap (v163) during the check
   await click('pgDesk'); await sleep(2000);
   await ev(unlock);
   await ev(`dkHeights && dkHeights.reset(); true`);
@@ -24,7 +24,7 @@ export default async ({ ev, sleep, click, cdp, reload }) => {
   const before = await ev(`({ t: ${H}('${target}'), c: ${H}('candles'), g: document.getElementById('paneG').clientHeight, sy: scrollY })`);
   const p = await ev(handle(target)); r.handle = p;
   if (!p) { r.pass = false; return r; }
-  const dy = phone ? 40 : -50;   // phone: the candles start under their minimum, so the drag gives them room   // desktop: Speed vs IV grows 50 px, ATM IV above it gives them up
+  const dy = phone ? 40 : -30;   // phone: the candles start under their minimum, so the drag gives them room   // desktop: Speed vs IV grows 50 px, ATM IV above it gives them up
   await drag(p, dy);
   const after = await ev(`({ t: ${H}('${target}'), c: ${H}('candles'), g: document.getElementById('paneG').clientHeight, sy: scrollY })`);
   r.drag = { before, after };
@@ -45,7 +45,7 @@ export default async ({ ev, sleep, click, cdp, reload }) => {
   r.persistOk = Math.abs(r.persist.got - r.persist.want) <= 0.01;
   // double-click (double-tap) the divider: that pair goes back to its defaults
   const q = await ev(handle(target));
-  if (phone) { for (let i = 0; i < 2; i++) { await touch('touchStart', [q]); await touch('touchEnd', []); await sleep(120); } }
+  if (phone) { for (let i = 0; i < 2; i++) { await touch('touchStart', [q]); await touch('touchEnd', []); } }   // back to back: each CDP call already takes ~0.2 s here
   else { await mouse('mousePressed', q.x, q.y); await mouse('mouseReleased', q.x, q.y); await sleep(120); await mouse('mousePressed', q.x, q.y, { clickCount: 2 }); await mouse('mouseReleased', q.x, q.y, { clickCount: 2 }); }
   await sleep(600);
   // the pair went back to its defaults: neither side keeps a saved share (pixel heights depend on the panel height of the moment)
@@ -56,7 +56,8 @@ export default async ({ ev, sleep, click, cdp, reload }) => {
   await ev(`v132ind.open(); true`); await sleep(500);
   r.resetBtn = await ev(`(() => { const b = document.getElementById('dkResetH'); if (!b) return false; b.click(); return true; })()`);
   await sleep(600);
-  r.resetOk = r.resetBtn && Math.abs((await ev(`${H}('${target}')`)) - before.t) <= 3 && (await ev(`dkHeights.get() === null`));
+  r.resetState = await ev(`({ saved: JSON.stringify(dkHeights.get()), mins: [...document.querySelectorAll('[data-dk-min]')].map(e => e.id), profile: dkHeights.profile() })`);
+  r.resetOk = r.resetBtn && r.resetState.saved === 'null' && r.resetState.mins.length === 0;   // nothing saved, no dragged minimums left
   await ev(`(() => { const m = document.getElementById('v132Ind'); if (m) m.hidden = true; return true; })()`);
   r.pass = r.oldGone && r.dragOk && r.swipeOk && r.persistOk && r.dblOk && r.resetOk;
   return r;

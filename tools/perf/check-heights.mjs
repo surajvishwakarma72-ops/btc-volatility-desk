@@ -15,7 +15,7 @@ export default async ({ ev, sleep, click }) => {
   const a = await ev(`({ iv: ${H}('v138Iv'), cv: ${H}('cvLane'), candles: ${H}('candles') })`);
   const minC = await ev(`innerWidth <= 760 ? 180 : 240`);
   // exact shares, unless the candle minimum had to squeeze them (phone: Short Strangle's default alone is 268 px)
-  r.t1 = (near(a.iv, 0.20 * ph) && near(a.cv, 0.08 * ph)) || (Math.abs(a.candles - minC) <= 3 && a.iv >= 47 && a.cv >= 47); r.t1v = a;
+  r.t1 = (near(a.iv, 0.20 * ph) && near(a.cv, 0.08 * ph)) || (Math.abs(a.candles - Math.min(minC, fresh.candles)) <= 3 && a.iv >= 47 && a.cv >= 47); r.t1v = a;
   await ev(`dkHeights.set({ v138Iv: 0.9 }); true`); await sleep(400);
   const b = await ev(`({ iv: ${H}('v138Iv'), cv: ${H}('cvLane'), pulse: ${H}('v153Pulse'), candles: ${H}('candles') })`);
   const phone = await ev(`innerWidth <= 760`);

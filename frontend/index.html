@@ -21213,6 +21213,14 @@ on an empty top; the live board replaces it as soon as its numbers are in. Snaps
         /* phone full screen uses the whole screen: the tab bar steps aside (the full-screen button in the header brings it back).
            v133.fit() reads the tab bar's display, so the chart then runs to the bottom edge. */
         @media (max-width: 760px) { body.gfs #tabbar { display: none !important } }
+        /* v173 (3 Nov 2026), owner's request: more room for the BTC chart.
+           - the USUAL FALL strip (#v164Lvl, "how much of the usual IV fall is used") is hidden; the chart moves up into its row
+           - 🏆 Top (best indicators: day / week / month) and the Telegram chip leave the chart toolbar
+           Hidden, not deleted: removing these three rules brings them back. */
+        #v164Lvl, #v168ChipTop, #v168ChipTg { display: none !important }
+        /* the strike picker as a small icon next to ƒx Indicators */
+        #gTop #v165Chip.dk-sp { order: 0; flex-direction: row !important; align-items: center !important; justify-content: center; height: 24px !important;
+          min-height: 0 !important; padding: 0 7px !important; border-radius: 6px !important; font-size: 14px; line-height: 1; margin: 0 2px }
       </style>
       <script data-module="dkHeights">
         /* v172 · chart heights the owner set by dragging: per profile (phone|desk × normal|full), each lane's share of the
@@ -47833,7 +47841,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
         // default height of each lane (the v150 shares and minimums)
-        const defH = l => Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0);
+        const ufOn = (() => { const u = $('v164Lvl'); return !!u && getComputedStyle(u).display !== 'none'; })();   // v173: no room kept for a hidden USUAL FALL box
+        const defH = l => Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && ufOn && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0);
         const HH = new Map(lanes.map(l => [l, defH(l)])); let adxH = adxOn ? Math.round(lh * ADXW) : 0;
         /* v172 · heights the owner dragged (dkHeights): a share of the panel height ph per lane. A shown lane with no saved
            share (switched on later) starts at its default; the candles take what is left. Lanes >= 48 px, candles >= minC
@@ -47852,6 +47861,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             for (const l of lanes) HH.set(l, sq(HH.get(l))); if (adxOn) adxH = sq(adxH);
           }
         }
+        if (!U) D.querySelectorAll('[data-dk-min]').forEach(e => { e.style.removeProperty('min-height'); delete e.dataset.dkMin; });   // no saved heights: drop dragged minimums everywhere, hidden lanes too
         for (const l of lanes) { const hh = HH.get(l); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); if (U) set(l, 'min-height', hh + 'px'); else if (l.dataset.dkMin) l.style.removeProperty('min-height'); if (U) l.dataset.dkMin = '1'; else delete l.dataset.dkMin; }   // min-height: some lanes carry a CSS minimum (Short Strangle 176/268 px) that would beat the dragged height
         W.__v133Lane = lh; W.__v133Adx = adxH;   // paRefit gives the ADX strip its share
         W.__v133Fit = { ph, minC, phone, lanes: lanes.map(l => l.id).concat(adxOn ? ['paAdxBox'] : []) };   // for the dividers (dkSplit)
@@ -48008,11 +48018,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       let raf = 0; const soon = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; try { place(); } catch (e) { console.warn('dkSplit place', e); } }); };
       function wire(s) {
         let last = 0;
-        s.addEventListener('dblclick', e => { e.preventDefault(); resetPair(s); });
+        s.addEventListener('dblclick', e => { e.preventDefault(); e.stopPropagation(); resetPair(s); });
         s.addEventListener('pointerdown', e => {
           if (e.button > 0) return;
-          const now = Date.now();
-          if (e.pointerType !== 'mouse' && now - last < 320) { last = 0; resetPair(s); return; }   // double-tap (dblclick covers the mouse)
+          const now = Date.now(); e.stopPropagation();
+          if (e.pointerType !== 'mouse' && now - last < 400) { last = 0; resetPair(s); return; }   // double-tap within 400 ms (dblclick covers the mouse)
           last = now;
           e.preventDefault(); try { s.setPointerCapture(e.pointerId); } catch (x) { }
           const g = pane(), F = W.__v133Fit; if (!g || !F) return;
@@ -52262,6 +52272,17 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const pn = DATA && DATA.pnl, hs = history(), old = hs.length ? hs.find(r => Date.now() - r.t >= 14 * 60000 && Date.now() - r.t < 60 * 60000) : null, arrow = pn && old ? (pn.exp > old.e + 0.05 ? ' ▲' : pn.exp < old.e - 0.05 ? ' ▼' : ' ▬') : '';
         const l2 = pn ? `<span class="l2" style="color:${pn.exp >= 0 ? GRN : RED}">07:00 est ${pn.exp >= 0 ? '+' : '−'}$${Math.abs(pn.exp).toFixed(Math.abs(pn.exp) >= 10 ? 0 : 1)}${arrow} · ${DATA.locked ? '🔒 locked' : clock().phase === 'pick' ? 'live pick' : 'preview'} · ${pn.lots}L</span>` : '';
         const h = C && P ? `<span class="l1"><span class="c">C <b>${(C.delta).toFixed(2).slice(1)}</b> ${(C.K / 1000).toFixed(1)}k</span><span class="p">P <b>${(P.delta).toFixed(2).slice(1)}</b> ${(P.K / 1000).toFixed(1)}k</span></span>${l2}` : (DATA && (!C || !P) ? '<span class="l1"><span class="c">C ' + (C ? (C.delta).toFixed(2).slice(1) + ' ' + (C.K / 1000).toFixed(1) + 'k' : '—') + '</span><span class="p">P ' + (P ? (P.delta).toFixed(2).slice(1) + ' ' + (P.K / 1000).toFixed(1) + 'k' : '—') + '</span></span><span class="l2" style="color:#B7791F">strike not listed ≤0.15</span>' : (lastErr ? 'Strikes ⚠' : 'Strikes…'));
+        // v173 (3 Nov 2026): the picker sits in the BTC chart toolbar as a small icon right after ƒx Indicators; the live
+        // call / put reading moves into its tooltip and the sheet it opens (tap). Falls back to the header until the toolbar exists.
+        const tr = D.querySelector('#gTop .r'), ind = $('v132IndBtn');
+        if (tr && ind && ind.parentNode === tr) { if (ind.nextSibling !== b) tr.insertBefore(b, ind.nextSibling); b.classList.add('dk-sp'); }
+        if (b.classList.contains('dk-sp')) {
+          const tip = C && P ? `Strike picker · Call ${(C.delta).toFixed(2).slice(1)}Δ ${(C.K / 1000).toFixed(1)}k · Put ${(P.delta).toFixed(2).slice(1)}Δ ${(P.K / 1000).toFixed(1)}k${pn ? ` · 07:00 est ${pn.exp >= 0 ? '+' : '−'}$${Math.abs(pn.exp).toFixed(1)}` : ''}` : 'Strike picker · delta 0.10 to 0.15';
+          const ic = '<span class="ic" aria-hidden="true">🎯</span>';
+          if (b.title !== tip) { b.title = tip; b.setAttribute('aria-label', tip); }
+          if (b.dataset.h !== ic) { b.dataset.h = ic; b.innerHTML = ic; }
+          return;
+        }
         if (b.dataset.h !== h) { b.dataset.h = h; b.innerHTML = h; }
       }
 
