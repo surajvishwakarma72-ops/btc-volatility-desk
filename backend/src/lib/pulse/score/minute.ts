@@ -7,8 +7,8 @@ type N = number | null;
 const MIN_MS = 60_000;
 const HOLD_MS = 30 * MIN_MS;
 
-/** One 15-minute point: c is confidence (Risk = 100 - c), z its zone; call and put are the held risk lines. */
-export interface BasePoint { t: number; c: number; z: Zone; call: N; put: N }
+/** One 15-minute point: c is confidence (Risk = 100 - c), null on a NO DATA point; z is its zone; call and put are the held risk lines. */
+export interface BasePoint { t: number; c: N; z: Zone; call: N; put: N }
 export interface MinutePoint {
   t: number;
   r: N;
@@ -32,10 +32,9 @@ function rawZone(r: number): Zone {
 
 const SAFEST_FIRST: readonly Zone[] = ['sell', 'caution', 'avoid'];
 
-/** The minute zone, never safer than the held 15-minute zone. A held NO DATA counts as caution, so it can only cap SELL. */
+/** The minute zone, never safer than the held 15-minute zone. */
 function clampToHeld(minute: Zone, held: Zone): Zone {
-  const floor = held === 'nodata' ? 'caution' : held;
-  return SAFEST_FIRST.indexOf(floor) > SAFEST_FIRST.indexOf(minute) ? floor : minute;
+  return SAFEST_FIRST.indexOf(held) > SAFEST_FIRST.indexOf(minute) ? held : minute;
 }
 
 /** Signed move from a past price: `past` is the row nearest the futures window back, within one minute. Null when none. */
@@ -102,7 +101,8 @@ export function minuteReadings(rows: readonly MinuteRow[], entries: ReadonlyMap<
     const worse = sides.length > 0 ? Math.max(...sides) : null;
     const hurt: 'call' | 'put' | null = worse !== null && worse > 0 ? (ok(cs) && cs >= (ps ?? -1) ? 'call' : 'put') : null;
 
-    if (!held) {
+    // A held NO DATA point is NO DATA here at once: the lane never shows safer than the card. The futures lines keep reading.
+    if (!held || held.c === null || held.z === 'nodata') {
       shown = 'nodata'; pending = null; streak = 0;
       out.push({ t, r: null, z: 'nodata', call: null, put: null, fl, fs, hurt, trigger: trig.on });
       continue;

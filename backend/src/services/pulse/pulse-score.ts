@@ -30,8 +30,7 @@ async function minuteBlock(slot: Slot, nowMs: number, recent: readonly { slot_ms
     const since = nowMs - SCORE_CONFIG.historyHours * HOUR_MS;
     // 60 extra minutes of rows give the first returned minutes their futures window.
     const rows = await minuteRows(slot, since - 60 * 60_000);
-    const base = points.flatMap((p) => (p.c === null ? [] : [{ t: p.t, c: p.c, z: p.z, call: p.call, put: p.put }]));
-    return minuteReadings(rows, entries, base)
+    return minuteReadings(rows, entries, points)
       .filter((m) => m.t >= since)
       .map(({ trigger, ...m }) => ({ ...m, r: round1(m.r), call: round1(m.call), put: round1(m.put), fl: round1(m.fl), fs: round1(m.fs), ...(trigger ? { trigger } : {}) }));
   } catch (e) {

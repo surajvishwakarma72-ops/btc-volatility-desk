@@ -180,6 +180,27 @@ describe('pulseScore minute block', () => {
     expect(body.minute![0]).not.toHaveProperty('trigger');
   });
 
+  it('passes a NO DATA 15-minute point through, so the lane agrees with the card at once', async () => {
+    process.env.PULSE_MINUTE_LANE = 'true';
+    const now = Date.now();
+    const slotMs = now - 3 * HOUR;
+    h.cohorts = [cohort(slotMs)];
+    h.rows = minuteRowsFor(slotMs, 30, now);
+    const point = { verdict: 'SELL NOW', rawZone: 'sell', gateBlocked: false, vetoes: [], why: [], flips: null, heavyLeg: null, parts: null };
+    h.full = {
+      readings: [
+        { ...point, t: now - 40 * MIN, zone: 'sell', confidence: 90 },
+        { ...point, t: now - 10 * MIN, zone: 'nodata', verdict: 'NO DATA', rawZone: 'nodata', confidence: null },
+      ],
+      pnlRows: [],
+    };
+    const body = await pulseScore(slot);
+    const m = body.minute!;
+    expect(m.find((p) => p.t === now - 11 * MIN)!.r).not.toBeNull();
+    expect(m.find((p) => p.t === now - 10 * MIN)).toMatchObject({ z: 'nodata', r: null });
+    expect(m.at(-1)).toMatchObject({ z: 'nodata', r: null });
+  });
+
   it('passes the held zone to the minute block, so a held avoid never shows safer', async () => {
     process.env.PULSE_MINUTE_LANE = 'true';
     const now = Date.now();

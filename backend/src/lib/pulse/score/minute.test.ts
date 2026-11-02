@@ -112,10 +112,20 @@ describe('minuteReadings', () => {
     expect(pts.every((p) => p.z === 'caution')).toBe(true);
   });
 
-  it('a held NO DATA with a usable Risk is capped at caution', () => {
+  it('a held SELL then a NO DATA base point gives NO DATA at once, and the futures lines keep reading', () => {
+    const rows = flat(92, (i) => (i >= 75 ? { fut_price: 100_500 } : {}));
+    const held: BasePoint[] = [{ t: 0, c: 90, z: 'sell', call: 50, put: 50 }, { t: 15 * MIN, c: 90, z: 'sell', call: 50, put: 50 }, { t: 30 * MIN, c: 90, z: 'sell', call: 50, put: 50 }, { t: 45 * MIN, c: 90, z: 'sell', call: 50, put: 50 }, { t: 60 * MIN, c: 90, z: 'sell', call: 50, put: 50 }, { t: 75 * MIN, c: null, z: 'nodata', call: null, put: null }, { t: 90 * MIN, c: 90, z: 'sell', call: 50, put: 50 }];
+    const pts = minuteReadings(rows, entries, held);
+    expect(pts[74]!.z).toBe('sell');
+    expect(pts[75]!).toMatchObject({ z: 'nodata', r: null, call: null, put: null, fs: 0 });
+    expect(pts[75]!.fl).toBeCloseTo(50);
+    expect(pts[89]!.z).toBe('nodata');
+    expect(pts[90]!.z).toBe('sell');
+  });
+
+  it('a NO DATA zone with a confidence is still NO DATA', () => {
     const pts = minuteReadings(flat(15), entries, base(90, 50, 50, 'nodata'));
-    expect(pts[14]!.r).not.toBeNull();
-    expect(pts.every((p) => p.z === 'caution')).toBe(true);
+    expect(pts.every((p) => p.z === 'nodata' && p.r === null)).toBe(true);
   });
 
   it('a held zone never makes the minute zone safer', () => {
