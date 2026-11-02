@@ -19750,6 +19750,41 @@ Timers under 0.5 s and one-shot timers are untouched. */
       } catch (e) { }
     })();
   </script>
+  <script data-module="perfmeter">
+    /* Dev-only load meter. Sits right after the v105.15 one-beat wrapper so it sees the real caller of each setInterval. Off unless localStorage.perf_meter === '1'; when off it changes nothing.
+       In the console: perfMeter.reset() on a page, wait, then copy(JSON.stringify(perfMeter.report())).
+       report(): main-thread long-task time per minute, live intervals, and the 15 interval call sites costing the most. */
+    (function perfMeter() {
+      'use strict';
+      let on = false; try { on = localStorage.getItem('perf_meter') === '1'; } catch (e) { }
+      if (!on) return;
+      const W = window, si = W.setInterval, ci = W.clearInterval, sites = new Map(), live = new Set();
+      let t0 = performance.now(), busy = 0;
+      const where = () => {
+        const st = (new Error().stack || '').split('\n').slice(1).filter(l => !/\bwhere\b|W\.setInterval|window\.setInterval/.test(l));
+        return (st[0] || '?').trim().replace(/^at\s+/, '').replace(/https?:\/\/[^/]+\//, '');
+      };
+      W.setInterval = function (fn, ms, ...a) {
+        if (typeof fn !== 'function') return si.call(W, fn, ms, ...a);
+        const k = where() + ' @' + (ms | 0), r = sites.get(k) || sites.set(k, { site: k, fires: 0, ms: 0 }).get(k);
+        const id = si.call(W, function () { const s = performance.now(); try { return fn.apply(this, arguments); } finally { r.fires++; r.ms += performance.now() - s; } }, ms, ...a);
+        live.add(id); return id;
+      };
+      W.clearInterval = function (id) { live.delete(id); return ci.call(W, id); };
+      try { new PerformanceObserver(l => { for (const e of l.getEntries()) busy += e.duration; }).observe({ type: 'longtask', buffered: true }); } catch (e) { }
+      W.perfMeter = {
+        reset() { t0 = performance.now(); busy = 0; for (const r of sites.values()) { r.fires = 0; r.ms = 0; } },
+        report() {
+          const min = Math.max((performance.now() - t0) / 60000, 1 / 60);
+          return {
+            page: document.body && document.body.dataset.page, minutes: +min.toFixed(2), busyMsPerMin: Math.round(busy / min), liveIntervals: live.size,
+            intervalMsPerMin: Math.round([...sites.values()].reduce((s, r) => s + r.ms, 0) / min),
+            top: [...sites.values()].sort((a, b) => b.ms - a.ms).slice(0, 15).map(r => ({ site: r.site, fires: r.fires, ms: Math.round(r.ms) })),
+          };
+        },
+      };
+    })();
+  </script>
   <script>/* v105.14 · phone scroll guard. On a phone, the browser's address bar slides in and out while
 you scroll, which fires a real window "resize" with the same width. Every chart on the desk listened
 to that and re-laid itself out mid-scroll — the main cause of the stutter. Swallow those (same width,

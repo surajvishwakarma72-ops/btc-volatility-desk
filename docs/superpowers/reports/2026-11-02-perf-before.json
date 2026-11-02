@@ -1,0 +1,258 @@
+{
+  "file": "orig.html",
+  "secondsPerPage": 60,
+  "pages": [
+    {
+      "page": "pgDesk",
+      "minutes": 1,
+      "busyMsPerMin": 0,
+      "liveIntervals": 163,
+      "intervalMsPerMin": 1346,
+      "top": [
+        {
+          "site": "bus (:19825:7) @1000",
+          "fires": 60,
+          "ms": 450
+        },
+        {
+          "site": "realisedVol (:25645:7) @5000",
+          "fires": 12,
+          "ms": 146
+        },
+        {
+          "site": ":47919:54 @3000",
+          "fires": 20,
+          "ms": 145
+        },
+        {
+          "site": "Regime (:35341:7) @1000",
+          "fires": 60,
+          "ms": 57
+        },
+        {
+          "site": ":51933:7 @4000",
+          "fires": 15,
+          "ms": 41
+        },
+        {
+          "site": "boot (:41135:24) @2000",
+          "fires": 30,
+          "ms": 37
+        },
+        {
+          "site": ":46711:54 @2500",
+          "fires": 24,
+          "ms": 35
+        },
+        {
+          "site": "boot (:37672:9) @5000",
+          "fires": 12,
+          "ms": 32
+        },
+        {
+          "site": "start (:27541:18) @1500",
+          "fires": 40,
+          "ms": 27
+        },
+        {
+          "site": ":31592:37 @800",
+          "fires": 75,
+          "ms": 24
+        },
+        {
+          "site": ":26038:9 @200",
+          "fires": 300,
+          "ms": 23
+        },
+        {
+          "site": ":55251:7 @1000",
+          "fires": 60,
+          "ms": 19
+        },
+        {
+          "site": "dvolLayer (:31808:7) @400",
+          "fires": 150,
+          "ms": 18
+        },
+        {
+          "site": ":26026:9 @1000",
+          "fires": 60,
+          "ms": 16
+        },
+        {
+          "site": "boot (:26646:9) @3000",
+          "fires": 20,
+          "ms": 16
+        }
+      ]
+    },
+    {
+      "page": "pgPaper",
+      "minutes": 1,
+      "busyMsPerMin": 0,
+      "liveIntervals": 162,
+      "intervalMsPerMin": 848,
+      "top": [
+        {
+          "site": "bus (:19825:7) @1000",
+          "fires": 60,
+          "ms": 313
+        },
+        {
+          "site": "realisedVol (:25645:7) @5000",
+          "fires": 12,
+          "ms": 83
+        },
+        {
+          "site": "Regime (:35341:7) @1000",
+          "fires": 60,
+          "ms": 46
+        },
+        {
+          "site": ":51933:7 @4000",
+          "fires": 15,
+          "ms": 32
+        },
+        {
+          "site": ":24408:7 @1000",
+          "fires": 60,
+          "ms": 28
+        },
+        {
+          "site": ":47919:54 @3000",
+          "fires": 20,
+          "ms": 28
+        },
+        {
+          "site": "boot (:41135:24) @2000",
+          "fires": 30,
+          "ms": 21
+        },
+        {
+          "site": "enter (:62535:78) @3000",
+          "fires": 20,
+          "ms": 19
+        },
+        {
+          "site": "start (:27541:18) @1500",
+          "fires": 40,
+          "ms": 18
+        },
+        {
+          "site": ":31592:37 @800",
+          "fires": 75,
+          "ms": 16
+        },
+        {
+          "site": "dvolLayer (:31808:7) @400",
+          "fires": 150,
+          "ms": 16
+        },
+        {
+          "site": ":46711:54 @2500",
+          "fires": 24,
+          "ms": 13
+        },
+        {
+          "site": ":49787:56 @20000",
+          "fires": 3,
+          "ms": 12
+        },
+        {
+          "site": ":26038:9 @200",
+          "fires": 300,
+          "ms": 12
+        },
+        {
+          "site": ":55251:7 @1000",
+          "fires": 60,
+          "ms": 11
+        }
+      ]
+    },
+    {
+      "page": "pgPnl",
+      "minutes": 1,
+      "busyMsPerMin": 0,
+      "liveIntervals": 161,
+      "intervalMsPerMin": 876,
+      "top": [
+        {
+          "site": "bus (:19825:7) @1000",
+          "fires": 60,
+          "ms": 350
+        },
+        {
+          "site": "realisedVol (:25645:7) @5000",
+          "fires": 12,
+          "ms": 99
+        },
+        {
+          "site": "Regime (:35341:7) @1000",
+          "fires": 60,
+          "ms": 54
+        },
+        {
+          "site": "boot (:41135:24) @2000",
+          "fires": 30,
+          "ms": 30
+        },
+        {
+          "site": ":51933:7 @4000",
+          "fires": 15,
+          "ms": 29
+        },
+        {
+          "site": ":24408:7 @1000",
+          "fires": 60,
+          "ms": 27
+        },
+        {
+          "site": ":47919:54 @3000",
+          "fires": 20,
+          "ms": 27
+        },
+        {
+          "site": "sessRangeUI (:30686:7) @5000",
+          "fires": 12,
+          "ms": 17
+        },
+        {
+          "site": "start (:27541:18) @1500",
+          "fires": 40,
+          "ms": 17
+        },
+        {
+          "site": ":31592:37 @800",
+          "fires": 75,
+          "ms": 17
+        },
+        {
+          "site": ":46711:54 @2500",
+          "fires": 24,
+          "ms": 12
+        },
+        {
+          "site": ":26026:9 @1000",
+          "fires": 60,
+          "ms": 12
+        },
+        {
+          "site": ":49787:56 @20000",
+          "fires": 3,
+          "ms": 10
+        },
+        {
+          "site": ":26038:9 @200",
+          "fires": 300,
+          "ms": 10
+        },
+        {
+          "site": ":55251:7 @1000",
+          "fires": 60,
+          "ms": 8
+        }
+      ]
+    }
+  ]
+}
