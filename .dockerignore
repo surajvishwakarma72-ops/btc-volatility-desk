@@ -10,3 +10,4 @@ skipped-records.json
 Thumbs.db
 .vscode
 .idea
+**/node_modules
