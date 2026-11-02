@@ -1,0 +1,282 @@
+{
+  "file": "orig.html",
+  "secondsPerPage": 40,
+  "pages": [
+    {
+      "page": "pgDesk",
+      "minutes": 0.67,
+      "busyMsPerMin": 0,
+      "liveIntervals": 155,
+      "intervalMsPerMin": 547,
+      "top": [
+        {
+          "site": "bus (:19833:7) @1000",
+          "fires": 40,
+          "ms": 173
+        },
+        {
+          "site": "Regime (:35349:7) @1000",
+          "fires": 40,
+          "ms": 35
+        },
+        {
+          "site": ":47927:54 @3000",
+          "fires": 14,
+          "ms": 32
+        },
+        {
+          "site": ":46719:54 @2500",
+          "fires": 16,
+          "ms": 19
+        },
+        {
+          "site": "boot (:37680:9) @5000",
+          "fires": 8,
+          "ms": 16
+        },
+        {
+          "site": "edgeDesk (:26888:7) @15000",
+          "fires": 2,
+          "ms": 9
+        },
+        {
+          "site": "evWire (:24255:19) @30000",
+          "fires": 1,
+          "ms": 5
+        },
+        {
+          "site": "boot (:26654:9) @3000",
+          "fires": 14,
+          "ms": 5
+        },
+        {
+          "site": "gfsLayout (:31598:17) @700",
+          "fires": 57,
+          "ms": 4
+        },
+        {
+          "site": "initEconomy (:58203:9) @5000",
+          "fires": 8,
+          "ms": 4
+        },
+        {
+          "site": "deskAuth (:61842:3) @2000",
+          "fires": 20,
+          "ms": 3
+        },
+        {
+          "site": "paLayer (:29261:17) @400",
+          "fires": 100,
+          "ms": 2
+        },
+        {
+          "site": "boot (:39372:58) @5000",
+          "fires": 8,
+          "ms": 2
+        },
+        {
+          "site": "boot (:45461:29) @15000",
+          "fires": 2,
+          "ms": 2
+        },
+        {
+          "site": ":48957:7 @30000",
+          "fires": 1,
+          "ms": 2
+        }
+      ],
+      "bus": [],
+      "cdp": {
+        "taskMsPerMin": 3886,
+        "scriptMsPerMin": 582,
+        "layoutMsPerMin": 118,
+        "styleMsPerMin": 943,
+        "layoutsPerMin": 128
+      }
+    },
+    {
+      "page": "pgPaper",
+      "minutes": 0.67,
+      "busyMsPerMin": 0,
+      "liveIntervals": 160,
+      "intervalMsPerMin": 526,
+      "top": [
+        {
+          "site": "bus (:19833:7) @1000",
+          "fires": 40,
+          "ms": 188
+        },
+        {
+          "site": "Regime (:35349:7) @1000",
+          "fires": 40,
+          "ms": 26
+        },
+        {
+          "site": "enter (:62543:78) @3000",
+          "fires": 14,
+          "ms": 17
+        },
+        {
+          "site": ":24416:7 @1000",
+          "fires": 38,
+          "ms": 15
+        },
+        {
+          "site": ":46719:54 @2500",
+          "fires": 16,
+          "ms": 10
+        },
+        {
+          "site": "boot (:26654:9) @3000",
+          "fires": 13,
+          "ms": 9
+        },
+        {
+          "site": ":47927:54 @3000",
+          "fires": 13,
+          "ms": 8
+        },
+        {
+          "site": "edgeDesk (:26888:7) @15000",
+          "fires": 2,
+          "ms": 5
+        },
+        {
+          "site": "boot (:57218:9) @1000",
+          "fires": 40,
+          "ms": 4
+        },
+        {
+          "site": "initEconomy (:58203:9) @5000",
+          "fires": 8,
+          "ms": 3
+        },
+        {
+          "site": ":47669:54 @3000",
+          "fires": 13,
+          "ms": 3
+        },
+        {
+          "site": ":49795:56 @20000",
+          "fires": 2,
+          "ms": 3
+        },
+        {
+          "site": ":52410:7 @1500",
+          "fires": 26,
+          "ms": 3
+        },
+        {
+          "site": "deskAuth (:61842:3) @2000",
+          "fires": 20,
+          "ms": 3
+        },
+        {
+          "site": "gToolRail (:32354:17) @800",
+          "fires": 50,
+          "ms": 3
+        }
+      ],
+      "bus": [],
+      "cdp": {
+        "taskMsPerMin": 3893,
+        "scriptMsPerMin": 567,
+        "layoutMsPerMin": 63,
+        "styleMsPerMin": 840,
+        "layoutsPerMin": 98
+      }
+    },
+    {
+      "page": "pgPnl",
+      "minutes": 0.67,
+      "busyMsPerMin": 0,
+      "liveIntervals": 158,
+      "intervalMsPerMin": 471,
+      "top": [
+        {
+          "site": "bus (:19833:7) @1000",
+          "fires": 40,
+          "ms": 150
+        },
+        {
+          "site": "Regime (:35349:7) @1000",
+          "fires": 40,
+          "ms": 33
+        },
+        {
+          "site": ":24416:7 @1000",
+          "fires": 40,
+          "ms": 21
+        },
+        {
+          "site": ":47927:54 @3000",
+          "fires": 13,
+          "ms": 11
+        },
+        {
+          "site": ":46719:54 @2500",
+          "fires": 16,
+          "ms": 10
+        },
+        {
+          "site": "boot (:57218:9) @1000",
+          "fires": 40,
+          "ms": 5
+        },
+        {
+          "site": "edgeDesk (:26888:7) @15000",
+          "fires": 3,
+          "ms": 5
+        },
+        {
+          "site": "initEconomy (:58203:9) @5000",
+          "fires": 8,
+          "ms": 5
+        },
+        {
+          "site": "boot (:26654:9) @3000",
+          "fires": 13,
+          "ms": 5
+        },
+        {
+          "site": "evWire (:24255:19) @30000",
+          "fires": 1,
+          "ms": 4
+        },
+        {
+          "site": "deskAuth (:61842:3) @2000",
+          "fires": 20,
+          "ms": 3
+        },
+        {
+          "site": "paLayer (:29261:17) @400",
+          "fires": 100,
+          "ms": 3
+        },
+        {
+          "site": ":52410:7 @1500",
+          "fires": 26,
+          "ms": 3
+        },
+        {
+          "site": ":27726:11 @4000",
+          "fires": 10,
+          "ms": 2
+        },
+        {
+          "site": "boot (:45461:29) @15000",
+          "fires": 3,
+          "ms": 2
+        }
+      ],
+      "bus": [],
+      "cdp": {
+        "taskMsPerMin": 3523,
+        "scriptMsPerMin": 553,
+        "layoutMsPerMin": 46,
+        "styleMsPerMin": 803,
+        "layoutsPerMin": 96
+      }
+    }
+  ]
+}

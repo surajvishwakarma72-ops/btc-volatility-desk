@@ -30,7 +30,7 @@ await new Promise(r => srv.listen(0, '127.0.0.1', r));
 const port = srv.address().port;
 
 const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'perfprof-'));
-const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', '--remote-debugging-port=0', '--user-data-dir=' + prof, '--window-size=1440,900', '--no-first-run', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1', '--remote-debugging-port=0', '--user-data-dir=' + prof, '--window-size=1440,900', '--no-first-run', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
 const wsUrl = await new Promise((res, rej) => { let b = ''; chrome.stderr.on('data', d => { b += d; const m = /ws:\/\/[^\s]+/.exec(b); if (m) res(m[0]); }); setTimeout(() => rej(new Error('chrome did not start')), 20000); });
 const browser = new WebSocket(wsUrl);
 await new Promise(r => browser.addEventListener('open', r));
@@ -50,13 +50,20 @@ await ev(`localStorage.setItem('perf_meter','1'); true`);
 await S('Page.navigate', { url: base });
 await sleep(15000); // let start-up settle
 const out = { file: path.basename(pageFile), secondsPerPage: SECS, pages: [] };
+// Main-thread totals from Chrome itself (script + layout + style, whoever triggers them), per minute.
+await S('Performance.enable', { timeDomain: 'threadTicks' });
+const metrics = async () => Object.fromEntries((await S('Performance.getMetrics')).metrics.map(m => [m.name, m.value]));
 for (const pg of ['pgDesk', 'pgPaper', 'pgPnl']) {
   await ev(`(document.querySelector('#nav button[data-page="${pg}"], #tabbar button[data-page="${pg}"], button[data-page="${pg}"]')||{click(){}}).click(); true`);
   await sleep(3000);
   await ev(`window.perfMeter && perfMeter.reset(); true`);
+  const m0 = await metrics();
   await sleep(SECS * 1000);
-  out.pages.push(await ev(`window.perfMeter ? perfMeter.report() : null`));
+  const m1 = await metrics(), per = k => Math.round((m1[k] - m0[k]) * 1000 / (SECS / 60));
+  const r = (await ev(`window.perfMeter ? perfMeter.report() : null`)) || { page: pg };
+  r.cdp = { taskMsPerMin: per('TaskDuration'), scriptMsPerMin: per('ScriptDuration'), layoutMsPerMin: per('LayoutDuration'), styleMsPerMin: per('RecalcStyleDuration'), layoutsPerMin: Math.round((m1.LayoutCount - m0.LayoutCount) / (SECS / 60)) };
+  out.pages.push(r);
 }
 fs.writeFileSync(outFile, JSON.stringify(out, null, 2));
-console.log(out.pages.map(p => p && `${p.page}: busy ${p.busyMsPerMin} ms/min, intervals ${p.intervalMsPerMin} ms/min, live ${p.liveIntervals}`).join('\n'));
+console.log(out.pages.map(p => `${p.page}: task ${p.cdp.taskMsPerMin} ms/min (script ${p.cdp.scriptMsPerMin}, layout ${p.cdp.layoutMsPerMin}, style ${p.cdp.styleMsPerMin}, ${p.cdp.layoutsPerMin} layouts/min) · live intervals ${p.liveIntervals}`).join('\n'));
 chrome.kill(); srv.close(); process.exit(0);

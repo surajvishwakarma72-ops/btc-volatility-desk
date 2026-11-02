@@ -19761,7 +19761,7 @@ Timers under 0.5 s and one-shot timers are untouched. */
       const W = window, si = W.setInterval, ci = W.clearInterval, sites = new Map(), live = new Set();
       let t0 = performance.now(), busy = 0;
       const where = () => {
-        const st = (new Error().stack || '').split('\n').slice(1).filter(l => !/\bwhere\b|W\.setInterval|window\.setInterval/.test(l));
+        const st = (new Error().stack || '').split('\n').slice(1).filter(l => !/\bwhere\b|\btrack\b|W\.setInterval|window\.setInterval|at Object\.on |at on /.test(l));
         return (st[0] || '?').trim().replace(/^at\s+/, '').replace(/https?:\/\/[^/]+\//, '');
       };
       W.setInterval = function (fn, ms, ...a) {
@@ -19771,15 +19771,23 @@ Timers under 0.5 s and one-shot timers are untouched. */
         live.add(id); return id;
       };
       W.clearInterval = function (id) { live.delete(id); return ci.call(W, id); };
+      // desk80 subscribers, timed by where they subscribed (the bus asks for this when the meter is on)
+      const subs = new Map();
+      const track = (fn, ev) => {
+        const k = 'bus:' + ev + ' ' + where(), r = subs.get(k) || subs.set(k, { site: k, fires: 0, ms: 0 }).get(k);
+        return function () { const s = performance.now(); try { return fn.apply(this, arguments); } finally { r.fires++; r.ms += performance.now() - s; } };
+      };
       try { new PerformanceObserver(l => { for (const e of l.getEntries()) busy += e.duration; }).observe({ type: 'longtask', buffered: true }); } catch (e) { }
       W.perfMeter = {
-        reset() { t0 = performance.now(); busy = 0; for (const r of sites.values()) { r.fires = 0; r.ms = 0; } },
+        track,
+        reset() { t0 = performance.now(); busy = 0; for (const r of [...sites.values(), ...subs.values()]) { r.fires = 0; r.ms = 0; } },
         report() {
           const min = Math.max((performance.now() - t0) / 60000, 1 / 60);
           return {
             page: document.body && document.body.dataset.page, minutes: +min.toFixed(2), busyMsPerMin: Math.round(busy / min), liveIntervals: live.size,
             intervalMsPerMin: Math.round([...sites.values()].reduce((s, r) => s + r.ms, 0) / min),
             top: [...sites.values()].sort((a, b) => b.ms - a.ms).slice(0, 15).map(r => ({ site: r.site, fires: r.fires, ms: Math.round(r.ms) })),
+            bus: [...subs.values()].filter(r => r.fires).sort((a, b) => b.ms - a.ms).slice(0, 25).map(r => ({ site: r.site, fires: r.fires, ms: Math.round(r.ms) })),
           };
         },
       };
@@ -19813,15 +19821,17 @@ modules and the shell subscribe instead of running their own intervals.
 events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv {i} · life · events · flow · signal */
     (function bus() {
       'use strict';
-      const H = new Map();
+      const H = new Map(), WR = new WeakMap();   // WR: subscriber -> its timed wrapper while the dev meter is on
       const bus = {
-        on(e, f) { (H.get(e) || H.set(e, new Set()).get(e)).add(f); return () => H.get(e)?.delete(f); },
-        off(e, f) { H.get(e)?.delete(f); },
+        on(e, f) { const g = window.perfMeter ? WR.get(f) || WR.set(f, window.perfMeter.track(f, e)).get(f) : f; (H.get(e) || H.set(e, new Set()).get(e)).add(g); return () => H.get(e)?.delete(g); },
+        off(e, f) { H.get(e)?.delete(WR.get(f) || f); },
         emit(e, d) { const s = H.get(e); if (!s) return; for (const f of s) { try { f(d); } catch (x) { console.warn('desk80', e, x); } } },
         count(e) { return H.get(e)?.size || 0; },
         /* every(ms, fn, {page, whenHidden}): periodic work on the one 1-second tick. Runs when ms has passed, the tab is
            visible (unless whenHidden) and, if page is given, that page (or one of a list) is open; runs once straight away
            when its page opens again. Returns an unsubscribe. Errors are logged, never swallowed. */
+        /* onOpenPage(el): el exists and sits on the open page (or on no page). Reads no layout, so it is safe in a timer. */
+        onOpenPage(el) { if (!el || !el.isConnected) return false; const pg = el.closest && el.closest('section.page'); return !pg || pg.classList.contains('on'); },
         every(ms, fn, opt) {
           const o = opt || {}, pages = o.page == null ? null : [].concat(o.page);
           let last = 0, wasOn = false;
@@ -21246,7 +21256,9 @@ The floating P&L pill still shows the live P&L on top of everything. */
               if (top.firstChild !== ch) top.insertBefore(ch, top.firstChild);
               var hd = $('v110PnlHd'); if (!hd) { hd = D.createElement('div'); hd.id = 'v110PnlHd'; hd.className = 'v110-hd'; hd.innerHTML = '<span>My trade · P&amp;L</span>'; }
               var wide = wideNow(), lead = $('v104Lead'), inn = $('v22SideIn');
-              var want = [$('v89Rail'), top, $('volRow'), wide ? null : lead, $('side2'), $('flowRow'), hd, $('v18Trade')].filter(function (e) { return e && !(e.dataset && e.dataset.v134); });
+              // perf: the rail goes right after the vol row, the order v133 moves() also wants. With the old order (rail first) the two
+              // undid each other every 3 s and every Desk section, charts included, was re-appended each time, on every page.
+              var want = [top, $('volRow'), $('v89Rail'), wide ? null : lead, $('side2'), $('flowRow'), hd, $('v18Trade')].filter(function (e) { return e && !(e.dataset && e.dataset.v134); });
               var kids = Array.prototype.filter.call(desk.children, function (e) { return want.indexOf(e) >= 0; });
               if (!(kids.length === want.length && want.every(function (e, i) { return kids[i] === e; }))) want.forEach(function (e) { desk.appendChild(e); });
               if (wide && lead && lead.parentNode !== inn) inn.appendChild(lead);
@@ -26042,8 +26054,9 @@ The floating P&L pill still shows the live P&L on top of everything. */
         if (typeof chartsReady === 'undefined' || !chartsReady) return; clearInterval(wait);
         for (const p of panes) try { paint(p.i); } catch (e) { console.warn('vov', e); }
         // the RV panel can add or drop bar times on the IV chart on its own clock; follow it
+        const deskOpen = () => document.body.dataset.page === 'pgDesk' || !document.body.dataset.page;   // perf: the IV charts live on the Desk
         setInterval(() => {
-          if (document.hidden) return;
+          if (document.hidden || !deskOpen()) return;
           for (const p of panes) {
             try {
               if (!p.vovChart) { paint(p.i); continue; }
@@ -26055,7 +26068,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
         }, 1000);
         // follow a change of bars at once; and while this panel is being moved, and just after, keep the IV chart within a frame or two of it
         setInterval(() => {
-          if (document.hidden) return;
+          if (document.hidden || !deskOpen()) return;
           for (const p of panes) {
             const st = S[p.i]; if (!p.vovChart) continue;
             try {
@@ -27546,7 +27559,8 @@ Signs follow Settings → Dealer positioning.`;
         const { box, rail, btn } = st, w = psW(c);
         if (!w || !box.clientWidth) { rail.style.display = 'none'; btn.classList.remove('on'); return; }
         const left = box.offsetLeft + box.clientWidth - w, top = box.offsetTop, h = box.clientHeight - tsH(c);
-        rail.style.display = ''; rail.style.left = left + 'px'; rail.style.top = top + 'px'; rail.style.height = Math.max(0, h) + 'px';
+        const sl = left + 'px', stp = top + 'px', sh = Math.max(0, h) + 'px';   // perf: write only what changed
+        if (rail.style.display) rail.style.display = ''; if (rail.style.left !== sl) rail.style.left = sl; if (rail.style.top !== stp) rail.style.top = stp; if (rail.style.height !== sh) rail.style.height = sh;
         const on = manual(c); btn.classList.toggle('on', on);
         if (on) {
           const bw = btn.offsetWidth || 44;
@@ -27555,7 +27569,7 @@ Signs follow Settings → Dealer positioning.`;
         }
       }
 
-      function sweep() { for (const { c, box } of list()) { try { hook(c, box); place(c); } catch (e) { } } }
+      function sweep() { const B = window.desk80; for (const { c, box } of list()) { if (B && B.onOpenPage && !B.onOpenPage(box)) continue; try { hook(c, box); place(c); } catch (e) { } } }   // perf: charts on hidden pages are skipped
       function start() {
         sweep(); setInterval(sweep, 1500); addEventListener('resize', () => requestAnimationFrame(sweep));
         // Fit all resets the price scale as well as time
@@ -28157,7 +28171,7 @@ Signs follow Settings → Dealer positioning.`;
           if (x && x.ok) { h = `<b>${fx(x.r)}</b>`; cls = 's' + x.st; } else h = '<b>—</b>';
         }
         if (S.tag.__h !== h) { S.tag.innerHTML = BARS + h; S.tag.__h = h; }
-        S.tag.className = 'imp-tag ' + cls;
+        if (S.tag.className !== 'imp-tag ' + cls) S.tag.className = 'imp-tag ' + cls;   // perf: write only a change
       }
 
       /* ---------- loop ---------- */
@@ -31829,7 +31843,7 @@ Signs follow Settings → Dealer positioning.`;
         for (const p of panes) {
           try {
             if (!p.chart || !p.vovChart) continue; watchVov(p.i); const b = $('vovBox' + p.i);
-            if (!b || b.offsetParent === null || !b.clientHeight || vovDown[p.i] || Date.now() - vovTouch[p.i] < 2500) continue;
+            if (!b || (window.desk80 && desk80.onOpenPage && !desk80.onOpenPage(b)) || b.offsetParent === null || !b.clientHeight || vovDown[p.i] || Date.now() - vovTouch[p.i] < 2500) continue;
             alignTo(p.chart, p.vovChart, null);
           } catch (e) { }
         }
@@ -34021,7 +34035,13 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
       }
       function render(force) {
         if (!DOC) return; const now = Date.now(); if (!force && now - S.lastRender < 500) return; S.lastRender = now;   // ≤ 2 DOM passes per second
-        if (DOC.hidden) return; let st; try { st = state(); } catch (e) { console.warn('orderflow state', e); return; }
+        if (DOC.hidden) return;
+        // perf: skip while none of the three panels sits on the open page. closest('.page') reads no layout; the
+        // offsetParent test in visible() forces one, and running it every second on every page was the real cost.
+        const onPage = id => { const e = $(id), pg = e && e.closest('.page'); return !!e && (!pg || pg.classList.contains('on')); };
+        if (!['ofTherm', 'flowTape', 'posPanel'].some(onPage)) { S.dirty = true; return; }
+        if (!['ofTherm', 'flowTape', 'posPanel'].some(id => visible($(id)))) { S.dirty = true; return; }
+        let st; try { st = state(); } catch (e) { console.warn('orderflow state', e); return; }
 
         try { renderTherm(st); } catch (e) { } try { renderTape(st); } catch (e) { } try { renderPos(st); } catch (e) { } S.dirty = false;
       }
@@ -34540,7 +34560,12 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
       }
       function sweep() {
         const R = window.__lwcReg; if (!R) return; for (const e of R.charts) { const id = e.el && e.el.id; if (!id || !ELIG.test(id) || !e.el.isConnected) continue; try { inst(e); } catch (x) { } }
-        for (const id in I) { const o = I[id]; if (o.e.el.isConnected && ((DB[id] && DB[id].length) || o.on)) sched(o); else if (o.btn) o.btn.hidden = o.e.el.offsetParent === null; }
+        const B = window.desk80;
+        for (const id in I) {
+          const o = I[id]; if (B && B.onOpenPage && !B.onOpenPage(o.e.el)) continue;   // perf: hidden page, nothing to show or move
+          if (o.e.el.isConnected && ((DB[id] && DB[id].length) || o.on)) sched(o);
+          else if (o.btn) { const h = o.e.el.offsetParent === null; if (o.btn.hidden !== h) o.btn.hidden = h; }   // perf: write only a change
+        }
       }
       setInterval(sweep, 1000); setTimeout(sweep, 1500); addEventListener('resize', () => { for (const id in I) sched(I[id]); });
       document.addEventListener('keydown', ev => { if (ev.key !== 'Delete' && ev.key !== 'Backspace') return; if (/input|select|textarea/i.test(ev.target.tagName)) return; for (const id in I) { const o = I[id]; if (o.on && o.sel) { DB[id] = list(o).filter(x => x.id !== o.sel); o.sel = null; save(); sched(o); } } });
@@ -41035,14 +41060,16 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         if (window.__v128NoAvg) return ''; const B = BAND[k]; if (!B || !fin(B.hi)) return `<span class="dim">usual day: needs 5 full weekdays</span>`; const f = k === 'edge' ? (v => sg(v)) : (v => v.toFixed(2) + '×');
         return `<span class="dim">usual weekday ${f(B.lo)} → ${f(B.hi)} (avg low / high, ${B.n} days)</span>`;
       }
+      // perf: rewrite a legend only when its text changes (it was rewritten every second, even with the Desk hidden)
+      const setLegH = (el, h) => { if (el.__legH !== h) { el.__legH = h; el.innerHTML = h; } };
       function legend(k) {
         const P = PANES[k]; if (!P.leg) return; const Dd = P.data;
-        if (!Dd) { P.leg.innerHTML = `<b>${P.name.toUpperCase()}</b><span class="dim">waiting for BTC candles…</span>`; return; }
+        if (!Dd) { setLegH(P.leg, `<b>${P.name.toUpperCase()}</b><span class="dim">waiting for BTC candles…</span>`); return; }
         const R = Dd.R; let i = R.n - 1; if (P.hoverT != null && Dd.idx.has(P.hoverT)) i = Dd.idx.get(P.hoverT);
         let v = Dd.cl[i]; if (!fin(v) && P.hoverT == null) { for (let j = R.n - 1; j >= 0 && j >= R.n - 6; j--)if (fin(Dd.cl[j])) { v = Dd.cl[j]; i = j; break; } }
-        if (!fin(v)) { P.leg.innerHTML = `<b>${P.name.toUpperCase()}</b><span class="dim">${(() => { const L5 = fiveBars(); if (!L5 || L5.bars.size < 300) return 'loading BTC 5-minute history from Delta…'; return k === 'edge' ? 'waiting for recorded IV of ' + SLOT_NAME[slot()] + ' (backfill loading)' : 'waiting for DVOL history'; })()}</span>`; return; }
+        if (!fin(v)) { setLegH(P.leg, `<b>${P.name.toUpperCase()}</b><span class="dim">${(() => { const L5 = fiveBars(); if (!L5 || L5.bars.size < 300) return 'loading BTC 5-minute history from Delta…'; return k === 'edge' ? 'waiting for recorded IV of ' + SLOT_NAME[slot()] + ' (backfill loading)' : 'waiting for DVOL history'; })()}</span>`); return; }
         let pv = null; for (let j = i - 1; j >= 0 && j >= i - 4; j--)if (fin(Dd.cl[j])) { pv = Dd.cl[j]; break; }
-        P.leg.innerHTML = P.legend(v, pv == null || v >= pv, i === R.n - 1) + bandTxt(k);
+        setLegH(P.leg, P.legend(v, pv == null || v >= pv, i === R.n - 1) + bandTxt(k));
       }
 
       function svg(k) {
@@ -46705,7 +46732,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       /* ---------- show / hide ---------- */
       function apply(force) {
-        D.body.dataset.v127 = '1'; D.body.dataset.gpane = 'none'; let ch = false;
+        // perf: write the body attributes only when they differ; every write restyles the whole page
+        if (D.body.dataset.v127 !== '1') D.body.dataset.v127 = '1'; if (D.body.dataset.gpane !== 'none') D.body.dataset.gpane = 'none'; let ch = false;
         const shown = Object.keys(IND).filter(k => on[k] && IND[k]()), n = shown.length, h = n <= 1 ? 190 : n === 2 ? 150 : n === 3 ? 120 : 100;
         for (const k in IND) {
           const el = IND[k](); if (!el) continue; const off = !on[k]; if (el.classList.contains('v127-off') !== off) { el.classList.toggle('v127-off', off); ch = true; }
