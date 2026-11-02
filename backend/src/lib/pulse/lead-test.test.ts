@@ -96,4 +96,29 @@ describe('leadReport verdict', () => {
     expect(rep.btc.hits.m30).toBeGreaterThan(0);
     expect(rep.verdict).toBe('does not lead');
   });
+  it('says not enough data when damage has too few episodes, even with enough days and jumps', () => {
+    const rows: MinuteRow[] = [];
+    const ids: number[] = [];
+    for (let d = 0; d < 21; d++) {
+      ids.push(d + 1);
+      // first 5 days: a damage reading then a jump. Others: a slow ramp with BTC moving along, so damage stays low.
+      rows.push(...cohort(d + 1, T0 + d * DAY, d < 5
+        ? { put: jumpAt45 }
+        : { put: (m) => 100 + Math.min(40, Math.max(0, (m - 10) * (40 / 30))), fut: (m) => 100_000 * (1 + 0.005 * Math.min(30, Math.max(0, m - 10))) }));
+    }
+    const rep = leadReport(rows, entriesFor(ids));
+    expect(rep.jumps).toBeGreaterThanOrEqual(20);
+    expect(rep.days).toBeGreaterThanOrEqual(14);
+    expect(rep.damage.readings).toBeLessThan(20);
+    expect(rep.verdict).toBe('not enough data');
+  });
+  it('measures the day span of 200,000 rows without spreading them', () => {
+    const rows: MinuteRow[] = [];
+    for (let i = 0; i < 200_000; i++) {
+      rows.push({ t: T0 + i * 60_000, cohort_id: 0, fut_price: null, call_mid: null, put_mid: null, call_iv: null, put_iv: null, data_ok: false });
+    }
+    const rep = leadReport(rows, new Map());
+    expect(rep.days).toBeCloseTo(199_999 / 1440);
+    expect(rep.verdict).toBe('not enough data');
+  });
 });

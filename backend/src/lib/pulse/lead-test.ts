@@ -16,6 +16,8 @@ const BTC_WINDOW_MIN = 5;
 const BTC_TOP_SHARE = 0.05;
 const MIN_DAYS = 14;
 const MIN_JUMPS = 20;
+/** Each signal needs this many episodes before a verdict other than 'not enough data' is allowed. */
+const MIN_EPISODES = 20;
 const EPS = 1e-9;
 
 export interface SignalReport {
@@ -142,13 +144,18 @@ export function leadReport(rows: readonly MinuteRow[], entries: ReadonlyMap<numb
     for (const t of episodes(bTimes)) btc.push({ t, starts });
   }
 
-  const ts = rows.map((r) => r.t);
-  const days = ts.length ? (Math.max(...ts) - Math.min(...ts)) / DAY_MS : 0;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const r of rows) {
+    if (r.t < lo) lo = r.t;
+    if (r.t > hi) hi = r.t;
+  }
+  const days = rows.length ? (hi - lo) / DAY_MS : 0;
   const damage = score(dmg);
   const plain = score(btc);
 
   let verdict: LeadReport['verdict'];
-  if (days < MIN_DAYS || jumps < MIN_JUMPS) verdict = 'not enough data';
+  if (days < MIN_DAYS || jumps < MIN_JUMPS || damage.readings < MIN_EPISODES || plain.readings < MIN_EPISODES) verdict = 'not enough data';
   else {
     const rate = (s: SignalReport) => (s.readings ? s.hits.m30 / s.readings : 0);
     const fa = (s: SignalReport) => s.falseAlarmRate ?? 0;
