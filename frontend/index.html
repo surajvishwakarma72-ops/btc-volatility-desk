@@ -67227,6 +67227,88 @@ body.light #vUniversalFloatingPnl,
     })();
   </script>
 
+  <!-- ════════ Hindi voice: pure core. Tested by backend/src/lib/voice/voice-core.test.ts ════════ -->
+  <script>
+  // VOICE-CORE-START
+  const VOICE_UNITS = 'शून्य एक दो तीन चार पाँच छह सात आठ नौ दस ग्यारह बारह तेरह चौदह पंद्रह सोलह सत्रह अठारह उन्नीस बीस इक्कीस बाईस तेईस चौबीस पच्चीस छब्बीस सत्ताईस अट्ठाईस उनतीस तीस इकतीस बत्तीस तैंतीस चौंतीस पैंतीस छत्तीस सैंतीस अड़तीस उनतालीस चालीस इकतालीस बयालीस तैंतालीस चौवालीस पैंतालीस छियालीस सैंतालीस अड़तालीस उनचास पचास इक्यावन बावन तिरपन चौवन पचपन छप्पन सत्तावन अट्ठावन उनसठ साठ इकसठ बासठ तिरसठ चौंसठ पैंसठ छियासठ सड़सठ अड़सठ उनहत्तर सत्तर इकहत्तर बहत्तर तिहत्तर चौहत्तर पचहत्तर छिहत्तर सतहत्तर अठहत्तर उनासी अस्सी इक्यासी बयासी तिरासी चौरासी पचासी छियासी सत्तासी अट्ठासी नवासी नब्बे इक्यानवे बानवे तिरानवे चौरानवे पचानवे छियानवे सत्तानवे अट्ठानवे निन्यानवे'.split(' ');
+
+  function hindiNumber(n) {
+    if (n < 100) return VOICE_UNITS[n];
+    const parts = [];
+    for (const [size, name] of [[10000000, 'करोड़'], [100000, 'लाख'], [1000, 'हज़ार'], [100, 'सौ']]) {
+      const count = Math.floor(n / size);
+      if (count) { parts.push(hindiNumber(count), name); n %= size; }
+    }
+    if (n) parts.push(VOICE_UNITS[n]);
+    return parts.join(' ');
+  }
+
+  /** One spelling for what speech recognition writes several ways: no nukta, one nasal mark, no punctuation. */
+  function normalizeHi(text) {
+    return String(text || '').normalize('NFD').replace(/़/g, '').replace(/ँ/g, 'ं').toLowerCase()
+      .replace(/[?!,।|"'’]/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  const VOICE_NUM = new Map(VOICE_UNITS.map((w, i) => [normalizeHi(w), i]));
+  [['छः', 6], ['छे', 6], ['ek', 1], ['do', 2]].forEach(([w, v]) => VOICE_NUM.set(normalizeHi(w), v));
+  const VOICE_SCALE = new Map([['हजार', 1000], ['लाख', 100000], ['करोड', 10000000]].map(([w, v]) => [normalizeHi(w), v]));
+  const VOICE_ALONE = new Map([['डेढ', 1.5], ['ढाई', 2.5]].map(([w, v]) => [normalizeHi(w), v]));
+  const VOICE_LEAD = new Map([['साढे', 0.5], ['सवा', 0.25], ['पौने', -0.25]].map(([w, v]) => [normalizeHi(w), v]));
+
+  function parseHindiNumber(text) {
+    let total = 0, cur = 0, lead = 0, seen = false;
+    for (const w of normalizeHi(text).split(' ')) {
+      if (/^\d+(\.\d+)?$/.test(w)) { cur += Number(w) + lead; lead = 0; seen = true; }
+      else if (VOICE_ALONE.has(w)) { cur += VOICE_ALONE.get(w); seen = true; }
+      else if (VOICE_LEAD.has(w)) { lead = VOICE_LEAD.get(w); }
+      else if (VOICE_NUM.has(w)) { cur += VOICE_NUM.get(w) + lead; lead = 0; seen = true; }
+      else if (w === 'सौ') { cur = (cur || 1) * 100; seen = true; }
+      else if (VOICE_SCALE.has(w)) { total += (cur || 1) * VOICE_SCALE.get(w); cur = 0; seen = true; }
+    }
+    return seen ? total + cur : null;
+  }
+
+  /** Base terms, so explain works even before the glossary has loaded. Longest alias wins. */
+  const VOICE_TERMS = [
+    ['iv', ['iv', 'आईवी', 'आई वी', 'implied volatility']],
+    ['strangle pulse', ['strangle pulse', 'स्ट्रैंगल पल्स', 'स्ट्रेंगल पल्स']],
+    ['stop loss', ['stop loss', 'स्टॉप लॉस', 'स्टॉप लोस']],
+    ['paper trade', ['paper trade', 'पेपर ट्रेड']],
+    ['live trade', ['live trade', 'लाइव ट्रेड']],
+  ];
+  const VOICE_PAGES = [
+    ['pgDesk', ['ट्रेड', 'trade', 'चार्ट']], ['pgPnl', ['पीएनएल', 'p&l', 'pnl']], ['pgFlow', ['फ्लो', 'flow']],
+    ['pgEvents', ['इवेंट', 'इवेंट्स', 'events']], ['pgBot', ['बॉट', 'bot']], ['pgPaper', ['पेपर', 'paper']],
+    ['pgAlgo', ['एल्गो', 'algo']], ['pgScore', ['स्कोर', 'score']], ['pgSettings', ['सेटिंग', 'सेटिंग्स', 'settings']],
+  ];
+  const voiceHas = (t, words) => words.some((w) => t.includes(normalizeHi(w)));
+  const voiceWord = (t, words) => words.some((w) => (' ' + t + ' ').includes(' ' + normalizeHi(w) + ' '));
+
+  function matchIntent(text, glossary) {
+    const t = normalizeHi(text);
+    if (!t) return { id: 'unknown' };
+    if (voiceHas(t, ['फिर से', 'दोबारा'])) return { id: 'repeat' };
+    if (voiceHas(t, ['धीरे'])) return { id: 'slower' };
+    if (voiceHas(t, ['मदद', 'क्या क्या', 'क्या-क्या', 'help'])) return { id: 'help' };
+    if (voiceHas(t, ['क्या है', 'क्या होता', 'क्या होती', 'मतलब', 'समझाओ', 'समझा दो', 'बताओ'])) {
+      const terms = VOICE_TERMS.concat((glossary || []).map((e) => [e.term, [e.term].concat(e.aliases)]));
+      let best = null, size = 0;
+      for (const [term, aliases] of terms) for (const al of aliases) {
+        if (normalizeHi(al).length > size && voiceWord(t, [al])) { best = term; size = normalizeHi(al).length; }
+      }
+      if (best) return { id: 'explain', term: best };
+    }
+    if (voiceHas(t, ['दिखाओ', 'खोलो', 'खोल दो', 'ले चलो', 'पर जाओ'])) {
+      for (const [page, words] of VOICE_PAGES) if (voiceWord(t, words)) return { id: 'navigate', page };
+    }
+    if (voiceHas(t, ['एंट्री', 'entry', 'ट्रेड लगा', 'ट्रेड करना'])) return { id: 'entry' };
+    if (voiceHas(t, ['बाजार', 'मार्केट', 'market'])) return { id: 'market' };
+    if (voiceHas(t, ['पोजिशन', 'पोजीशन', 'पोज़िशन', 'position'])) return { id: 'positions' };
+    return { id: 'unknown' };
+  }
+  // VOICE-CORE-END
+  </script>
+
   <!-- ════════ Voice Command Hook & Toast System (#vVoiceBtn & #vToastContainer - Task T1.7) ════════ -->
   <style id="vVoiceToastCss">
     #vVoiceBtn {
