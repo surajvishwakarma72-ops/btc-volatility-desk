@@ -59,9 +59,7 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
     try {
       const query = req.query as { expiry?: string; lots?: string };
       const lots = Math.min(Math.max(Math.floor(Number(query.lots)) || 100, 1), 100_000);
-      const { snap, rows, mode, available } = await paperFor(userId(req)).boardWithMargin(lots);
-      const wanted = Number(query.expiry);
-      const expiry = snap.expiries.includes(wanted) ? wanted : snap.expiries[0] ?? null;
+      const { snap, rows, mode, available, expiry } = await paperFor(userId(req)).boardWithMargin(lots, Number(query.expiry) || null);
       const byStrike = new Map<number, { strike: number; call: unknown; put: unknown }>();
       for (const r of rows) {
         if (r.expiryMs !== expiry) continue;

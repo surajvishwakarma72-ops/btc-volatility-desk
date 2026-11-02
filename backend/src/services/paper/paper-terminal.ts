@@ -10,7 +10,7 @@ import { DESK_USER_ID } from '../auth-store.js';
 import type { WatchLeg } from '../../lib/watch/classify.js';
 import { getWatchConfig } from '../watch/watch-store.js';
 import { parseExpiry } from '../bot/delta-public.js';
-import { DeltaMarket, type MarketProvider, type MarketSnapshot } from './market.js';
+import { DeltaMarket, type MarketProvider, type MarketSnapshot, type BoardRow } from './market.js';
 
 /**
  * The user's own Delta-style paper account. Separate from the bot: its own cash, orders, positions and fills.
@@ -207,6 +207,15 @@ export function parseOptionSymbol(symbol: string): { type: 'call' | 'put'; strik
   return { type: p[0] === 'C' ? 'call' : 'put', strike, expiryMs };
 }
 
+/** One expiry of the option board with, per row, the extra margin selling it would need. */
+export type BoardWithMargin = {
+  snap: MarketSnapshot;
+  rows: Array<BoardRow & { sellMargin: number | null; sellOk: boolean | null; buyCost: number }>;
+  mode: MarginMode;
+  available: number | null;
+  expiry: number | null;
+};
+
 export class PaperTerminal {
   private chain: Promise<unknown> = Promise.resolve();
   private timer: NodeJS.Timeout | null = null;
@@ -214,6 +223,9 @@ export class PaperTerminal {
   lastTickAt = 0;
   /** Nothing is open or working, so the 5-second tick does not touch the database or the market until an order is placed. */
   private idle = false;
+  /** Board-with-margin results per expiry|lots|mode for 3 s; dropped whenever positions, cash, leverage or margin mode change. */
+  private boardCache = new Map<string, { at: number; out: BoardWithMargin }>();
+  private dropBoardCache(): void { this.boardCache.clear(); }
 
   constructor(private readonly market: MarketProvider = sharedMarket(), readonly accountId: string = DESK_USER_ID) {}
 
@@ -319,6 +331,7 @@ export class PaperTerminal {
 
   /** Apply a fill to the account and the order, and record it. The caller has already simulated it. */
   private async commit(st: State, o: OrderRow, inst: Instrument, sim: FillSim, lots: number, price: number, maker: boolean, bestPrice: number, note?: string): Promise<void> {
+    this.dropBoardCache();
     const sym = inst.symbol;
     const slip = maker || !Number.isFinite(bestPrice) ? 0 : Math.abs(price - bestPrice) * lots * inst.contractValue;
     await pool.query(
@@ -537,6 +550,7 @@ export class PaperTerminal {
   }
 
   setLeverage(symbol: string, leverage: number) {
+    this.dropBoardCache();
     return this.serial(async () => {
       await this.ensure();
       const snap = await this.market.snapshot(2_000);
@@ -555,6 +569,7 @@ export class PaperTerminal {
   }
 
   reset(balance: number) {
+    this.dropBoardCache();
     return this.serial(async () => {
       await ensurePaperSchema();
       const mine = [this.accountId];
@@ -628,6 +643,7 @@ export class PaperTerminal {
 
   /** Switch between portfolio margin and standard margin. Refused if the account could not carry its positions under the new mode. */
   setMarginMode(mode: MarginMode) {
+    this.dropBoardCache();
     return this.serial(async () => {
       await this.ensure();
       if (mode !== 'portfolio' && mode !== 'standard') return { ok: false, reason: 'mode must be portfolio or standard' };
@@ -979,6 +995,7 @@ export class PaperTerminal {
   }
 
   private async settleExpired(st: State, snap: MarketSnapshot): Promise<void> {
+    this.dropBoardCache();
     const now = Date.now();
     for (const pos of [...st.positions.values()]) {
       const opt = parseOptionSymbol(pos.symbol);
@@ -1135,12 +1152,16 @@ export class PaperTerminal {
    * what the account already carries (so a hedged sale shows its true, smaller requirement), and the premium for
    * buying or selling that size. Same margin mode as the account.
    */
-  async boardWithMargin(lots: number, maxAgeMs = 3_000) {
+  async boardWithMargin(lots: number, expiry: number | null = null, maxAgeMs = 3_000) {
     const snap = maxAgeMs >= 3_000 ? await this.quick() : await this.market.snapshot(maxAgeMs);
+    const exp = expiry != null && snap.expiries.includes(expiry) ? expiry : snap.expiries[0] ?? null;
     let st: State | null = null;
     try { await this.ensure(); st = await this.load(); } catch { st = null; }
+    const key = `${exp}|${lots}|${st?.mode ?? 'none'}`;
+    const hit = this.boardCache.get(key);
+    if (hit && Date.now() - hit.at < 3_000) return hit.out as BoardWithMargin;
     const base = st ? this.view(st, st.positions.values(), snap) : null;
-    const rowsOut = snap.rows.map((r) => {
+    const rowsOut = snap.rows.filter((r) => r.expiryMs === exp).map((r) => {
       const inst = snap.insts.get(r.symbol);
       if (!st || !base || !inst) return { ...r, sellMargin: null as number | null, sellOk: null as boolean | null, buyCost: r.ask * lots * 0.001 };
       const cur = st.positions.get(r.symbol) ?? null;
@@ -1154,7 +1175,10 @@ export class PaperTerminal {
       const grows = Math.abs(np?.lots ?? 0) > Math.abs(cur?.lots ?? 0);
       return { ...r, sellMargin: Math.max(v.margin - base.margin, 0), sellOk: !grows || v.available >= 0, buyCost: r.ask * lots * inst.contractValue };
     });
-    return { snap, rows: rowsOut, mode: st?.mode ?? 'portfolio', available: base?.available ?? null };
+    const out: BoardWithMargin = { snap, rows: rowsOut, mode: st?.mode ?? 'portfolio', available: base?.available ?? null, expiry: exp };
+    if (this.boardCache.size >= 8) this.boardCache.delete(this.boardCache.keys().next().value!);
+    this.boardCache.set(key, { at: Date.now(), out });
+    return out;
   }
 
 

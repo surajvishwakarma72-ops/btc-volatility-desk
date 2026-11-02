@@ -28,7 +28,9 @@ const q = async (sql: string, params: unknown[] = []) => (await pool.query(sql, 
 const EXP = Date.now() + 2 * 86_400_000;
 const CALL = `C-BTC-82000-${new Date(EXP).toISOString().slice(8, 10)}${new Date(EXP).toISOString().slice(5, 7)}${new Date(EXP).toISOString().slice(2, 4)}`;
 
-const mk = { px: 80_000, callMark: 300, depth: 500 };
+const mk = { px: 80_000, callMark: 300, depth: 500, twoExpiries: false, dropCall: false };
+const EXP2 = EXP + 86_400_000;
+const PUT2 = `P-BTC-78000-${new Date(EXP2).toISOString().slice(8, 10)}${new Date(EXP2).toISOString().slice(5, 7)}${new Date(EXP2).toISOString().slice(2, 4)}`;
 
 const perpInst: Instrument = { symbol: 'BTCUSD', kind: 'perp', contractValue: 0.001, takerRate: 0.0005, makerRate: 0.0002, premiumCapRate: 0, tick: 0.5, maxLeverage: 100 };
 const callInst = (): Instrument => ({
@@ -38,10 +40,18 @@ const callInst = (): Instrument => ({
 
 function snapshot(): MarketSnapshot {
   const row: BoardRow = { symbol: CALL, type: 'call', strike: 82000, expiryMs: EXP, bid: mk.callMark - 10, ask: mk.callMark + 10, bidSize: 100, askSize: 100, mark: mk.callMark, iv: 40, delta: 0.3, gamma: 0, theta: 0, vega: 0, oi: 0, volume: 0, tick: 5 };
-  return {
+  const snap: MarketSnapshot = {
     at: Date.now(), spot: mk.px, perp: { symbol: 'BTCUSD', mark: mk.px, bid: mk.px - 0.5, ask: mk.px + 0.5, last: mk.px, funding: 0, oi: 0 },
     rows: [row], expiries: [EXP], insts: new Map([['BTCUSD', perpInst], [CALL, callInst()]]),
   };
+  const out = snap;
+  if (mk.dropCall) out.rows = [];
+  if (mk.twoExpiries) {
+    out.rows.push({ ...row, symbol: PUT2, type: 'put', strike: 78000, expiryMs: EXP2, delta: -0.2 });
+    out.expiries = [EXP, EXP2];
+    out.insts.set(PUT2, { ...callInst(), symbol: PUT2, option: { type: 'put', strike: 78000, expiryMs: EXP2, iv: 40 } });
+  }
+  return out;
 }
 
 const market: MarketProvider = {
@@ -61,7 +71,7 @@ beforeAll(async () => {
 });
 afterAll(() => undefined);
 beforeEach(async () => {
-  mk.px = 80_000; mk.callMark = 300; mk.depth = 500;
+  mk.px = 80_000; mk.callMark = 300; mk.depth = 500; mk.twoExpiries = false; mk.dropCall = false;
   t = new PaperTerminal(market);
   await t.reset(10_000);
 });
@@ -295,5 +305,31 @@ describe('risk', () => {
     expect(a.account).toMatchObject({ cash: 25_000, startBalance: 25_000, realizedTotal: 0, feesTotal: 0 });
     expect(a.positions).toHaveLength(0);
     expect(await q('SELECT 1 FROM paper_fills')).toHaveLength(0);
+  });
+});
+
+describe('board margin', () => {
+  it('computes margin only for the asked expiry', async () => {
+    mk.twoExpiries = true;
+    const b = await t.boardWithMargin(100, EXP2);
+    expect(b.expiry).toBe(EXP2);
+    expect(b.rows.length).toBeGreaterThan(0);
+    expect(b.rows.every((r) => r.expiryMs === EXP2)).toBe(true);
+  });
+  it('falls back to the first expiry when none or an unknown one is asked', async () => {
+    mk.twoExpiries = true;
+    expect((await t.boardWithMargin(100)).expiry).toBe(EXP);
+    expect((await t.boardWithMargin(100, 123)).expiry).toBe(EXP);
+  });
+  it('serves a repeat call from cache and drops the cache after a trade', async () => {
+    const spy = vi.spyOn(t as any, 'view');
+    await t.boardWithMargin(100, EXP);
+    const n = spy.mock.calls.length;
+    await t.boardWithMargin(100, EXP);
+    expect(spy.mock.calls.length).toBe(n);
+    await t.place({ symbol: CALL, side: 'sell', type: 'market', lots: 10 });
+    const before = spy.mock.calls.length;
+    await t.boardWithMargin(100, EXP);
+    expect(spy.mock.calls.length).toBeGreaterThan(before);
   });
 });
