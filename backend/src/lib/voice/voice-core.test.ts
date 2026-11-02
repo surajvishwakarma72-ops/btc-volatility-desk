@@ -67,7 +67,7 @@ describe('matchIntent', () => {
 
 const NA = 'माफ कीजिए, ये जानकारी उपलब्ध नहीं है। इसके अलावा आप कुछ और पूछ सकते हैं।';
 const GREETING = 'नमस्ते! मैं आपकी कैसे मदद कर सकती हूँ?';
-const pulse = { card: { verdict: 'SELL NOW', zone: 'sell', confidence: 74.4, why: ['x'], vetoes: [] } };
+const pulse = { card: { verdict: 'SELL NOW', zone: 'sell', confidence: 74.4, why: ['x'], vetoes: [] }, points: [{ t: Date.now() - 60_000 }] };
 
 describe('composeReply', () => {
   it('reads the Pulse verdict', () => {
@@ -77,7 +77,7 @@ describe('composeReply', () => {
   });
   it('reads a known veto in Hindi and skips an unknown one', () => {
     const c = { ...pulse.card, verdict: 'AVOID', zone: 'avoid', confidence: 40, vetoes: ['Term structure inverted', 'Something new'] };
-    const r = V.composeReply({ id: 'market' }, { pulse: { card: c } });
+    const r = V.composeReply({ id: 'market' }, { pulse: { ...pulse, card: c } });
     expect(r).toContain('टर्म');
     expect(r).not.toContain('Something');
   });
@@ -85,7 +85,13 @@ describe('composeReply', () => {
     expect(V.composeReply({ id: 'market' }, { pulse: { card: null } })).toBe(NA);
     expect(V.composeReply({ id: 'market' }, { pulse: null })).toBe(NA);
     expect(V.composeReply({ id: 'market' }, {})).toBe(NA);
-    expect(V.composeReply({ id: 'market' }, { pulse: { card: { ...pulse.card, verdict: 'NO DATA', confidence: null } } })).toBe(NA);
+    expect(V.composeReply({ id: 'market' }, { pulse: { ...pulse, card: { ...pulse.card, verdict: 'NO DATA', confidence: null } } })).toBe(NA);
+    expect(V.composeReply({ id: 'market' }, { pulse: { card: pulse.card, points: [] } })).toBe(NA);
+  });
+  it('never speaks an old reading as current', () => {
+    const old = { ...pulse, points: [{ t: Date.now() - 31 * 60_000 }] };
+    expect(V.composeReply({ id: 'market' }, { pulse: old })).toBe(NA);
+    expect(V.composeReply({ id: 'market' }, { pulse: { ...pulse, points: [{ t: Date.now() - 29 * 60_000 }] } })).toContain('चौहत्तर');
   });
   it('explains from the glossary, then adds the live reading', () => {
     const glossary = [{ term: 'iv', aliases: ['आईवी'], text: 'टेस्ट' }, { term: 'strangle pulse', aliases: ['x'], text: 'पल्स', metric: 'pulse' }];
@@ -94,19 +100,40 @@ describe('composeReply', () => {
     expect(V.composeReply({ id: 'explain', term: 'strangle pulse' }, { glossary, pulse })).toContain('चौहत्तर प्रतिशत');
     expect(V.composeReply({ id: 'explain', term: 'strangle pulse' }, { glossary, pulse: null })).toBe('पल्स');
   });
-  it('reads positions', () => {
-    expect(V.composeReply({ id: 'positions' }, { positions: { paper: [], delta: [], deltaNote: null } })).toContain('कोई खुली पोज़िशन नहीं');
-    const r = V.composeReply({ id: 'positions' }, { positions: { paper: [{ id: '1', name: 'a', netPnl: 25.4, legs: 2 }], delta: [{ symbol: 'C-BTC', size: 3, entry: 10 }], deltaNote: null } });
+  const none = { paper: [], paperLoose: 0, paperNote: null, delta: [], deltaNote: null };
+  it('reads positions and names what was checked', () => {
+    const empty = V.composeReply({ id: 'positions' }, { positions: none });
+    expect(empty).toContain('कोई खुली पोज़िशन नहीं');
+    expect(empty).toContain('फ्यूचर्स');
+    const r = V.composeReply({ id: 'positions' }, { positions: { ...none, paper: [{ id: '1', name: 'a', netPnl: 25.4, legs: 2 }], delta: [{ symbol: 'C-BTC', size: 3, entry: 10 }] } });
     expect(r).toContain('एक पेपर');
     expect(r).toContain('एक असली');
     expect(r).toContain('फायदा पच्चीस डॉलर');
-    expect(V.composeReply({ id: 'positions' }, { positions: { paper: [{ id: '1', name: 'a', netPnl: -3, legs: 2 }], delta: [], deltaNote: null } })).toContain('नुकसान तीन डॉलर');
+    expect(V.composeReply({ id: 'positions' }, { positions: { ...none, paper: [{ id: '1', name: 'a', netPnl: -3, legs: 2 }] } })).toContain('नुकसान तीन डॉलर');
     expect(V.composeReply({ id: 'positions' }, {})).toBe(NA);
   });
-  it('never says "no positions" when real positions could not be read', () => {
-    const r = V.composeReply({ id: 'positions' }, { positions: { paper: [], delta: [], deltaNote: 'failed' } });
-    expect(r).toContain('असली पोज़िशन नहीं देख पाई');
+  it('counts plain paper orders', () => {
+    const r = V.composeReply({ id: 'positions' }, { positions: { ...none, paperLoose: 1 } });
+    expect(r).toContain('एक पेपर ऑर्डर');
     expect(r).not.toContain('कोई खुली पोज़िशन नहीं');
+  });
+  it('never says "no positions" when a read failed', () => {
+    const d = V.composeReply({ id: 'positions' }, { positions: { ...none, deltaNote: 'failed' } });
+    expect(d).toContain('असली पोज़िशन नहीं देख पाई');
+    expect(d).not.toContain('कोई खुली पोज़िशन नहीं');
+    const p = V.composeReply({ id: 'positions' }, { positions: { ...none, paperNote: 'failed' } });
+    expect(p).toContain('पेपर पोज़िशन नहीं देख पाई');
+    expect(p).not.toContain('कोई खुली पोज़िशन नहीं');
+  });
+  it('does not call a small loss a profit', () => {
+    const r = V.composeReply({ id: 'positions' }, { positions: { ...none, paper: [{ id: '1', name: 'a', netPnl: -0.4, legs: 2 }] } });
+    expect(r).toContain('लगभग शून्य');
+    expect(r).not.toContain('फायदा');
+  });
+  it('does not call a partial P&L the total', () => {
+    const r = V.composeReply({ id: 'positions' }, { positions: { ...none, paper: [{ id: '1', name: 'a', netPnl: 40, legs: 2 }, { id: '2', name: 'b', netPnl: null, legs: 2 }] } });
+    expect(r).not.toContain('कुल');
+    expect(r).toContain('एक का भाव नहीं मिला');
   });
   it('keeps entry unavailable and says when a request failed', () => {
     expect(V.composeReply({ id: 'entry' }, {})).toContain('अभी उपलब्ध नहीं');
@@ -204,5 +231,48 @@ describe('createVoiceSession', () => {
     await r.s.hear('आज बाज़ार कैसा है'); await tick();
     expect(r.lines.some((l) => l.startsWith('me:'))).toBe(false);
     expect(r.log).toContain('cancel');
+  });
+  it('asks for fresh data on repeat, and forgets replies between sessions', async () => {
+    let calls = 0;
+    const r = rig({ fetchData: async (k: string) => { if (k === 'market') calls++; return { pulse, glossary: [] }; } });
+    await r.s.start(); await tick();
+    await r.s.hear('आज बाज़ार कैसा है'); await tick();
+    await r.s.hear('फिर से बोलो'); await tick();
+    expect(calls).toBe(2);
+    r.s.stop(); await r.s.start(); await tick();
+    await r.s.hear('फिर से बोलो'); await tick();
+    expect(calls).toBe(2);
+    expect(r.spoken.at(-1).t).toContain('दोहराने');
+  });
+  it('fetches Pulse for an explanation only when the term has a live value', async () => {
+    const asked: string[] = [];
+    const glossary = [{ term: 'iv', aliases: ['iv'], text: 'टेस्ट' }, { term: 'strangle pulse', aliases: ['x'], text: 'पल्स', metric: 'pulse' }];
+    const r = rig({ fetchData: async (k: string) => { asked.push(k); return k === 'glossary' ? { glossary } : { pulse }; } });
+    await r.s.start(); await tick();
+    await r.s.hear('IV क्या है'); await tick();
+    expect(asked).toEqual(['glossary']);
+    await r.s.hear('Strangle Pulse क्या है'); await tick();
+    expect(asked).toEqual(['glossary', 'explain']);
+  });
+  it('does not cut off someone who has started speaking', async () => {
+    const r = rig();
+    await r.s.start(); await tick();
+    expect(r.pending()).toBe(1);
+    r.s.activity();
+    expect(r.pending()).toBe(0);
+    r.s.idle();
+    expect(r.pending()).toBe(1);
+  });
+  it('says so and closes when the mic or network fails', async () => {
+    const r = rig();
+    await r.s.start(); await tick();
+    r.log.length = 0;
+    await r.s.inputFailed('network'); await tick();
+    expect(r.spoken.at(-1).t).toContain('इंटरनेट');
+    expect(r.status).toContain('closed');
+    expect(r.log).not.toContain('in:start');
+    await r.s.start(); await tick();
+    await r.s.inputFailed('not-allowed'); await tick();
+    expect(r.spoken.at(-1).t).toContain('अनुमति');
   });
 });

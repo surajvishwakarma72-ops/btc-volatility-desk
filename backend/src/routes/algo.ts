@@ -227,6 +227,30 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
     return { success: true, paper, delta, deltaNote };
   });
 
+  // What the voice assistant reads out. Unlike /open-positions it counts plain Paper orders, and a failed read is reported, never an empty list.
+  fastify.get('/voice-positions', auth, async (req) => {
+    const uid = userId(req);
+    let paper: Array<{ id: string; name: string; netPnl: number | null; legs: number }> = [];
+    let paperLoose = 0;
+    let paperNote: string | null = null;
+    try {
+      const open = (await paperFor(uid).strategies(0)).open;
+      paper = open.map((s) => ({ id: s.id, name: s.name, netPnl: s.netPnl, legs: s.legs.length }));
+      const inStrategy = new Set(open.flatMap((s) => (s.legs as Array<{ symbol?: string }>).map((l) => l.symbol)));
+      const acc = await paperFor(uid).account();
+      if (acc.marketError) paperNote = acc.marketError;
+      paperLoose = acc.positions.filter((p) => p.lots && !inStrategy.has(p.symbol)).length;
+    } catch (e) { paperNote = (e as Error).message; }
+    let delta: Array<{ symbol: string; size: number; entry: number }> = [];
+    let deltaNote: string | null = null;
+    const key = (await loadDeltaKey(uid, 'trade')) ?? (await loadDeltaKey(uid, 'read'));
+    if (!key) deltaNote = 'No Delta key saved';
+    else {
+      try { delta = (await fetchOptionPositions(key.key, key.secret)).map((p) => ({ symbol: p.symbol, size: p.size, entry: p.entry })); } catch (e) { deltaNote = (e as Error).message; }
+    }
+    return { success: true, paper, paperLoose, paperNote, delta, deltaNote };
+  });
+
   // Attach exit rules to a position that is already open (a Paper strategy, or real Delta option contracts).
   fastify.post('/adopt', limited, async (req, reply) => {
     const b = z.discriminatedUnion('source', [

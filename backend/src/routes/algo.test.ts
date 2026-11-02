@@ -4,7 +4,7 @@ import Fastify from 'fastify';
 import jwt from '@fastify/jwt';
 import type { ChainOption } from '../lib/bot/strike-picker.js';
 
-const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, strategiesOpen: [] as any[], closed: [] as string[] }));
+const h = vi.hoisted(() => ({ db: null as unknown as { query: Function; exec: Function }, strategiesOpen: [] as any[], closed: [] as string[], account: null as any }));
 vi.mock('../db/index.js', () => ({
   pool: {
     query: async (text: string, params?: unknown[]) => {
@@ -36,7 +36,7 @@ vi.mock('../services/paper/paper-terminal.js', () => ({
     strategies: async () => ({ open: h.strategiesOpen, closed: [] }),
     closeStrategy: async (id: string) => { h.closed.push(id); return { ok: true }; },
     cancelAll: async () => 0,
-    account: async () => ({ positions: [] }),
+    account: async () => (h.account ?? { positions: [] }),
     place: async () => ({}),
     placeBasket: async () => ({ ok: true, basketId: 'b1', stops: [] }),
   }),
@@ -345,6 +345,28 @@ describe('algo API', () => {
     expect(j.paper).toEqual([{ id: 'x', name: 'S', netPnl: 1, legs: 2 }]);
     expect(j.delta).toEqual([]);
     expect(j.deltaNote).toMatch(/key/);
+    await app.close();
+  });
+
+  it('voice positions count plain paper orders, without double counting strategy legs', async () => {
+    const app = await build();
+    h.strategiesOpen = [{ id: 'x', name: 'S', netPnl: 1, legs: [{ symbol: 'C-1' }] }];
+    h.account = { positions: [{ symbol: 'C-1', lots: 2 }, { symbol: 'P-2', lots: -1 }, { symbol: 'P-3', lots: 0 }] };
+    const j = (await app.inject({ method: 'GET', url: '/algo/voice-positions', headers: tok(app, '55555555-5555-5555-5555-555555555555') })).json();
+    expect(j.paper).toEqual([{ id: 'x', name: 'S', netPnl: 1, legs: 1 }]);
+    expect(j.paperLoose).toBe(1);
+    expect(j.paperNote).toBeNull();
+    h.account = null;
+    await app.close();
+  });
+
+  it('voice positions report a paper read that failed instead of an empty list', async () => {
+    const app = await build();
+    h.strategiesOpen = [];
+    h.account = { positions: [], marketError: 'down' };
+    const j = (await app.inject({ method: 'GET', url: '/algo/voice-positions', headers: tok(app, '55555555-5555-5555-5555-555555555555') })).json();
+    expect(j.paperNote).toBe('down');
+    h.account = null;
     await app.close();
   });
 });
