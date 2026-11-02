@@ -62025,7 +62025,7 @@ document.addEventListener('click', function(e) {
     const a = S.acct, v = a && a.view, ac = a && a.account;
     $('ppHead').innerHTML = !ac ? '' : [
       ['Equity', v ? usd(v.equity) : '-', ''], ['Available', v ? usd(v.available) : '-', v && v.available < 0 ? 'warn' : ''], ['Margin used', v ? usd(v.margin) : '-', ''],
-    ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ');
+    ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ') + (S.part ? staleNote() : '');
     const mm = (a && a.marginMode) || 'portfolio';
     $('ppBtns').innerHTML = tok() ? '<span class="pp-seg" title="Portfolio margin nets hedged option legs together (condors and spreads need little margin). Standard margin charges every short option on its own."><button type="button" data-pp-mode="portfolio" class="' + (mm === 'portfolio' ? 'on' : '') + '">Portfolio margin</button><button type="button" data-pp-mode="standard" class="' + (mm === 'standard' ? 'on' : '') + '">Standard margin</button></span> <button type="button" class="pp-btn" data-pp-act="reset">Reset account</button>' : '';
   }
@@ -62036,9 +62036,13 @@ document.addEventListener('click', function(e) {
     const P = S.pnl; if (!P || !tok()) { el.innerHTML = ''; return; }
     // options: the same net figure the strategy cards show (fees included); falls back to the positions' unrealised PnL
     const strat = S.strat.open, optNet = strat.length && strat.every(x => x.netPnl != null) ? strat.reduce((t, x) => t + x.netPnl, 0) : P.options.openPnl;
-    const opt = { n: P.options.openCount, v: optNet }, fut = { n: P.futures.openCount, v: P.futures.openPnl }, total = opt.v + fut.v;
-    const box = (title, x, none) => '<div class="pp-card pnl-box"><div class="pnl-h"><span class="pnl-t">' + title + '</span><span class="dim">' + (x.n ? x.n + (title.startsWith('Options') ? (x.n === 1 ? ' open strategy' : ' open strategies') : ' open position') : none) + '</span></div><div class="pnl-big ' + (x.n ? sgn(x.v) : 'dim') + '">' + (x.n ? usd(x.v) : '-') + '</div></div>';
-    el.innerHTML = '<div class="pnl-acct"><span>Current PnL <b class="' + (opt.n + fut.n ? sgn(total) : 'dim') + '">' + (opt.n + fut.n ? usd(total) : '-') + '</b></span><span class="dim">open positions only, closed trades are not included</span></div>' +
+    // futures: net of the fees paid on the open position, like the options figure; null = a mark is missing, never shown as $0
+    const futV = P.futures.openNet !== undefined ? P.futures.openNet : P.futures.openPnl;
+    const opt = { n: P.options.openCount, v: optNet }, fut = { n: P.futures.openCount, v: futV };
+    const known = x => !x.n || (x.v != null && isFinite(x.v)), total = known(opt) && known(fut) ? (opt.n ? opt.v : 0) + (fut.n ? fut.v : 0) : null;
+    const big = x => !x.n ? '-' : known(x) ? usd(x.v) : 'no price';
+    const box = (title, x, none) => '<div class="pp-card pnl-box"><div class="pnl-h"><span class="pnl-t">' + title + '</span><span class="dim">' + (x.n ? x.n + (title.startsWith('Options') ? (x.n === 1 ? ' open strategy' : ' open strategies') : ' open position') : none) + '</span></div><div class="pnl-big ' + (x.n && known(x) ? sgn(x.v) : 'dim') + '">' + big(x) + '</div></div>';
+    el.innerHTML = '<div class="pnl-acct"><span>Current PnL <b class="' + (opt.n + fut.n && total != null ? sgn(total) : 'dim') + '">' + (opt.n + fut.n ? (total != null ? usd(total) : '-') : '-') + '</b></span><span class="dim">open positions only, after fees; closed trades are not included</span></div>' +
       '<div class="pnl-grid">' + box('Options PnL', opt, 'nothing open') + box('Futures PnL', fut, 'nothing open') + '</div>';
   }
   function renderBoard() {
@@ -62307,19 +62311,21 @@ document.addEventListener('click', function(e) {
   }
   function renderFutPrev() {
     const el = $('ppFPrev'); if (!el) return;
-    const t = S.fut, p = t.preview, perp = S.board && S.board.perp;
+    const t = S.fut, p = t.preview, perp = (S.acct && S.acct.perp) || (S.board && S.board.perp);
     const ref = perp ? (t.type === 'limit' && Number(t.price) > 0 ? Number(t.price) : t.side === 'buy' ? perp.ask : perp.bid) : null;
-    const lots = Math.floor(Number(t.lots)) || 0, notional = ref ? ref * lots * 0.001 : null, pm = !S.acct || S.acct.marginMode !== 'standard', lev = pm ? 90.3 : Number(t.lev) || 1;
-    const local = notional ? 'Position value <b>' + usd(notional) + '</b> · ' + (pm ? 'portfolio margin, about value / 90.3 = <b>' : 'margin at ' + lev + 'x = value / leverage = <b>') + usd(notional / lev) + '</b>' : 'Waiting for the live price…';
+    const lots = Math.floor(Number(t.lots)) || 0, notional = ref ? ref * lots * 0.001 : null, pm = !S.acct || S.acct.marginMode !== 'standard', lev = Number(t.lev) || 1;
+    // portfolio margin comes only from the server's preview (stress scenarios); standard margin is value / leverage
+    const local = notional ? 'Position value <b>' + usd(notional) + '</b> · ' + (pm ? (p && p.marginRequired != null ? 'portfolio margin' : 'margin: checking…') : 'margin at ' + lev + 'x = value / leverage = <b>' + usd(notional / lev) + '</b>') : 'Waiting for the live price…';
     if (!p) { el.innerHTML = local; return; }
     if (p.ok === false && p.marginRequired == null) { el.innerHTML = local + '<br><span class="neg">' + esc(p.reason || 'Not possible') + '</span>'; return; }
     el.innerHTML = local + (p.marginRequired == null ? '' : '<br>Estimated margin required <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(Math.max(p.marginRequired, 0)) + '</b> · available after <b>' + usd(p.availableAfter) + '</b>') + (p.avgPrice ? '<br>Fills at about <b>' + px(p.avgPrice, 1) + '</b> · fee <b>' + usd(p.fee) + '</b> · slippage <b>' + usd(p.slippageUsd) + '</b>' : '') + (p.reason ? '<br><span class="neg">' + esc(p.reason) + '</span>' : '') + (p.note ? '<br><span class="dim">' + esc(p.note) + '</span>' : '');
   }
   function renderFut() {
     if (!$('ppFutQ')) return;
-    const b = S.board, t = S.fut;
-    if (b && b.perp) {
-      const p = b.perp, info = b.perpInfo || {};
+    const t = S.fut, a = S.acct, b = S.board;
+    const perpQ = (a && a.perp) || (b && b.perp), perpI = (a && a.perpInfo) || (b && b.perpInfo);
+    if (perpQ) {
+      const p = perpQ, info = perpI || {};
       $('ppFutQ').innerHTML = '<span>Mark <b>' + px(p.mark) + '</b></span><span class="neg">Sell <b>' + px(p.bid) + '</b></span><span class="pos">Buy <b>' + px(p.ask) + '</b></span><span class="dim">Funding ' + (p.funding == null ? '-' : Number(p.funding).toFixed(4) + '%') + '</span><span class="dim">Max ' + (info.maxLeverage || 100) + 'x · taker ' + ((info.takerRate || 0) * 100).toFixed(3) + '% + GST</span>';
       $('ppFLev').max = info.maxLeverage || 100;
     } else $('ppFutQ').innerHTML = '<span class="dim">' + (tok() ? 'Loading the futures quote…' : 'Log in to trade futures.') + '</span>';
@@ -62403,26 +62409,50 @@ document.addEventListener('click', function(e) {
     el.innerHTML = tok() ? dkUi.tabs([{ k: 'over', label: 'Overview', n: n || '' }, { k: 'opt', label: 'Options trade' }, { k: 'fut', label: 'Futures trade' }, { k: 'hist', label: 'History & account' }], S.tab, 'data-pp-tab', dkUi.help(S.help, 'data-pp-help')) : '';
     root.querySelectorAll('.dk-pane').forEach(p => p.classList.toggle('on', !tok() || p.dataset.pane === S.tab));
   }
-  function setTab(k) { S.tab = k; dkUi.set('pp_tab', k); ppNav(); try { window.scrollTo({ top: 0 }); } catch (e) { } if (k === 'opt') { try { renderBoard(); updateLegQuotes(); } catch (e) { } } }
+  function setTab(k) { S.tab = k; S.gen = (S.gen || 0) + 1; dkUi.set('pp_tab', k); try { window.scrollTo({ top: 0 }); } catch (e) { } drawAll(); refresh(); }
+  /* Each tab fetches and draws only what it shows. Parts update on their own: one slow or failed call keeps its last value
+     with a "stale" note instead of freezing the whole page. */
+  const NEEDS = { over: ['acct', 'strat'], opt: ['acct', 'board', 'strat'], fut: ['acct'], hist: ['acct', 'strat'] };
+  S.part = { acct: { at: 0, err: null }, board: { at: 0, err: null }, strat: { at: 0, err: null } };
   function drawAll() {
     if (!S.built) build();
     ppNav();
-    renderLogin(); renderHead(); renderPnl(); renderBoard(); renderStrats(); renderFut(); renderClosed(); renderAcct(); updateLegQuotes();
-    if (!$('ppSbSum')) renderBuilder();
+    renderLogin(); renderHead();
+    const k = tok() ? S.tab : 'opt';
+    if (k === 'over') { renderPnl(); renderStrats(); }
+    else if (k === 'opt') { renderBoard(); updateLegQuotes(); renderStrats(); if (!$('ppSbSum')) renderBuilder(); }
+    else if (k === 'fut') renderFut();
+    else if (k === 'hist') { renderClosed(); renderAcct(); }
   }
-  let busy = false;
+  function staleNote() {
+    const now = Date.now(), bad = (NEEDS[S.tab] || []).filter(k => S.part[k].err);
+    return bad.map(k => '<span class="pp-note warn"> stale · ' + (S.part[k].at ? Math.round((now - S.part[k].at) / 1000) + 's' : 'never loaded') + ' · ' + esc(S.part[k].err) + '</span>').join('');
+  }
+  let busy = false, again = false;
   async function refresh(first) {
     if (!tok()) { drawAll(); return; }
-    if (busy) return; busy = true;
-    try {
-      S.err = null;
-      const lots = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 100);
-      const [a, b, st, pn] = await Promise.all([api('/account'), api('/board?lots=' + lots + (S.expiry ? '&expiry=' + S.expiry : '')), api('/strategies'), api('/pnl').catch(() => null)]);
-      S.acct = a; S.board = b; S.pnl = pn; S.expiry = b.expiry; S.strat = { open: st.open || [], closed: st.closed || [] };
-      if (Date.now() - S.flowAt > 60000) loadFlow();
-    } catch (e) { S.err = e.message; if (e.status === 401) { S.acct = null; } }
-    busy = false; drawAll();
-    if (first && S.sb.legs.length) sbSchedule();
+    if (busy) { again = true; return; }
+    busy = true; S.lastAt = Date.now();
+    const gen = S.gen, need = NEEDS[S.tab] || NEEDS.over;
+    const lots = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 100);
+    const call = {
+      acct: () => api('/account?withPnl=1').then(a => { S.acct = a; S.pnl = a.pnl || null; }),
+      board: () => api('/board?lots=' + lots + (S.expiry ? '&expiry=' + S.expiry : '')).then(b => { S.board = b; S.expiry = b.expiry; }),
+      strat: () => api('/strategies').then(st => { S.strat = { open: st.open || [], closed: st.closed || [] }; }),
+    };
+    const res = await Promise.allSettled(need.map(k => call[k]()));
+    let logout = false;
+    res.forEach((r, i) => {
+      const k = need[i];
+      if (r.status === 'fulfilled') S.part[k] = { at: Date.now(), err: null };
+      else { S.part[k] = { at: S.part[k].at, err: r.reason && r.reason.message || 'failed' }; if (r.reason && r.reason.status === 401) logout = true; }
+    });
+    if (logout) S.acct = null;
+    S.err = logout ? 'Session expired, log in again' : (!S.acct && S.part.acct.err) ? S.part.acct.err : null;
+    if (S.tab === 'opt' && Date.now() - S.flowAt > 60000) loadFlow();
+    busy = false;
+    if (gen === S.gen) { drawAll(); if (first && S.sb.legs.length) sbSchedule(); }   // a late answer for a tab already left is not drawn
+    if (again) { again = false; refresh(); }
   }
 
   /* ---------- events ---------- */
@@ -62435,7 +62465,7 @@ document.addEventListener('click', function(e) {
     root.addEventListener('click', async e => {
       const t = e.target.closest('[data-pp-q],[data-pp-act],[data-pp-close],[data-pp-mode],[data-pp-sbdel],[data-pp-edit],[data-pp-editx],[data-pp-save],[data-pp-closeall],[data-pp-fside],[data-pp-ftype],[data-pp-flots],[data-pp-cancel]'); if (!t) return; const d = t.dataset;
       if (d.ppFside) { S.fut.side = d.ppFside; renderFut(); futSchedule(); return; }
-      if (d.ppFtype) { S.fut.type = d.ppFtype; if (d.ppFtype === 'limit' && !S.fut.price && S.board && S.board.perp) { S.fut.price = String(S.fut.side === 'buy' ? S.board.perp.ask : S.board.perp.bid); $('ppFPrice').value = S.fut.price; } renderFut(); futSchedule(); return; }
+      if (d.ppFtype) { S.fut.type = d.ppFtype; const fq = (S.acct && S.acct.perp) || (S.board && S.board.perp); if (d.ppFtype === 'limit' && !S.fut.price && fq) { S.fut.price = String(S.fut.side === 'buy' ? fq.ask : fq.bid); $('ppFPrice').value = S.fut.price; } renderFut(); futSchedule(); return; }
       if (d.ppFlots) { S.fut.lots = d.ppFlots; $('ppFLots').value = d.ppFlots; renderFut(); futSchedule(); return; }
       if (d.ppCancel) { try { await api('/orders/' + d.ppCancel, { method: 'DELETE' }); } catch (er) { S.fut.msg = { k: 'bad', t: er.message }; } refresh(); return; }
       if (d.ppAct === 'fgo') { futSubmit(); return; }
@@ -62497,7 +62527,8 @@ document.addEventListener('click', function(e) {
   /* ---------- lifecycle: poll only while the page is open and visible ---------- */
   let timer = 0, wasOn = false;
   const on = () => D.body.dataset.page === 'pgPaper';
-  function enter() { drawAll(); refresh(true); clearInterval(timer); timer = setInterval(() => { if (!D.hidden && on()) refresh(); }, 3000); }
+  // every 3 s; History (closed list, account details) only every 15 s
+  function enter() { drawAll(); refresh(true); clearInterval(timer); timer = setInterval(() => { if (D.hidden || !on()) return; if (S.tab === 'hist' && Date.now() - (S.lastAt || 0) < 15000) return; refresh(); }, 3000); }
   function leave() { clearInterval(timer); timer = 0; }
   const sync = () => { const o = on(); if (o && !wasOn) enter(); else if (!o && wasOn) leave(); wasOn = o; };
   new MutationObserver(sync).observe(D.body, { attributes: true, attributeFilter: ['data-page'] });
