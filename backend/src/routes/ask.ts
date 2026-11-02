@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { SUGGESTIONS } from '../lib/ask/parse.js';
 import { pool } from '../db/index.js';
 import { GLOSSARY } from '../lib/ask/glossary.js';
+import { GLOSSARY_HI } from '../lib/ask/glossary-hi.js';
 import { DOCS_INDEX } from '../lib/ask/docs-index.generated.js';
 import { answer, type AskContext } from '../services/ask/answer.js';
 import { botEngine } from '../services/bot/bot-engine.js';
@@ -79,6 +80,8 @@ export const askRoutes: FastifyPluginAsync = async (fastify) => {
   const auth = { preHandler: (fastify as any).authenticate };
 
   fastify.get('/suggestions', auth, async () => ({ success: true, suggestions: SUGGESTIONS }));
+
+  fastify.get('/hi-glossary', auth, async () => ({ success: true, entries: GLOSSARY_HI }));
 
   fastify.post('/', { ...auth, config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (req, reply) => {
     const body = z.object({ question: z.string().trim().min(1).max(300) }).safeParse(req.body);

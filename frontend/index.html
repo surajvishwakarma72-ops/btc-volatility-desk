@@ -62586,7 +62586,7 @@ document.addEventListener('click', function(e) {
 </style><script id="askBrain">
 /* Ask brain: understands plain-language questions about the desk and answers with pictures (verdict dial, check list, bars, tiles, step cards)
    built from the numbers already loaded in this page: the live decision, the entry gauge and the 5-year backtests.
-   No outside AI, nothing leaves the browser. Questions it does not recognise go on to the server's own answers. */
+   Questions it does not recognise go on to the server's own answers. */
 (function askBrain() {
   'use strict';
   // ASKBRAIN-CORE-START
@@ -64204,7 +64204,7 @@ document.addEventListener('click', function(e) {
     const keepVal = (D.getElementById('akIn') || {}).value || '';
     const hadFocus = D.activeElement && (D.activeElement.id === 'akIn' || D.activeElement.id === 'akPw');
     panel.classList.toggle('big', S.big);
-    panel.innerHTML = '<header class="ak-head"><b>Ask me</b><span class="ak-sub">pictures from your own data, no outside AI</span><button type="button" class="ak-x ak-clear" data-ak="clear" title="Clear the whole chat" aria-label="Clear chat">Clear chat</button><button type="button" class="ak-x" data-ak="big" aria-label="Make wider or narrower" title="Wider / narrower">⤢</button><button type="button" class="ak-x" data-ak="close" aria-label="Close">×</button></header>' + body;
+    panel.innerHTML = '<header class="ak-head"><b>Ask me</b><span class="ak-sub">pictures from your own data</span><button type="button" class="ak-x ak-clear" data-ak="clear" title="Clear the whole chat" aria-label="Clear chat">Clear chat</button><button type="button" class="ak-x" data-ak="big" aria-label="Make wider or narrower" title="Wider / narrower">⤢</button><button type="button" class="ak-x" data-ak="close" aria-label="Close">×</button></header>' + body;
     const inp = D.getElementById('akIn'); if (inp) { inp.value = keepVal; if (hadFocus || S.msgs.length === 0) try { inp.focus(); } catch (e) { } }
     const pw = D.getElementById('akPw'); if (pw && hadFocus) try { pw.focus(); } catch (e) { }
     const box = D.getElementById('akMsgs'); if (box) box.scrollTop = box.scrollHeight;
