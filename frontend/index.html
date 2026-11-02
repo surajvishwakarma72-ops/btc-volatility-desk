@@ -43531,7 +43531,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
     }
   </style>
   <script id="v105_23Side">(function () {
-      var D = document, K = 'v23_side_hidden';
+      var D = document, K = 'v23_side_hidden_v2';   // v172: new key; the old one held '0' from every earlier visit (it was written on each load)
       // v172: hidden unless the user chose to show it ('0'). The column's content now lives in Tools ▾, so the chart gets the full width.
       function lsg() { try { return localStorage.getItem(K) !== '0'; } catch (e) { return true; } }
       function set(h) {
@@ -48003,7 +48003,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             wire(s); g.appendChild(s); S.push(s);
           });
         }
-        for (const s of S) { const l = $(s.dataset.below); if (!l) continue; const t = (l.offsetTop - g.scrollTop) + 'px'; if (s.style.top !== t) s.style.top = t; }
+        for (const s of S) { const l = $(s.dataset.below); if (!l) continue; const t = l.offsetTop + 'px'; if (s.style.top !== t) s.style.top = t; }   // children of #paneG: they scroll with it
       }
       let raf = 0; const soon = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; try { place(); } catch (e) { console.warn('dkSplit place', e); } }); };
       function wire(s) {
@@ -48028,11 +48028,12 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
             const m = Object.assign({}, base); m[below.id] = (b0 - dy) / ph; if (aboveId !== 'candles') m[aboveId] = (a0 + dy) / ph;
             pend = m; if (!fr) fr = requestAnimationFrame(() => { fr = 0; if (pend) { W.dkHeights.set(pend); soon(); } });
           };
-          const up = () => {
-            s.classList.remove('drag'); D.body.classList.remove('dk-dragging'); s.removeEventListener('pointermove', mv);
-            if (fr) { cancelAnimationFrame(fr); fr = 0; } if (pend) W.dkHeights.set(pend); soon();
+          const up = () => {   // remove every listener of this drag, so a later pointercancel can't replay it
+            s.classList.remove('drag'); D.body.classList.remove('dk-dragging');
+            s.removeEventListener('pointermove', mv); s.removeEventListener('pointerup', up); s.removeEventListener('pointercancel', up); s.removeEventListener('lostpointercapture', up);
+            if (fr) { cancelAnimationFrame(fr); fr = 0; } if (pend) W.dkHeights.set(pend); pend = null; soon();
           };
-          s.addEventListener('pointermove', mv); s.addEventListener('pointerup', up, { once: true }); s.addEventListener('pointercancel', up, { once: true });
+          s.addEventListener('pointermove', mv); s.addEventListener('pointerup', up); s.addEventListener('pointercancel', up); s.addEventListener('lostpointercapture', up);
         });
       }
       // the pair goes back to its defaults: drop both saved shares (fit gives a lane with no share its default height)
@@ -48052,7 +48053,6 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const g = pane(); if (!g) return setTimeout(boot, 500);
         if (W.desk80 && W.desk80.on) { W.desk80.on('fit', soon); W.desk80.on('page', soon); }
         try { new ResizeObserver(soon).observe(g); } catch (e) { }
-        g.addEventListener('scroll', soon, { passive: true });
         addEventListener('resize', soon);
         if (W.v132ind && W.v132ind.open && !W.v132ind.__dk) { const o = W.v132ind.open; W.v132ind.open = function () { const r = o.apply(this, arguments); setTimeout(menuButton, 0); return r; }; W.v132ind.__dk = 1; }
         D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v132IndBtn')) setTimeout(menuButton, 0); }, true);

@@ -48,9 +48,9 @@ export default async ({ ev, sleep, click, cdp, reload }) => {
   if (phone) { for (let i = 0; i < 2; i++) { await touch('touchStart', [q]); await touch('touchEnd', []); await sleep(120); } }
   else { await mouse('mousePressed', q.x, q.y); await mouse('mouseReleased', q.x, q.y); await sleep(120); await mouse('mousePressed', q.x, q.y, { clickCount: 2 }); await mouse('mouseReleased', q.x, q.y, { clickCount: 2 }); }
   await sleep(600);
-  r.dbl = { before: before.t, got: await ev(`${H}('${target}')`) };
-  const cNow = await ev(`${H}('candles')`), minC = phone ? 180 : 240;
-  r.dblOk = Math.abs(r.dbl.got - before.t) <= 8 || (Math.abs(cNow - minC) <= 3 && r.dbl.got < before.t);   // or squeezed because the candles sit at their minimum
+  // the pair went back to its defaults: neither side keeps a saved share (pixel heights depend on the panel height of the moment)
+  r.dbl = { saved: await ev(`JSON.stringify(dkHeights.get())`), got: await ev(`${H}('${target}')`) };
+  r.dblOk = !(await ev(`(() => { const u = dkHeights.get() || {}; return '${target}' in u; })()`));
   // Reset heights in the ƒx menu
   await drag(await ev(handle(target)), dy);
   await ev(`v132ind.open(); true`); await sleep(500);
