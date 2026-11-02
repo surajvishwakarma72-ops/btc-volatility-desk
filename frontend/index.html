@@ -19818,7 +19818,26 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         on(e, f) { (H.get(e) || H.set(e, new Set()).get(e)).add(f); return () => H.get(e)?.delete(f); },
         off(e, f) { H.get(e)?.delete(f); },
         emit(e, d) { const s = H.get(e); if (!s) return; for (const f of s) { try { f(d); } catch (x) { console.warn('desk80', e, x); } } },
-        count(e) { return H.get(e)?.size || 0; }
+        count(e) { return H.get(e)?.size || 0; },
+        /* every(ms, fn, {page, whenHidden}): periodic work on the one 1-second tick. Runs when ms has passed, the tab is
+           visible (unless whenHidden) and, if page is given, that page (or one of a list) is open; runs once straight away
+           when its page opens again. Returns an unsubscribe. Errors are logged, never swallowed. */
+        every(ms, fn, opt) {
+          const o = opt || {}, pages = o.page == null ? null : [].concat(o.page);
+          let last = 0, wasOn = false;
+          const run = now => { last = now; try { fn(now); } catch (x) { console.warn('desk80.every', x); } };
+          const onTick = d => {
+            const now = (d && d.now) || Date.now();
+            const pageOn = !pages || pages.includes(document.body && document.body.dataset.page);
+            const ok = pageOn && (o.whenHidden || !document.hidden);
+            if (!ok) { wasOn = false; return; }
+            if (!wasOn) { wasOn = true; if (pages && last) { run(now); return; } }
+            if (now - last >= ms - 50) run(now);
+          };
+          const onPage = () => onTick({ now: Date.now() });
+          bus.on('tick', onTick); bus.on('page', onPage);
+          return () => { bus.off('tick', onTick); bus.off('page', onPage); };
+        },
       };
       window.desk80 = bus;
       let lastTf = null, lastSpot = null, lastTheme = null, ivLen = [0, 0, 0];
@@ -32780,6 +32799,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
         const _ms = $('moreSheet'); if (_ms) { _ms.hidden = true; _ms.style.display = 'none'; }
         slotMoves(p);
         document.body.dataset.page = p;
+        try { window.desk80 && window.desk80.emit('page', { page: p }); } catch (e) { }
         kick();
         try { window.scrollTo({ top: 0 }); } catch (e) { }
       }
