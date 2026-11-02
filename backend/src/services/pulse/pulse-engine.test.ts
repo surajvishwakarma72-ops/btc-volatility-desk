@@ -148,7 +148,7 @@ beforeEach(async () => {
   mocks.fetchOptionFeeRates.mockReset().mockImplementation(
     async (symbols: string[]) => new Map(symbols.map((s) => [s, s.startsWith('C-') ? CALL_FEE : FEE])),
   );
-  await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_events; DELETE FROM pulse_cohorts; DELETE FROM pulse_market_snapshots;');
+  await pool.query('DELETE FROM pulse_leg_snapshots; DELETE FROM pulse_cohort_snapshots; DELETE FROM pulse_events; DELETE FROM pulse_cohorts; DELETE FROM pulse_market_snapshots; DELETE FROM pulse_minute;');
   h.queries = 0;
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -1075,5 +1075,81 @@ describe('market snapshots', () => {
     expect(e.status().lastError).toBeNull();
     expect(e.status().lastGoodTickAt).toBe(T('2026-11-01T00:16:00Z'));
     expect(await count('FROM pulse_cohort_snapshots')).toBe(3);
+  });
+});
+
+describe('minute rows', () => {
+  const MIN1 = T('2026-11-01T00:01:00Z');
+  const minuteCount = () => count('FROM pulse_minute');
+
+  it('saves one row per slot on a healthy tick', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z'); // opens the cohorts, so nothing to follow yet
+    expect(await minuteCount()).toBe(0);
+    await at(e, '2026-11-01T00:01:30Z');
+    const rows = await q('SELECT * FROM pulse_minute ORDER BY slot');
+    expect(rows.map((r) => r.slot)).toEqual(['current', 'n2n', 'next']);
+    const cur = rows.find((r) => r.slot === 'current');
+    expect(Number(cur.t)).toBe(MIN1);
+    expect(Number(cur.cohort_id)).toBe(T('2026-11-01T00:00:00Z'));
+    expect(cur).toMatchObject({ data_ok: true });
+    expect(Number(cur.fut_price)).toBe(80_000);
+    expect(Number(cur.call_mid)).toBe(105);
+    expect(Number(cur.put_mid)).toBe(95);
+    expect(Number(cur.call_iv)).toBe(40);
+    expect(Number(cur.put_iv)).toBe(41);
+    await at(e, '2026-11-01T00:01:50Z'); // same minute again: no duplicate
+    expect(await minuteCount()).toBe(3);
+  });
+
+  it('stores a missing quote as null with data_ok false', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.gone.add(`P-72000-${E_NOV1}`);
+    await at(e, '2026-11-01T00:01:00Z');
+    const cur = (await q(`SELECT * FROM pulse_minute WHERE slot = 'current'`))[0];
+    expect(cur.put_mid).toBeNull();
+    expect(cur.put_iv).toBeNull();
+    expect(cur.data_ok).toBe(false);
+    expect(Number(cur.call_mid)).toBe(105);
+  });
+
+  it('saves nothing on a stale tick', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.chainAgeMs = 10 * 60_000;
+    await at(e, '2026-11-01T00:01:00Z');
+    expect(await minuteCount()).toBe(0);
+  });
+
+  it('a failed minute write leaves the 15-minute snapshot intact', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    h.failSql = 'INSERT INTO pulse_minute';
+    await expect(at(e, '2026-11-01T00:15:00Z')).resolves.toBeUndefined();
+    expect(await count('FROM pulse_cohort_snapshots WHERE grid_ms = $1', [T('2026-11-01T00:15:00Z')])).toBe(3);
+    expect(await minuteCount()).toBe(0);
+    expect(console.error).toHaveBeenCalledWith('[pulse]', expect.stringContaining('minute write failed'));
+    h.failSql = null;
+    await at(e, '2026-11-01T00:16:00Z');
+    expect(await minuteCount()).toBe(3);
+  });
+
+  it('deletes rows past 45 days once an hour', async () => {
+    const day = 86_400_000;
+    const now = T('2026-11-01T00:00:00Z');
+    const seed = (t: number) => pool.query(
+      `INSERT INTO pulse_minute (slot, cohort_id, t, data_ok) VALUES ('current', 1, $1, true)`, [t],
+    );
+    await seed(now - 46 * day);
+    await seed(now - 44 * day);
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    expect((await q('SELECT t FROM pulse_minute')).map((r) => Number(r.t))).toEqual([now - 44 * day]);
+    await seed(now - 47 * day);
+    await at(e, '2026-11-01T00:30:00Z');
+    expect(await count('FROM pulse_minute WHERE t < $1', [now - 45 * day])).toBe(1);
+    await at(e, '2026-11-01T01:00:00Z');
+    expect(await count('FROM pulse_minute WHERE t < $1', [now - 45 * day])).toBe(0);
   });
 });

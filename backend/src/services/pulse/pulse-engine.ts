@@ -2,14 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { closeNetPnl, buildSnapshot, stopHitNow, type LegName, type PulseCohort } from '../../lib/pulse/snapshot.js';
 import { feedFingerprint, finiteOrNull, oiBand, planOpen, positiveOrNull, type OpenPlan } from '../../lib/pulse/cohort.js';
 import { marketRow } from '../../lib/pulse/metrics/market.js';
-import { PULSE_CONFIG } from '../../lib/pulse/config.js';
+import { DAMAGE_CONFIG, PULSE_CONFIG } from '../../lib/pulse/config.js';
+import { minuteTargets } from '../../lib/pulse/minute-plan.js';
+import type { MinuteRow } from '../../lib/pulse/metrics/damage.js';
 import { HOUR_MS, SLOTS, cohortSlotMs, resolveSlots, snapshotGridMs, type Slot } from '../../lib/pulse/grid.js';
 import {
   DEFAULT_OPTION_FEES, fetchChain, fetchOptionFeeRates, fetchPerpQuote, type ChainSnapshot, type FeeRates, type PerpQuote,
 } from '../bot/delta-public.js';
 import {
   closeCohorts, dbSizeBytes, ensurePulseSchema, gridIncomplete, insertCohort, insertSnapshot, lastLegSnapshots, latestGridMs,
-  insertMarketRows, latestSeries, latestSlotMs, liveCohorts, logEvent, markStop, missedOpenSlots,
+  insertMarketRows, insertMinuteRows, latestSeries, latestSlotMs, liveCohorts, logEvent, markStop, missedOpenSlots, pruneMinute,
 } from './pulse-store.js';
 
 const TICK_MS = 60_000;
@@ -216,6 +218,7 @@ export class PulseEngine {
     this.live = this.countLive(stillLive);
     this.rotateSeries(slots);
     await this.snapshot(now, stillLive, chain, perp);
+    await this.recordMinute(now, stillLive, chain, perp);
     const marketOk = await this.collectMarket(now, slots, chain, perp);
     await this.open(now, slots, chain, perp);
     await this.logDbSize(now);
@@ -311,6 +314,30 @@ export class PulseEngine {
       }
     }
     this.lastGrid = grid; // only now: a failed write above must leave this grid for the next tick to retry
+  }
+
+  /** One row a minute for each followed strangle. A failure is logged and never reaches the snapshot or cohort work; the next minute writes its own row. */
+  private async recordMinute(now: number, live: readonly PulseCohort[], chain: ChainSnapshot, perp: PerpQuote): Promise<void> {
+    try {
+      const t = Math.floor(now / 60_000) * 60_000;
+      const mid = (symbol: string | null) => {
+        const o = symbol === null ? undefined : chain.options.find((x) => x.symbol === symbol);
+        return o && o.bid > 0 && o.ask > 0 ? (o.bid + o.ask) / 2 : null;
+      };
+      const iv = (symbol: string | null) => positiveOrNull(symbol === null ? undefined : chain.options.find((x) => x.symbol === symbol)?.iv);
+      const rows = SLOTS.flatMap((slot) => minuteTargets(live, slot, now).map((c): MinuteRow & { slot: Slot } => {
+        const row = {
+          slot, t, cohort_id: c.slot_ms, fut_price: positiveOrNull(perp.mark),
+          call_mid: mid(c.call_symbol), put_mid: mid(c.put_symbol), call_iv: iv(c.call_symbol), put_iv: iv(c.put_symbol),
+        };
+        const full = row.fut_price !== null && row.call_mid !== null && row.put_mid !== null;
+        return { ...row, data_ok: full };
+      }));
+      await insertMinuteRows(rows);
+    } catch (e) {
+      this.lastError = `minute write failed: ${errText(e)}`;
+      console.error('[pulse]', this.lastError);
+    }
   }
 
   /** Skew and term structure for the slots resolved this tick, once per grid. A failure is recorded here and retried on the next tick; it never reaches the cohort work. */
@@ -412,6 +439,11 @@ export class PulseEngine {
   private async logDbSize(now: number): Promise<void> {
     const hour = cohortSlotMs(now);
     if (hour === this.dbSizeHour) return;
+    try {
+      await pruneMinute(now - DAMAGE_CONFIG.retentionDays * 24 * HOUR_MS);
+    } catch (e) {
+      console.error('[pulse] minute prune failed:', errText(e)); // retention is retried next hour; it must not fail the tick
+    }
     const bytes = await dbSizeBytes();
     await logEvent('DB_SIZE', null, { bytes });
     this.dbSize = bytes;

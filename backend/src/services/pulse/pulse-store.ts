@@ -2,6 +2,7 @@ import { pool } from '../../db/index.js';
 import type { MarketRow } from '../../lib/pulse/metrics/market.js';
 import type { CohortRow } from '../../lib/pulse/metrics/series.js';
 import type { Slot } from '../../lib/pulse/grid.js';
+import type { MinuteRow } from '../../lib/pulse/metrics/damage.js';
 import type { BuiltSnapshot, LegName, LegRow, PulseCohort } from '../../lib/pulse/snapshot.js';
 
 /**
@@ -116,6 +117,21 @@ CREATE TABLE IF NOT EXISTS pulse_events (
   detail jsonb
 );
 CREATE INDEX IF NOT EXISTS pulse_events_at_idx ON pulse_events (at);
+
+CREATE TABLE IF NOT EXISTS pulse_minute (
+  slot text NOT NULL,
+  /** The cohort's slot_ms: it names the cohort within its slot, and is a number as MinuteRow.cohort_id is. */
+  cohort_id bigint NOT NULL,
+  t bigint NOT NULL,
+  fut_price numeric,
+  call_mid numeric,
+  put_mid numeric,
+  call_iv numeric,
+  put_iv numeric,
+  data_ok boolean NOT NULL,
+  PRIMARY KEY (slot, cohort_id, t)
+);
+CREATE INDEX IF NOT EXISTS pulse_minute_slot_t_idx ON pulse_minute (slot, t);
 `;
 
 let schemaReady: Promise<void> | null = null;
@@ -386,4 +402,27 @@ export async function pulseTablesExist(): Promise<boolean> {
 export async function dbSizeBytes(): Promise<number> {
   const r = await pool.query('SELECT pg_database_size(current_database()) AS size');
   return Number((r.rows[0] as Row).size);
+}
+
+const MINUTE_COLS = ['slot', 'cohort_id', 't', 'fut_price', 'call_mid', 'put_mid', 'call_iv', 'put_iv', 'data_ok'] as const;
+
+/** Writes the minute rows in one statement, idempotent per (slot, cohort, minute). */
+export async function insertMinuteRows(rows: ReadonlyArray<MinuteRow & { slot: Slot }>): Promise<void> {
+  if (rows.length === 0) return;
+  const stmt = multiInsert('pulse_minute', MINUTE_COLS, rows.map((r) => MINUTE_COLS.map((col) => r[col] ?? null)));
+  await pool.query(stmt.sql, stmt.params as never);
+}
+
+/** A slot's minute rows from fromMs on, oldest first. */
+export async function minuteRows(slot: Slot, fromMs: number): Promise<MinuteRow[]> {
+  const r = await pool.query('SELECT * FROM pulse_minute WHERE slot = $1 AND t >= $2 ORDER BY t, cohort_id', [slot, fromMs]);
+  return (r.rows as Row[]).map((row) => ({
+    t: Number(row.t), cohort_id: Number(row.cohort_id), fut_price: num(row.fut_price), call_mid: num(row.call_mid), put_mid: num(row.put_mid),
+    call_iv: num(row.call_iv), put_iv: num(row.put_iv), data_ok: row.data_ok as boolean,
+  }));
+}
+
+/** Deletes minute rows older than beforeMs. */
+export async function pruneMinute(beforeMs: number): Promise<void> {
+  await pool.query('DELETE FROM pulse_minute WHERE t < $1', [beforeMs]);
 }
