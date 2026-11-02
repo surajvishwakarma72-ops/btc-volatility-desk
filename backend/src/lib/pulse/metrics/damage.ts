@@ -42,7 +42,8 @@ export function damageAt(now: MinuteRow, rows: readonly MinuteRow[], entry: Entr
     if (!past || Math.abs(r.t - target) < Math.abs(past.t - target)) past = r;
   }
   if (!past || !now.data_ok) return null;
-  const movePct = ok(now.fut_price) && ok(past.fut_price) && past.fut_price > 0 ? ((now.fut_price - past.fut_price) / past.fut_price) * 100 : 0;
+  if (!ok(now.fut_price) || !ok(past.fut_price) || past.fut_price <= 0) return null;
+  const movePct = ((now.fut_price - past.fut_price) / past.fut_price) * 100;
   return {
     call: sideDamage(now.call_mid, past.call_mid, entry.call, movePct),
     put: sideDamage(now.put_mid, past.put_mid, entry.put, movePct),

@@ -41,6 +41,10 @@ describe('damageAt', () => {
     expect(damageAt(row(5), [row(1)], entry)).not.toBeNull();
     expect(damageAt(row(5), [row(-2)], entry)).toBeNull();
   });
+  it('is null when the futures price is unusable on either row', () => {
+    expect(damageAt(row(5, { put_mid: 130, fut_price: null }), [row(0)], entry)).toBeNull();
+    expect(damageAt(row(5, { put_mid: 130 }), [row(0, { fut_price: null })], entry)).toBeNull();
+  });
   it('a side with a missing mid or non-positive entry is null', () => {
     const d = damageAt(row(5, { call_mid: null }), [row(0)], { call: 100, put: 0 })!;
     expect(d.call).toBeNull();
