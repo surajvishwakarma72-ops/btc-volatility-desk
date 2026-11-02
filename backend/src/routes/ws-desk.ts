@@ -243,9 +243,17 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     }
   };
 
+  // shock alerts (news_alert / news_update / news_ack) go to every signed-in desk
+  const onNews = (n: { type: string; event: unknown }) => {
+    if (socket.readyState === 1) socket.send(JSON.stringify({ type: n.type, data: n.event }));
+  };
+
   deskEvents.on('fill', onFill);
   deskEvents.on('kill_switch', onKillSwitch);
   deskEvents.on('strike_alert', onStrikeAlert);
+  deskEvents.on('news', onNews);
+  const onVol = (a: unknown) => { if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'vol_alert', data: a })); };
+  deskEvents.on('vol_alert', onVol);
 
   // If desk is already halted on connection, notify client immediately
   if (isDeskHalted() && socket.readyState === 1) {
@@ -285,6 +293,8 @@ async function handleWsDesk(socket: WebSocket, request: FastifyRequest, fastify:
     deskEvents.removeListener('fill', onFill);
     deskEvents.removeListener('kill_switch', onKillSwitch);
     deskEvents.removeListener('strike_alert', onStrikeAlert);
+    deskEvents.removeListener('news', onNews);
+    deskEvents.removeListener('vol_alert', onVol);
     conns?.delete(socket);
     if (conns && conns.size === 0) {
       userConnections.delete(userId);

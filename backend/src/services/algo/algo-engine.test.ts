@@ -48,6 +48,31 @@ function rig(rule: AlgoStrategy, nowRef: { t: number }, opts: { place?: Broker['
   return { engine: new AlgoEngine(deps), runs, placed, closed, status, marks, disarmed };
 }
 
+describe('AlgoEngine rule book gate', () => {
+  it('a red checklist holds the entry (waiting, not failed); green lets it enter', async () => {
+    const now = { t: at(MON, '22:30') };
+    const r = rig(defaultStrangle({ entry: { kind: 'window', from: '22:30', to: '01:30', conditions: [] } }), now);
+    let block = true;
+    r.engine.ruleGate = async () => ({ block, why: 'ADX < 15 (18.2)' });
+    await r.engine.tick();
+    expect(r.placed).toHaveLength(0);
+    expect(r.runs).toHaveLength(0);
+    expect(r.engine.checks.get('s1')!.planReason).toBe('Rule book: ADX < 15 (18.2)');
+    block = false;
+    now.t = at(MON, '22:31');
+    await r.engine.tick();
+    expect(r.placed).toHaveLength(1);
+  });
+
+  it('with no gate set (the default) nothing changes', async () => {
+    const now = { t: at(MON, '22:30') };
+    const r = rig(defaultStrangle(), now);
+    expect(r.engine.ruleGate).toBeNull();
+    await r.engine.tick();
+    expect(r.placed).toHaveLength(1);
+  });
+});
+
 describe('AlgoEngine entry', () => {
   it('does nothing before the window, enters once inside it, never twice', async () => {
     const now = { t: at(MON, '22:00') };

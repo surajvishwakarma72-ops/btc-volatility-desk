@@ -117,6 +117,8 @@ export class AlgoEngine {
   readonly checks = new Map<string, CheckInfo>();
   /** The latest problem per user. One shared field would show one user's strategy names to another. */
   readonly errors = new Map<string, string>();
+  /** Set at start when the Rule Book's algoBlock is on: a red before-entry checklist holds the entry. */
+  ruleGate: ((userId: string) => Promise<{ block: boolean; why: string }>) | null = null;
 
   constructor(private readonly d: AlgoDeps) {}
 
@@ -171,6 +173,16 @@ export class AlgoEngine {
     if (!ev.met || !plan) {
       this.lastWaiting.set(s.id, [...ev.results.filter((r) => !r.ok).map((r) => `${r.label} (${r.now})`), ...(reason ? [reason] : [])].join('; ') || 'waiting');
       return;
+    }
+    // the Rule Book's before-entry checklist, when the user switched on algo blocking: a red tick holds the entry, it never fails the run
+    if (this.ruleGate) {
+      const g = await this.ruleGate(s.userId).catch((e: Error) => ({ block: true, why: `rule book unavailable (${e.message})` }));
+      if (g.block) {
+        const why = `Rule book: ${g.why}`;
+        this.lastWaiting.set(s.id, why);
+        this.checks.set(s.id, { at: now, state: 'waiting', met: false, results: ev.results, planReason: why, windowStart: w.startMs, windowEnd: w.endMs });
+        return;
+      }
     }
 
     const why = summariseWhy(rule, ev.results, w);

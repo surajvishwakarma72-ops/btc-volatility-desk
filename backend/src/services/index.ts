@@ -11,6 +11,9 @@ import { watchService } from './watch/sources.js';
 import { algoEngine, seriesSampler } from './algo/algo-runtime.js';
 import { paperMarks } from './paper/paper-marks.js';
 import { fillsSync } from './fills-sync.js';
+import { newsWatcher } from './news/index.js';
+import { RULEBOOK_CONFIG } from '../lib/rulebook/config.js';
+import { volWatch } from './vol/vol-watch.js';
 
 export { alertService } from './alert-service.js';
 export { binanceWorker } from './binance-market-worker.js';
@@ -43,6 +46,16 @@ export class WorkerManager {
     paperMarks.start(); // one PnL sample a minute for every open Paper strategy (the minute graph)
     fillsSync.start(); // copies each account's Delta fills to the server for P&L and reconciliation (read-only)
     seriesSampler.start(); // ATM IV / DVOL history for the falling and IV-vs-clock conditions
+    if (process.env.NEWS_ENABLED !== 'false') void newsWatcher.start(); // 24/7 shock alerts: news feeds + unexplained BTC moves → popup + Telegram (never trades)
+    if (RULEBOOK_CONFIG.algoBlock) {
+      // Rule Book: a red before-entry checklist holds the algo's entry (off unless algoBlock is set in the rule book config)
+      algoEngine.ruleGate = async (uid) => {
+        const { liveChecklist } = await import('./rulebook/rulebook-service.js');
+        const c = await liveChecklist(uid);
+        return { block: c.verdict !== 'GO', why: c.red.map((x) => ` (${x.now})`).join('; ') };
+      };
+    }
+    if (process.env.NEWS_ENABLED !== 'false') volWatch.start(); // IV regime / compression change alerts and the open-trade compression tripwire (never trades)
     algoEngine.start(); // the Algo panel: waits for each armed strategy's window and conditions, enters once, manages the exit
   }
 
@@ -63,6 +76,8 @@ export class WorkerManager {
     seriesSampler.stop();
     paperMarks.stop();
     fillsSync.stop();
+    newsWatcher.stop();
+    volWatch.stop();
   }
 
   getStatus() {

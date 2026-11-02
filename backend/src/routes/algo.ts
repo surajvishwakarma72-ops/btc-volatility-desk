@@ -15,6 +15,7 @@ import { fetchOptionPositions, OPTION_SYMBOL } from '../services/watch/live-exit
 import { loadDeltaKey } from '../services/delta-keys.js';
 import { paperFor } from '../services/paper/paper-terminal.js';
 import { getWatchConfig, recentWatchEvents } from '../services/watch/watch-store.js';
+import { liveChecklist, logRuleBreak } from '../services/rulebook/rulebook-service.js';
 
 /**
  * The Algo panel's API. Strategies run on the user's own Paper account unless the strategy is switched to Live, and Live needs
@@ -122,12 +123,26 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Enter right now, outside the window (the panel's "Enter now"). Live mode still goes through every lock.
   fastify.post('/enter-now', limited, async (req, reply) => {
-    const b = z.object({ rule: strategySchema, lots: lotsField, strategyId: z.string().uuid().optional() }).safeParse(req.body);
+    const b = z.object({ rule: strategySchema, lots: lotsField, strategyId: z.string().uuid().optional(), override: z.boolean().optional() }).safeParse(req.body);
     if (!b.success) return bad(reply, need(b.error));
     const uid = userId(req);
     if (b.data.rule.mode === 'live' && !(await liveState(uid)).tradeKey) return bad(reply, 'Live mode needs a trading key.', 409);
+    // Rule Book before-entry checklist: a red tick asks for a second confirmation, and placing anyway is logged as a rule break
+    // (next trades at half size). A reached daily stop needs the typed unlock in the Rule Book, not a confirmation.
+    let broken: string[] = [];
+    if (b.data.rule.instrument === 'option') {
+      const c = await liveChecklist(uid).catch(() => null);
+      const red = c ? c.red : [{ id: 'data', label: 'Rule book unavailable', now: 'could not read the live checklist', rule: 'No entry on NO DATA.' }];
+      if (c?.dailyStop.stopped) return reply.status(423).send({ success: false, code: 'DAILY_STOP', error: `Daily stop reached (${c.dailyStop.why}). Unlock it in the Rule Book to trade again today.` });
+      if (red.length && !b.data.override) {
+        return reply.status(409).send({ success: false, code: 'RULEBOOK_RED', error: `Rule book: ${red.length} red tick${red.length === 1 ? '' : 's'}`, red: red.map((x) => ({ label: x.label, now: x.now, rule: x.rule })) });
+      }
+      broken = red.map((x) => x.label);
+    }
     try {
       const r = await enterNow(uid, b.data.rule, b.data.lots, b.data.strategyId ?? null);
+      // a rule break counts only when a trade actually went in (a dry run sends nothing)
+      if (r.ok && !r.dry && broken.length) await logRuleBreak(uid, broken, 'Entered with red ticks (Enter now)').catch(() => undefined);
       return r.ok ? { success: true, dry: r.dry, detail: r.detail, run: r.run } : bad(reply, r.reason, 422);
     } catch (e) {
       return bad(reply, (e as Error).message, 502);

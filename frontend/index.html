@@ -66318,6 +66318,12 @@ body.light #vUniversalFloatingPnl,
           if (typeof window.handleKillSwitchWs === 'function') {
             window.handleKillSwitchWs(msg);
           }
+        } else if (msg.type === 'vol_alert') {
+          if (msg.data && typeof window.showToast === 'function') window.showToast(msg.data.title + ': ' + msg.data.message, 'info', 15000);
+        } else if (msg.type === 'news_alert' || msg.type === 'news_update' || msg.type === 'news_ack') {
+          if (typeof window.handleNewsWs === 'function') {
+            window.handleNewsWs(msg);
+          }
         } else if (msg.type === 'STRIKE_ALERT' || msg.type === 'strike_alert' || msg.event === 'alert' || msg.event === 'strike_alert') {
           if (typeof window.handleStrikeAlertWs === 'function') {
             window.handleStrikeAlertWs(msg);
@@ -68913,6 +68919,481 @@ body.light #vUniversalFloatingPnl,
 
       window.fetchSessionPnl = fetchSessionPnl;
       window.updateSessionPnl = updateSessionPnl;
+    })();
+  </script>
+  <style id="vShockAlertCss">
+    #vShock { position: fixed; inset: 0; z-index: 2147483000; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(5, 8, 14, 0.82); backdrop-filter: blur(3px); }
+    #vShock.on { display: flex; }
+    #vShock .vs-card { width: min(640px, 100%); max-height: calc(100vh - 32px); overflow: auto; border-radius: 14px; border: 2px solid var(--vs-c); background: #0d1320; color: #e8edf5; box-shadow: 0 0 0 6px color-mix(in srgb, var(--vs-c) 25%, transparent), 0 20px 60px rgba(0, 0, 0, 0.6); font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    #vShock[data-sev="CRITICAL"] { --vs-c: #ef4444; }
+    #vShock[data-sev="HIGH"] { --vs-c: #f59e0b; }
+    #vShock .vs-head { display: flex; align-items: center; gap: 10px; padding: 12px 18px; background: var(--vs-c); color: #fff; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; font-size: 13px; }
+    #vShock[data-sev="HIGH"] .vs-head { color: #1a1205; }
+    #vShock .vs-head .vs-ico { font-size: 18px; }
+    #vShock .vs-head .vs-more { margin-left: auto; font-weight: 700; opacity: 0.9; text-transform: none; letter-spacing: 0; }
+    #vShock .vs-body { padding: 16px 18px 6px; }
+    #vShock .vs-action { font-size: 24px; font-weight: 900; line-height: 1.15; color: var(--vs-c); margin: 0 0 4px; }
+    #vShock .vs-sub { font-weight: 700; margin: 0 0 14px; }
+    #vShock .vs-title { font-size: 17px; font-weight: 700; margin: 0 0 8px; }
+    #vShock .vs-title a { color: inherit; text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.3); }
+    #vShock .vs-meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    #vShock .vs-chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(255, 255, 255, 0.05); }
+    #vShock .vs-chip.ok { border-color: #22c55e; color: #86efac; }
+    #vShock .vs-chip.warn { border-color: #f59e0b; color: #fcd34d; }
+    #vShock .vs-move { margin: 0 0 6px; padding: 8px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); font-variant-numeric: tabular-nums; }
+    #vShock .vs-link { margin: 0 0 6px; font-size: 13px; color: #cbd5e1; }
+    #vShock .vs-foot { display: flex; gap: 10px; padding: 12px 18px 16px; flex-wrap: wrap; }
+    #vShock button { flex: 1 1 180px; min-height: 46px; border-radius: 10px; font: inherit; font-weight: 800; cursor: pointer; border: 2px solid var(--vs-c); }
+    #vShock .vs-open { background: var(--vs-c); color: #fff; }
+    #vShock[data-sev="HIGH"] .vs-open { color: #1a1205; }
+    #vShock .vs-ack { background: transparent; color: #e8edf5; }
+    #vShock .vs-note { padding: 0 18px 14px; font-size: 12px; color: #94a3b8; }
+    #vShockBar { position: fixed; left: 0; right: 0; top: 0; z-index: 2147482999; display: none; align-items: center; gap: 10px; padding: 8px 12px; font: 700 13px/1.3 system-ui, sans-serif; color: #fff; background: #ef4444; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4); }
+    #vShockBar.on { display: flex; }
+    #vShockBar[data-sev="HIGH"] { background: #f59e0b; color: #1a1205; }
+    #vShockBar .vsb-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #vShockBar button { border: 0; border-radius: 6px; padding: 6px 10px; font: inherit; cursor: pointer; background: rgba(0, 0, 0, 0.25); color: inherit; }
+    @media (prefers-reduced-motion: no-preference) { #vShock.on .vs-card { animation: vsIn 0.18s ease-out; } @keyframes vsIn { from { transform: scale(0.96); opacity: 0; } } }
+  </style>
+  <div id="vShock" role="alertdialog" aria-modal="true" aria-labelledby="vShockAction" aria-describedby="vShockTitle">
+    <div class="vs-card">
+      <div class="vs-head"><span class="vs-ico" aria-hidden="true">⚠</span><span id="vShockSev"></span><span class="vs-more" id="vShockMore"></span></div>
+      <div class="vs-body">
+        <p class="vs-action" id="vShockAction"></p>
+        <p class="vs-sub" id="vShockSub"></p>
+        <p class="vs-title" id="vShockTitle"></p>
+        <div class="vs-meta" id="vShockMeta"></div>
+        <p class="vs-move" id="vShockMove" hidden></p>
+        <p class="vs-link" id="vShockLink" hidden></p>
+      </div>
+      <div class="vs-foot">
+        <button type="button" class="vs-open" id="vShockOpen">Open positions</button>
+        <button type="button" class="vs-ack" id="vShockAck">Acknowledge</button>
+      </div>
+      <div class="vs-note">The terminal never closes trades for you. The alarm repeats every minute until you acknowledge.</div>
+    </div>
+  </div>
+  <div id="vShockBar" role="status"><span aria-hidden="true">⚠</span><span class="vsb-t" id="vShockBarText"></span><button type="button" id="vShockBarShow">Show</button><button type="button" id="vShockBarAck">Acknowledge</button></div>
+  <script data-module="vShockAlert">
+    /* 24/7 shock alert popup. The server watches the news and BTC (backend/src/services/news); this shows its
+       CRITICAL/HIGH alerts full-screen on any panel, repeats the alarm until acknowledged, and catches up on alerts
+       missed while the tab was closed or asleep (GET /api/v1/news/active). It never places or closes an order. */
+    (function vShockAlert() {
+      'use strict';
+      const $ = (id) => document.getElementById(id);
+      const box = $('vShock'), bar = $('vShockBar');
+      if (!box || !bar) return;
+      const H = 3600000, MIN = 60000;
+      const LOCAL_ACK = 'v_shock_acked';
+      let queue = [];          // unacknowledged alerts, newest first
+      let cache = [];          // recent alerts and updates, for the headline <-> move link
+      let minimised = false;
+      let shownId = null;
+      let alarmTimer = null;
+      let audio = null;
+
+      const tok = () => { try { return JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { return null; } };
+      const localAcked = () => { try { return new Set(JSON.parse(sessionStorage.getItem(LOCAL_ACK) || '[]')); } catch (e) { return new Set(); } };
+      const markLocal = (id) => { const s = localAcked(); s.add(id); try { sessionStorage.setItem(LOCAL_ACK, JSON.stringify([...s].slice(-200))); } catch (e) { } };
+      const safeUrl = (u) => { if (!u || !String(u).trim()) return ''; try { const p = new URL(String(u), location.href); return /^https?:$/.test(p.protocol) ? p.href : ''; } catch (e) { return ''; } };
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const ist = (ms) => { const d = new Date(ms + 5.5 * H), p = (n) => String(n).padStart(2, '0'); return p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ' IST'; };
+      const ago = (ms) => { const m = Math.max(0, Math.round((Date.now() - ms) / MIN)); return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min ago'; };
+      const moveText = (mv) => {
+        if (!mv) return '';
+        const s = mv.movePts >= 0 ? '+' : '−';
+        return 'BTC ' + s + Math.round(Math.abs(mv.movePts)).toLocaleString('en-US') + ' (' + s + Math.abs(mv.movePct).toFixed(1) + '%) in 15 min · ' + mv.ratio.toFixed(1) + '× a normal move';
+      };
+
+      /* ---------- sound: three sharp beeps; browsers allow audio only after the first click, so unlock on it ---------- */
+      function ctx() { try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { } return audio; }
+      document.addEventListener('pointerdown', function () { const a = ctx(); if (a && a.state === 'suspended') a.resume(); askNotify(); }, { once: true, capture: true });
+      function beep() {
+        const a = ctx(); if (!a) return;
+        if (a.state === 'suspended') a.resume();
+        const t0 = a.currentTime;
+        for (let i = 0; i < 3; i++) {
+          const o = a.createOscillator(), g = a.createGain();
+          o.type = 'square'; o.frequency.value = i === 1 ? 1175 : 880;
+          g.gain.setValueAtTime(0.0001, t0 + i * 0.32); g.gain.exponentialRampToValueAtTime(0.25, t0 + i * 0.32 + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.32 + 0.26);
+          o.connect(g).connect(a.destination); o.start(t0 + i * 0.32); o.stop(t0 + i * 0.32 + 0.28);
+        }
+      }
+      function startAlarm(sev) {
+        stopAlarm(); beep();
+        if (sev === 'CRITICAL') alarmTimer = setInterval(beep, 60000);
+      }
+      function stopAlarm() { if (alarmTimer) clearInterval(alarmTimer); alarmTimer = null; }
+
+      /* ---------- browser notification when the tab is hidden ---------- */
+      function askNotify() { try { if ('Notification' in window && Notification.permission === 'default') Notification.requestPermission(); } catch (e) { } }
+      function osNotify(e) {
+        try {
+          if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
+          const n = new Notification(e.severity === 'CRITICAL' ? 'CLOSE ALL OPEN POSITIONS' : e.reason, { body: e.title, tag: 'shock-' + e.id, requireInteraction: e.severity === 'CRITICAL' });
+          n.onclick = function () { window.focus(); n.close(); };
+        } catch (err) { }
+      }
+
+      /* ---------- rendering ---------- */
+      function words(e) {
+        if (e.kind === 'anomaly') return { action: 'Unexplained move: watch closely', sub: 'No headline yet. News often follows. No new entries until it settles.' };
+        if (e.kind === 'tripwire') return { action: 'COMPRESSION BREAK: EXIT', sub: 'Price left the quiet range with volatility expanding. Exit now; don’t wait for the 1:1 stop.' };
+        if (e.severity === 'CRITICAL') return { action: 'CLOSE ALL OPEN POSITIONS', sub: 'No new entries for the next 6 hours. This is news, not a spike: do not hold for a reversal.' };
+        return { action: 'Consider closing or halving open positions', sub: 'No new entries until the move settles.' };
+      }
+      function render() {
+        queue = queue.filter((e) => !e.ackedAt && !localAcked().has(e.id));
+        if (!queue.length) { box.classList.remove('on'); bar.classList.remove('on'); stopAlarm(); shownId = null; minimised = false; return; }
+        const e = queue[0], w = words(e);
+        if (e.id !== shownId) { shownId = e.id; minimised = false; startAlarm(e.severity); osNotify(e); }
+        box.dataset.sev = bar.dataset.sev = e.severity;
+        $('vShockSev').textContent = (e.kind === 'anomaly' ? 'HIGH · ' : e.severity + ' · ') + e.reason;
+        $('vShockMore').textContent = queue.length > 1 ? '+' + (queue.length - 1) + ' more' : '';
+        $('vShockAction').textContent = w.action;
+        $('vShockSub').textContent = w.sub;
+        const ttl = $('vShockTitle'), href = safeUrl(e.link);
+        ttl.textContent = '';
+        if (href) { const a = document.createElement('a'); a.href = href; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = e.title; ttl.appendChild(a); }
+        else ttl.textContent = e.title;
+        const srcs = (e.sources || []).map((s) => s.name);
+        const when = e.publishedAt || e.firstSeen;
+        $('vShockMeta').innerHTML = (e.kind === 'anomaly' || e.kind === 'tripwire' ? '' : (srcs.length >= 2 ? '<span class="vs-chip ok">✓ Confirmed by ' + srcs.length + ' sources</span>' : '<span class="vs-chip warn">? Unconfirmed: verify</span>'))
+          + (srcs.length ? '<span class="vs-chip">' + esc(srcs.join(', ')) + '</span>' : '')
+          + '<span class="vs-chip">' + esc(ist(when)) + ' · ' + esc(ago(when)) + '</span>';
+        const mv = $('vShockMove'), mt = moveText(e.move);
+        mv.hidden = !mt; mv.textContent = mt + (mt && e.kind === 'headline' && e.move && e.move.ratio >= 4 ? '. The move has news behind it.' : '');
+        const ln = $('vShockLink');
+        const other = e.linkedId && queue.concat(cache).find((x) => x.id === e.linkedId);
+        ln.hidden = !e.linkedId;
+        ln.textContent = e.kind === 'anomaly' ? 'Explained by: ' + (other ? other.title : 'a headline that arrived later') : 'This explains the unexplained move' + (other ? ' at ' + ist(other.firstSeen) : '') + '.';
+        $('vShockBarText').textContent = w.action + ' · ' + e.title;
+        box.classList.toggle('on', !minimised);
+        bar.classList.toggle('on', minimised);
+        if (!minimised) try { $('vShockAck').focus({ preventScroll: true }); } catch (err) { }
+      }
+      function upsert(e) {
+        if (!e || !e.id) return;
+        cache = [e].concat(cache.filter((x) => x.id !== e.id)).slice(0, 50);
+        const i = queue.findIndex((x) => x.id === e.id);
+        if (i >= 0) queue[i] = e; else if (!e.ackedAt) queue.push(e);
+        queue.sort((a, b) => (b.severity === 'CRITICAL') - (a.severity === 'CRITICAL') || (b.alertedAt || 0) - (a.alertedAt || 0));
+        render();
+      }
+
+      /* ---------- actions ---------- */
+      async function ack() {
+        const e = queue[0]; if (!e) return;
+        markLocal(e.id); e.ackedAt = Date.now(); stopAlarm(); render();
+        try {
+          const t = tok();
+          const r = await fetch('/api/v1/news/' + encodeURIComponent(e.id) + '/ack', { method: 'POST', headers: Object.assign({ Accept: 'application/json' }, t ? { Authorization: 'Bearer ' + t } : {}), cache: 'no-store' });
+          if (!r.ok && typeof window.showToast === 'function') window.showToast('Alert hidden here; the server did not record the acknowledgement (sign in again).', 'error');
+        } catch (err) { }
+      }
+      function openPositions() {
+        minimised = true; render();   // the alarm keeps going until Acknowledge
+        const el = $('vPositionTracker');
+        if (el) { try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (err) { el.scrollIntoView(); } }
+      }
+      $('vShockAck').addEventListener('click', ack);
+      $('vShockBarAck').addEventListener('click', ack);
+      $('vShockOpen').addEventListener('click', openPositions);
+      $('vShockBarShow').addEventListener('click', function () { minimised = false; render(); });
+      document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape' && box.classList.contains('on')) openPositions(); });
+      setInterval(function () { if (queue.length && !minimised) render(); }, 15000); // keep "x min ago" fresh
+
+      /* ---------- data: live socket + catch-up poll ---------- */
+      window.handleNewsWs = function (msg) {
+        const e = msg && msg.data; if (!e) return;
+        if (msg.type === 'news_ack') { markLocal(e.id); queue = queue.filter((x) => x.id !== e.id); render(); return; }
+        if (msg.type === 'news_alert' || (msg.type === 'news_update' && queue.some((x) => x.id === e.id))) upsert(e);
+        else if (msg.type === 'news_update') cache = [e].concat(cache.filter((x) => x.id !== e.id)).slice(0, 50);
+      };
+      async function catchUp() {
+        try {
+          const r = await fetch('/api/v1/news/active', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+          if (!r.ok) return;
+          const j = await r.json();
+          (j.events || []).forEach(upsert);
+        } catch (err) { }
+      }
+      window.addEventListener('terminal:unlocked', catchUp);
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) catchUp(); });
+      setInterval(catchUp, 30000);   // covers a dropped socket
+      setTimeout(catchUp, 3000);
+      // test hook: window.dispatchEvent(new CustomEvent('desk:news_alert', { detail: { type: 'news_alert', data: {...} } }))
+      window.addEventListener('desk:news_alert', function (ev) { window.handleNewsWs(ev.detail); });
+    })();
+  </script>
+  <style id="vRulebookCss">
+    #vRbBtn { position: fixed; left: 14px; bottom: 14px; z-index: 9000; display: flex; align-items: center; gap: 6px; padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.14)); background: var(--panel, #121a2b); color: var(--txt, #e8edf5); font: 700 13px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+    #vRbBtn .dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; }
+    #vRbBtn[data-v="GO"] .dot { background: #22c55e; } #vRbBtn[data-v="BLOCK"] .dot { background: #ef4444; }
+    #vRb { position: fixed; inset: 0 auto 0 0; width: min(520px, 100vw); z-index: 9001; display: none; flex-direction: column; background: var(--bg, #0b1220); color: var(--txt, #e8edf5); border-right: 1px solid var(--line, rgba(255,255,255,.12)); box-shadow: 8px 0 30px rgba(0,0,0,.45); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
+    #vRb.on { display: flex; }
+    #vRb header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line, rgba(255,255,255,.1)); }
+    #vRb header b { font-size: 15px; flex: 1; }
+    #vRb header button { background: none; border: 0; color: inherit; font-size: 20px; cursor: pointer; padding: 0 4px; }
+    #vRb nav { display: flex; gap: 4px; padding: 8px 10px; border-bottom: 1px solid var(--line, rgba(255,255,255,.1)); }
+    #vRb nav button { flex: 1; padding: 7px 4px; border-radius: 8px; border: 1px solid transparent; background: none; color: var(--dim, #94a3b8); font: 600 13px/1 system-ui, sans-serif; cursor: pointer; }
+    #vRb nav button.on { background: rgba(255,255,255,.06); border-color: var(--line, rgba(255,255,255,.14)); color: inherit; }
+    #vRb .body { flex: 1; overflow: auto; padding: 12px 14px 40px; }
+    #vRb .note { font-size: 12px; color: var(--dim, #94a3b8); margin: 0 0 10px; }
+    #vRb .lamp { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; margin: 0 0 12px; border: 2px solid #64748b; }
+    #vRb .lamp[data-v="GO"] { border-color: #22c55e; } #vRb .lamp[data-v="BLOCK"] { border-color: #ef4444; }
+    #vRb .lamp .big { font-size: 22px; font-weight: 900; letter-spacing: .03em; }
+    #vRb .lamp[data-v="GO"] .big { color: #22c55e; } #vRb .lamp[data-v="BLOCK"] .big { color: #ef4444; }
+    #vRb .grp { font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--dim, #94a3b8); margin: 12px 0 4px; }
+    #vRb .it { display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; padding: 7px 0; border-bottom: 1px solid var(--line, rgba(255,255,255,.06)); }
+    #vRb .it .ic { font-weight: 900; text-align: center; }
+    #vRb .it.ok .ic { color: #22c55e; } #vRb .it.bad .ic { color: #ef4444; } #vRb .it.na .ic { color: #f59e0b; }
+    #vRb .it .lb { font-weight: 600; } #vRb .it .nw { grid-column: 2; font-size: 12px; color: var(--dim, #a3b1c6); font-variant-numeric: tabular-nums; }
+    #vRb .it .rl { grid-column: 2; font-size: 12px; color: #fca5a5; }
+    #vRb .card { padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line, rgba(255,255,255,.08)); margin: 10px 0; }
+    #vRb .card.warn { border-color: #f59e0b; } #vRb .card.stop { border-color: #ef4444; background: rgba(239,68,68,.08); }
+    #vRb .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+    #vRb input, #vRb select, #vRb textarea { background: rgba(255,255,255,.06); color: inherit; border: 1px solid var(--line, rgba(255,255,255,.16)); border-radius: 8px; padding: 7px 9px; font: inherit; min-width: 0; }
+    #vRb textarea { width: 100%; box-sizing: border-box; min-height: 52px; }
+    #vRb .btn { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line, rgba(255,255,255,.2)); background: rgba(255,255,255,.08); color: inherit; font: 700 13px/1 system-ui, sans-serif; cursor: pointer; }
+    #vRb .btn.pri { background: #2563eb; border-color: #2563eb; color: #fff; }
+    #vRb .form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #vRb .form label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--dim, #a3b1c6); }
+    #vRb .form .full { grid-column: 1 / -1; }
+    #vRb h3 { font-size: 15px; margin: 16px 0 6px; }
+    #vRb ol, #vRb ul { margin: 4px 0 8px; padding-left: 20px; } #vRb li { margin: 3px 0; }
+    #vRb table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+    #vRb th, #vRb td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line, rgba(255,255,255,.08)); vertical-align: top; }
+    #vRb th { color: var(--dim, #94a3b8); font-weight: 700; }
+    #vRb .msg { font-size: 12px; margin-top: 6px; } #vRb .msg.err { color: #fca5a5; } #vRb .msg.okm { color: #86efac; }
+    #vRb .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; } #vRb .stats div { padding: 8px; border-radius: 8px; background: rgba(255,255,255,.04); } #vRb .stats b { display: block; font-size: 16px; }
+    #vRb .strip { position: relative; height: 112px; margin: 8px 0 22px; border-radius: 8px; background: rgba(255,255,255,.03); border: 1px solid var(--line, rgba(255,255,255,.08)); }
+    #vRb .strip .bar { position: absolute; height: 16px; border-radius: 4px; font: 700 10px/16px system-ui, sans-serif; padding: 0 4px; overflow: hidden; white-space: nowrap; color: #0b1220; }
+    #vRb .strip .asia { top: 8px; background: #a78bfa; } #vRb .strip .ldn { top: 28px; background: #60a5fa; } #vRb .strip .ny { top: 48px; background: #34d399; }
+    #vRb .strip .win { position: absolute; top: 0; bottom: 0; background: rgba(250,204,21,.18); border-left: 2px solid #facc15; border-right: 2px solid #facc15; }
+    #vRb .strip .mk { position: absolute; top: 68px; width: 2px; height: 10px; background: #f8fafc; }
+    #vRb .strip .mk span { position: absolute; top: 11px; left: -14px; font-size: 9px; white-space: nowrap; color: var(--dim, #94a3b8); }
+    #vRb .strip .now { position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; }
+    #vRb .strip .hr { position: absolute; bottom: -16px; font-size: 9px; color: var(--dim, #94a3b8); transform: translateX(-50%); }
+    #vRb .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; } #vRb .chip { padding: 3px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line, rgba(255,255,255,.18)); }
+    #vRb .chip.Green { border-color: #22c55e; color: #86efac; } #vRb .chip.Amber { border-color: #f59e0b; color: #fcd34d; } #vRb .chip.Red { border-color: #ef4444; color: #fca5a5; }
+    #vRb .lamp[data-v="CLEAN"] { border-color: #22c55e; } #vRb .lamp[data-v="CAUTION"] { border-color: #f59e0b; } #vRb .lamp[data-v="SKIP"] { border-color: #ef4444; }
+    #vRb .lamp[data-v="CLEAN"] .big { color: #22c55e; } #vRb .lamp[data-v="CAUTION"] .big { color: #f59e0b; } #vRb .lamp[data-v="SKIP"] .big { color: #ef4444; }
+    #vRb .gauge { position: relative; height: 18px; display: flex; margin: 8px 0 22px; } #vRb .gauge i:first-child { border-radius: 9px 0 0 9px; } #vRb .gauge i:nth-child(5) { border-radius: 0 9px 9px 0; }
+    #vRb .gauge i { display: block; height: 100%; font: 700 9px/18px system-ui, sans-serif; text-align: center; color: #0b1220; font-style: normal; }
+    #vRb .needle { position: absolute; top: -3px; width: 3px; height: 24px; background: #f8fafc; border-radius: 2px; box-shadow: 0 0 0 1px #0b1220; }
+    #vRb .needle.ghost { background: rgba(248,250,252,.35); box-shadow: none; }
+    #vRb .needle span { position: absolute; top: 25px; left: 50%; transform: translateX(-50%); font-size: 10px; white-space: nowrap; }
+    #vRb .meter { display: flex; gap: 4px; margin: 6px 0; } #vRb .meter b { flex: 1; text-align: center; padding: 5px 0; border-radius: 6px; font-size: 11px; background: rgba(255,255,255,.05); color: var(--dim, #94a3b8); }
+    #vRb .meter b.on { color: #0b1220; } #vRb .meter b.on.Normal { background: #22c55e; } #vRb .meter b.on.Quiet { background: #86efac; } #vRb .meter b.on.Coiled { background: #f59e0b; } #vRb .meter b.on.Squeeze { background: #ef4444; }
+    #vRb .dots { font-family: ui-monospace, monospace; letter-spacing: 3px; }
+    #vRb .steps { display: flex; gap: 4px; margin: 6px 0; } #vRb .steps b { flex: 1; text-align: center; padding: 5px 0; border-radius: 6px; font-size: 11px; background: rgba(255,255,255,.05); color: var(--dim, #94a3b8); } #vRb .steps b.on { background: #60a5fa; color: #0b1220; }
+    html[data-theme="light"] #vRb { background: #fff; color: #0f172a; } html[data-theme="light"] #vRbBtn { background: #fff; color: #0f172a; }
+    @media (max-width: 560px) { #vRb .form { grid-template-columns: 1fr; } }
+  </style>
+  <button type="button" id="vRbBtn" aria-haspopup="dialog" aria-controls="vRb" title="Short strangle Rule Book"><span class="dot" aria-hidden="true"></span><span>Rule Book</span></button>
+  <aside id="vRb" role="dialog" aria-label="Rule Book">
+    <header><b>Rule Book · short strangle</b><button type="button" id="vRbClose" aria-label="Close">×</button></header>
+    <nav><button type="button" data-t="tonight" class="on">Tonight</button><button type="button" data-t="check">Checklist</button><button type="button" data-t="rules">Rules</button><button type="button" data-t="journal">Journal</button><button type="button" data-t="review">Review</button></nav>
+    <div class="body" id="vRbBody"></div>
+  </aside>
+  <script data-module="vRulebook">
+    /* Rule Book panel (backend: /api/v1/rulebook). The before-entry checklist is computed live on the server from the same
+       data the algo uses; a red tick on "Enter now" asks for a second confirmation and placing anyway is logged as a rule
+       break (next trades at half size). It never places or closes an order itself. */
+    (function vRulebook() {
+      'use strict';
+      const $ = (id) => document.getElementById(id);
+      const panel = $('vRb'), btn = $('vRbBtn'), body = $('vRbBody');
+      if (!panel || !btn || !body) return;
+      const UNLOCK = 'I accept the risk';
+      const S = { tab: 'tonight', check: null, tonight: null, content: null, state: null, journal: null, err: '', msg: '', timer: null };
+      const tok = () => { try { return JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { return null; } };
+      const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      const money = (x) => (x == null || !isFinite(x) ? '—' : (x < 0 ? '−$' : '$') + Math.abs(x).toFixed(2));
+      async function api(path, opt) {
+        const t = tok();
+        const r = await fetch('/api/v1/rulebook' + path, Object.assign({ cache: 'no-store' }, opt || {}, { headers: Object.assign({ Accept: 'application/json' }, opt && opt.body ? { 'Content-Type': 'application/json' } : {}, t ? { Authorization: 'Bearer ' + t } : {}) }));
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status + (r.status === 401 ? ' (sign in first)' : '')));
+        return j;
+      }
+
+      /* ---------- loading ---------- */
+      async function loadCheck() { try { S.check = await api('/checklist'); S.err = ''; } catch (e) { S.err = e.message; } paintBtn(); if (S.tab === 'check') render(); }
+      async function loadTonight() { try { S.tonight = await api('/tonight'); } catch (e) { S.err = e.message; } }
+      async function loadState() { try { S.state = await api('/state'); } catch (e) { S.err = e.message; } }
+      async function loadContent() { if (!S.content) try { S.content = await api('/content'); } catch (e) { S.err = e.message; } }
+      async function loadJournal() { try { S.journal = (await api('/journal?days=60')).entries; } catch (e) { S.err = e.message; } }
+      function paintBtn() { btn.dataset.v = S.check ? S.check.verdict : ''; btn.title = S.check ? (S.check.verdict === 'GO' ? 'All rules green' : S.check.red.length + ' red tick(s)') : 'Rule Book'; }
+
+      /* ---------- views ---------- */
+      const GROUPS = ['Data', 'News', 'IV', 'Trend', 'Pulse', 'Strikes', 'Size', 'Day'];
+      function viewCheck() {
+        const c = S.check;
+        if (!c) return '<p class="note">' + (S.err ? esc(S.err) : 'Loading the live checklist…') + '</p>';
+        let h = '<p class="note">' + esc((S.content && S.content.note) || 'No rule set is foolproof or guarantees profit.') + '</p>';
+        h += '<div class="lamp" data-v="' + c.verdict + '"><div class="big">' + (c.verdict === 'GO' ? 'ALL GREEN' : 'WAIT') + '</div><div>' + (c.verdict === 'GO' ? 'Every rule passes for the N2N strangle now.' : c.red.length + ' rule' + (c.red.length === 1 ? '' : 's') + ' red: ' + esc(c.red.slice(0, 3).map((x) => x.label).join(', ')) + (c.red.length > 3 ? '…' : '')) + '<div class="note" style="margin:4px 0 0">Updated ' + new Date(c.asOf).toLocaleTimeString() + (c.expiry ? ' · expiry ' + esc(c.expiry) : '') + '</div></div></div>';
+        if (c.dailyStop.stopped) h += '<div class="card stop"><b>Daily stop reached</b><div class="note" style="margin:4px 0">' + esc(c.dailyStop.why) + '. Trading again today needs you to type: <b>' + UNLOCK + '</b></div><div class="row"><input id="vRbUnlock" placeholder="' + UNLOCK + '" autocomplete="off"><button class="btn" id="vRbUnlockGo">Unlock today</button></div></div>';
+        if (c.state.halfLeft > 0) h += '<div class="card warn"><b>Half size for the next ' + c.state.halfLeft + ' trade' + (c.state.halfLeft === 1 ? '' : 's') + '</b><div class="note" style="margin:4px 0 0">A rule was broken. The lot size below is already halved.</div></div>';
+        for (const g of GROUPS) {
+          const its = c.items.filter((x) => x.group === g); if (!its.length) continue;
+          h += '<div class="grp">' + g + '</div>';
+          for (const x of its) {
+            const k = x.ok === true ? 'ok' : x.ok === false ? 'bad' : 'na';
+            h += '<div class="it ' + k + '"><span class="ic" aria-label="' + (k === 'ok' ? 'pass' : k === 'bad' ? 'fail' : 'no data') + '">' + (k === 'ok' ? '✓' : k === 'bad' ? '✗' : '?') + '</span><span class="lb">' + esc(x.label) + '</span><span class="nw">' + esc(x.now) + '</span>' + (k !== 'ok' ? '<span class="rl">' + esc(x.rule) + '</span>' : '') + '</div>';
+          }
+        }
+        const z = c.sizing;
+        h += '<div class="card"><b>Size</b><div class="note" style="margin:4px 0">' + (z.lots != null ? '<b style="font-size:16px;color:inherit">' + z.lots + ' lot' + (z.lots === 1 ? '' : 's') + '</b> · ' : '') + 'risk ' + z.riskPct + '% · ' + money(z.lossPerLotUsd) + ' lost per lot at the 1:1 exit</div>'
+          + (c.exitLevels.call ? '<div class="note" style="margin:0">Short strikes: call ' + c.exitLevels.call + ' · put ' + c.exitLevels.put + '</div>' : '')
+          + '<div class="row"><label class="note" style="margin:0">Equity (USD) <input id="vRbEq" type="number" min="1" step="1" style="width:130px" value="' + (c.state.equityUsd || '') + '"></label><button class="btn" id="vRbEqGo">Save</button></div></div>';
+        h += '<div class="row"><button class="btn" id="vRbRefresh">Refresh now</button><span class="note" style="margin:0">Algo blocking: ' + (c.config.algoBlock ? 'ON' : 'off (set algoBlock in the rule book config to turn on)') + '</span></div>';
+        return h + msg();
+      }
+      const hm = (ms) => { const d = new Date(ms + 19800000); return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0'); };
+      function viewTonight() {
+        const t = S.tonight;
+        if (!t) return '<p class="note">' + (S.err ? esc(S.err) : 'Loading tonight…') + '</p>';
+        const s = t.sessions, day0 = Date.parse(s.dateKey + 'T00:00:00Z') - 19800000;
+        const pct = (ms) => Math.max(0, Math.min(100, (ms - day0) / 864000));
+        const bar = (cls, a, b, label) => { const out = []; const seg = (x, y) => out.push('<div class="bar ' + cls + '" style="left:' + pct(x) + '%;width:' + Math.max(0.5, pct(y) - pct(x)) + '%">' + label + '</div>'); if (b > day0 + 864e5) { seg(a, day0 + 864e5); seg(day0, b - 864e5); } else seg(a, b); return out.join(''); };
+        let mkRow = 0; // stagger the labels so neighbouring markers stay readable
+        const mk = (ms, label) => ms ? '<div class="mk" style="left:' + pct(ms) + '%"><span style="top:' + (11 + (mkRow++ % 3) * 10) + 'px">' + esc(label) + '</span></div>' : '';
+        let h = '<div class="lamp" data-v="' + t.verdict + '"><div class="big">' + t.verdict + '</div><div>Tonight’s entry window <b>' + hm(s.entry[0]) + '–' + hm(s.entry[1]) + ' IST</b><div class="note" style="margin:4px 0 0">' + esc(t.reasons.join(' · ')) + '</div></div></div>';
+        if (t.shiftedThisWeek) h += '<div class="card warn">Session times shifted this week (clock change). Times below already include it.</div>';
+        h += '<div class="grp">' + esc(t.weekday) + ' · ' + esc(s.dateKey) + (s.usSummer ? ' · US summer time' : ' · US winter time') + '</div><div class="strip">'
+          + bar('asia', s.asia[0], s.asia[1], 'Asia') + bar('ldn', s.london[0], s.london[1], 'London') + bar('ny', s.ny[0], s.ny[1], 'New York')
+          + '<div class="win" style="left:' + pct(s.entry[0]) + '%;width:' + (pct(s.entry[1]) - pct(s.entry[0])) + '%" title="your entry window"></div>'
+          + mk(s.deltaSettle, 'Delta 17:30') + mk(s.usData, 'US data ' + hm(s.usData)) + mk(s.nyOpen, 'NY open') + (s.deribitSettle ? mk(s.deribitSettle, 'Deribit') : '')
+          + '<div class="now" style="left:' + pct(Date.now()) + '%" title="now"></div>'
+          + [0, 6, 12, 18, 24].map((x) => '<span class="hr" style="left:' + (x / 24 * 100) + '%">' + String(x).padStart(2, '0') + ':00</span>').join('') + '</div>';
+        h += '<div class="card"><b>' + esc(t.weekday) + '</b> · sell ' + esc(t.dayRule.sell) + '<div class="note" style="margin:4px 0 0">' + esc(t.dayRule.tends) + '</div><div style="margin-top:4px">' + esc(t.dayRule.rule) + '</div></div>';
+        h += '<div class="card"><b>Calendar size ×' + t.size.product + '</b>' + (t.size.skip ? ' · <span style="color:#fca5a5">skip</span>' : '') + '<div class="chips">' + t.size.notes.map((n) => '<span class="chip">' + esc(n) + '</span>').join('') + '</div><div class="note" style="margin:0">Your lot size in the Checklist already includes this.</div></div>';
+        const wk = (w, name) => '<div style="margin:6px 0"><span class="chip ' + w.rating + '">' + name + ': ' + w.rating + '</span> <span class="note">' + esc(w.reasons.join('; ')) + '</span>' + (w.events.length ? '<div class="note" style="margin:2px 0 0">' + w.events.map((e) => esc(e.dateKey.slice(5) + ' ' + e.label)).join(' · ') + '</div>' : '') + '</div>';
+        h += '<div class="card"><b>Weeks</b>' + wk(t.thisWeek, 'This week') + wk(t.nextWeek, 'Next week') + '</div>';
+        h += '<div class="card"><b>Between entry and ' + hm(t.holdEndMs) + ' IST ' + new Date(t.holdEndMs + 19800000).toISOString().slice(8, 10) + '/' + new Date(t.holdEndMs + 19800000).toISOString().slice(5, 7) + '</b><div class="note" style="margin:4px 0 0">' + (t.inPath.length ? t.inPath.map((e) => esc(e.label) + ' at ' + hm(e.atMs) + ' IST ' + new Date(e.atMs + 19800000).toISOString().slice(5, 10)).join(' · ') : 'no top-tier release (CPI, NFP, FOMC)') + '</div>'
+          + (t.calendarLive ? '' : '<div class="note" style="margin:4px 0 0;color:#fcd34d">Live economic calendar unavailable: only the expected NFP and the Fed’s FOMC dates are known.</div>') + '</div>';
+        h += viewVol(t.vol);
+        return h;
+      }
+      function viewVol(v) {
+        if (!v) return '<div class="card warn"><b>Volatility</b><div class="note" style="margin:4px 0 0">IV and price history unavailable right now: the checklist treats this as red.</div></div>';
+        const f = (x, d) => (x == null ? '—' : Number(x).toFixed(d == null ? 0 : d));
+        const bands = [['Dead', 20, '#64748b'], ['Low', 20, '#93c5fd'], ['Core', 30, '#22c55e'], ['Rich', 20, '#f59e0b'], ['Crisis', 10, '#ef4444']];
+        let h = '<div class="card"><b>Volatility</b> <span class="note">(IV = Deribit DVOL, percentile of its own 12 months)</span>';
+        h += '<div class="gauge">' + bands.map((b) => '<i style="width:' + b[1] + '%;background:' + b[2] + '">' + b[0] + '</i>').join('')
+          + (v.iv.pct24hAgo != null ? '<div class="needle ghost" style="left:calc(' + v.iv.pct24hAgo + '% - 1px)" title="24 h ago"></div>' : '')
+          + (v.iv.pct != null ? '<div class="needle" style="left:calc(' + v.iv.pct + '% - 1px)"><span>' + f(v.iv.pct) + '</span></div>' : '') + '</div>';
+        h += '<div><b>' + esc(v.iv.regime || 'No reading') + '</b> · IV ' + f(v.iv.now, 1) + (v.iv.change24h != null ? ' (' + (v.iv.change24h >= 0 ? '+' : '') + f(v.iv.change24h, 1) + ' in 24 h)' : '') + '<div class="note" style="margin:2px 0 0">' + esc(v.iv.rule || '') + '</div></div>';
+        h += '<div style="margin-top:8px"><b>IV/RV ' + f(v.rv.ivRv, 2) + '</b> <span class="note">' + esc(v.rv.band || '') + ': ' + esc(v.rv.bandRule || '') + '</span><div class="note" style="margin:2px 0 0">RV 6 h ' + f(v.rv.rv6) + ' · 24 h ' + f(v.rv.rv24) + ' · 7 d ' + f(v.rv.rv7d) + (v.rv.shortRising ? ' · <span style="color:#fca5a5">short-term RV rising</span>' : '') + '</div></div>';
+        h += '<div style="margin-top:8px"><b>Quiet market</b><div class="meter">' + ['Normal', 'Quiet', 'Coiled', 'Squeeze'].map((l) => '<b class="' + l + (v.compression.level === l ? ' on' : '') + '">' + l + '</b>').join('') + '</div><div class="note" style="margin:0">' + esc(v.compression.why) + '</div>';
+        h += '<table style="margin-top:4px"><tbody>' + v.sessions.map((x) => '<tr><td>' + x.session + '</td><td class="dots" title="last 5 weekdays, o = quiet">' + x.dots.map((d) => (d ? 'o' : '·')).join('') + '</td><td class="note">' + (x.quietRun ? x.quietRun + ' quiet in a row' : 'not quiet') + (x.latest ? ' · last ' + f(x.latest.rangePct, 2) + '%' : '') + '</td></tr>').join('') + '</tbody></table></div>';
+        h += '<div style="margin-top:8px"><b>Wake-up wave</b><div class="steps">' + ['Waiting', 'Wave', 'Settle', 'Roll-over'].map((l) => '<b class="' + (v.wave.step === l ? 'on' : '') + '">' + l + '</b>').join('') + '</div><div class="note" style="margin:0">' + esc(v.wave.why) + '</div></div>';
+        if (v.behaviour) h += '<div style="margin-top:8px"><b>' + esc(v.behaviour.label) + '</b><div class="note" style="margin:2px 0 0">' + esc(v.behaviour.action) + '</div></div>';
+        h += '<div style="margin-top:8px" class="note">' + (v.gate.reasons.length ? '<span style="color:#fca5a5">' + esc(v.gate.reasons.join(' · ')) + '</span>' : 'No volatility rule against selling.') + (v.gate.notes.length ? ' · ' + esc(v.gate.notes.join(' · ')) : '') + '</div></div>';
+        return h;
+      }
+      function viewRules() {
+        const c = S.content; if (!c) return '<p class="note">Loading…</p>';
+        let h = '<p class="note">' + esc(c.note) + '</p>';
+        for (const s of c.sections) {
+          h += '<h3>' + esc(s.title) + '</h3>';
+          (s.text || []).forEach((t) => { h += '<p style="margin:4px 0">' + esc(t) + '</p>'; });
+          if (s.list) h += (s.ordered ? '<ol>' : '<ul>') + s.list.map((x) => '<li>' + esc(x) + '</li>').join('') + (s.ordered ? '</ol>' : '</ul>');
+          if (s.table) h += '<table><thead><tr>' + s.table.head.map((x) => '<th>' + esc(x) + '</th>').join('') + '</tr></thead><tbody>' + s.table.rows.map((r) => '<tr>' + r.map((x) => '<td>' + esc(x) + '</td>').join('') + '</tr>').join('') + '</tbody></table>';
+        }
+        return h;
+      }
+      function viewJournal() {
+        const reasons = (S.content && S.content.exitReasons) || ['Take profit'];
+        let h = '<p class="note">Journal every trade within the hour. Session, weekday and the gate readings are saved for you.</p><div class="form">'
+          + '<label>Exit reason<select id="jReason">' + reasons.map((r) => '<option>' + esc(r) + '</option>').join('') + '</select></label>'
+          + '<label>Net P&amp;L (USD)<input id="jPnl" type="number" step="0.01"></label>'
+          + '<label>Expiry<input id="jExp" placeholder="e.g. 041126"></label>'
+          + '<label>Lots<input id="jLots" type="number" step="1"></label>'
+          + '<label>Call delta<input id="jCd" type="number" step="0.01"></label>'
+          + '<label>Put delta<input id="jPd" type="number" step="0.01"></label>'
+          + '<label>Peak P&amp;L<input id="jPeak" type="number" step="0.01"></label>'
+          + '<label>Max drawdown<input id="jDd" type="number" step="0.01"></label>'
+          + '<label class="full">Rules broken and why<textarea id="jBroke"></textarea></label>'
+          + '<label class="full">One-line lesson<input id="jLesson" maxlength="300"></label>'
+          + '</div><div class="row"><button class="btn pri" id="jSave">Save journal entry</button></div>' + msg();
+        const es = S.journal || [];
+        h += '<h3>Recent trades</h3>' + (es.length ? '<table><thead><tr><th>When</th><th>Exit</th><th>P&amp;L</th><th>Lesson</th></tr></thead><tbody>' + es.slice(0, 25).map((e) => '<tr><td>' + esc(new Date(e.at).toLocaleDateString()) + '<br><span class="note">' + esc((e.entry.weekday || '') + ' · ' + (e.entry.session || '')) + '</span></td><td>' + esc(e.entry.exitReason) + '</td><td>' + money(e.entry.netPnlUsd) + '</td><td>' + esc(e.entry.lesson || '') + '</td></tr>').join('') + '</tbody></table>' : '<p class="note">No entries yet.</p>');
+        return h;
+      }
+      function viewReview() {
+        const st = S.state; if (!st) return '<p class="note">' + (S.err ? esc(S.err) : 'Loading…') + '</p>';
+        const r = st.review;
+        let h = '<h3 style="margin-top:0">Last 7 days</h3><div class="stats">'
+          + '<div><span class="note">Trades</span><b>' + r.trades + '</b></div>'
+          + '<div><span class="note">Win rate</span><b>' + (r.winRate == null ? '—' : Math.round(r.winRate * 100) + '%') + '</b></div>'
+          + '<div><span class="note">Net</span><b>' + money(r.net) + '</b></div>'
+          + '<div><span class="note">Avg win</span><b>' + money(r.avgWin) + '</b></div>'
+          + '<div><span class="note">Avg loss</span><b>' + money(r.avgLoss) + '</b></div>'
+          + '<div><span class="note">Rule breaks</span><b>' + r.ruleBreaks + '</b></div></div>';
+        h += '<h3>Rule breaks</h3>' + (st.breaks.length ? '<table><tbody>' + st.breaks.map((b) => '<tr><td>' + esc(new Date(b.at).toLocaleString()) + '</td><td>' + esc((b.rules || []).join(', ')) + '</td></tr>').join('') + '</tbody></table>' : '<p class="note">None. Keep it that way.</p>');
+        return h;
+      }
+      const msg = () => (S.msg ? '<div class="msg ' + (S.msg.startsWith('!') ? 'err' : 'okm') + '">' + esc(S.msg.replace(/^!/, '')) + '</div>' : '');
+
+      function render() {
+        panel.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.t === S.tab));
+        body.innerHTML = S.tab === 'tonight' ? viewTonight() : S.tab === 'check' ? viewCheck() : S.tab === 'rules' ? viewRules() : S.tab === 'journal' ? viewJournal() : viewReview();
+        wire();
+      }
+      function wire() {
+        const on = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+        on('vRbRefresh', () => { S.check = null; render(); loadCheck(); });
+        on('vRbEqGo', async () => { const v = Number($('vRbEq').value); try { await api('/equity', { method: 'POST', body: JSON.stringify({ equityUsd: v }) }); S.msg = 'Equity saved.'; await loadCheck(); } catch (e) { S.msg = '!' + e.message; render(); } });
+        on('vRbUnlockGo', async () => { try { await api('/unlock', { method: 'POST', body: JSON.stringify({ confirm: $('vRbUnlock').value }) }); S.msg = 'Unlocked for today. The rules still apply.'; await loadCheck(); } catch (e) { S.msg = '!' + e.message; render(); } });
+        on('jSave', async () => {
+          const num = (id) => { const v = $(id).value; return v === '' ? null : Number(v); };
+          const pnl = num('jPnl'); if (pnl == null) { S.msg = '!Enter the net P&L.'; render(); return; }
+          const e = { exitReason: $('jReason').value, netPnlUsd: pnl, expiry: $('jExp').value || undefined, lots: num('jLots'), callDelta: num('jCd'), putDelta: num('jPd'), peakUsd: num('jPeak'), maxDrawdownUsd: num('jDd'), rulesBroken: $('jBroke').value || undefined, lesson: $('jLesson').value || undefined };
+          try { const r = await api('/journal', { method: 'POST', body: JSON.stringify(e) }); S.msg = 'Saved.' + (r.halfLeft ? ' Half size for ' + r.halfLeft + ' more trade(s).' : ''); await loadJournal(); loadCheck(); render(); } catch (err) { S.msg = '!' + err.message; render(); }
+        });
+      }
+
+      async function open(tab) {
+        S.tab = tab || S.tab; S.msg = ''; panel.classList.add('on'); btn.setAttribute('aria-expanded', 'true'); render();
+        await loadContent();
+        if (S.tab === 'tonight') await loadTonight();
+        if (S.tab === 'check') await loadCheck();
+        if (S.tab === 'journal') await loadJournal();
+        if (S.tab === 'review') await loadState();
+        render();
+        clearInterval(S.timer); S.timer = setInterval(() => { if (!panel.classList.contains('on')) return; if (S.tab === 'check') loadCheck(); if (S.tab === 'tonight') loadTonight().then(render); }, 60000);
+      }
+      function close() { panel.classList.remove('on'); btn.setAttribute('aria-expanded', 'false'); clearInterval(S.timer); }
+      btn.addEventListener('click', () => (panel.classList.contains('on') ? close() : open()));
+      $('vRbClose').addEventListener('click', close);
+      panel.querySelectorAll('nav button').forEach((b) => b.addEventListener('click', () => open(b.dataset.t)));
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && panel.classList.contains('on')) close(); });
+      window.addEventListener('terminal:unlocked', () => { loadCheck(); });
+      setInterval(() => { if (!panel.classList.contains('on') && tok()) loadCheck(); }, 5 * 60000); // keeps the button's dot current
+      window.openRuleBook = open;
+
+      /* ---------- Enter now: a red checklist asks for a second confirmation; placing anyway is logged as a rule break ---------- */
+      const realFetch = window.fetch;
+      window.fetch = async function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const res = await realFetch.call(window, input, init);
+        if (!/\/enter-now(\?|$)/.test(url) || !init || typeof init.body !== 'string') return res;
+        if (res.status === 423) { open('check'); return res; }
+        if (res.status !== 409) return res;
+        let j = null; try { j = await res.clone().json(); } catch (e) { return res; }
+        if (!j || j.code !== 'RULEBOOK_RED') return res;
+        const lines = (j.red || []).map((x) => '✗ ' + x.label + ' (' + x.now + ')').join('\n');
+        const ok = window.confirm('Rule Book: ' + (j.red || []).length + ' rule(s) are red.\n\n' + lines + '\n\nPlace the trade anyway?\nIt will be logged as a rule break, and your next trades go at half size.');
+        if (!ok) return res;
+        let b; try { b = JSON.parse(init.body); } catch (e) { return res; }
+        b.override = true;
+        const again = await realFetch.call(window, input, Object.assign({}, init, { body: JSON.stringify(b) }));
+        loadCheck();
+        return again;
+      };
     })();
   </script>
 </body>

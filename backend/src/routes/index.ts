@@ -25,6 +25,8 @@ import { pulseRoutes } from './pulse.js';
 import { adminRoutes } from './admin.js';
 import { ivRoutes } from './iv.js';
 import { feedRoutes } from './feed.js';
+import { newsRoutes } from './news.js';
+import { rulebookRoutes } from './rulebook.js';
 
 /**
  * Primary API v1 Router Registration
@@ -58,4 +60,6 @@ export const apiV1Routes: FastifyPluginAsync = async (fastify) => {
   await fastify.register(adminRoutes, { prefix: '/admin' });
   await fastify.register(ivRoutes, { prefix: '/iv' });
   await fastify.register(feedRoutes, { prefix: '/feed' });
+  await fastify.register(newsRoutes, { prefix: '/news' });
+  await fastify.register(rulebookRoutes, { prefix: '/rulebook' });
 };
