@@ -212,7 +212,7 @@ export class PulseEngine {
     await this.logMissingSlots(slots, chain.expiries);
 
     await this.checkStops(now, live, chain);
-    const stillLive = await this.roll(now, live, slots, chain, perp);
+    const stillLive = await this.roll(now, live, chain, perp);
     this.live = this.countLive(stillLive);
     this.rotateSeries(slots);
     await this.snapshot(now, stillLive, chain, perp);
@@ -265,19 +265,15 @@ export class PulseEngine {
     }
   }
 
-  /** Closes cohorts that expired or whose slot moved to another expiry. Returns those still live. */
-  private async roll(now: number, live: readonly PulseCohort[], slots: Slots, chain: ChainSnapshot, perp: PerpQuote): Promise<PulseCohort[]> {
+  /** Closes cohorts at their own expiry. One that outlives its slot's roll keeps recording, so the lane has a strangle while no new strike fits. Returns those still live. */
+  private async roll(now: number, live: readonly PulseCohort[], chain: ChainSnapshot, perp: PerpQuote): Promise<PulseCohort[]> {
     const stillLive: PulseCohort[] = [];
     for (const c of live) {
-      const expired = c.expiry_ms <= now;
-      const target = slots[c.slot];
-      if (!expired && (target === undefined || target === c.expiry_ms)) {
+      if (c.expiry_ms > now) {
         stillLive.push(c);
         continue;
       }
-      const reason = expired ? 'EXPIRED' : 'ROLL';
-      const last = reason === 'ROLL' ? await lastLegSnapshots(c.id) : {};
-      await closeCohorts([c.id], reason, now, closeNetPnl(c, reason, chain.options, perp.spot, last));
+      await closeCohorts([c.id], 'EXPIRED', now, closeNetPnl(c, 'EXPIRED', chain.options, perp.spot, {}));
     }
     return stillLive;
   }

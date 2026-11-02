@@ -52665,9 +52665,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         @media (max-width: 1100px) { #v153Pulse .pu-age, #v153Pulse .pu-why { display: none !important; } }
         @media (max-width: 760px) { #v153Pulse.v138-lane { height: 268px !important; min-height: 268px !important; } body #paneG>#v153Pulse.v138-lane .v8l { height: 78px; flex-wrap: wrap; white-space: normal; align-content: center; } body #paneG>#v153Pulse.v138-lane .v8c { top: 78px !important; } #v153Pulse .pu-empty { top: 78px; right: 78px; } }
       `;
-      /* Strangle Pulse data: read-only, refreshed every 60 s while the lane is ticked; the slot follows the desk's expiry selector (0 Current, 1 Next, 2 N2N; auto = N2N) */
+      /* Strangle Pulse data: read-only, refreshed every 60 s while the lane is ticked; the slot follows the desk's expiry selector (0 Current, 1 Next, 2 N2N; auto = Next, the desk's default) */
       const PU = { s: null, slot: null, err: null, at: 0, busy: false };
-      const puSlot = () => { try { const v = localStorage.getItem('v89_slot'); return v === '0' ? 'current' : v === '1' ? 'next' : 'n2n'; } catch (e) { return 'n2n'; } };
+      const puSlot = () => { try { const v = localStorage.getItem('v89_slot'); return v === '0' ? 'current' : v === '2' ? 'n2n' : 'next'; } catch (e) { return 'next'; } };
       function pulseGet() {
         const slot = puSlot();
         if (PU.slot !== slot) { PU.slot = slot; PU.s = null; PU.at = 0; }
@@ -53054,7 +53054,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           const P = pulseGet(), d = P.s, card = d && d.card;
           const barOf = t => { if (!B.n || t0ms(B.b[0]) > t) return -1; let lo = 0, hi = B.n - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (t0ms(B.b[m]) <= t) lo = m; else hi = m - 1; } return t < t0ms(B.b[lo]) + B.tf ? lo : -1; };
           // one value per chart bar, straight-joined between the 15-minute samples so every line is unbroken and sits on the BTC chart's own time axis
-          const put = (series, list, get) => { const a = new Array(B.n).fill(null); for (const p of list || []) { const v = get(p); const i = v == null ? -1 : barOf(p.t); if (i >= 0) a[i] = v; } let prev = -1; for (let i = 0; i < B.n; i++) { if (a[i] == null) continue; if (prev >= 0 && i - prev > 1) for (let j = prev + 1; j < i; j++) a[j] = a[prev] + (a[i] - a[prev]) * (j - prev) / (i - prev); prev = i; } series.setData(B.b.flatMap((b, i) => (a[i] == null ? [] : [{ time: b.time, value: puToScreen(o, a[i]) }]))); return a; };
+          const put = (series, list, get) => { const a = new Array(B.n).fill(null); for (const p of list || []) { const v = get(p); const i = v == null ? -1 : barOf(p.t); if (i >= 0) a[i] = v; } let prev = -1; for (let i = 0; i < B.n; i++) { if (a[i] == null) continue; if (prev >= 0 && i - prev > 1) for (let j = prev + 1; j < i; j++) a[j] = a[prev] + (a[i] - a[prev]) * (j - prev) / (i - prev); prev = i; } if (prev >= 0 && Date.now() - t0ms(B.b[prev]) <= 1800000 + B.tf) for (let j = prev + 1; j < B.n; j++) a[j] = a[prev];   /* hold the last reading up to the live candle; a reading over 30 min old is not carried */ series.setData(B.b.flatMap((b, i) => (a[i] == null ? [] : [{ time: b.time, value: puToScreen(o, a[i]) }]))); return a; };
           if (d && d.zones) { o.pd.sell = d.zones.sellMin; o.pd.caution = d.zones.cautionMin; }
           { // the axis shows the true limits at the zone borders; no other grid lines compete with them
             const [c1, c2] = puCuts(o), key = c1 + '|' + c2;
@@ -53071,6 +53071,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           o.pd.marks = ((d && d.changes) || []).map(c => ({ time: B.b[barOf(c.t)] && B.b[barOf(c.t)].time, color: ZC[c.zone] || '#8FA3B5' })).filter(m => m.time != null);
           const last = a => { for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return a[i]; return null; };
           const n0 = v => (v == null ? '—' : Math.round(v));
+          { const fut = ar[B.n - 1] == null && af[B.n - 1] != null; o.d.applyOptions({ visible: !!o.pd.show.fl || fut }); o.f.applyOptions({ visible: !!o.pd.show.fs || fut }); }   // no strangle to read: the futures lines carry the lane
           const lp = d && d.pnl && d.pnl.length ? d.pnl[d.pnl.length - 1] : null;
           o.pd.pl = lp; o.pd.rl = { risk: last(ar), call: last(ac), put: last(ap), fl: last(af), fs: last(as) };
           o.pd.now = o.pd.rl; o.pd.at = new Map(); B.b.forEach((b, i) => { if (ar[i] != null || ac[i] != null || ap[i] != null) o.pd.at.set(b.time, { risk: ar[i], call: ac[i], put: ap[i], fl: af[i], fs: as[i] }); });
@@ -53088,7 +53089,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           { const info = D.getElementById('v153Info'); if (info) { const top = info.scrollTop; info.innerHTML = puInfoHtml(o); info.scrollTop = top; } }
           {
             let em = o.box.querySelector('.pu-empty'); if (!em) { em = D.createElement('div'); em.className = 'pu-empty'; o.box.appendChild(em); }
-            const hasLines = !!(pts && pts.some(p => p.c != null || p.call != null || p.put != null));
+            const hasLines = !!(pts && pts.some(p => p.c != null || p.call != null || p.put != null || p.fl != null || p.fs != null));
             em.hidden = hasLines;
             if (!hasLines) { const msg = P.err ? ['Short Strangle is offline', P.err] : d ? ['Collecting readings', 'Lines appear after the first samples are stored. Samples are taken every 15 minutes.'] : ['Loading…', '']; const html = '<b>' + esc(msg[0]) + '</b><span>' + esc(msg[1]) + '</span>'; if (em.innerHTML !== html) em.innerHTML = html; }
           }
@@ -53340,6 +53341,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       const anyNeedsK = () => ['vwap', 'avp', 'lhm', 'fp'].some(ON);
       async function tick() { if (D.hidden) return; if (anyNeedsK() && (!MK.k5.length || Date.now() - MK.at > 60000)) await k5(); if (ON('pwin') || ON('gng')) pwinLoad(false); grkQuote(master()); paintAll(); }   // the ATM quote (Greeks check + bid/ask recorder) is read once a minute even when the sections are off, so the spread history keeps filling
       setTimeout(() => { tick(); }, 5200); setInterval(() => { if (!D.hidden && ON('ton')) try { paint('ton'); } catch (e) { } }, 5000);
+      setInterval(() => { if (!D.hidden && ON('pulse')) try { paint('pulse'); } catch (e) { } }, 15000);   // the lane follows the live chart between bars; pulseGet still fetches at most once a minute
       /* the ƒx button shows NEW until the menu is opened once */
       setInterval(() => { const b = $('v132IndBtn'); if (!b || b.__v142) return; b.__v142 = 1; if (!LSg('v142_seen', false)) { b.classList.add('v142-new'); b.addEventListener('click', () => { b.classList.remove('v142-new'); LSs('v142_seen', true); }, { once: true }); } }, 1500); setInterval(tick, 15000); setInterval(() => { if (!D.hidden && ON('fp')) { for (const p of [PR.fp]) p && p.req(); chip(); } }, 2000); setInterval(() => { if (!D.hidden) order(); }, 2500);
       D.addEventListener('click', e => { if (e.target.closest('#v132Ind,#v132IndBtn,[data-page],#gTf,#v100Master,.v138-presets')) setTimeout(() => { tick(); }, 300); }, true);

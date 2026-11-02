@@ -60,7 +60,8 @@ export const pulseRoutes: FastifyPluginAsync = async (fastify) => {
     const dirCohorts: CohortSteps[] = withFut.map((c) => ({ opened_at: c.opened_at, steps: metricSeries(c, rowsBy.get(c.id) ?? []) }));
 
     const nowMs = Date.now();
-    const grids = [...new Set(cohorts.flatMap((c) => c.steps.map((s) => s.grid_ms)))]
+    // Futures-only hours count too, so the lane keeps walking when no strike fits; the Risk reading is NO DATA there, the futures lines are not.
+    const grids = [...new Set(dirCohorts.flatMap((c) => c.steps.map((s) => s.grid_ms)))]
       .filter((g) => g >= nowMs - SCORE_CONFIG.historyHours * 3_600_000).sort((a, b) => a - b);
 
     const gate = regimeService.snapshot();

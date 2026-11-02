@@ -501,89 +501,46 @@ describe('stale data', () => {
 });
 
 describe('rolls', () => {
-  it('closes all slots on the 12:00 UTC roll, then opens in a new series on the same tick', async () => {
+  it('a roll closes only what expired: older strangles keep recording beside the new series', async () => {
     const e = engine();
     await at(e, '2026-11-01T10:00:00Z');
     await at(e, '2026-11-01T11:00:00Z');
     const before = await store.liveCohorts();
     expect(before).toHaveLength(6);
     const oldSeries = Object.fromEntries(before.map((c) => [c.slot, c.series_id]));
-    expect(new Set(before.map((c) => c.series_id)).size).toBe(3);
 
     h.spot = 88_500;
     await at(e, '2026-11-01T12:00:00Z');
 
     const closed = await q(`SELECT slot, close_reason, closed_at, net_pnl FROM pulse_cohorts WHERE status = 'closed' ORDER BY slot`);
-    expect(closed).toHaveLength(6);
-    expect(closed.filter((c) => c.slot === 'current').every((c) => c.close_reason === 'EXPIRED')).toBe(true);
-    expect(closed.filter((c) => c.slot !== 'current').every((c) => c.close_reason === 'ROLL')).toBe(true);
+    expect(closed).toHaveLength(2);
+    expect(closed.every((c) => c.slot === 'current' && c.close_reason === 'EXPIRED')).toBe(true);
     expect(new Date(closed[0].closed_at).getTime()).toBe(T('2026-11-01T12:00:00Z'));
-
-    // current expired 500 in the money on the call; the others rolled at the live ask.
     const expected = legNetPnl({ entryBid: 100, ask: 500, spot: 88_500, fee: CALL_FEE }) + legNetPnl({ entryBid: 90, ask: 0, spot: 88_500, fee: CALL_FEE });
-    expect(Number(closed.find((c) => c.slot === 'current').net_pnl)).toBeCloseTo(expected, 8);
-    const rolled = legNetPnl({ entryBid: 100, ask: 110, spot: 88_500, fee: CALL_FEE }) + legNetPnl({ entryBid: 90, ask: 100, spot: 88_500, fee: CALL_FEE });
-    expect(Number(closed.find((c) => c.slot === 'next').net_pnl)).toBeCloseTo(rolled, 8);
+    expect(Number(closed[0].net_pnl)).toBeCloseTo(expected, 8);
 
-    const fresh = await store.liveCohorts();
+    const live = await store.liveCohorts();
+    expect(live).toHaveLength(7);
+    const fresh = live.filter((c) => c.slot_ms === T('2026-11-01T12:00:00Z'));
     expect(fresh.map((c) => [c.slot, c.expiry_ms]).sort()).toEqual([['current', E_NOV2], ['n2n', E_NOV4], ['next', E_NOV3]]);
     for (const c of fresh) {
       expect(c.series_id).not.toBe(oldSeries[c.slot]);
-      expect(c.slot_ms).toBe(T('2026-11-01T12:00:00Z'));
       expect(e.status().slots[c.slot].seriesId).toBe(c.series_id);
     }
-    expect(new Set(fresh.map((c) => c.series_id)).size).toBe(3);
-    // 12:00 is a grid: closed cohorts get no snapshot, and new ones wait for the next grid.
-    expect(await count('FROM pulse_cohort_snapshots WHERE grid_ms = $1', [T('2026-11-01T12:00:00Z')])).toBe(0);
+    // The four older strangles are still sampled on the 12:00 grid; the new cohorts wait for the next one.
+    expect(await count('FROM pulse_cohort_snapshots WHERE grid_ms = $1', [T('2026-11-01T12:00:00Z')])).toBe(4);
   });
 
-  it('roll during outage: first good tick closes with ROLL', async () => {
+  it('an older strangle closes at its own expiry, even after an outage across the roll', async () => {
     const e = engine();
     await at(e, '2026-11-01T11:00:00Z');
     h.chainDown = true;
-    await at(e, '2026-11-01T11:59:00Z');
     await at(e, '2026-11-01T12:01:00Z');
-    expect(await count(`FROM pulse_cohorts WHERE status = 'open'`)).toBe(3);
     h.chainDown = false;
-    h.spot = 71_000;
     await at(e, '2026-11-01T12:03:00Z');
-
-    const closed = await q(`SELECT slot, close_reason, net_pnl, closed_at FROM pulse_cohorts WHERE status = 'closed'`);
-    const bySlot = Object.fromEntries(closed.map((c) => [c.slot, c]));
-    expect(bySlot.current.close_reason).toBe('EXPIRED');
-    expect(bySlot.next.close_reason).toBe('ROLL');
-    expect(bySlot.n2n.close_reason).toBe('ROLL');
-    const expected = legNetPnl({ entryBid: 100, ask: 0, spot: 71_000, fee: CALL_FEE }) + legNetPnl({ entryBid: 90, ask: 1000, spot: 71_000, fee: CALL_FEE });
-    expect(Number(bySlot.current.net_pnl)).toBeCloseTo(expected, 8);
-    expect(new Date(bySlot.current.closed_at).getTime()).toBe(T('2026-11-01T12:03:00Z'));
-    // Inside the grace, so the 12:00 cohort still opens, in the new series.
-    expect((await store.liveCohorts()).map((c) => [c.slot, c.expiry_ms, c.slot_ms]).sort()).toEqual([
-      ['current', E_NOV2, T('2026-11-01T12:00:00Z')],
-      ['n2n', E_NOV4, T('2026-11-01T12:00:00Z')],
-      ['next', E_NOV3, T('2026-11-01T12:00:00Z')],
-    ]);
-  });
-
-  it('ROLL close falls back to the last stored leg P&L, and stays null with none', async () => {
-    const e = engine();
-    await at(e, '2026-11-01T11:00:00Z');
-    await at(e, '2026-11-01T11:15:00Z');
-    await at(e, '2026-11-01T11:30:00Z'); // stored P&L for all
-    const next = (await store.liveCohorts()).find((c) => c.slot === 'next')!;
-    const stored = (await store.lastLegSnapshots(next.id)).call!.net_pnl as number;
-    h.gone.add(next.call_symbol!);
-    await at(e, '2026-11-01T12:00:00Z');
-    const put = legNetPnl({ entryBid: 90, ask: 100, spot: 80_000, fee: CALL_FEE });
-    expect(Number((await q('SELECT net_pnl FROM pulse_cohorts WHERE id = $1', [next.id]))[0].net_pnl)).toBeCloseTo(stored + put, 8);
-  });
-
-  it('ROLL close with no quote and no stored P&L leaves net_pnl null', async () => {
-    const e = engine();
-    await at(e, '2026-11-01T11:00:00Z');
-    const next = (await store.liveCohorts()).find((c) => c.slot === 'next')!;
-    h.gone.add(next.put_symbol!);
-    await at(e, '2026-11-01T12:00:00Z');
-    expect(await q('SELECT status, net_pnl FROM pulse_cohorts WHERE id = $1', [next.id])).toMatchObject([{ status: 'closed', net_pnl: null }]);
+    const closed = await q(`SELECT slot, close_reason FROM pulse_cohorts WHERE status = 'closed'`);
+    expect(closed).toEqual([{ slot: 'current', close_reason: 'EXPIRED' }]);
+    expect((await store.liveCohorts()).filter((c) => c.slot_ms === T('2026-11-01T11:00:00Z')).map((c) => c.slot).sort()).toEqual(['n2n', 'next']);
   });
 
   it('two expiries listed: logs SLOT_MISSING for n2n, others run', async () => {
@@ -636,7 +593,7 @@ describe('rolls', () => {
     const old = (await q(`SELECT series_id FROM pulse_cohorts WHERE slot = 'next'`))[0].series_id;
     h.noStrikes.clear();
     await at(e, '2026-11-01T12:00:00Z');
-    const live = (await store.liveCohorts()).find((c) => c.slot === 'next')!;
+    const live = (await store.liveCohorts()).find((c) => c.slot === 'next' && c.slot_ms === T('2026-11-01T12:00:00Z'))!;
     expect(live.expiry_ms).toBe(E_NOV3);
     expect(live.series_id).not.toBe(old);
   });
@@ -691,7 +648,7 @@ describe('restarts', () => {
     expect((await events('SNAPSHOT_GAP'))[0].detail).toEqual({ from: T('2026-11-01T00:15:00Z'), to: T('2026-11-01T01:00:00Z') });
   });
 
-  it('restart across a roll closes the old cohorts and starts a new series', async () => {
+  it('restart across a roll keeps unexpired cohorts and starts a new series', async () => {
     const a = engine();
     await at(a, '2026-11-01T11:00:00Z');
     const old = await store.liveCohorts();
@@ -699,7 +656,7 @@ describe('restarts', () => {
     vi.setSystemTime(T('2026-11-01T12:02:00Z'));
     const b = engine();
     await b.start();
-    const live = await store.liveCohorts();
+    const live = (await store.liveCohorts()).filter((c) => c.slot_ms === T('2026-11-01T12:00:00Z'));
     expect(live.map((c) => c.expiry_ms).sort()).toEqual([E_NOV2, E_NOV3, E_NOV4]);
     expect(live.some((c) => old.some((o) => o.series_id === c.series_id))).toBe(false);
   });
@@ -710,13 +667,13 @@ describe('restarts', () => {
     const old = await store.liveCohorts();
     h.failSql = 'INSERT INTO pulse_cohorts';
     await at(a, '2026-11-01T12:00:00Z');
-    expect(await count(`FROM pulse_cohorts WHERE status = 'open'`)).toBe(0);
+    expect(await count(`FROM pulse_cohorts WHERE status = 'open'`)).toBe(2);
     a.stop();
     h.failSql = null;
     vi.setSystemTime(T('2026-11-01T12:01:00Z'));
     const b = engine();
     await b.start();
-    const live = await store.liveCohorts();
+    const live = (await store.liveCohorts()).filter((c) => c.slot_ms === T('2026-11-01T12:00:00Z'));
     expect(live).toHaveLength(3);
     expect(live.some((c) => old.some((o) => o.series_id === c.series_id))).toBe(false);
   });
