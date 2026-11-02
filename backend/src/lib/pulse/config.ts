@@ -143,3 +143,25 @@ export const LINE_CONFIG = {
   /** Threat score of an OI read on a sold leg: writers adding is calm, fresh buyers or covering is not. */
   oiRisk: { short_buildup: 0, long_unwinding: 35, long_buildup: 100, short_covering: 100 },
 } as const;
+
+/** Strangle Pulse minute damage: how fast a sold leg's premium rises against the BTC move, and when that trips the trigger. */
+export const DAMAGE_CONFIG = {
+  /** Minutes back the change is measured over. */
+  windowMin: 5,
+  /** Smallest BTC move (percent) used as the divisor, so a flat market does not divide by zero. */
+  moveFloorPct: 0.02,
+  /** Linear 0-100 map on the premium-up to BTC-move ratio: [ratio that scores 0, ratio that scores 100]. */
+  map: [5, 30],
+  weight: 30,
+  /** A side only trips the trigger when its premium is up at least this percent of entry. */
+  triggerPremiumPct: 10,
+  /** Consecutive steps at score 100 before the trigger turns on. */
+  triggerMinutes: 2,
+  /** Consecutive steps below the levels before the trigger clears. */
+  clearMinutes: 10,
+  zoneReadings: 5,
+  futuresWindowMin: 60,
+  futuresMap: [0, 1],
+  lineDamageShare: 0.6,
+  retentionDays: 45,
+} as const;
