@@ -21238,6 +21238,22 @@ on an empty top; the live board replaces it as soon as its numbers are in. Snaps
         </div>
       </section>
 
+      <style id="v172Tools">
+        /* v172 · Tools ▾ panel: hangs from the chart toolbar over the charts, scrolls inside itself */
+        #chartp { position: relative }
+        #dkTools { position: absolute; left: 0; right: 0; z-index: 60; max-height: 72%; overflow: auto; overscroll-behavior: contain;
+          background: var(--panel, #11151d); border: 1px solid var(--line, #222a36); border-top: 0; border-radius: 0 0 10px 10px;
+          box-shadow: 0 14px 30px rgba(0, 0, 0, .35); padding: 8px }
+        #dkTools[hidden] { display: none }
+        #dkToolsIn > * { margin: 0 0 8px }
+        #dkToolsBtn.on { color: var(--focus, #f5a524); border-color: currentColor }
+        /* the "clean first screen" rules (v89 / v133) hide these on the Desk; inside Tools they are shown again.
+           Sections switched off by the owner (.v127-off) or retired (#v104Lead, v121) stay hidden. */
+        /* three ids, to beat v133's "body.v133 #pgDesk #side2 { display: none !important }" */
+        #pgDesk #dkTools #side2 { display: flex !important }
+        #pgDesk #dkTools #flowRow { display: grid !important }
+        @media (max-width: 760px) { #pgDesk #dkTools #flowRow { display: flex !important; flex-direction: column } #pgDesk #dkTools #side2 { flex-direction: column } }
+      </style>
       <script id="v105_22Arrange">/* v111 · chart order set by Abhishek (replaces the v105.22 / v110 orders).
 Trade page, top to bottom:
 1 Tonight graph
@@ -21249,24 +21265,60 @@ The floating P&L pill still shows the live P&L on top of everything. */
         (function () {
           var D = document, $ = function (i) { return D.getElementById(i); }, busy = false;
           function wideNow() { try { return matchMedia('(min-width:1360px)').matches; } catch (e) { return false; } }
+          /* v172 (3 Nov 2026) · the Desk is a chart page: only the chart block (#v22Top with #chartp) stays on it; every other
+             section moves, in the same order, into the Tools ▾ panel that hangs from the chart toolbar. Nothing is removed. */
+          // lookups go through ch: on the first run ch sits in a #v22Top that is not in the document yet, so getElementById misses
+          function toolsBox(ch) {
+            var box = ch.querySelector('#dkTools'); if (box) return box.querySelector('#dkToolsIn');
+            box = D.createElement('div'); box.id = 'dkTools'; box.hidden = true; box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Desk tools');
+            box.innerHTML = '<div id="dkToolsIn"></div>'; ch.appendChild(box);
+            var r = ch.querySelector('#gTop .r'), btn = D.createElement('button');
+            btn.type = 'button'; btn.id = 'dkToolsBtn'; btn.className = 'tool'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'dkTools');
+            btn.title = 'Tonight, signals, events, flow, positioning and My trade · P&L'; btn.textContent = 'Tools ▾';
+            btn.addEventListener('click', function () { window.dkTools && (dkTools.isOpen() ? dkTools.close() : dkTools.open()); });
+            if (r) r.insertBefore(btn, r.firstChild);
+            return box.querySelector('#dkToolsIn');
+          }
           function arrange() {
             if (busy) return; busy = true; try {
               var desk = D.querySelector('#pgDesk .desk'), ch = $('chartp'); if (!desk || !ch) return;
               var top = $('v22Top'); if (!top) { top = D.createElement('div'); top.id = 'v22Top'; top.innerHTML = '<aside id="v22Side" aria-label="Leading signals"><div id="v22SideIn"></div></aside>'; }
               if (top.firstChild !== ch) top.insertBefore(ch, top.firstChild);
               var hd = $('v110PnlHd'); if (!hd) { hd = D.createElement('div'); hd.id = 'v110PnlHd'; hd.className = 'v110-hd'; hd.innerHTML = '<span>My trade · P&amp;L</span>'; }
-              var wide = wideNow(), lead = $('v104Lead'), inn = $('v22SideIn');
-              var want = [$('v89Rail'), top, $('volRow'), wide ? null : lead, $('side2'), $('flowRow'), hd, $('v18Trade')].filter(function (e) { return e && !(e.dataset && e.dataset.v134); });
-              var kids = Array.prototype.filter.call(desk.children, function (e) { return want.indexOf(e) >= 0; });
-              if (!(kids.length === want.length && want.every(function (e, i) { return kids[i] === e; }))) want.forEach(function (e) { desk.appendChild(e); });
-              if (wide && lead && lead.parentNode !== inn) inn.appendChild(lead);
-              hd.hidden = !$('v18Trade');
-            } catch (e) { } finally { busy = false; }
+              var tin = toolsBox(ch), ok = function (e) { return e && !(e.dataset && e.dataset.v134); };
+              // with the old vol cards (v138 switched off) #volRow holds charts, so it stays on the Desk
+              var volOnDesk = !D.body || !D.body.classList.contains('v138');
+              var deskWant = [top].concat(volOnDesk ? [$('volRow')] : []).filter(ok);
+              var toolsWant = [$('v89Rail'), $('v104Lead'), volOnDesk ? null : $('volRow'), $('side2'), $('flowRow'), hd, $('v18Trade')].filter(ok);
+              var same = function (box, want) { var kids = Array.prototype.filter.call(box.children, function (e) { return want.indexOf(e) >= 0; }); return kids.length === want.length && want.every(function (e, i) { return kids[i] === e; }); };
+              if (!same(desk, deskWant)) deskWant.forEach(function (e) { desk.appendChild(e); });
+              if (!same(tin, toolsWant)) toolsWant.forEach(function (e) { tin.appendChild(e); });
+              if (hd.hidden !== !$('v18Trade')) hd.hidden = !$('v18Trade');
+            } catch (e) { console.warn('desk arrange', e); } finally { busy = false; }
           }
           arrange();
           var pg = $('pgDesk'), desk = D.querySelector('#pgDesk .desk');
-          if (window.MutationObserver) { var mo = new MutationObserver(function () { arrange(); }); if (pg) mo.observe(pg, { childList: true }); if (desk) mo.observe(desk, { childList: true }); var si = $('v22SideIn'); if (si) mo.observe(si, { childList: true }); }
-          D.addEventListener('DOMContentLoaded', arrange); try { matchMedia('(min-width:1360px)').addEventListener('change', arrange); } catch (e) { }
+          if (window.MutationObserver) {
+            var mo = new MutationObserver(function () { arrange(); }); if (pg) mo.observe(pg, { childList: true }); if (desk) mo.observe(desk, { childList: true });
+            var si = $('v22SideIn'); if (si) mo.observe(si, { childList: true }); var ti = $('dkToolsIn'); if (ti) mo.observe(ti, { childList: true });
+          }
+          // body class (watched from DOMContentLoaded): v138 arrives later and decides #volRow's place; full screen closes the panel
+          D.addEventListener('DOMContentLoaded', function () {
+            arrange();
+            new MutationObserver(function () { arrange(); if (D.body.classList.contains('gfs') && window.dkTools) dkTools.close(); }).observe(D.body, { attributes: true, attributeFilter: ['class'] });
+            try { window.desk80 && desk80.on('page', function () { window.dkTools && dkTools.close(); }); } catch (e) { }
+          });
+          try { matchMedia('(min-width:1360px)').addEventListener('change', arrange); } catch (e) { }
+          window.dkTools = {
+            isOpen: function () { var b = $('dkTools'); return !!b && !b.hidden; },
+            open: function () {
+              var b = $('dkTools'), t = $('gTop'), btn = $('dkToolsBtn'); if (!b) return;
+              b.style.top = t ? (t.offsetTop + t.offsetHeight) + 'px' : '40px'; b.hidden = false; if (btn) { btn.setAttribute('aria-expanded', 'true'); btn.classList.add('on'); }
+              try { window.dispatchEvent(new Event('resize')); } catch (e) { }   // panels inside measure themselves now that they are visible
+            },
+            close: function () { var b = $('dkTools'), btn = $('dkToolsBtn'); if (!b || b.hidden) return; b.hidden = true; if (btn) { btn.setAttribute('aria-expanded', 'false'); btn.classList.remove('on'); } },
+          };
+          D.addEventListener('keydown', function (e) { if (e.key === 'Escape' && window.dkTools && dkTools.isOpen()) { dkTools.close(); e.stopPropagation(); } }, true);
         })();
       </script>
 
@@ -43556,7 +43608,8 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
   </style>
   <script id="v105_23Side">(function () {
       var D = document, K = 'v23_side_hidden';
-      function lsg() { try { return localStorage.getItem(K) === '1'; } catch (e) { return false; } }
+      // v172: hidden unless the user chose to show it ('0'). The column's content now lives in Tools ▾, so the chart gets the full width.
+      function lsg() { try { return localStorage.getItem(K) !== '0'; } catch (e) { return true; } }
       function set(h) {
         D.body.classList.toggle('v23-wide', h); try { localStorage.setItem(K, h ? '1' : '0'); } catch (e) { } var b = D.getElementById('v23Tog'); if (b) { b.textContent = h ? '‹ Signals' : 'Hide side column ›'; b.title = h ? 'Show My trade, Leading signals and Tonight' : 'Give the chart the full width'; }
         for (var i = 0, ms = [30, 250, 700]; i < ms.length; i++)setTimeout(function () { try { window.dispatchEvent(new Event('resize')); window.paRefit && window.paRefit(); } catch (e) { } }, ms[i]);
