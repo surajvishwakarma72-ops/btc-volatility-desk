@@ -21210,6 +21210,9 @@ on an empty top; the live board replaces it as soon as its numbers are in. Snaps
         #pgDesk #dkTools #side2 { display: flex !important }
         #pgDesk #dkTools #flowRow { display: grid !important }
         @media (max-width: 760px) { #pgDesk #dkTools #flowRow { display: flex !important; flex-direction: column } #pgDesk #dkTools #side2 { flex-direction: column } }
+        /* phone full screen uses the whole screen: the tab bar steps aside (the full-screen button in the header brings it back).
+           v133.fit() reads the tab bar's display, so the chart then runs to the bottom edge. */
+        @media (max-width: 760px) { body.gfs #tabbar { display: none !important } }
       </style>
       <script data-module="dkHeights">
         /* v172 · chart heights the owner set by dragging: per profile (phone|desk × normal|full), each lane's share of the
