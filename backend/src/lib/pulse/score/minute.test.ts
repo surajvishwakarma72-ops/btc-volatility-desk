@@ -38,6 +38,12 @@ describe('minuteReadings', () => {
     expect(pts[8]!.z).toBe('sell');
   });
 
+  it('drops from sell to WAIT at once when damage disappears', () => {
+    const pts = minuteReadings(flat(12, (i) => (i === 10 ? { call_mid: null, put_mid: null } : {})), entries, base(90));
+    expect(pts[9]!.z).toBe('sell');
+    expect(pts[10]!.z).toBe('caution');
+  });
+
   const spike = (i: number) => (i === 6 || i === 7 ? { call_mid: 110 } : {});
 
   it('the trigger goes straight to avoid', () => {

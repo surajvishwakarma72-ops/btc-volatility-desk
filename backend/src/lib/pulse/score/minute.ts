@@ -108,6 +108,8 @@ export function minuteReadings(rows: readonly MinuteRow[], entries: ReadonlyMap<
       pending = raw;
       if (streak >= DAMAGE_CONFIG.zoneReadings) { shown = raw; pending = null; streak = 0; }
     }
+    // No damage reading: never show SELL, even while a held zone change is pending.
+    if (worse === null && shown === 'sell') { shown = 'caution'; pending = null; streak = 0; }
     out.push({ t, r: round1(r), z: shown, call: mix(cs, held.call), put: mix(ps, held.put), fl, fs, hurt, trigger: trig.on });
   }
   return out;
