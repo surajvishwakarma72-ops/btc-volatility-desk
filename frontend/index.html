@@ -12688,64 +12688,21 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       background: color-mix(in srgb, var(--panel2) 55%, var(--chart-bg))
     }
 
-    .gfs-split {
-      position: absolute;
-      left: 0;
-      right: 0;
-      z-index: 12;
-      height: 9px;
-      margin-top: -5px;
-      cursor: row-resize;
-      touch-action: none;
-      display: none
+    /* v172 · CoinGlass-style dividers between the candles and every lane (script dkSplit). A 22 px touch strip with a thin
+       line and a grip; the grip lights up while dragging. */
+    #paneG .dk-split {
+      position: absolute; left: 0; right: 0; z-index: 14; height: 22px; margin-top: -11px; cursor: row-resize; touch-action: none;
+      display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent
     }
-
-    #paneG:is(:fullscreen, .gfs-on) .gfs-split {
-      display: block
+    #paneG .dk-split::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: transparent; transition: background-color .15s }
+    #paneG .dk-split::after {
+      content: ""; position: relative; width: 34px; height: 4px; border-radius: 2px;
+      background: color-mix(in srgb, var(--muted) 45%, transparent); opacity: .55; transition: opacity .15s, width .15s, background-color .15s
     }
-
-    .gfs-split::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 4px;
-      height: 1px;
-      background: transparent;
-      transition: background-color .15s, height .15s
-    }
-
-    .gfs-split::after {
-      content: "";
-      position: absolute;
-      left: 50%;
-      top: 2px;
-      width: 38px;
-      height: 5px;
-      margin-left: -19px;
-      border-radius: 3px;
-      background: color-mix(in srgb, var(--muted) 45%, transparent);
-      opacity: 0;
-      transition: opacity .15s
-    }
-
-    .gfs-split:hover::before,
-    .gfs-split.drag::before {
-      background: var(--focus);
-      height: 2px;
-      top: 3.5px
-    }
-
-    .gfs-split:hover::after,
-    .gfs-split.drag::after {
-      opacity: 1
-    }
-
-    body.gfs-dragging,
-    body.gfs-dragging * {
-      cursor: row-resize !important;
-      user-select: none !important
-    }
+    #paneG .dk-split:hover::before, #paneG .dk-split.drag::before { background: var(--focus); height: 2px }
+    #paneG .dk-split:hover::after, #paneG .dk-split.drag::after { opacity: 1; background: var(--focus) }
+    #paneG .dk-split.drag::after { width: 52px }
+    body.dk-dragging, body.dk-dragging * { cursor: row-resize !important; user-select: none !important }
 
     .zm-bar[data-dock] {
       transition: top .18s ease
@@ -31635,66 +31592,14 @@ Signs follow Settings → Dealer positioning.`;
     })();
 
   </script>
-  <script data-block="35_fssplit" data-v71="15931-15977">
-    /* =====================================================================
-       v64 · Full-screen split and the left tool column on the BTC·γ chart (layout only)
-       ===================================================================== */
-    (function gfsLayout() {
-      'use strict';
-      const KEY = 'gfs_split_v1', DEF = { vol: 0.22, adx: 0.14 }, $ = id => document.getElementById(id);
-      let split = DEF; try { const x = JSON.parse(localStorage.getItem(KEY) || 'null'); if (x && x.vol > 0.08 && x.vol < 0.5 && x.adx > 0.05 && x.adx < 0.4) split = x; } catch (e) { }
-      window.gfsSplit = () => split;
-      const save = () => { try { localStorage.setItem(KEY, JSON.stringify(split)); } catch (e) { } };
-      const refit = () => { try { window.paRefit && window.paRefit(); } catch (e) { } };
-      let S = [];
-      function build() {
-        const pane = $('paneG'), cb = pane?.querySelector(':scope>.chart-box'), vb = $('paVolBox'), ab = $('paAdxBox'); if (!pane || !cb || !vb) return false;
-        for (const [k, a, b] of [['cv', cb, vb], ['va', vb, ab]]) {
-          if (!b) continue;
-          const h = document.createElement('div'); h.className = 'gfs-split'; h.setAttribute('role', 'separator'); h.setAttribute('aria-orientation', 'horizontal');
-          h.title = 'Drag to resize · double-click to reset'; pane.appendChild(h); S.push({ k, h, a, b });
-          h.addEventListener('dblclick', () => { split = { ...DEF }; save(); refit(); });
-          h.addEventListener('pointerdown', e => {
-            e.preventDefault(); h.setPointerCapture(e.pointerId); h.classList.add('drag'); document.body.classList.add('gfs-dragging');
-            const y0 = e.clientY, hc = cb.offsetHeight, hv = vb.offsetHeight, ha = ab ? ab.offsetHeight : 0, T = hc + hv + ha; let raf = 0;
-            const mv = ev => {
-              const dy = ev.clientY - y0; let C = hc, V = hv, A = ha;
-              if (k === 'cv') { C = hc + dy; V = hv - dy; if (C < 220) { V -= 220 - C; C = 220; } if (V < 120) { C -= 120 - V; V = 120; } }
-              else { V = hv + dy; A = ha - dy; if (V < 120) { A -= 120 - V; V = 120; } if (A < 80) { V -= 80 - A; A = 80; } }
-              split = { vol: V / T, adx: A / T }; if (!raf) raf = requestAnimationFrame(() => { raf = 0; refit(); place(); });
-            };
-            const up = () => { h.classList.remove('drag'); document.body.classList.remove('gfs-dragging'); h.removeEventListener('pointermove', mv); save(); refit(); };
-            h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up, { once: true }); h.addEventListener('pointercancel', up, { once: true });
-          });
-        }
-        return true;
-      }
-      function place() { for (const s of S) { const y = s.b.offsetTop; if (s.h.style.top !== y + 'px') s.h.style.top = y + 'px'; } }
-      // left tool column: zoom under the legend (or under the session table when it is open there), pencil under zoom
-      function dock() {
-        const box = $('chartG')?.parentElement; if (!box) return;
-        const zm = box.querySelector('.zm-bar'), sr = $('srTbl'), dw = box.querySelector('.dw-bar'); if (!zm) return;
-        let top = 52, left = 8; const zh = zm.offsetHeight || 150, need = zh + (dw && innerWidth > 760 ? 52 : 0) + 70;
-        if (sr && !sr.hidden && sr.offsetParent && getComputedStyle(sr).display !== 'none' && sr.offsetLeft < 60) {
-          const below = sr.offsetTop + sr.offsetHeight + 8;
-          if (below + need <= box.clientHeight) top = below; else left = sr.offsetLeft + sr.offsetWidth + 8;
-        }   // an open table: under it if it fits, else beside it
-        zm.dataset.dock = '1'; if (zm.style.top !== top + 'px') zm.style.top = top + 'px'; if (zm.style.left !== left + 'px') zm.style.left = left + 'px';
-        if (dw) {
-          if (innerWidth > 760) { dw.dataset.dock = '1'; const t = (top + zh + 6) + 'px'; if (dw.style.top !== t) dw.style.top = t; if (dw.style.left !== left + 'px') dw.style.left = left + 'px'; }
-          else if (dw.dataset.dock) { delete dw.dataset.dock; dw.style.removeProperty('top'); dw.style.removeProperty('left'); }
-        }
-      }
-      function tick() { try { place(); } catch (e) { } }   // v80: dock() retired — the tool rail owns the zoom/draw bars
-      const t = setInterval(() => {
-        if (build()) {
-          clearInterval(t); tick(); setInterval(tick, 800); addEventListener('resize', () => requestAnimationFrame(tick));
-          document.addEventListener('fullscreenchange', () => { for (const ms of [80, 300, 700]) setTimeout(() => { refit(); tick(); }, ms); });
-          try { new ResizeObserver(() => requestAnimationFrame(tick)).observe($('paneG')); } catch (e) { }
-        }
-      }, 700);
+  <script data-block="35_fssplit">
+    /* v172 · the old full-screen-only handles (v64 .gfs-split, gfs_split_v1) are replaced by the dkSplit dividers. paRefit still
+       asks gfsSplit() for the full-screen ADX / Volume shares: ADX now follows the height the owner dragged (dkHeights). */
+    (function () {
+      const DEF = { vol: 0.22, adx: 0.14 };
+      window.gfsSplit = () => { const u = window.dkHeights && window.dkHeights.get(); return { vol: DEF.vol, adx: (u && u.paAdxBox) || DEF.adx }; };
+      document.addEventListener('fullscreenchange', () => { for (const ms of [80, 300, 700]) setTimeout(() => { try { window.paRefit && window.paRefit(); window.v133 && window.v133.fit && window.v133.fit(); } catch (e) { } }, ms); });
     })();
-
   </script>
   <script data-block="36_dvol" data-v71="16327-16690">
     /* =====================================================================
@@ -47936,7 +47841,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           for (const l of lanes) { if (U[l.id] > 0) { const h = Math.round(U[l.id] * ph) + (l.id === axId ? axX : 0); HH.set(l, h); saved.push(l); savedH += h; } else { fresh.push(l); freshH += HH.get(l); } }
           if (adxOn) { if (U.paAdxBox > 0) { adxH = Math.round(U.paAdxBox * ph); savedH += adxH; } else freshH += adxH; }
           for (const l of lanes) HH.set(l, Math.max(MINL, HH.get(l))); if (adxOn) adxH = Math.max(MINL, adxH);
-          const room = ph - minC, tot = [...HH.values()].reduce((a, b) => a + b, 0) + adxH;
+          // never squeeze harder than the default layout already does (on a phone the default lanes can exceed ph - minC)
+          const defTot = lanes.reduce((a, l) => a + defH(l), 0) + (adxOn ? Math.round(lh * ADXW) : 0);
+          const room = Math.max(ph - minC, defTot), tot = [...HH.values()].reduce((a, b) => a + b, 0) + adxH;
           if (tot > room && tot > 0) {   // squeeze only what sits above each lane's 48 px floor, so the floors can't push the candles under minC
             const n = lanes.length + (adxOn ? 1 : 0), free = tot - n * MINL, k = free > 0 ? Math.max(0, room - n * MINL) / free : 0, sq = h => MINL + Math.floor((h - MINL) * k);
             for (const l of lanes) HH.set(l, sq(HH.get(l))); if (adxOn) adxH = sq(adxH);
@@ -48063,6 +47970,92 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       D.addEventListener('fullscreenchange', vhRefit);
       D.addEventListener('click', e => { if (e.target.closest('#nav [data-page="pgDesk"],#tabbar [data-page="pgDesk"]')) setTimeout(fit, 200); }, true);
       W.v133 = { fit, pnl, load, state: () => P, __test: { parseSym, ts } };
+    })();
+  </script>
+  <script data-module="dkSplit">
+    /* v172 (3 Nov 2026) · CoinGlass-style dividers: one above every shown lane in #paneG (the first one sits between the
+       candles and the first lane). Dragging moves height between the two sides; the stack keeps its total. The divider only
+       changes the saved shares (dkHeights) and asks v133.fit() to lay out, at most once per frame: fit stays the one owner.
+       Double-click / double-tap resets that pair to its defaults; "Reset heights" in the ƒx menu resets the profile. */
+    (function () {
+      'use strict';
+      const W = window, D = document, $ = id => D.getElementById(id), MINL = 48;
+      const pane = () => $('paneG');
+      const shown = e => !!e && e.isConnected && getComputedStyle(e).display !== 'none';
+      // the shown lanes in visual order, as fit() last laid them out
+      function lanes() { const F = W.__v133Fit; if (!F) return []; return F.lanes.map($).filter(shown).sort((a, b) => a.offsetTop - b.offsetTop); }
+      const candles = () => D.querySelector('#paneG>.chart-box');
+      const axisExtra = id => (W.__v138Axis && W.__v138Axis() === id ? 24 : 0);
+      // shares of every shown lane from their current heights (the starting point when nothing is saved yet)
+      function snapshot(ph) { const m = {}; for (const l of lanes()) m[l.id] = Math.max(MINL, l.offsetHeight - axisExtra(l.id)) / ph; return m; }
+      let S = [];
+      function place() {
+        const g = pane(); if (!g || !W.dkHeights) return;
+        const L = lanes(), want = L.map(l => l.id).join('|');
+        if (S.map(s => s.dataset.below).join('|') !== want) {
+          for (const s of S) s.remove(); S = [];
+          L.forEach((l, i) => {
+            const s = D.createElement('div'); s.className = 'dk-split'; s.dataset.below = l.id; s.dataset.above = i ? L[i - 1].id : 'candles';
+            s.setAttribute('role', 'separator'); s.setAttribute('aria-orientation', 'horizontal'); s.title = 'Drag to resize · double-click to reset';
+            wire(s); g.appendChild(s); S.push(s);
+          });
+        }
+        for (const s of S) { const l = $(s.dataset.below); if (!l) continue; const t = (l.offsetTop - g.scrollTop) + 'px'; if (s.style.top !== t) s.style.top = t; }
+      }
+      let raf = 0; const soon = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; try { place(); } catch (e) { console.warn('dkSplit place', e); } }); };
+      function wire(s) {
+        let last = 0;
+        s.addEventListener('dblclick', e => { e.preventDefault(); resetPair(s); });
+        s.addEventListener('pointerdown', e => {
+          if (e.button > 0) return;
+          const now = Date.now();
+          if (e.pointerType !== 'mouse' && now - last < 320) { last = 0; resetPair(s); return; }   // double-tap (dblclick covers the mouse)
+          last = now;
+          e.preventDefault(); try { s.setPointerCapture(e.pointerId); } catch (x) { }
+          const g = pane(), F = W.__v133Fit; if (!g || !F) return;
+          const ph = F.ph, below = $(s.dataset.below), aboveId = s.dataset.above, above = aboveId === 'candles' ? candles() : $(aboveId);
+          const base = Object.assign(snapshot(ph), W.dkHeights.get() || {});
+          const b0 = below.offsetHeight - axisExtra(below.id), a0 = above.offsetHeight - (aboveId === 'candles' ? 0 : axisExtra(aboveId));
+          const aMin = Math.min(a0, aboveId === 'candles' ? (F.phone ? 180 : 240) : MINL), y0 = e.clientY;   // a side already under its minimum (phone candles start at ~160 px) can't shrink further, but the drag is never reversed
+          s.classList.add('drag'); D.body.classList.add('dk-dragging');
+          let pend = null, fr = 0;
+          const mv = ev => {
+            let dy = ev.clientY - y0;
+            dy = Math.min(dy, b0 - MINL); dy = Math.max(dy, aMin - a0);   // keep both sides above their minimums
+            const m = Object.assign({}, base); m[below.id] = (b0 - dy) / ph; if (aboveId !== 'candles') m[aboveId] = (a0 + dy) / ph;
+            pend = m; if (!fr) fr = requestAnimationFrame(() => { fr = 0; if (pend) { W.dkHeights.set(pend); soon(); } });
+          };
+          const up = () => {
+            s.classList.remove('drag'); D.body.classList.remove('dk-dragging'); s.removeEventListener('pointermove', mv);
+            if (fr) { cancelAnimationFrame(fr); fr = 0; } if (pend) W.dkHeights.set(pend); soon();
+          };
+          s.addEventListener('pointermove', mv); s.addEventListener('pointerup', up, { once: true }); s.addEventListener('pointercancel', up, { once: true });
+        });
+      }
+      // the pair goes back to its defaults: drop both saved shares (fit gives a lane with no share its default height)
+      function resetPair(s) {
+        const u = W.dkHeights.get(); if (!u) return; const m = Object.assign({}, u); delete m[s.dataset.below]; if (s.dataset.above !== 'candles') delete m[s.dataset.above];
+        Object.keys(m).length ? W.dkHeights.set(m) : W.dkHeights.reset(W.dkHeights.profile()); soon();
+      }
+      // "Reset heights" in the ƒx Indicators menu
+      function menuButton() {
+        const m = $('v132Ind'); if (!m || m.hidden || $('dkResetH')) return;
+        const b = D.createElement('button'); b.type = 'button'; b.id = 'dkResetH'; b.className = 'dk-reset'; b.textContent = 'Reset heights';
+        b.title = 'Back to the default chart and lane heights on this device';
+        b.addEventListener('click', () => { W.dkHeights.reset(W.dkHeights.profile()); soon(); });
+        m.appendChild(b);
+      }
+      function boot() {
+        const g = pane(); if (!g) return setTimeout(boot, 500);
+        if (W.desk80 && W.desk80.on) { W.desk80.on('fit', soon); W.desk80.on('page', soon); }
+        try { new ResizeObserver(soon).observe(g); } catch (e) { }
+        g.addEventListener('scroll', soon, { passive: true });
+        addEventListener('resize', soon);
+        if (W.v132ind && W.v132ind.open && !W.v132ind.__dk) { const o = W.v132ind.open; W.v132ind.open = function () { const r = o.apply(this, arguments); setTimeout(menuButton, 0); return r; }; W.v132ind.__dk = 1; }
+        D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v132IndBtn')) setTimeout(menuButton, 0); }, true);
+        soon();
+      }
+      D.readyState === 'loading' ? D.addEventListener('DOMContentLoaded', boot) : boot();
     })();
   </script>
   <style id="v134Css">

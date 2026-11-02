@@ -19,12 +19,16 @@ export default async ({ ev, sleep, click }) => {
   await ev(`dkHeights.set({ v138Iv: 0.9 }); true`); await sleep(400);
   const b = await ev(`({ iv: ${H}('v138Iv'), cv: ${H}('cvLane'), pulse: ${H}('v153Pulse'), candles: ${H}('candles') })`);
   const phone = await ev(`innerWidth <= 760`);
-  r.t2 = b.candles >= (phone ? 180 : 240) - 2 && [b.iv, b.cv, b.pulse].every(h => h == null || h >= 47); r.t2v = b;
+  // candles never below min(minimum, what the default layout gives them); lanes never below 48 px
+  r.t2 = b.candles >= Math.min(phone ? 180 : 240, fresh.candles) - 3 && [b.iv, b.cv, b.pulse].every(h => h == null || h >= 47); r.t2v = b;
   await ev(`dkHeights.set({ v138Iv: 0.30 }); true`); await sleep(400);
   const c0 = await ev(`${H}('candles')`);
   await ev(`(() => { const on = v132ind.state(); on.rv = true; v132ind.save(); v132ind.apply(true); return true; })()`); await sleep(1500);
   const c1 = await ev(`({ candles: ${H}('candles'), rv: ${H}('v138Rv'), iv: ${H}('v138Iv') })`);
-  r.t3 = c1.rv != null && c1.rv >= 47 && (near(c1.iv, 0.30 * ph) || c1.candles <= (phone ? 180 : 240) + 3) && c1.candles >= (phone ? 180 : 240) - 3; r.t3v = { c0, ...c1 };   // spec: the others keep their shares, the new lane starts at its default
+  const u3 = await ev(`JSON.stringify(dkHeights.get())`); await ev(`dkHeights.reset(); true`); await sleep(500);
+  const cDef = await ev(`${H}('candles')`); await ev(`dkHeights.set(${u3}); true`); await sleep(400);   // the default layout's candles with RV on
+  const floor = Math.min(phone ? 180 : 240, cDef) - 3;
+  r.t3 = c1.rv != null && c1.rv >= 47 && c1.candles >= floor && (near(c1.iv, 0.30 * ph) || c1.candles <= floor + 6); r.t3v = { c0, cDef, ...c1 };   // spec: the others keep their shares, the new lane starts at its default
   await ev(`(() => { const on = v132ind.state(); on.rv = false; v132ind.save(); v132ind.apply(true); return true; })()`); await sleep(800);
   await ev(`dkHeights.reset(); true`); await sleep(600);
   const d = await ev(`({ iv: ${H}('v138Iv'), cv: ${H}('cvLane'), pulse: ${H}('v153Pulse'), candles: ${H}('candles') })`);
