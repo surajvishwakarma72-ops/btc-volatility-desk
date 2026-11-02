@@ -6,11 +6,37 @@ import { metricSeries, winnerAtAge } from '../../lib/pulse/metrics/series.js';
 import { breakevens, winnerPersistence } from '../../lib/pulse/metrics/tape.js';
 import { linesAt, readings, type CohortSteps, type LiveContext } from '../../lib/pulse/score/score.js';
 import type { PulseView } from '../../lib/algo/conditions.js';
+import { minuteReadings, type MinutePoint } from '../../lib/pulse/score/minute.js';
+import type { Entry } from '../../lib/pulse/metrics/damage.js';
 import { regimeService } from './regime-service.js';
-import { cohortRowsMany, latestMarketRows, pulseTablesExist, recentCohorts } from './pulse-store.js';
+import { cohortRowsMany, latestMarketRows, minuteRows, pulseTablesExist, recentCohorts } from './pulse-store.js';
 
 const speedsOf = (s: ReturnType<typeof metricSeries>[number] | undefined) => s && { deltaCall: s.delta_speed_call, deltaPut: s.delta_speed_put, gammaCall: s.gamma_speed_call, gammaPut: s.gamma_speed_put };
 const nextSlotMs = (nowMs: number) => cohortSlotMs(nowMs) + HOUR_MS;
+
+const round1 = (x: number | null): number | null => (x === null ? null : Math.round(x * 10) / 10);
+
+/**
+ * Minute readings for the panel, or null with the flag off or on any failure (the rest of the score must survive).
+ * Display only: pulseNow never reads this, so the algo stays on the 15-minute Risk.
+ */
+async function minuteBlock(slot: Slot, nowMs: number, recent: readonly { slot_ms: number; call_bid: number | null; put_bid: number | null }[], points: readonly { t: number; c: number | null; call: number | null; put: number | null }[]): Promise<MinutePoint[] | null> {
+  if (process.env.PULSE_MINUTE_LANE !== 'true') return null;
+  try {
+    const entries = new Map<number, Entry>();
+    for (const c of recent) if (c.call_bid !== null && c.put_bid !== null) entries.set(c.slot_ms, { call: c.call_bid, put: c.put_bid });
+    const since = nowMs - SCORE_CONFIG.historyHours * HOUR_MS;
+    // 60 extra minutes of rows give the first returned minutes their futures window.
+    const rows = await minuteRows(slot, since - 60 * 60_000);
+    const base = points.flatMap((p) => (p.c === null ? [] : [{ t: p.t, c: p.c, call: p.call, put: p.put }]));
+    return minuteReadings(rows, entries, base)
+      .filter((m) => m.t >= since)
+      .map((m) => ({ ...m, r: round1(m.r), call: round1(m.call), put: round1(m.put), fl: round1(m.fl), fs: round1(m.fs) }));
+  } catch (e) {
+    console.error('[pulse] minute block failed', e);
+    return null;
+  }
+}
 
 async function computeScore(slot: Slot) {
   const ready = await pulseTablesExist();
@@ -59,6 +85,7 @@ async function computeScore(slot: Slot) {
     const ld = linesAt(r.t, dirCohorts);
     return { t: r.t, c: r.confidence, z: r.zone, call: lo.call, put: lo.put, fl: ld.futLong, fs: ld.futShort };
   });
+  const minute = await minuteBlock(slot, nowMs, recent, points);
   const body = {
     success: true,
     slot,
@@ -79,6 +106,7 @@ async function computeScore(slot: Slot) {
       call: points.map((p) => p.call), put: points.map((p) => p.put), futLong: points.map((p) => p.fl), futShort: points.map((p) => p.fs),
     }),
     changes,
+    minute,
     pnl,
     cohort: pnlCohort && { id: pnlCohort.id, status: pnlCohort.status, opened_at: pnlCohort.opened_at },
   };
