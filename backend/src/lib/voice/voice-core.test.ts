@@ -81,16 +81,17 @@ describe('composeReply', () => {
     expect(r).toContain('टर्म');
     expect(r).not.toContain('Something');
   });
-  it('never invents a market reading', () => {
-    expect(V.composeReply({ id: 'market' }, { pulse: { card: null } })).toBe(NA);
-    expect(V.composeReply({ id: 'market' }, { pulse: null })).toBe(NA);
-    expect(V.composeReply({ id: 'market' }, {})).toBe(NA);
-    expect(V.composeReply({ id: 'market' }, { pulse: { ...pulse, card: { ...pulse.card, verdict: 'NO DATA', confidence: null } } })).toBe(NA);
-    expect(V.composeReply({ id: 'market' }, { pulse: { card: pulse.card, points: [] } })).toBe(NA);
+  const NO_READING = 'अभी Strangle Pulse की ताज़ा रीडिंग नहीं है, इसलिए बाज़ार पर राय नहीं दे सकती।';
+  it('never invents a market reading, and says plainly that there is none', () => {
+    expect(V.composeReply({ id: 'market' }, { pulse: { card: null } })).toBe(NO_READING);
+    expect(V.composeReply({ id: 'market' }, { pulse: null })).toBe(NO_READING);
+    expect(V.composeReply({ id: 'market' }, {})).toBe(NO_READING);
+    expect(V.composeReply({ id: 'market' }, { pulse: { ...pulse, card: { ...pulse.card, verdict: 'NO DATA', confidence: null } } })).toBe(NO_READING);
+    expect(V.composeReply({ id: 'market' }, { pulse: { card: pulse.card, points: [] } })).toBe(NO_READING);
   });
   it('never speaks an old reading as current', () => {
     const old = { ...pulse, points: [{ t: Date.now() - 31 * 60_000 }] };
-    expect(V.composeReply({ id: 'market' }, { pulse: old })).toBe(NA);
+    expect(V.composeReply({ id: 'market' }, { pulse: old })).toBe(NO_READING);
     expect(V.composeReply({ id: 'market' }, { pulse: { ...pulse, points: [{ t: Date.now() - 29 * 60_000 }] } })).toContain('चौहत्तर');
   });
   it('explains from the glossary, then adds the live reading', () => {
@@ -194,6 +195,39 @@ describe('createVoiceSession', () => {
     expect(r.spoken.at(-1).t).toBe(last);
     await r.s.hear('धीरे बोलो'); await tick();
     expect(r.spoken.at(-1).rate).toBe(0.8);
+  });
+  it('ignores its own voice picked up by the mic', async () => {
+    const r = rig();
+    await r.s.start(); await tick();
+    await r.s.hear('क्रिकेट का स्कोर'); await tick();
+    const said = r.spoken.length;
+    r.log.length = 0;
+    await r.s.hear('माफ कीजिए ये जानकारी उपलब्ध नहीं है इसके अलावा आप कुछ और पूछ सकते हैं'); await tick();
+    expect(r.spoken.length).toBe(said);
+    expect(r.log).toContain('in:start');
+    await r.s.hear('नमस्ते मैं आपकी कैसे मदद कर सकती हूं'); await tick();
+    expect(r.spoken.length).toBe(said);
+  });
+  it('still hears a person who repeats a suggestion from the help line', async () => {
+    const r = rig();
+    await r.s.start(); await tick();
+    await r.s.hear('मदद'); await tick();
+    const said = r.spoken.length;
+    await r.s.hear('आज बाज़ार कैसा है'); await tick();
+    expect(r.spoken.length).toBe(said + 1);
+    expect(r.spoken.at(-1).t).toContain('SELL ZONE');
+  });
+  it('does not repeat the same apology when it keeps failing to understand', async () => {
+    const r = rig();
+    await r.s.start(); await tick();
+    await r.s.hear('क्रिकेट का स्कोर'); await tick();
+    expect(r.spoken.at(-1).t).toBe(NA);
+    await r.s.hear('मौसम कैसा है'); await tick();
+    expect(r.spoken.at(-1).t).not.toBe(NA);
+    expect(r.spoken.at(-1).t).toContain('मदद');
+    await r.s.hear('आज बाज़ार कैसा है'); await tick();
+    await r.s.hear('गाना सुनाओ'); await tick();
+    expect(r.spoken.at(-1).t).toBe(NA);
   });
   it('opens a page', async () => {
     const r = rig();

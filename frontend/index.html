@@ -67312,6 +67312,16 @@ body.light #vUniversalFloatingPnl,
   const VOICE_VETO = [
     ['Spread too wide', 'स्प्रेड बहुत ज़्यादा है'], ['Latest cohort found no valid strikes', 'सही स्ट्राइक नहीं मिली'],
     ['Futures trending', 'फ्यूचर्स एक ही दिशा में चल रहा है'], ['Killer pattern', 'किलर पैटर्न चालू है'],
+  const VOICE_NOT_UNDERSTOOD = 'माफ कीजिए, मैं समझ नहीं पाई। "मदद" बोलिए, तो बताऊँगी कि मैं क्या-क्या कर सकती हूँ।';
+  const VOICE_NO_READING = 'अभी Strangle Pulse की ताज़ा रीडिंग नहीं है, इसलिए बाज़ार पर राय नहीं दे सकती।';
+
+  /** True when the mic heard our own reply coming out of the speaker: most of what it heard is a large part of what we said. */
+  function voiceIsEcho(heard, said) {
+    const h = normalizeHi(heard).split(' ').filter(Boolean), w = normalizeHi(said).split(' ').filter(Boolean);
+    if (h.length < 3 || !w.length) return false;
+    const mine = new Set(w);
+    return h.filter((x) => mine.has(x)).length / h.length >= 0.6 && h.length / w.length >= 0.4;
+  }
     ['Term structure inverted', 'टर्म स्ट्रक्चर उल्टा है'], ['Regime gate failed', 'रेजीम गेट पास नहीं हुआ'],
   ];
 
@@ -67352,7 +67362,7 @@ body.light #vUniversalFloatingPnl,
   function composeReply(intent, data) {
     const d = data || {};
     if (d.failed) return 'माफ कीजिए, अभी जानकारी लाने में दिक्कत आ रही है। थोड़ी देर बाद फिर पूछिए।';
-    if (intent.id === 'market') return voicePulseLine(d.pulse) || VOICE_NA;
+    if (intent.id === 'market') return voicePulseLine(d.pulse) || VOICE_NO_READING;
     if (intent.id === 'positions') return d.positions ? voicePositionsLine(d.positions) : VOICE_NA;
     if (intent.id === 'explain') {
       const hit = (d.glossary || []).find((e) => e.term === intent.term);
@@ -67369,7 +67379,7 @@ body.light #vUniversalFloatingPnl,
 
   /** One spoken conversation. Speech, data, screen and timers are passed in. It can only read data and open pages. */
   function createVoiceSession(o) {
-    let on = false, busy = false, last = '', lastIntent = null, rate = 1, glossary = [], silence = null;
+    let on = false, busy = false, last = '', lastIntent = null, rate = 1, glossary = [], silence = null, misses = 0, said = [];
     const clear = () => { if (silence !== null) { o.timers.clear(silence); silence = null; } };
     const listen = () => { if (on) { o.onStatus('listening'); o.input.start(); } };
     const speak = async (text) => {
@@ -67378,6 +67388,7 @@ body.light #vUniversalFloatingPnl,
     };
     const close = async () => {
       on = false;
+      said = said.concat(text).slice(-3);
       await speak('ठीक है, जब ज़रूरत हो मुझे बुला लीजिए।');
       o.onStatus('closed');
     };
@@ -67410,7 +67421,7 @@ body.light #vUniversalFloatingPnl,
     return {
       async start() {
         if (on) return;
-        on = true; last = ''; lastIntent = null;
+        on = true; last = ''; lastIntent = null; misses = 0; said = [];
         if (!o.output.hasHindiVoice()) o.onStatus('no-hindi-voice');
         Promise.resolve().then(() => o.fetchData('glossary')).then((d) => { glossary = d.glossary || []; }).catch(() => {});
         busy = true;
@@ -67437,7 +67448,9 @@ body.light #vUniversalFloatingPnl,
         busy = true; clear();
         o.onLine('me', text); o.input.stop();
         const intent = matchIntent(text, glossary);
-        const reply = await replyTo(intent);
+        misses = intent.id === 'unknown' ? misses + 1 : 0;
+        const reply = misses > 1 ? VOICE_NOT_UNDERSTOOD : await replyTo(intent);
+        if (said.some((x) => voiceIsEcho(text, x))) { listen(); return; } // our own voice, not the person
         if (!on) { busy = false; return; }
         if (intent.id !== 'repeat') { last = reply; lastIntent = intent; }
         await speak(reply);
@@ -67497,7 +67510,11 @@ body.light #vUniversalFloatingPnl,
           const u = new SpeechSynthesisUtterance(text), voice = hindiVoice();
           u.lang = 'hi-IN'; u.rate = rate;
           if (voice) u.voice = voice;
-          const done = () => { clearTimeout(guard); resolve(); };
+          const done = () => { // phones can report the end early, so wait for real quiet before the mic opens
+            clearTimeout(guard);
+            const until = Date.now() + 4000;
+            (function quiet() { if (speechSynthesis.speaking && Date.now() < until) setTimeout(quiet, 100); else setTimeout(resolve, 300); })();
+          };
           const guard = setTimeout(done, Math.max(5000, text.length * 150)); // some devices never fire onend
           u.onend = done; u.onerror = done;
           speechSynthesis.speak(u);
