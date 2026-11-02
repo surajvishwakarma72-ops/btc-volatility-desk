@@ -67306,7 +67306,214 @@ body.light #vUniversalFloatingPnl,
     if (voiceHas(t, ['पोजिशन', 'पोजीशन', 'पोज़िशन', 'position'])) return { id: 'positions' };
     return { id: 'unknown' };
   }
+
+  const VOICE_NA = 'माफ कीजिए, ये जानकारी उपलब्ध नहीं है। इसके अलावा आप कुछ और पूछ सकते हैं।';
+  const VOICE_VERDICT = { 'SELL NOW': 'SELL ZONE', WAIT: 'WAIT, यानी रुकने का समय', AVOID: 'AVOID, यानी अभी ट्रेड से बचना चाहिए' };
+  const VOICE_VETO = [
+    ['Spread too wide', 'स्प्रेड बहुत ज़्यादा है'], ['Latest cohort found no valid strikes', 'सही स्ट्राइक नहीं मिली'],
+    ['Futures trending', 'फ्यूचर्स एक ही दिशा में चल रहा है'], ['Killer pattern', 'किलर पैटर्न चालू है'],
+    ['Term structure inverted', 'टर्म स्ट्रक्चर उल्टा है'], ['Regime gate failed', 'रेजीम गेट पास नहीं हुआ'],
+  ];
+
+  function voicePulseLine(pulse) {
+    const c = pulse && pulse.card;
+    if (!c || c.confidence == null || !VOICE_VERDICT[c.verdict]) return null;
+    const vetoes = (c.vetoes || []).map((v) => (VOICE_VETO.find(([k]) => v.startsWith(k)) || [])[1]).filter(Boolean);
+    return 'Strangle Pulse अभी ' + VOICE_VERDICT[c.verdict] + ' दिखा रहा है, भरोसा ' + hindiNumber(Math.round(c.confidence)) + ' प्रतिशत।'
+      + (vetoes.length ? ' वजह: ' + vetoes.join(', ') + '।' : '') + ' ये स्कोर अभी कैलिब्रेट नहीं हुआ है।';
+  }
+
+  function voicePositionsLine(p) {
+    const parts = [];
+    if (p.paper.length) {
+      const known = p.paper.filter((s) => s.netPnl != null);
+      const net = Math.round(known.reduce((sum, s) => sum + s.netPnl, 0));
+      parts.push(hindiNumber(p.paper.length) + ' पेपर पोज़िशन खुली है।' + (known.length ? ' कुल ' + (net >= 0 ? 'फायदा ' : 'नुकसान ') + hindiNumber(Math.abs(net)) + ' डॉलर।' : ''));
+    }
+    if (p.delta.length) parts.push(hindiNumber(p.delta.length) + ' असली पोज़िशन खुली है।');
+    if (p.deltaNote) {
+      if (!p.paper.length) parts.push('कोई पेपर पोज़िशन खुली नहीं है।');
+      parts.push('असली पोज़िशन नहीं देख पाई।');
+    }
+    return parts.length ? parts.join(' ') : 'अभी आपकी कोई खुली पोज़िशन नहीं है।';
+  }
+
+  function composeReply(intent, data) {
+    const d = data || {};
+    if (d.failed) return 'माफ कीजिए, अभी जानकारी लाने में दिक्कत आ रही है। थोड़ी देर बाद फिर पूछिए।';
+    if (intent.id === 'market') return voicePulseLine(d.pulse) || VOICE_NA;
+    if (intent.id === 'positions') return d.positions ? voicePositionsLine(d.positions) : VOICE_NA;
+    if (intent.id === 'explain') {
+      const hit = (d.glossary || []).find((e) => e.term === intent.term);
+      if (!hit) return VOICE_NA;
+      const live = hit.metric === 'pulse' ? voicePulseLine(d.pulse) : null;
+      return live ? hit.text + ' ' + live : hit.text;
+    }
+    if (intent.id === 'help') return 'आप पूछ सकते हैं: आज बाज़ार कैसा है। मेरी पोज़िशन कैसी है। IV क्या है। या बोलिए: पेपर पेज दिखाओ।';
+    if (intent.id === 'entry') return 'आवाज़ से ट्रेड लगाने की सुविधा अभी उपलब्ध नहीं है। अभी आप बाज़ार, पोज़िशन और शब्दों के मतलब पूछ सकते हैं।';
+    return VOICE_NA;
+  }
+
+  /** One spoken conversation. Speech, data, screen and timers are passed in. It can only read data and open pages. */
+  function createVoiceSession(o) {
+    let on = false, busy = false, last = '', rate = 1, glossary = [], silence = null;
+    const clear = () => { if (silence !== null) { o.timers.clear(silence); silence = null; } };
+    const listen = () => { if (on) { o.onStatus('listening'); o.input.start(); } };
+    const speak = async (text) => {
+      o.input.stop(); o.onStatus('speaking'); o.onLine('bot', text);
+      await o.output.speak(text, rate);
+    };
+    const close = async () => {
+      on = false;
+      await speak('ठीक है, जब ज़रूरत हो मुझे बुला लीजिए।');
+      o.onStatus('closed');
+    };
+    const armSilence = () => {
+      clear();
+      silence = o.timers.set(async () => {
+        silence = null; busy = true;
+        await speak('क्या आप कुछ और पूछना चाहेंगे?');
+        busy = false;
+        if (!on) return;
+        silence = o.timers.set(() => { silence = null; return close(); }, 30000);
+        listen();
+      }, 8000);
+    };
+    async function replyTo(intent) {
+      if (intent.id === 'repeat') return last || 'अभी दोहराने को कुछ नहीं है।';
+      if (intent.id === 'slower') { rate = 0.8; return 'ठीक है, अब धीरे बोलूँगी।'; }
+      if (intent.id === 'navigate') { o.navigate(intent.page); return 'पेज खोल दिया।'; }
+      if (intent.id !== 'market' && intent.id !== 'positions' && intent.id !== 'explain') return composeReply(intent, {});
+      o.onStatus('working');
+      let data;
+      try { data = await o.fetchData(intent.id); } catch (e) { data = intent.id === 'explain' ? {} : { failed: true }; }
+      if (data.failed) o.onStatus('failed');
+      return composeReply(intent, Object.assign({}, data, { glossary }));
+    }
+    return {
+      async start() {
+        if (on) return;
+        on = true;
+        if (!o.output.hasHindiVoice()) o.onStatus('no-hindi-voice');
+        Promise.resolve().then(() => o.fetchData('glossary')).then((d) => { glossary = d.glossary || []; }).catch(() => {});
+        busy = true;
+        await speak('नमस्ते! मैं आपकी कैसे मदद कर सकती हूँ?');
+        busy = false;
+        if (on) { armSilence(); listen(); }
+      },
+      stop() {
+        on = false; busy = false; clear();
+        o.input.stop(); o.output.cancel(); o.onStatus('closed');
+      },
+      async hear(text) {
+        if (!on || busy || !String(text || '').trim()) return;
+        busy = true; clear();
+        o.onLine('me', text); o.input.stop();
+        const intent = matchIntent(text, glossary);
+        const reply = await replyTo(intent);
+        if (!on) { busy = false; return; }
+        if (intent.id !== 'repeat') last = reply;
+        await speak(reply);
+        busy = false;
+        if (on) { armSilence(); listen(); }
+      },
+    };
+  }
   // VOICE-CORE-END
+  </script>
+
+  <!-- ════════ Hindi voice: Chrome speech, data and the transcript panel ════════ -->
+  <style id="vVoicePanelCss">
+    #vVoicePanel { position: fixed; right: 16px; bottom: 76px; z-index: 9000; width: min(360px, calc(100vw - 32px)); max-height: 46vh; display: none; flex-direction: column; gap: 6px; padding: 10px; border-radius: 10px; background: var(--bg-2, #151a21); color: var(--text, #e8ecf1); border: 1px solid var(--line, #36404c); box-shadow: 0 8px 28px rgba(0, 0, 0, .35); font-size: 14px; line-height: 1.45; }
+    #vVoicePanel.on { display: flex; }
+    #vVoiceStatus { font-weight: 600; }
+    #vVoiceLines { overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    #vVoiceLines .me { opacity: .75; }
+  </style>
+  <div id="vVoicePanel" role="status" aria-live="polite"><div id="vVoiceStatus"></div><div id="vVoiceLines"></div></div>
+  <script>
+    (function () {
+      const STATUS = { listening: 'सुन रही हूँ…', speaking: 'बोल रही हूँ…', working: 'कृपया प्रतीक्षा करें…', failed: 'जानकारी नहीं मिली', closed: '', 'no-hindi-voice': 'इस डिवाइस में हिंदी आवाज़ नहीं है' };
+      const panel = document.getElementById('vVoicePanel'), statusEl = document.getElementById('vVoiceStatus'), linesEl = document.getElementById('vVoiceLines');
+      let audio = null, rec = null, session = null, keep = false;
+
+      function tone(freq, ms) {
+        try {
+          audio = audio || new AudioContext();
+          const osc = audio.createOscillator(), gain = audio.createGain();
+          osc.frequency.value = freq; gain.gain.value = 0.06;
+          osc.connect(gain).connect(audio.destination);
+          osc.start(); osc.stop(audio.currentTime + ms / 1000);
+        } catch (e) { /* sound cues are optional */ }
+      }
+      function deskToken() { try { return JSON.parse(localStorage.getItem('desk_jwt')); } catch (e) { return null; } }
+      async function api(path) {
+        const r = await fetch(path, { headers: { Accept: 'application/json', Authorization: 'Bearer ' + deskToken() }, cache: 'no-store' });
+        if (r.status === 404 || r.status === 403) return null;
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }
+      async function fetchData(kind) {
+        if (kind === 'glossary') { const j = await api('/api/v1/ask/hi-glossary'); return { glossary: (j && j.entries) || [] }; }
+        if (kind === 'positions') return { positions: await api('/api/v1/algo/open-positions') };
+        return { pulse: await api('/api/v1/pulse/score?slot=n2n') };
+      }
+      function hindiVoice() {
+        const list = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().replace('_', '-').startsWith('hi'));
+        return list.find((v) => /female|swara|kalpana|heera|google/i.test(v.name)) || list[0] || null;
+      }
+      const output = {
+        hasHindiVoice: () => !!hindiVoice(),
+        cancel: () => speechSynthesis.cancel(),
+        speak: (text, rate) => new Promise((resolve) => {
+          speechSynthesis.cancel();
+          const u = new SpeechSynthesisUtterance(text), voice = hindiVoice();
+          u.lang = 'hi-IN'; u.rate = rate;
+          if (voice) u.voice = voice;
+          const done = () => { clearTimeout(guard); resolve(); };
+          const guard = setTimeout(done, Math.max(5000, text.length * 150)); // some devices never fire onend
+          u.onend = done; u.onerror = done;
+          speechSynthesis.speak(u);
+        }),
+      };
+      const input = {
+        start() {
+          const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+          if (!SR) { statusEl.textContent = 'ये ब्राउज़र आवाज़ नहीं सुन सकता। Chrome इस्तेमाल कीजिए।'; return; }
+          if (rec) return;
+          keep = true;
+          rec = new SR();
+          rec.lang = 'hi-IN'; rec.interimResults = false; rec.continuous = false;
+          rec.onstart = () => tone(880, 80);
+          rec.onresult = (e) => { const r = e.results[e.results.length - 1]; if (r.isFinal) session.hear(r[0].transcript); };
+          rec.onerror = (e) => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { keep = false; statusEl.textContent = 'माइक की अनुमति दीजिए।'; } };
+          rec.onend = () => { rec = null; if (keep) input.start(); };
+          rec.start();
+        },
+        stop() {
+          keep = false;
+          if (rec) { rec.onend = null; try { rec.abort(); } catch (e) { /* already stopped */ } rec = null; }
+        },
+      };
+      function onStatus(s) {
+        statusEl.textContent = STATUS[s] || '';
+        if (s === 'failed') tone(180, 220);
+        if (s === 'closed') { panel.classList.remove('on'); linesEl.textContent = ''; if (window.voiceBtnState) window.voiceBtnState(false); }
+      }
+      function onLine(who, text) {
+        const d = document.createElement('div');
+        d.className = who; d.textContent = text;
+        linesEl.append(d); linesEl.scrollTop = linesEl.scrollHeight;
+      }
+      function navigate(page) {
+        const btn = document.querySelector('#nav [data-page="' + page + '"]') || document.querySelector('[data-page="' + page + '"]');
+        if (btn) btn.click();
+      }
+      session = createVoiceSession({ input, output, fetchData, navigate, onStatus, onLine, timers: { set: (fn, ms) => setTimeout(fn, ms), clear: clearTimeout } });
+      window.voiceSession = { start() { panel.classList.add('on'); return session.start(); }, stop: () => session.stop(), hear: (t) => session.hear(t) };
+      speechSynthesis.getVoices();
+      window.addEventListener('terminal:locked', () => session.stop());
+    })();
   </script>
 
   <!-- ════════ Voice Command Hook & Toast System (#vVoiceBtn & #vToastContainer - Task T1.7) ════════ -->
@@ -67501,19 +67708,20 @@ body.light #vUniversalFloatingPnl,
         if (isListening) {
           voiceBtn.classList.add('active');
           voiceBtn.setAttribute('aria-pressed', 'true');
-          voiceBtn.title = 'Voice commands: listening (active) - click to stop';
-          window.showToast('Voice: listening (stub)...', 'info', 2500);
+          voiceBtn.title = 'Voice: click to stop';
         } else {
           voiceBtn.classList.remove('active');
           voiceBtn.setAttribute('aria-pressed', 'false');
-          voiceBtn.title = 'Voice commands (🎤) - click to listen';
-          window.showToast('Voice: stopped', 'info', 2000);
+          voiceBtn.title = 'Voice: click to speak Hindi';
         }
       }
+      window.voiceBtnState = updateVoiceBtnState;
 
       if (voiceBtn) {
         voiceBtn.addEventListener('click', () => {
-          updateVoiceBtnState(!isListening);
+          const next = !isListening;
+          updateVoiceBtnState(next);
+          if (next) window.voiceSession.start(); else window.voiceSession.stop();
         });
       }
 
