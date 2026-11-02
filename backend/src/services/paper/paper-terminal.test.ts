@@ -333,3 +333,39 @@ describe('board margin', () => {
     expect(spy.mock.calls.length).toBeGreaterThan(before);
   });
 });
+
+describe('paper pnl', () => {
+  it('futures open net is unrealised minus the fees of the open position', async () => {
+    const r = await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100 });
+    mk.px = 80_500;
+    const a = await t.account();
+    const upnl = a.positions.find((x: any) => x.symbol === 'BTCUSD')!.unrealized!;
+    const p = await t.pnl();
+    expect(p.futures.openFees).toBeCloseTo(r.order.fee!, 6);
+    expect(p.futures.openPnl).toBeCloseTo(upnl, 6);
+    expect(p.futures.openNet).toBeCloseTo(upnl - r.order.fee!, 6);
+  });
+  it('futures open fees count only fills since the position was last flat', async () => {
+    await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 10 });
+    await t.place({ symbol: 'BTCUSD', side: 'sell', type: 'market', lots: 10 });
+    const r = await t.place({ symbol: 'BTCUSD', side: 'sell', type: 'market', lots: 20 });
+    expect((await t.pnl()).futures.openFees).toBeCloseTo(r.order.fee!, 6);
+  });
+  it('open pnl is null, not zero, when a mark is missing', async () => {
+    await t.place({ symbol: CALL, side: 'buy', type: 'market', lots: 10 });
+    mk.dropCall = true; // the call drops out of the chain, so it has no quote
+    const p = await t.pnl();
+    expect(p.options.openPnl).toBeNull();
+    expect(p.options.openNet).toBeNull();
+    expect(p.options.openKnown).toBe(false);
+  });
+  it('pnl reuses a given account instead of computing it again', async () => {
+    const a = await t.account();
+    const spy = vi.spyOn(t, 'account');
+    await t.pnl(a);
+    expect(spy).not.toHaveBeenCalled();
+  });
+  it('account carries the perpetual contract info', async () => {
+    expect((await t.account()).perpInfo?.maxLeverage).toBe(100);
+  });
+});

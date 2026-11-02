@@ -37,9 +37,13 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
   const fail = (reply: { code: (n: number) => { send: (b: unknown) => unknown } }, e: unknown) =>
     reply.code(502).send({ success: false, error: `market data unavailable: ${(e as Error).message}` });
 
+  // ?withPnl=1 adds the P&L block from the same account read, so the page needs one call instead of two
   fastify.get('/account', auth, async (req, reply) => {
     try {
-      return { success: true, ...(await paperFor(userId(req)).account()) };
+      const term = paperFor(userId(req));
+      const a = await term.account();
+      if ((req.query as { withPnl?: string }).withPnl === '1') return { success: true, ...a, pnl: await term.pnl(a) };
+      return { success: true, ...a };
     } catch (e) {
       return fail(reply, e);
     }

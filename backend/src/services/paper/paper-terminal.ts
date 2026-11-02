@@ -590,7 +590,7 @@ export class PaperTerminal {
       let marketError: string | null = null;
       try { snap = await this.quick(); } catch (e) { marketError = (e as Error).message; }
       if (!snap) {
-        return { account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal }, marginMode: st.mode, view: null, positions: [], working: st.working, marketError };
+        return { account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal }, marginMode: st.mode, view: null, positions: [], working: st.working, perpInfo: null, marketError };
       }
       const q = this.quoteFn(snap);
       const view = this.view(st, st.positions.values(), snap);
@@ -618,9 +618,11 @@ export class PaperTerminal {
           delta: snap!.rows.find((r) => r.symbol === p.symbol)?.delta ?? null,
         };
       });
+      const pInst = snap.insts.get(snap.perp.symbol);
+      const perpInfo = pInst ? { contractValue: pInst.contractValue, maxLeverage: pInst.maxLeverage, tick: pInst.tick, takerRate: pInst.takerRate, makerRate: pInst.makerRate } : null;
       return {
         account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal },
-        marginMode: st.mode, view, positions, greeks: this.netGreeks(st, snap), working: st.working, spot: snap.spot, perp: snap.perp, marketError,
+        marginMode: st.mode, view, positions, greeks: this.netGreeks(st, snap), working: st.working, spot: snap.spot, perp: snap.perp, perpInfo, marketError,
       };
     });
   }
@@ -1101,8 +1103,8 @@ export class PaperTerminal {
    * PnL for the top of the Paper page, options and futures apart. Closed PnL is realised minus fees on every fill (so an entry fee counts the moment it is paid);
    * open PnL is the unrealised PnL of what is still held. Together they equal equity minus the starting balance, which is the Account PnL line.
    */
-  async pnl() {
-    const a: any = await this.account();
+  async pnl(acct?: Awaited<ReturnType<PaperTerminal['account']>>) {
+    const a: any = acct ?? (await this.account());
     await ensurePaperSchema();
     const now = Date.now();
     const dayStart = istMidnightMs(istDateKey(now));
@@ -1116,13 +1118,28 @@ export class PaperTerminal {
       [dayStart, now - 7 * DAY, this.accountId],
     );
     const openStrategies = Number(((await pool.query(`SELECT COUNT(*)::int AS n FROM paper_strategies WHERE status = 'open' AND account_id = $1`, [this.accountId])).rows[0] as any)?.n ?? 0);
-    const positions = (a.positions ?? []) as Array<{ kind: string; unrealized: number | null }>;
+    const positions = (a.positions ?? []) as Array<{ kind: string; lots: number; unrealized: number | null }>;
+    // fees paid on the perpetual since it was last flat: walk its fills newest first until the size unwinds to zero
+    let futFees = 0;
+    let left = positions.filter((p) => p.kind === 'perp').reduce((s, p) => s + p.lots, 0);
+    if (left !== 0) {
+      const f = await pool.query(`SELECT side, lots, fee FROM paper_fills WHERE account_id = $1 AND kind = 'perp' ORDER BY at DESC, id DESC LIMIT 500`, [this.accountId]);
+      for (const x of f.rows as any[]) {
+        futFees += Number(x.fee);
+        left -= x.side === 'buy' ? Number(x.lots) : -Number(x.lots);
+        if (left === 0) break;
+      }
+    }
     const side = (fut: boolean) => {
       const row = (r.rows as any[]).find((x) => (x.kind === 'perp') === fut);
       const held = positions.filter((p) => (p.kind === 'perp') === fut);
       return {
         openCount: fut ? held.length : Math.max(openStrategies, held.length ? 1 : 0),
-        openPnl: held.reduce((s, p) => s + (p.unrealized ?? 0), 0), openKnown: held.every((p) => p.unrealized != null),
+        openFees: fut ? futFees : 0,
+        // openPnl stays before fees (entry fees already sit in the closed totals); openNet is what the open trade has made after its fees
+        openPnl: held.every((p) => p.unrealized != null) ? held.reduce((s, p) => s + p.unrealized!, 0) : null,
+        openNet: held.every((p) => p.unrealized != null) ? held.reduce((s, p) => s + p.unrealized!, 0) - (fut ? futFees : 0) : null,
+        openKnown: held.every((p) => p.unrealized != null),
         today: row ? Number(row.today) : 0, todayCloses: row ? Number(row.today_closes) : 0, week: row ? Number(row.week) : 0,
         total: row ? Number(row.total) : 0, closes: row ? Number(row.closes) : 0, wins: row ? Number(row.wins) : 0,
       };
