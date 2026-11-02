@@ -20,7 +20,7 @@ const srv = http.createServer((req, res) => {
 });
 await new Promise(r => srv.listen(0, '127.0.0.1', r));
 const prof = fs.mkdtempSync(path.join(os.tmpdir(), 'runpage-'));
-const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', '--remote-debugging-port=0', '--user-data-dir=' + prof, '--window-size=1440,900', '--no-first-run', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
+const chrome = spawn('C:/Program Files/Google/Chrome/Application/chrome.exe', ['--headless=new', ...(process.env.LIVE_NET ? [] : ['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1']), '--remote-debugging-port=0', '--user-data-dir=' + prof, '--window-size=1440,900', '--no-first-run', 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'] });
 const wsUrl = await new Promise((res, rej) => { let b = ''; chrome.stderr.on('data', d => { b += d; const m = /ws:\/\/[^\s]+/.exec(b); if (m) res(m[0]); }); setTimeout(() => rej(new Error('chrome did not start')), 20000); });
 const ws = new WebSocket(wsUrl);
 await new Promise(r => ws.addEventListener('open', r));
@@ -39,9 +39,18 @@ await S('Runtime.enable');
 const ev = async expr => { const r = await S('Runtime.evaluate', { expression: expr, returnByValue: true, awaitPromise: true }); return r.exceptionDetails ? { error: r.exceptionDetails.exception?.description } : r.result?.value; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const click = pg => ev(`(document.querySelector('button[data-page="${pg}"]')||{click(){}}).click(); true`);
+// VIEWPORT=WxH or WxH,mobile (phone: touch on, mobile metrics). PAGE_ON=pgDesk opens that page before the check.
+const vp = /^(\d+)x(\d+)(,mobile)?$/.exec(process.env.VIEWPORT || '');
+if (vp) {
+  const mobile = !!vp[3];
+  await S('Emulation.setDeviceMetricsOverride', { width: +vp[1], height: +vp[2], deviceScaleFactor: mobile ? 3 : 1, mobile });
+  if (mobile) await S('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+}
 await S('Page.navigate', { url: `http://127.0.0.1:${srv.address().port}/` });
 await sleep(12000);
+if (process.env.PAGE_ON) { await click(process.env.PAGE_ON); await sleep(2500); }
+const reload = async (ms = 12000) => { await S('Page.reload', {}); await sleep(ms); if (process.env.PAGE_ON) { await click(process.env.PAGE_ON); await sleep(2500); } };
 const check = (await import(pathToFileURL(path.resolve(checkFile)).href)).default;
-const result = await check({ ev, sleep, click });
+const result = await check({ ev, sleep, click, cdp: S, reload });
 console.log(JSON.stringify({ result, logs: [...new Set(logs)].slice(0, 40) }, null, 2));
 chrome.kill(); srv.close(); process.exit(0);

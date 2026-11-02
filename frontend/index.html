@@ -12688,64 +12688,21 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       background: color-mix(in srgb, var(--panel2) 55%, var(--chart-bg))
     }
 
-    .gfs-split {
-      position: absolute;
-      left: 0;
-      right: 0;
-      z-index: 12;
-      height: 9px;
-      margin-top: -5px;
-      cursor: row-resize;
-      touch-action: none;
-      display: none
+    /* v172 · CoinGlass-style dividers between the candles and every lane (script dkSplit). A 22 px touch strip with a thin
+       line and a grip; the grip lights up while dragging. */
+    #paneG .dk-split {
+      position: absolute; left: 0; right: 0; z-index: 14; height: 22px; margin-top: -11px; cursor: row-resize; touch-action: none;
+      display: flex; align-items: center; justify-content: center; -webkit-tap-highlight-color: transparent
     }
-
-    #paneG:is(:fullscreen, .gfs-on) .gfs-split {
-      display: block
+    #paneG .dk-split::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: transparent; transition: background-color .15s }
+    #paneG .dk-split::after {
+      content: ""; position: relative; width: 34px; height: 4px; border-radius: 2px;
+      background: color-mix(in srgb, var(--muted) 45%, transparent); opacity: .55; transition: opacity .15s, width .15s, background-color .15s
     }
-
-    .gfs-split::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      right: 0;
-      top: 4px;
-      height: 1px;
-      background: transparent;
-      transition: background-color .15s, height .15s
-    }
-
-    .gfs-split::after {
-      content: "";
-      position: absolute;
-      left: 50%;
-      top: 2px;
-      width: 38px;
-      height: 5px;
-      margin-left: -19px;
-      border-radius: 3px;
-      background: color-mix(in srgb, var(--muted) 45%, transparent);
-      opacity: 0;
-      transition: opacity .15s
-    }
-
-    .gfs-split:hover::before,
-    .gfs-split.drag::before {
-      background: var(--focus);
-      height: 2px;
-      top: 3.5px
-    }
-
-    .gfs-split:hover::after,
-    .gfs-split.drag::after {
-      opacity: 1
-    }
-
-    body.gfs-dragging,
-    body.gfs-dragging * {
-      cursor: row-resize !important;
-      user-select: none !important
-    }
+    #paneG .dk-split:hover::before, #paneG .dk-split.drag::before { background: var(--focus); height: 2px }
+    #paneG .dk-split:hover::after, #paneG .dk-split.drag::after { opacity: 1; background: var(--focus) }
+    #paneG .dk-split.drag::after { width: 52px }
+    body.dk-dragging, body.dk-dragging * { cursor: row-resize !important; user-select: none !important }
 
     .zm-bar[data-dock] {
       transition: top .18s ease
@@ -21238,6 +21195,41 @@ on an empty top; the live board replaces it as soon as its numbers are in. Snaps
         </div>
       </section>
 
+      <style id="v172Tools">
+        /* v172 · Tools ▾ panel: hangs from the chart toolbar over the charts, scrolls inside itself */
+        #chartp { position: relative }
+        #dkTools { position: absolute; left: 0; right: 0; z-index: 60; max-height: 72%; overflow: auto; overscroll-behavior: contain;
+          background: var(--panel, #11151d); border: 1px solid var(--line, #222a36); border-top: 0; border-radius: 0 0 10px 10px;
+          box-shadow: 0 14px 30px rgba(0, 0, 0, .35); padding: 8px }
+        #dkTools[hidden] { display: none }
+        #dkToolsIn > * { margin: 0 0 8px }
+        #dkToolsBtn.on { color: var(--focus, #f5a524); border-color: currentColor }
+        /* the "clean first screen" rules (v89 / v133) hide these on the Desk; inside Tools they are shown again.
+           Sections switched off by the owner (.v127-off) or retired (#v104Lead, v121) stay hidden. */
+        /* three ids, to beat v133's "body.v133 #pgDesk #side2 { display: none !important }" */
+        #pgDesk #dkTools #side2 { display: flex !important }
+        #pgDesk #dkTools #flowRow { display: grid !important }
+        @media (max-width: 760px) { #pgDesk #dkTools #flowRow { display: flex !important; flex-direction: column } #pgDesk #dkTools #side2 { flex-direction: column } }
+        /* phone full screen uses the whole screen: the tab bar steps aside (the full-screen button in the header brings it back).
+           v133.fit() reads the tab bar's display, so the chart then runs to the bottom edge. */
+        @media (max-width: 760px) { body.gfs #tabbar { display: none !important } }
+      </style>
+      <script data-module="dkHeights">
+        /* v172 · chart heights the owner set by dragging: per profile (phone|desk × normal|full), each lane's share of the
+           chart panel height. v133.fit() applies them; nothing else sets lane heights. localStorage desk_heights_v1. */
+        (function () {
+          var K = 'desk_heights_v1', W = window, D = document;
+          function all() { try { return JSON.parse(localStorage.getItem(K) || '{}') || {}; } catch (e) { return {}; } }
+          function put(o) { try { localStorage.setItem(K, JSON.stringify(o)); } catch (e) { } }
+          function refit() { try { W.v133 && W.v133.fit && W.v133.fit(); } catch (e) { console.warn('dkHeights fit', e); } }
+          W.dkHeights = {
+            profile: function () { return (innerWidth <= 760 ? 'phone' : 'desk') + '|' + (D.body && D.body.classList.contains('gfs') ? 'full' : 'normal'); },
+            get: function (p) { var m = all()[p || this.profile()]; return m && typeof m === 'object' && Object.keys(m).length ? m : null; },
+            set: function (map, p) { var o = all(), k = p || this.profile(), m = {}; for (var id in map) if (map[id] > 0 && map[id] < 1) m[id] = Math.round(map[id] * 10000) / 10000; o[k] = m; put(o); refit(); },
+            reset: function (p) { var o = all(); if (p) delete o[p]; else o = {}; put(o); refit(); },
+          };
+        })();
+      </script>
       <script id="v105_22Arrange">/* v111 · chart order set by Abhishek (replaces the v105.22 / v110 orders).
 Trade page, top to bottom:
 1 Tonight graph
@@ -21249,24 +21241,60 @@ The floating P&L pill still shows the live P&L on top of everything. */
         (function () {
           var D = document, $ = function (i) { return D.getElementById(i); }, busy = false;
           function wideNow() { try { return matchMedia('(min-width:1360px)').matches; } catch (e) { return false; } }
+          /* v172 (3 Nov 2026) · the Desk is a chart page: only the chart block (#v22Top with #chartp) stays on it; every other
+             section moves, in the same order, into the Tools ▾ panel that hangs from the chart toolbar. Nothing is removed. */
+          // lookups go through ch: on the first run ch sits in a #v22Top that is not in the document yet, so getElementById misses
+          function toolsBox(ch) {
+            var box = ch.querySelector('#dkTools'); if (box) return box.querySelector('#dkToolsIn');
+            box = D.createElement('div'); box.id = 'dkTools'; box.hidden = true; box.setAttribute('role', 'region'); box.setAttribute('aria-label', 'Desk tools');
+            box.innerHTML = '<div id="dkToolsIn"></div>'; ch.appendChild(box);
+            var r = ch.querySelector('#gTop .r'), btn = D.createElement('button');
+            btn.type = 'button'; btn.id = 'dkToolsBtn'; btn.className = 'tool'; btn.setAttribute('aria-expanded', 'false'); btn.setAttribute('aria-controls', 'dkTools');
+            btn.title = 'Tonight, signals, events, flow, positioning and My trade · P&L'; btn.textContent = 'Tools ▾';
+            btn.addEventListener('click', function () { window.dkTools && (dkTools.isOpen() ? dkTools.close() : dkTools.open()); });
+            if (r) r.insertBefore(btn, r.firstChild);
+            return box.querySelector('#dkToolsIn');
+          }
           function arrange() {
             if (busy) return; busy = true; try {
               var desk = D.querySelector('#pgDesk .desk'), ch = $('chartp'); if (!desk || !ch) return;
               var top = $('v22Top'); if (!top) { top = D.createElement('div'); top.id = 'v22Top'; top.innerHTML = '<aside id="v22Side" aria-label="Leading signals"><div id="v22SideIn"></div></aside>'; }
               if (top.firstChild !== ch) top.insertBefore(ch, top.firstChild);
               var hd = $('v110PnlHd'); if (!hd) { hd = D.createElement('div'); hd.id = 'v110PnlHd'; hd.className = 'v110-hd'; hd.innerHTML = '<span>My trade · P&amp;L</span>'; }
-              var wide = wideNow(), lead = $('v104Lead'), inn = $('v22SideIn');
-              var want = [$('v89Rail'), top, $('volRow'), wide ? null : lead, $('side2'), $('flowRow'), hd, $('v18Trade')].filter(function (e) { return e && !(e.dataset && e.dataset.v134); });
-              var kids = Array.prototype.filter.call(desk.children, function (e) { return want.indexOf(e) >= 0; });
-              if (!(kids.length === want.length && want.every(function (e, i) { return kids[i] === e; }))) want.forEach(function (e) { desk.appendChild(e); });
-              if (wide && lead && lead.parentNode !== inn) inn.appendChild(lead);
-              hd.hidden = !$('v18Trade');
-            } catch (e) { } finally { busy = false; }
+              var tin = toolsBox(ch), ok = function (e) { return e && !(e.dataset && e.dataset.v134); };
+              // with the old vol cards (v138 switched off) #volRow holds charts, so it stays on the Desk
+              var volOnDesk = !D.body || !D.body.classList.contains('v138');
+              var deskWant = [top].concat(volOnDesk ? [$('volRow')] : []).filter(ok);
+              var toolsWant = [$('v89Rail'), $('v104Lead'), volOnDesk ? null : $('volRow'), $('side2'), $('flowRow'), hd, $('v18Trade')].filter(ok);
+              var same = function (box, want) { var kids = Array.prototype.filter.call(box.children, function (e) { return want.indexOf(e) >= 0; }); return kids.length === want.length && want.every(function (e, i) { return kids[i] === e; }); };
+              if (!same(desk, deskWant)) deskWant.forEach(function (e) { desk.appendChild(e); });
+              if (!same(tin, toolsWant)) toolsWant.forEach(function (e) { tin.appendChild(e); });
+              if (hd.hidden !== !$('v18Trade')) hd.hidden = !$('v18Trade');
+            } catch (e) { console.warn('desk arrange', e); } finally { busy = false; }
           }
           arrange();
           var pg = $('pgDesk'), desk = D.querySelector('#pgDesk .desk');
-          if (window.MutationObserver) { var mo = new MutationObserver(function () { arrange(); }); if (pg) mo.observe(pg, { childList: true }); if (desk) mo.observe(desk, { childList: true }); var si = $('v22SideIn'); if (si) mo.observe(si, { childList: true }); }
-          D.addEventListener('DOMContentLoaded', arrange); try { matchMedia('(min-width:1360px)').addEventListener('change', arrange); } catch (e) { }
+          if (window.MutationObserver) {
+            var mo = new MutationObserver(function () { arrange(); }); if (pg) mo.observe(pg, { childList: true }); if (desk) mo.observe(desk, { childList: true });
+            var si = $('v22SideIn'); if (si) mo.observe(si, { childList: true }); var ti = $('dkToolsIn'); if (ti) mo.observe(ti, { childList: true });
+          }
+          // body class (watched from DOMContentLoaded): v138 arrives later and decides #volRow's place; full screen closes the panel
+          D.addEventListener('DOMContentLoaded', function () {
+            arrange();
+            new MutationObserver(function () { arrange(); if (D.body.classList.contains('gfs') && window.dkTools) dkTools.close(); }).observe(D.body, { attributes: true, attributeFilter: ['class'] });
+            try { window.desk80 && desk80.on('page', function () { window.dkTools && dkTools.close(); }); } catch (e) { }
+          });
+          try { matchMedia('(min-width:1360px)').addEventListener('change', arrange); } catch (e) { }
+          window.dkTools = {
+            isOpen: function () { var b = $('dkTools'); return !!b && !b.hidden; },
+            open: function () {
+              var b = $('dkTools'), t = $('gTop'), btn = $('dkToolsBtn'); if (!b) return;
+              b.style.top = t ? (t.offsetTop + t.offsetHeight) + 'px' : '40px'; b.hidden = false; if (btn) { btn.setAttribute('aria-expanded', 'true'); btn.classList.add('on'); }
+              try { window.dispatchEvent(new Event('resize')); } catch (e) { }   // panels inside measure themselves now that they are visible
+            },
+            close: function () { var b = $('dkTools'), btn = $('dkToolsBtn'); if (!b || b.hidden) return; b.hidden = true; if (btn) { btn.setAttribute('aria-expanded', 'false'); btn.classList.remove('on'); } },
+          };
+          D.addEventListener('keydown', function (e) { if (e.key === 'Escape' && window.dkTools && dkTools.isOpen()) { dkTools.close(); e.stopPropagation(); } }, true);
         })();
       </script>
 
@@ -31567,66 +31595,14 @@ Signs follow Settings → Dealer positioning.`;
     })();
 
   </script>
-  <script data-block="35_fssplit" data-v71="15931-15977">
-    /* =====================================================================
-       v64 · Full-screen split and the left tool column on the BTC·γ chart (layout only)
-       ===================================================================== */
-    (function gfsLayout() {
-      'use strict';
-      const KEY = 'gfs_split_v1', DEF = { vol: 0.22, adx: 0.14 }, $ = id => document.getElementById(id);
-      let split = DEF; try { const x = JSON.parse(localStorage.getItem(KEY) || 'null'); if (x && x.vol > 0.08 && x.vol < 0.5 && x.adx > 0.05 && x.adx < 0.4) split = x; } catch (e) { }
-      window.gfsSplit = () => split;
-      const save = () => { try { localStorage.setItem(KEY, JSON.stringify(split)); } catch (e) { } };
-      const refit = () => { try { window.paRefit && window.paRefit(); } catch (e) { } };
-      let S = [];
-      function build() {
-        const pane = $('paneG'), cb = pane?.querySelector(':scope>.chart-box'), vb = $('paVolBox'), ab = $('paAdxBox'); if (!pane || !cb || !vb) return false;
-        for (const [k, a, b] of [['cv', cb, vb], ['va', vb, ab]]) {
-          if (!b) continue;
-          const h = document.createElement('div'); h.className = 'gfs-split'; h.setAttribute('role', 'separator'); h.setAttribute('aria-orientation', 'horizontal');
-          h.title = 'Drag to resize · double-click to reset'; pane.appendChild(h); S.push({ k, h, a, b });
-          h.addEventListener('dblclick', () => { split = { ...DEF }; save(); refit(); });
-          h.addEventListener('pointerdown', e => {
-            e.preventDefault(); h.setPointerCapture(e.pointerId); h.classList.add('drag'); document.body.classList.add('gfs-dragging');
-            const y0 = e.clientY, hc = cb.offsetHeight, hv = vb.offsetHeight, ha = ab ? ab.offsetHeight : 0, T = hc + hv + ha; let raf = 0;
-            const mv = ev => {
-              const dy = ev.clientY - y0; let C = hc, V = hv, A = ha;
-              if (k === 'cv') { C = hc + dy; V = hv - dy; if (C < 220) { V -= 220 - C; C = 220; } if (V < 120) { C -= 120 - V; V = 120; } }
-              else { V = hv + dy; A = ha - dy; if (V < 120) { A -= 120 - V; V = 120; } if (A < 80) { V -= 80 - A; A = 80; } }
-              split = { vol: V / T, adx: A / T }; if (!raf) raf = requestAnimationFrame(() => { raf = 0; refit(); place(); });
-            };
-            const up = () => { h.classList.remove('drag'); document.body.classList.remove('gfs-dragging'); h.removeEventListener('pointermove', mv); save(); refit(); };
-            h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up, { once: true }); h.addEventListener('pointercancel', up, { once: true });
-          });
-        }
-        return true;
-      }
-      function place() { for (const s of S) { const y = s.b.offsetTop; if (s.h.style.top !== y + 'px') s.h.style.top = y + 'px'; } }
-      // left tool column: zoom under the legend (or under the session table when it is open there), pencil under zoom
-      function dock() {
-        const box = $('chartG')?.parentElement; if (!box) return;
-        const zm = box.querySelector('.zm-bar'), sr = $('srTbl'), dw = box.querySelector('.dw-bar'); if (!zm) return;
-        let top = 52, left = 8; const zh = zm.offsetHeight || 150, need = zh + (dw && innerWidth > 760 ? 52 : 0) + 70;
-        if (sr && !sr.hidden && sr.offsetParent && getComputedStyle(sr).display !== 'none' && sr.offsetLeft < 60) {
-          const below = sr.offsetTop + sr.offsetHeight + 8;
-          if (below + need <= box.clientHeight) top = below; else left = sr.offsetLeft + sr.offsetWidth + 8;
-        }   // an open table: under it if it fits, else beside it
-        zm.dataset.dock = '1'; if (zm.style.top !== top + 'px') zm.style.top = top + 'px'; if (zm.style.left !== left + 'px') zm.style.left = left + 'px';
-        if (dw) {
-          if (innerWidth > 760) { dw.dataset.dock = '1'; const t = (top + zh + 6) + 'px'; if (dw.style.top !== t) dw.style.top = t; if (dw.style.left !== left + 'px') dw.style.left = left + 'px'; }
-          else if (dw.dataset.dock) { delete dw.dataset.dock; dw.style.removeProperty('top'); dw.style.removeProperty('left'); }
-        }
-      }
-      function tick() { try { place(); } catch (e) { } }   // v80: dock() retired — the tool rail owns the zoom/draw bars
-      const t = setInterval(() => {
-        if (build()) {
-          clearInterval(t); tick(); setInterval(tick, 800); addEventListener('resize', () => requestAnimationFrame(tick));
-          document.addEventListener('fullscreenchange', () => { for (const ms of [80, 300, 700]) setTimeout(() => { refit(); tick(); }, ms); });
-          try { new ResizeObserver(() => requestAnimationFrame(tick)).observe($('paneG')); } catch (e) { }
-        }
-      }, 700);
+  <script data-block="35_fssplit">
+    /* v172 · the old full-screen-only handles (v64 .gfs-split, gfs_split_v1) are replaced by the dkSplit dividers. paRefit still
+       asks gfsSplit() for the full-screen ADX / Volume shares: ADX now follows the height the owner dragged (dkHeights). */
+    (function () {
+      const DEF = { vol: 0.22, adx: 0.14 };
+      window.gfsSplit = () => { const u = window.dkHeights && window.dkHeights.get(); return { vol: DEF.vol, adx: (u && u.paAdxBox) || DEF.adx }; };
+      document.addEventListener('fullscreenchange', () => { for (const ms of [80, 300, 700]) setTimeout(() => { try { window.paRefit && window.paRefit(); window.v133 && window.v133.fit && window.v133.fit(); } catch (e) { } }, ms); });
     })();
-
   </script>
   <script data-block="36_dvol" data-v71="16327-16690">
     /* =====================================================================
@@ -43555,8 +43531,9 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
     }
   </style>
   <script id="v105_23Side">(function () {
-      var D = document, K = 'v23_side_hidden';
-      function lsg() { try { return localStorage.getItem(K) === '1'; } catch (e) { return false; } }
+      var D = document, K = 'v23_side_hidden_v2';   // v172: new key; the old one held '0' from every earlier visit (it was written on each load)
+      // v172: hidden unless the user chose to show it ('0'). The column's content now lives in Tools ▾, so the chart gets the full width.
+      function lsg() { try { return localStorage.getItem(K) !== '0'; } catch (e) { return true; } }
       function set(h) {
         D.body.classList.toggle('v23-wide', h); try { localStorage.setItem(K, h ? '1' : '0'); } catch (e) { } var b = D.getElementById('v23Tog'); if (b) { b.textContent = h ? '‹ Signals' : 'Hide side column ›'; b.title = h ? 'Show My trade, Leading signals and Tonight' : 'Give the chart the full width'; }
         for (var i = 0, ms = [30, 250, 700]; i < ms.length; i++)setTimeout(function () { try { window.dispatchEvent(new Event('resize')); window.paRefit && window.paRefit(); } catch (e) { } }, ms[i]);
@@ -47855,8 +47832,30 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.5 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
-        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
-        W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
+        // default height of each lane (the v150 shares and minimums)
+        const defH = l => Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0);
+        const HH = new Map(lanes.map(l => [l, defH(l)])); let adxH = adxOn ? Math.round(lh * ADXW) : 0;
+        /* v172 · heights the owner dragged (dkHeights): a share of the panel height ph per lane. A shown lane with no saved
+           share (switched on later) starts at its default; the candles take what is left. Lanes >= 48 px, candles >= minC
+           (180 phone / 240 desktop). This stays the only place lane heights are set. */
+        const U = W.dkHeights && W.dkHeights.get();
+        if (U) {
+          const MINL = 48, saved = [], fresh = []; let freshH = 0, savedH = 0;
+          for (const l of lanes) { if (U[l.id] > 0) { const h = Math.round(U[l.id] * ph) + (l.id === axId ? axX : 0); HH.set(l, h); saved.push(l); savedH += h; } else { fresh.push(l); freshH += HH.get(l); } }
+          if (adxOn) { if (U.paAdxBox > 0) { adxH = Math.round(U.paAdxBox * ph); savedH += adxH; } else freshH += adxH; }
+          for (const l of lanes) HH.set(l, Math.max(MINL, HH.get(l))); if (adxOn) adxH = Math.max(MINL, adxH);
+          // never squeeze harder than the default layout already does (on a phone the default lanes can exceed ph - minC)
+          const defTot = lanes.reduce((a, l) => a + defH(l), 0) + (adxOn ? Math.round(lh * ADXW) : 0);
+          const room = Math.max(ph - minC, defTot), tot = [...HH.values()].reduce((a, b) => a + b, 0) + adxH;
+          if (tot > room && tot > 0) {   // squeeze only what sits above each lane's 48 px floor, so the floors can't push the candles under minC
+            const n = lanes.length + (adxOn ? 1 : 0), free = tot - n * MINL, k = free > 0 ? Math.max(0, room - n * MINL) / free : 0, sq = h => MINL + Math.floor((h - MINL) * k);
+            for (const l of lanes) HH.set(l, sq(HH.get(l))); if (adxOn) adxH = sq(adxH);
+          }
+        }
+        for (const l of lanes) { const hh = HH.get(l); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); if (U) set(l, 'min-height', hh + 'px'); else if (l.dataset.dkMin) l.style.removeProperty('min-height'); if (U) l.dataset.dkMin = '1'; else delete l.dataset.dkMin; }   // min-height: some lanes carry a CSS minimum (Short Strangle 176/268 px) that would beat the dragged height
+        W.__v133Lane = lh; W.__v133Adx = adxH;   // paRefit gives the ADX strip its share
+        W.__v133Fit = { ph, minC, phone, lanes: lanes.map(l => l.id).concat(adxOn ? ['paAdxBox'] : []) };   // for the dividers (dkSplit)
+        try { W.desk80 && W.desk80.emit('fit', W.__v133Fit); } catch (e) { }
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           /* v144.2: judge the chart's own bottom edge, not the whole page. Panels below the chart made the page taller, which squeezed the chart up to 240 px and, as it gave the room back, made it pulse */
           const over = cp.getBoundingClientRect().bottom + 20 - innerHeight;
@@ -47974,6 +47973,92 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       D.addEventListener('fullscreenchange', vhRefit);
       D.addEventListener('click', e => { if (e.target.closest('#nav [data-page="pgDesk"],#tabbar [data-page="pgDesk"]')) setTimeout(fit, 200); }, true);
       W.v133 = { fit, pnl, load, state: () => P, __test: { parseSym, ts } };
+    })();
+  </script>
+  <script data-module="dkSplit">
+    /* v172 (3 Nov 2026) · CoinGlass-style dividers: one above every shown lane in #paneG (the first one sits between the
+       candles and the first lane). Dragging moves height between the two sides; the stack keeps its total. The divider only
+       changes the saved shares (dkHeights) and asks v133.fit() to lay out, at most once per frame: fit stays the one owner.
+       Double-click / double-tap resets that pair to its defaults; "Reset heights" in the ƒx menu resets the profile. */
+    (function () {
+      'use strict';
+      const W = window, D = document, $ = id => D.getElementById(id), MINL = 48;
+      const pane = () => $('paneG');
+      const shown = e => !!e && e.isConnected && getComputedStyle(e).display !== 'none';
+      // the shown lanes in visual order, as fit() last laid them out
+      function lanes() { const F = W.__v133Fit; if (!F) return []; return F.lanes.map($).filter(shown).sort((a, b) => a.offsetTop - b.offsetTop); }
+      const candles = () => D.querySelector('#paneG>.chart-box');
+      const axisExtra = id => (W.__v138Axis && W.__v138Axis() === id ? 24 : 0);
+      // shares of every shown lane from their current heights (the starting point when nothing is saved yet)
+      function snapshot(ph) { const m = {}; for (const l of lanes()) m[l.id] = Math.max(MINL, l.offsetHeight - axisExtra(l.id)) / ph; return m; }
+      let S = [];
+      function place() {
+        const g = pane(); if (!g || !W.dkHeights) return;
+        const L = lanes(), want = L.map(l => l.id).join('|');
+        if (S.map(s => s.dataset.below).join('|') !== want) {
+          for (const s of S) s.remove(); S = [];
+          L.forEach((l, i) => {
+            const s = D.createElement('div'); s.className = 'dk-split'; s.dataset.below = l.id; s.dataset.above = i ? L[i - 1].id : 'candles';
+            s.setAttribute('role', 'separator'); s.setAttribute('aria-orientation', 'horizontal'); s.title = 'Drag to resize · double-click to reset';
+            wire(s); g.appendChild(s); S.push(s);
+          });
+        }
+        for (const s of S) { const l = $(s.dataset.below); if (!l) continue; const t = l.offsetTop + 'px'; if (s.style.top !== t) s.style.top = t; }   // children of #paneG: they scroll with it
+      }
+      let raf = 0; const soon = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; try { place(); } catch (e) { console.warn('dkSplit place', e); } }); };
+      function wire(s) {
+        let last = 0;
+        s.addEventListener('dblclick', e => { e.preventDefault(); resetPair(s); });
+        s.addEventListener('pointerdown', e => {
+          if (e.button > 0) return;
+          const now = Date.now();
+          if (e.pointerType !== 'mouse' && now - last < 320) { last = 0; resetPair(s); return; }   // double-tap (dblclick covers the mouse)
+          last = now;
+          e.preventDefault(); try { s.setPointerCapture(e.pointerId); } catch (x) { }
+          const g = pane(), F = W.__v133Fit; if (!g || !F) return;
+          const ph = F.ph, below = $(s.dataset.below), aboveId = s.dataset.above, above = aboveId === 'candles' ? candles() : $(aboveId);
+          const base = Object.assign(snapshot(ph), W.dkHeights.get() || {});
+          const b0 = below.offsetHeight - axisExtra(below.id), a0 = above.offsetHeight - (aboveId === 'candles' ? 0 : axisExtra(aboveId));
+          const aMin = Math.min(a0, aboveId === 'candles' ? (F.phone ? 180 : 240) : MINL), y0 = e.clientY;   // a side already under its minimum (phone candles start at ~160 px) can't shrink further, but the drag is never reversed
+          s.classList.add('drag'); D.body.classList.add('dk-dragging');
+          let pend = null, fr = 0;
+          const mv = ev => {
+            let dy = ev.clientY - y0;
+            dy = Math.min(dy, b0 - MINL); dy = Math.max(dy, aMin - a0);   // keep both sides above their minimums
+            const m = Object.assign({}, base); m[below.id] = (b0 - dy) / ph; if (aboveId !== 'candles') m[aboveId] = (a0 + dy) / ph;
+            pend = m; if (!fr) fr = requestAnimationFrame(() => { fr = 0; if (pend) { W.dkHeights.set(pend); soon(); } });
+          };
+          const up = () => {   // remove every listener of this drag, so a later pointercancel can't replay it
+            s.classList.remove('drag'); D.body.classList.remove('dk-dragging');
+            s.removeEventListener('pointermove', mv); s.removeEventListener('pointerup', up); s.removeEventListener('pointercancel', up); s.removeEventListener('lostpointercapture', up);
+            if (fr) { cancelAnimationFrame(fr); fr = 0; } if (pend) W.dkHeights.set(pend); pend = null; soon();
+          };
+          s.addEventListener('pointermove', mv); s.addEventListener('pointerup', up); s.addEventListener('pointercancel', up); s.addEventListener('lostpointercapture', up);
+        });
+      }
+      // the pair goes back to its defaults: drop both saved shares (fit gives a lane with no share its default height)
+      function resetPair(s) {
+        const u = W.dkHeights.get(); if (!u) return; const m = Object.assign({}, u); delete m[s.dataset.below]; if (s.dataset.above !== 'candles') delete m[s.dataset.above];
+        Object.keys(m).length ? W.dkHeights.set(m) : W.dkHeights.reset(W.dkHeights.profile()); soon();
+      }
+      // "Reset heights" in the ƒx Indicators menu
+      function menuButton() {
+        const m = $('v132Ind'); if (!m || m.hidden || $('dkResetH')) return;
+        const b = D.createElement('button'); b.type = 'button'; b.id = 'dkResetH'; b.className = 'dk-reset'; b.textContent = 'Reset heights';
+        b.title = 'Back to the default chart and lane heights on this device';
+        b.addEventListener('click', () => { W.dkHeights.reset(W.dkHeights.profile()); soon(); });
+        m.appendChild(b);
+      }
+      function boot() {
+        const g = pane(); if (!g) return setTimeout(boot, 500);
+        if (W.desk80 && W.desk80.on) { W.desk80.on('fit', soon); W.desk80.on('page', soon); }
+        try { new ResizeObserver(soon).observe(g); } catch (e) { }
+        addEventListener('resize', soon);
+        if (W.v132ind && W.v132ind.open && !W.v132ind.__dk) { const o = W.v132ind.open; W.v132ind.open = function () { const r = o.apply(this, arguments); setTimeout(menuButton, 0); return r; }; W.v132ind.__dk = 1; }
+        D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v132IndBtn')) setTimeout(menuButton, 0); }, true);
+        soon();
+      }
+      D.readyState === 'loading' ? D.addEventListener('DOMContentLoaded', boot) : boot();
     })();
   </script>
   <style id="v134Css">
