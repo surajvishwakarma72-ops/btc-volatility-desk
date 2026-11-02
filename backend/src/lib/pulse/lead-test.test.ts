@@ -44,9 +44,19 @@ describe('leadReport readings', () => {
     const r = one({ put: (m) => (m >= 30 ? 100 + (m - 29) * 2 : 100), minutes: 50 });
     expect(leadReport(r.rows, r.entries).damage.readings).toBe(1);
   });
-  it('never counts a jump before its reading', () => {
-    // the rise starts at minute 24; the first reading is at minute 29, so the jump is already under way
+  it('a reading during the rise, before the crossing, is a hit', () => {
+    // the rise starts at minute 24, the first reading is at minute 25, and the 20% is met at minute 29
     const r = one({ put: (m) => (m < 24 ? 100 : Math.min(148, 100 + (m - 24) * 8)), minutes: 45 });
+    const rep = leadReport(r.rows, r.entries);
+    expect(rep.jumps).toBe(1);
+    expect(rep.damage.readings).toBe(1);
+    expect(rep.damage.hits).toEqual({ m5: 1, m15: 1, m30: 1 });
+    expect(rep.damage.medianLeadMin).toBe(4);
+    expect(rep.damage.falseAlarmRate).toBe(0);
+  });
+  it('a jump already complete at the reading is not a hit', () => {
+    // one step up: the first reading and the crossing are the same row
+    const r = one({ put: (m) => (m < 30 ? 100 : 150) });
     const rep = leadReport(r.rows, r.entries);
     expect(rep.jumps).toBe(1);
     expect(rep.damage.readings).toBe(1);
@@ -55,7 +65,7 @@ describe('leadReport readings', () => {
   });
 });
 
-/** 21 daily cohorts. Damage reading at minute 30, the premium dips back, then jumps at minute 45 (its start is minute 44). */
+/** 21 daily cohorts. Damage reading at minute 30, the premium dips back, then jumps at minute 45, which is the crossing. */
 function manyDays(n: number, spec: Spec) {
   const ids: number[] = [];
   const rows: MinuteRow[] = [];
@@ -84,12 +94,12 @@ describe('leadReport verdict', () => {
     expect(rep.damage.readings).toBe(21);
     expect(rep.damage.hits.m30).toBe(21);
     expect(rep.damage.hits.m5).toBe(0);
-    expect(rep.damage.medianLeadMin).toBe(14);
+    expect(rep.damage.medianLeadMin).toBe(15);
     expect(rep.btc.hits.m30).toBe(0);
     expect(rep.verdict).toBe('leads');
   });
   it('says does not lead when plain BTC movement does as well or better', () => {
-    // BTC moves at minute 32 with no earlier damage reading, then the jump starts at minute 39
+    // BTC moves at minute 32 with no earlier damage reading, then the jump crosses at minute 45
     const d = manyDays(21, { put: (m) => (m >= 45 ? 145 : 100), fut: (m) => (m >= 32 ? 101_000 : 100_000) });
     const rep = leadReport(d.rows, d.entries);
     expect(rep.damage.hits.m30).toBe(0); // its only readings come once the jump is under way
@@ -110,6 +120,22 @@ describe('leadReport verdict', () => {
     expect(rep.jumps).toBeGreaterThanOrEqual(20);
     expect(rep.days).toBeGreaterThanOrEqual(14);
     expect(rep.damage.readings).toBeLessThan(20);
+    expect(rep.verdict).toBe('not enough data');
+  });
+  it('says not enough data when plain BTC has too few episodes, even with enough damage episodes', () => {
+    const rows: MinuteRow[] = [];
+    const ids: number[] = [];
+    for (let d = 0; d < 21; d++) {
+      ids.push(d + 1);
+      // BTC only moves on the first 5 days, so damage would read as leading if the gate were missing.
+      rows.push(...cohort(d + 1, T0 + d * DAY, { put: jumpAt45, fut: d < 5 ? (m) => (m >= 50 ? 101_000 : 100_000) : undefined }));
+    }
+    const rep = leadReport(rows, entriesFor(ids));
+    expect(rep.jumps).toBe(21);
+    expect(rep.days).toBeGreaterThanOrEqual(14);
+    expect(rep.damage.readings).toBe(21);
+    expect(rep.damage.hits.m30).toBe(21);
+    expect(rep.btc.readings).toBe(5);
     expect(rep.verdict).toBe('not enough data');
   });
   it('measures the day span of 200,000 rows without spreading them', () => {

@@ -9,7 +9,7 @@ const row = (i: number, o: Partial<MinuteRow> = {}): MinuteRow => ({
   t: i * MIN, cohort_id: COH, fut_price: 100_000, call_mid: 100, put_mid: 100, call_iv: 50, put_iv: 50, data_ok: true, ...o,
 });
 const flat = (n: number, o: (i: number) => Partial<MinuteRow> = () => ({})) => Array.from({ length: n }, (_, i) => row(i, o(i)));
-const base = (c: number, call = 50, put = 50): BasePoint[] => [{ t: 0, c, call, put }];
+const base = (c: number, call = 50, put = 50, z: BasePoint['z'] = 'sell'): BasePoint[] => [{ t: 0, c, z, call, put }];
 
 describe('minuteReadings', () => {
   it('blends 70% of held Risk and 30% of the worse side', () => {
@@ -97,6 +97,65 @@ describe('minuteReadings', () => {
     expect(p.r).toBeNull();
     expect(p.z).toBe('nodata');
     expect(p.fl).toBeCloseTo(50);
+  });
+
+  it('a held avoid with zero damage stays avoid', () => {
+    const pts = minuteReadings(flat(15), entries, base(90, 50, 50, 'avoid'));
+    expect(pts[14]!.hurt).toBeNull();
+    expect(pts[14]!.r).toBeLessThan(30);
+    expect(pts.every((p) => p.z === 'avoid')).toBe(true);
+  });
+
+  it('a held caution with zero damage stays caution', () => {
+    const pts = minuteReadings(flat(15), entries, base(90, 50, 50, 'caution'));
+    expect(pts[14]!.r).toBeLessThan(30);
+    expect(pts.every((p) => p.z === 'caution')).toBe(true);
+  });
+
+  it('a held NO DATA with a usable Risk is capped at caution', () => {
+    const pts = minuteReadings(flat(15), entries, base(90, 50, 50, 'nodata'));
+    expect(pts[14]!.r).not.toBeNull();
+    expect(pts.every((p) => p.z === 'caution')).toBe(true);
+  });
+
+  it('a held zone never makes the minute zone safer', () => {
+    const pts = minuteReadings(flat(9, spike), entries, base(100, 50, 50, 'caution'));
+    expect(pts[7]!.z).toBe('avoid');
+  });
+
+  it('the clamp follows the held zone and does not hold the minute zone back once it clears', () => {
+    const held: BasePoint[] = [{ t: 0, c: 90, z: 'avoid', call: 50, put: 50 }, { t: 15 * MIN, c: 90, z: 'sell', call: 50, put: 50 }];
+    const pts = minuteReadings(flat(20), entries, held);
+    expect(pts[14]!.z).toBe('avoid');
+    expect(pts[15]!.z).toBe('sell');
+  });
+
+  it('reads 3,200 rows in under 50 ms', () => {
+    const hour = 60 * MIN;
+    const rows: MinuteRow[] = [];
+    const ents = new Map<number, Entry>();
+    const minutes = 49 * 60;
+    for (let i = 0; i < minutes; i++) {
+      const id = Math.floor(i / 60) * hour;
+      ents.set(id, { call: 80, put: 80 });
+      const price = 70_000 + Math.sin(i / 30) * 200;
+      rows.push(row(i, { cohort_id: id, fut_price: price, call_mid: 80 + Math.sin(i / 7) * 5, put_mid: 80 + Math.cos(i / 7) * 5 }));
+      if (i % 60 < 5 && i >= 60) rows.push(row(i, { cohort_id: id - hour, fut_price: price, call_mid: 80, put_mid: 80 }));
+    }
+    rows.sort((a, b) => a.t - b.t || a.cohort_id - b.cohort_id);
+    while (rows.length < 3_200) rows.push(row(minutes + rows.length));
+    const held: BasePoint[] = [];
+    for (let i = 0; i < minutes; i += 15) held.push({ t: i * MIN, c: 60, z: 'caution', call: 40, put: 40 });
+    expect(rows.length).toBeGreaterThanOrEqual(3_200);
+    // Best of three, so one garbage collection pause on a busy machine does not fail the run.
+    let best = Infinity;
+    for (let k = 0; k < 3; k++) {
+      const from = performance.now();
+      expect(minuteReadings(rows, ents, held).length).toBeGreaterThan(2_900);
+      best = Math.min(best, performance.now() - from);
+    }
+    console.log(`[minute] ${rows.length} rows: ${best.toFixed(2)} ms`);
+    expect(best).toBeLessThan(50);
   });
 
   it('falls back to the older cohort when the newest has no damage', () => {

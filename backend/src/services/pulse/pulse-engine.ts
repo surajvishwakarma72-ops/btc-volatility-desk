@@ -26,6 +26,8 @@ export interface PulseStatus {
   /** The last tick that finished with good data and every write done. */
   lastGoodTickAt: number | null;
   lastError: string | null;
+  /** The last minute write's failure, null once one succeeds. Kept apart because a healthy tick clears lastError. */
+  lastMinuteError: string | null;
   dataOk: boolean;
   slots: Record<Slot, { expiryMs: number | null; live: number; seriesId: string | null }>;
   dbSizeBytes: number | null;
@@ -59,6 +61,7 @@ export class PulseEngine {
   lastTickAt: number | null = null;
   lastGoodTickAt: number | null = null;
   lastError: string | null = null;
+  lastMinuteError: string | null = null;
   dataOk = false;
   private dbSize: number | null = null;
 
@@ -139,6 +142,7 @@ export class PulseEngine {
       lastTickAt: this.lastTickAt,
       lastGoodTickAt: this.lastGoodTickAt,
       lastError: this.lastError,
+      lastMinuteError: this.lastMinuteError,
       dataOk: this.dataOk,
       slots: { current: slot('current'), next: slot('next'), n2n: slot('n2n') },
       dbSizeBytes: this.dbSize,
@@ -334,8 +338,9 @@ export class PulseEngine {
         return { ...row, data_ok: full };
       }));
       await insertMinuteRows(rows);
+      this.lastMinuteError = null;
     } catch (e) {
-      this.lastError = `minute write failed: ${errText(e)}`;
+      this.lastMinuteError = this.lastError = `minute write failed: ${errText(e)}`;
       console.error('[pulse]', this.lastError);
     }
   }

@@ -240,7 +240,7 @@ describe('PulseEngine lifecycle', () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/pulse/status' })).statusCode).toBe(401);
     const res = await app.inject({ method: 'GET', url: '/api/v1/pulse/status', headers: { authorization: 'x' } });
     expect(res.statusCode).toBe(200);
-    expect(Object.keys(res.json()).sort()).toEqual(['dataOk', 'dbSizeBytes', 'enabled', 'lastError', 'lastGoodTickAt', 'lastTickAt', 'slots', 'success'].sort());
+    expect(Object.keys(res.json()).sort()).toEqual(['dataOk', 'dbSizeBytes', 'enabled', 'lastError', 'lastGoodTickAt', 'lastMinuteError', 'lastTickAt', 'slots', 'success'].sort());
     await app.close();
   });
 
@@ -1133,6 +1133,20 @@ describe('minute rows', () => {
     h.failSql = null;
     await at(e, '2026-11-01T00:16:00Z');
     expect(await minuteCount()).toBe(3);
+  });
+
+  it('a failed minute write stays in status after the tick succeeds, until a write succeeds', async () => {
+    const e = engine();
+    await at(e, '2026-11-01T00:00:00Z');
+    expect(e.status().lastMinuteError).toBeNull();
+    h.failSql = 'INSERT INTO pulse_minute';
+    await at(e, '2026-11-01T00:01:00Z');
+    expect(e.status().lastMinuteError).toContain('minute write failed');
+    expect(e.status().lastError).toBeNull(); // the healthy tick's own success path clears this one
+    expect(e.status().lastGoodTickAt).toBe(T('2026-11-01T00:01:00Z'));
+    h.failSql = null;
+    await at(e, '2026-11-01T00:02:00Z');
+    expect(e.status().lastMinuteError).toBeNull();
   });
 
   it('deletes rows past 45 days once an hour', async () => {

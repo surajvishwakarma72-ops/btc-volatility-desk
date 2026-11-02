@@ -7,12 +7,14 @@ const h = vi.hoisted(() => ({
   rows: [] as unknown[],
   minuteFails: false,
   minuteCalls: [] as number[],
+  /** Set by the size test: a full 48 hours of 15-minute output, with every value present. */
+  full: null as null | { readings: unknown[]; pnlRows: unknown[] },
 }));
 
 vi.mock('./pulse-store.js', () => ({
   pulseTablesExist: async () => true,
   recentCohorts: async () => h.cohorts,
-  cohortRowsMany: async (ids: string[]) => new Map(ids.map((id) => [id, []])),
+  cohortRowsMany: async (ids: string[]) => new Map(ids.map((id) => [id, h.full?.pnlRows ?? []])),
   latestMarketRows: async () => [],
   minuteRows: async (_slot: string, fromMs: number) => {
     h.minuteCalls.push(fromMs);
@@ -25,15 +27,24 @@ vi.mock('./regime-service.js', () => ({
   regimeService: { snapshot: () => ({ pass: true, reasons: [], inputs: [] }) },
 }));
 
+vi.mock('../../lib/pulse/metrics/series.js', async (orig) => ({
+  ...(await orig<typeof import('../../lib/pulse/metrics/series.js')>()),
+  metricSeries: () => [],
+  winnerAtAge: () => null,
+}));
+
 // The 15-minute reading is not under test: hand back one fixed reading so a card and a base point exist.
 vi.mock('../../lib/pulse/score/score.js', async (orig) => {
   const actual = await orig<typeof import('../../lib/pulse/score/score.js')>();
   return {
     ...actual,
-    readings: () => [{
+    readings: () => h.full?.readings ?? [{
       t: Date.now() - 60_000, zone: 'caution', verdict: 'WAIT', confidence: 55, rawZone: 'caution', gateBlocked: false,
       vetoes: [], why: [], flips: null, heavyLeg: null, parts: null,
     }],
+    linesAt: (t: number, c: Parameters<typeof actual.linesAt>[1]) => (h.full
+      ? { call: 41.23456789012345, put: 38.76543210987654, futLong: 12.34567890123456, futShort: 0 }
+      : actual.linesAt(t, c)),
   };
 });
 
@@ -61,7 +72,7 @@ function minuteRowsFor(slotMs: number, n: number, endMs: number): MinuteRow[] {
 let slotN = 0;
 const slot = 'current' as const;
 beforeEach(() => {
-  h.cohorts = []; h.rows = []; h.minuteFails = false; h.minuteCalls = [];
+  h.cohorts = []; h.rows = []; h.minuteFails = false; h.minuteCalls = []; h.full = null;
   // The score is cached per slot for 45 s, so each test uses its own cache key.
   vi.useFakeTimers();
   vi.setSystemTime(Date.parse('2026-11-02T12:00:00Z') + slotN++ * 3 * HOUR);
@@ -97,7 +108,7 @@ describe('pulseScore minute block', () => {
     expect(Array.isArray(body.minute)).toBe(true);
     expect(body.minute!.length).toBeGreaterThan(0);
     const p = body.minute![0];
-    expect(Object.keys(p).sort()).toEqual(['call', 'fl', 'fs', 'hurt', 'put', 'r', 'trigger', 't', 'z'].sort());
+    expect(Object.keys(p).sort()).toEqual(['call', 'fl', 'fs', 'hurt', 'put', 'r', 't', 'z'].sort()); // trigger is sent only when true
     for (const v of [p.r, p.call, p.put, p.fl, p.fs]) if (v !== null) expect(Math.round(v * 10) / 10).toBe(v);
     // Reads the history window plus 60 minutes for the futures window, and returns only the history window.
     const from = Date.now() - 48 * HOUR - 60 * MIN;
@@ -130,13 +141,57 @@ describe('pulseScore minute block', () => {
     expect(console.error).toHaveBeenCalled();
   });
 
-  it('keeps the body under 400 KB at 48 hours', async () => {
+  it('keeps the whole body under 400 KB at 48 hours', async () => {
     process.env.PULSE_MINUTE_LANE = 'true';
-    const slotMs = Date.now() - 3 * HOUR;
+    const now = Date.now();
+    const slotMs = now - 3 * HOUR;
     h.cohorts = [cohort(slotMs)];
-    h.rows = minuteRowsFor(slotMs, 2880, Date.now());
+    // A worst case: every minute has a full point, every 15-minute point changes zone, and one cohort has three days of P&L rows.
+    // Lines with two digits and a decimal, the futures moving, and damage on a side in most minutes: the longest point the block makes.
+    h.rows = minuteRowsFor(slotMs, 2880, now).map((r, i) => ({ ...r, fut_price: 100_000 * (1 + 0.004 * Math.sin(i / 25)), call_mid: 100 + (i % 11) * 0.3 }));
+    h.full = {
+      readings: Array.from({ length: 192 }, (_, i) => ({
+        t: now - (191 - i) * 15 * MIN, zone: i % 2 ? 'caution' : 'avoid', verdict: 'WAIT', confidence: 55.5, rawZone: 'caution', gateBlocked: false,
+        vetoes: [], why: ['Spread too wide on the put leg to sell it safely'], flips: null, heavyLeg: null, parts: null,
+      })),
+      pnlRows: Array.from({ length: 288 }, (_, i) => {
+        const leg = { net_pnl: -123.45678901234567, delta: 0.123456789, gamma: 0.000123456, theta: -4.12345678, vega: 3.12345678 };
+        return { grid_ms: now - (287 - i) * 15 * MIN, sampled_ms: now - (287 - i) * 15 * MIN, fut_price: 100_000 + i, data_ok: true, call: leg, put: leg, fut_long_pnl: 123.45678901234567, fut_short_pnl: -123.45678901234567 };
+      }),
+    };
     const body = await pulseScore(slot);
     expect(body.minute!.length).toBeGreaterThan(2800);
-    expect(JSON.stringify(body.minute).length).toBeLessThan(400_000);
+    expect(body.minute!.at(-1)!.r).not.toBeNull();
+    expect(body.points.length).toBe(192);
+    expect(body.pnl.length).toBe(288);
+    const size = JSON.stringify(body).length;
+    console.log(`[score] whole body ${size} bytes, minute ${JSON.stringify(body.minute).length} bytes`);
+    expect(size).toBeLessThan(400_000);
+  });
+
+  it('sends trigger only on the points where it is on', async () => {
+    process.env.PULSE_MINUTE_LANE = 'true';
+    const now = Date.now();
+    const slotMs = now - 3 * HOUR;
+    h.cohorts = [cohort(slotMs)];
+    h.rows = minuteRowsFor(slotMs, 20, now).map((r, i) => ({ ...r, fut_price: 100_000, put_mid: 100, call_mid: i >= 17 ? 120 : 100 }));
+    const body = await pulseScore(slot);
+    expect(body.minute!.at(-1)!.trigger).toBe(true);
+    expect(body.minute![0]).not.toHaveProperty('trigger');
+  });
+
+  it('passes the held zone to the minute block, so a held avoid never shows safer', async () => {
+    process.env.PULSE_MINUTE_LANE = 'true';
+    const now = Date.now();
+    const slotMs = now - 3 * HOUR;
+    h.cohorts = [cohort(slotMs)];
+    h.rows = minuteRowsFor(slotMs, 20, now);
+    h.full = {
+      readings: [{ t: now - 25 * MIN, zone: 'avoid', verdict: 'AVOID', confidence: 90, rawZone: 'avoid', gateBlocked: false, vetoes: ['killer'], why: [], flips: null, heavyLeg: null, parts: null }],
+      pnlRows: [],
+    };
+    const body = await pulseScore(slot);
+    expect(body.minute!.length).toBe(20);
+    expect(body.minute!.every((m) => m.z === 'avoid')).toBe(true);
   });
 });

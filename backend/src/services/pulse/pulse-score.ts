@@ -4,7 +4,7 @@ import { termInverted } from '../../lib/pulse/metrics/market.js';
 import { pulseMomentum } from '../../lib/pulse/metrics/momentum.js';
 import { metricSeries, winnerAtAge } from '../../lib/pulse/metrics/series.js';
 import { breakevens, winnerPersistence } from '../../lib/pulse/metrics/tape.js';
-import { linesAt, readings, type CohortSteps, type LiveContext } from '../../lib/pulse/score/score.js';
+import { linesAt, readings, type CohortSteps, type LiveContext, type Zone } from '../../lib/pulse/score/score.js';
 import type { PulseView } from '../../lib/algo/conditions.js';
 import { minuteReadings, type MinutePoint } from '../../lib/pulse/score/minute.js';
 import type { Entry } from '../../lib/pulse/metrics/damage.js';
@@ -15,12 +15,14 @@ const speedsOf = (s: ReturnType<typeof metricSeries>[number] | undefined) => s &
 const nextSlotMs = (nowMs: number) => cohortSlotMs(nowMs) + HOUR_MS;
 
 const round1 = (x: number | null): number | null => (x === null ? null : Math.round(x * 10) / 10);
+type WireMinutePoint = Omit<MinutePoint, 'trigger'> & { trigger?: boolean };
 
 /**
  * Minute readings for the panel, or null with the flag off or on any failure (the rest of the score must survive).
  * Display only: pulseNow never reads this, so the algo stays on the 15-minute Risk.
+ * `trigger` is sent only when true: it is false on nearly every point, and leaving it out keeps a full 48 hours under 400 KB.
  */
-async function minuteBlock(slot: Slot, nowMs: number, recent: readonly { slot_ms: number; call_bid: number | null; put_bid: number | null }[], points: readonly { t: number; c: number | null; call: number | null; put: number | null }[]): Promise<MinutePoint[] | null> {
+async function minuteBlock(slot: Slot, nowMs: number, recent: readonly { slot_ms: number; call_bid: number | null; put_bid: number | null }[], points: readonly { t: number; c: number | null; z: Zone; call: number | null; put: number | null }[]): Promise<WireMinutePoint[] | null> {
   if (process.env.PULSE_MINUTE_LANE !== 'true') return null;
   try {
     const entries = new Map<number, Entry>();
@@ -28,10 +30,10 @@ async function minuteBlock(slot: Slot, nowMs: number, recent: readonly { slot_ms
     const since = nowMs - SCORE_CONFIG.historyHours * HOUR_MS;
     // 60 extra minutes of rows give the first returned minutes their futures window.
     const rows = await minuteRows(slot, since - 60 * 60_000);
-    const base = points.flatMap((p) => (p.c === null ? [] : [{ t: p.t, c: p.c, call: p.call, put: p.put }]));
+    const base = points.flatMap((p) => (p.c === null ? [] : [{ t: p.t, c: p.c, z: p.z, call: p.call, put: p.put }]));
     return minuteReadings(rows, entries, base)
       .filter((m) => m.t >= since)
-      .map((m) => ({ ...m, r: round1(m.r), call: round1(m.call), put: round1(m.put), fl: round1(m.fl), fs: round1(m.fs) }));
+      .map(({ trigger, ...m }) => ({ ...m, r: round1(m.r), call: round1(m.call), put: round1(m.put), fl: round1(m.fl), fs: round1(m.fs), ...(trigger ? { trigger } : {}) }));
   } catch (e) {
     console.error('[pulse] minute block failed', e);
     return null;

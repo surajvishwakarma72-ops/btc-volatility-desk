@@ -1,14 +1,14 @@
 /** Strangle Pulse minute readings: one Risk, zone and lines point per minute from saved minute rows and the 15-minute points. Pure. */
 import { DAMAGE_CONFIG, SCORE_CONFIG } from '../config.js';
-import { damageAt, triggerStep, type Entry, type MinuteRow, type SideDamage, type TriggerState } from '../metrics/damage.js';
+import { damageAtIndexed, indexMinuteRows, triggerStep, type Entry, type MinuteRow, type SideDamage, type TriggerState } from '../metrics/damage.js';
 import { lin, type Zone } from './score.js';
 
 type N = number | null;
 const MIN_MS = 60_000;
 const HOLD_MS = 30 * MIN_MS;
 
-/** One 15-minute point: c is confidence (Risk = 100 - c); call and put are the held risk lines. */
-export interface BasePoint { t: number; c: number; call: N; put: N }
+/** One 15-minute point: c is confidence (Risk = 100 - c), z its zone; call and put are the held risk lines. */
+export interface BasePoint { t: number; c: number; z: Zone; call: N; put: N }
 export interface MinutePoint {
   t: number;
   r: N;
@@ -30,17 +30,17 @@ function rawZone(r: number): Zone {
   return r <= 100 - z.sellMin ? 'sell' : r <= 100 - z.cautionMin ? 'caution' : 'avoid';
 }
 
-/** Signed move over the futures window: the row nearest that far back, within one minute. Null when none. */
-function futuresLines(t: number, price: N, byT: ReadonlyMap<number, N>): { fl: N; fs: N } {
-  if (!ok(price)) return { fl: null, fs: null };
-  const target = t - DAMAGE_CONFIG.futuresWindowMin * MIN_MS;
-  let past: N = null;
-  let best = Infinity;
-  for (const [rt, p] of byT) {
-    const d = Math.abs(rt - target);
-    if (d <= MIN_MS && d < best && ok(p) && p > 0) { past = p; best = d; }
-  }
-  if (!ok(past)) return { fl: null, fs: null };
+const SAFEST_FIRST: readonly Zone[] = ['sell', 'caution', 'avoid'];
+
+/** The minute zone, never safer than the held 15-minute zone. A held NO DATA counts as caution, so it can only cap SELL. */
+function clampToHeld(minute: Zone, held: Zone): Zone {
+  const floor = held === 'nodata' ? 'caution' : held;
+  return SAFEST_FIRST.indexOf(floor) > SAFEST_FIRST.indexOf(minute) ? floor : minute;
+}
+
+/** Signed move from a past price: `past` is the row nearest the futures window back, within one minute. Null when none. */
+function futuresLines(price: N, past: N): { fl: N; fs: N } {
+  if (!ok(price) || !ok(past)) return { fl: null, fs: null };
   const move = ((price - past) / past) * 100;
   const score = lin(Math.abs(move), DAMAGE_CONFIG.futuresMap) ?? 0;
   return { fl: move > 0 ? score : 0, fs: move < 0 ? score : 0 };
@@ -59,29 +59,43 @@ export function minuteReadings(rows: readonly MinuteRow[], entries: ReadonlyMap<
     futAt.set(t, priced ? priced.fut_price : null);
   }
   const bases = [...base].sort((a, b) => a.t - b.t);
+  const index = indexMinuteRows(rows);
+  const times = [...byMinute.keys()].sort((a, b) => a - b);
 
   const out: MinutePoint[] = [];
   let trig: TriggerState = { above: 0, below: 0, on: false, side: null };
   let shown: Zone = 'nodata';
   let pending: Zone | null = null;
   let streak = 0;
+  // Both only move forward, because the minutes are walked oldest first.
+  let baseAt = -1;
+  let futFrom = 0;
 
-  for (const t of [...byMinute.keys()].sort((a, b) => a - b)) {
+  for (const t of times) {
     const group = [...byMinute.get(t)!].sort((a, b) => b.cohort_id - a.cohort_id);
     let dmg: SideDamage | null = null;
     for (const r of group) {
       const e = entries.get(r.cohort_id);
       if (!e) continue;
-      dmg = damageAt(r, rows, e);
+      dmg = damageAtIndexed(r, index, e);
       if (dmg) break;
     }
     trig = triggerStep(trig, dmg);
 
-    let held: BasePoint | null = null;
-    for (const b of bases) { if (b.t <= t) held = b; else break; }
+    while (baseAt + 1 < bases.length && bases[baseAt + 1]!.t <= t) baseAt++;
+    let held: BasePoint | null = baseAt >= 0 ? bases[baseAt]! : null;
     if (held && t - held.t > HOLD_MS) held = null;
 
-    const { fl, fs } = futuresLines(t, futAt.get(t) ?? null, futAt);
+    const target = t - DAMAGE_CONFIG.futuresWindowMin * MIN_MS;
+    while (times[futFrom]! < target - MIN_MS) futFrom++;
+    let pastPrice: N = null;
+    let nearest = Infinity;
+    for (let i = futFrom; i < times.length && times[i]! <= target + MIN_MS; i++) {
+      const p = futAt.get(times[i]!);
+      const d = Math.abs(times[i]! - target);
+      if (d < nearest && ok(p) && p > 0) { pastPrice = p; nearest = d; }
+    }
+    const { fl, fs } = futuresLines(futAt.get(t) ?? null, pastPrice);
     const cs = dmg?.call?.score ?? null;
     const ps = dmg?.put?.score ?? null;
     const sides = [cs, ps].filter(ok);
@@ -110,7 +124,7 @@ export function minuteReadings(rows: readonly MinuteRow[], entries: ReadonlyMap<
     }
     // No damage reading: never show SELL, even while a held zone change is pending.
     if (worse === null && shown === 'sell') { shown = 'caution'; pending = null; streak = 0; }
-    out.push({ t, r: round1(r), z: shown, call: mix(cs, held.call), put: mix(ps, held.put), fl, fs, hurt, trigger: trig.on });
+    out.push({ t, r: round1(r), z: clampToHeld(shown, held.z), call: mix(cs, held.call), put: mix(ps, held.put), fl, fs, hurt, trigger: trig.on });
   }
   return out;
 }

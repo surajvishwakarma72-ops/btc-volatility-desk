@@ -33,14 +33,7 @@ function sideDamage(mid: N, mid5: N, entry: number, movePct: number): Side | nul
   return { premiumUpPct, ratio, score: lin(ratio, DAMAGE_CONFIG.map) };
 }
 
-/** Damage over the last windowMin minutes, or null when no good same-cohort row sits that far back (one minute tolerance). */
-export function damageAt(now: MinuteRow, rows: readonly MinuteRow[], entry: Entry): SideDamage | null {
-  const target = now.t - DAMAGE_CONFIG.windowMin * MIN_MS;
-  let past: MinuteRow | null = null;
-  for (const r of rows) {
-    if (r.cohort_id !== now.cohort_id || !r.data_ok || Math.abs(r.t - target) > MIN_MS) continue;
-    if (!past || Math.abs(r.t - target) < Math.abs(past.t - target)) past = r;
-  }
+function damageFrom(now: MinuteRow, past: MinuteRow | null, entry: Entry): SideDamage | null {
   if (!past || !now.data_ok) return null;
   if (!ok(now.fut_price) || !ok(past.fut_price) || past.fut_price <= 0) return null;
   const movePct = ((now.fut_price - past.fut_price) / past.fut_price) * 100;
@@ -49,6 +42,53 @@ export function damageAt(now: MinuteRow, rows: readonly MinuteRow[], entry: Entr
     put: sideDamage(now.put_mid, past.put_mid, entry.put, movePct),
     movePct,
   };
+}
+
+/** Damage over the last windowMin minutes, or null when no good same-cohort row sits that far back (one minute tolerance). */
+export function damageAt(now: MinuteRow, rows: readonly MinuteRow[], entry: Entry): SideDamage | null {
+  const target = now.t - DAMAGE_CONFIG.windowMin * MIN_MS;
+  let past: MinuteRow | null = null;
+  for (const r of rows) {
+    if (r.cohort_id !== now.cohort_id || !r.data_ok || Math.abs(r.t - target) > MIN_MS) continue;
+    if (!past || Math.abs(r.t - target) < Math.abs(past.t - target)) past = r;
+  }
+  return damageFrom(now, past, entry);
+}
+
+interface IndexedRow { row: MinuteRow; at: number }
+/** Good rows by cohort, oldest first. `at` is the position in the input, which settles a tie the way damageAt's scan does. */
+export type MinuteIndex = ReadonlyMap<number, readonly IndexedRow[]>;
+
+export function indexMinuteRows(rows: readonly MinuteRow[]): MinuteIndex {
+  const byCohort = new Map<number, IndexedRow[]>();
+  rows.forEach((row, at) => {
+    if (!row.data_ok) return;
+    const list = byCohort.get(row.cohort_id);
+    if (list) list.push({ row, at }); else byCohort.set(row.cohort_id, [{ row, at }]);
+  });
+  for (const list of byCohort.values()) list.sort((a, b) => a.row.t - b.row.t || a.at - b.at);
+  return byCohort;
+}
+
+/** The same answer as damageAt, found by a search of the cohort's rows instead of a scan of every row. */
+export function damageAtIndexed(now: MinuteRow, index: MinuteIndex, entry: Entry): SideDamage | null {
+  const list = index.get(now.cohort_id);
+  if (!list) return null;
+  const target = now.t - DAMAGE_CONFIG.windowMin * MIN_MS;
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid]!.row.t < target - MIN_MS) lo = mid + 1; else hi = mid;
+  }
+  let past: IndexedRow | null = null;
+  for (let i = lo; i < list.length && list[i]!.row.t <= target + MIN_MS; i++) {
+    const c = list[i]!;
+    const d = Math.abs(c.row.t - target);
+    const best = past ? Math.abs(past.row.t - target) : Infinity;
+    if (d < best || (d === best && c.at < past!.at)) past = c;
+  }
+  return damageFrom(now, past?.row ?? null, entry);
 }
 
 /** The side at full score with premium up enough, or null. When both qualify the larger ratio wins. */
