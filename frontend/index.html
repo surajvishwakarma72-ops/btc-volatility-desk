@@ -47777,9 +47777,9 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
         W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
-          const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
-          /* a give-back that overflows again would repeat for ever and make the chart pulse, so the height stays put until the window or the lanes change */
-          if (over > 0 && over < 240 && (fit.adj || 0) < 240) { if (Date.now() - (fit.back || 0) < 3000) fit.lock = fit.key; fit.adj = Math.min(240, (fit.adj || 0) + over); fit(); } else if (over <= 0 && gap > 2 && (fit.adj || 0) > 0 && fit.lock !== fit.key) { fit.back = Date.now(); fit.adj = Math.max(0, (fit.adj || 0) - gap); fit(); }
+          /* v144.2: judge the chart's own bottom edge, not the whole page. Panels below the chart made the page taller, which squeezed the chart up to 240 px and, as it gave the room back, made it pulse */
+          const over = cp.getBoundingClientRect().bottom + 20 - innerHeight;
+          if (Math.abs(over) > 2 && (over > 0 ? (fit.adj || 0) < 240 : (fit.adj || 0) > 0)) { fit.adj = Math.max(0, Math.min(240, (fit.adj || 0) + over)); fit(); }
         }, 700);
         D.querySelectorAll('#charts .pane.on').forEach(p => { for (const [k, sel] of [['iv', ':scope>.chart-box'], ['rv', ':scope>.rv-box'], ['vov', ':scope>.vov-box'], ['dv', ':scope>.dv-box']]) { const el = p.querySelector(sel); if (!el) continue; if (on[k]) { set(el, 'height', each + 'px'); set(el, 'min-height', each + 'px'); } } });
       }
