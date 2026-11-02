@@ -14,7 +14,7 @@ export const COMPONENT_LABEL: Record<Component, string> = {
 
 const ok = (x: N | undefined): x is number => x !== null && x !== undefined && Number.isFinite(x);
 /** Linear map: `bad` scores 0, `good` scores 100, clamped. Works in both directions. */
-const lin = (x: N | undefined, [bad, good]: readonly [number, number]): N => (ok(x) ? Math.max(0, Math.min(100, ((x - bad) / (good - bad)) * 100)) : null);
+export const lin = (x: N | undefined, [bad, good]: readonly [number, number]): N => (ok(x) ? Math.max(0, Math.min(100, ((x - bad) / (good - bad)) * 100)) : null);
 const avg = (xs: readonly N[]): N => {
   const v = xs.filter(ok);
   return v.length === 0 ? null : v.reduce((a, b) => a + b, 0) / v.length;
