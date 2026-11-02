@@ -19750,6 +19750,49 @@ Timers under 0.5 s and one-shot timers are untouched. */
       } catch (e) { }
     })();
   </script>
+  <script data-module="perfmeter">
+    /* Dev-only load meter. Sits right after the v105.15 one-beat wrapper so it sees the real caller of each setInterval. Off unless localStorage.perf_meter === '1'; when off it changes nothing.
+       In the console: perfMeter.reset() on a page, wait, then copy(JSON.stringify(perfMeter.report())).
+       report(): main-thread long-task time per minute, live intervals, and the 15 interval call sites costing the most. */
+    (function perfMeter() {
+      'use strict';
+      let on = false; try { on = localStorage.getItem('perf_meter') === '1'; } catch (e) { }
+      if (!on) return;
+      const W = window, si = W.setInterval, ci = W.clearInterval, sites = new Map(), live = new Set();
+      let t0 = performance.now(), busy = 0;
+      const where = () => {
+        const st = (new Error().stack || '').split('\n').slice(1).filter(l => !/\bwhere\b|\btrack\b|W\.setInterval|window\.setInterval|at Object\.on |at on /.test(l));
+        return (st[0] || '?').trim().replace(/^at\s+/, '').replace(/https?:\/\/[^/]+\//, '');
+      };
+      W.setInterval = function (fn, ms, ...a) {
+        if (typeof fn !== 'function') return si.call(W, fn, ms, ...a);
+        const k = where() + ' @' + (ms | 0), r = sites.get(k) || sites.set(k, { site: k, fires: 0, ms: 0 }).get(k);
+        const id = si.call(W, function () { const s = performance.now(); try { return fn.apply(this, arguments); } finally { r.fires++; r.ms += performance.now() - s; } }, ms, ...a);
+        live.add(id); return id;
+      };
+      W.clearInterval = function (id) { live.delete(id); return ci.call(W, id); };
+      // desk80 subscribers, timed by where they subscribed (the bus asks for this when the meter is on)
+      const subs = new Map();
+      const track = (fn, ev) => {
+        const k = 'bus:' + ev + ' ' + where(), r = subs.get(k) || subs.set(k, { site: k, fires: 0, ms: 0 }).get(k);
+        return function () { const s = performance.now(); try { return fn.apply(this, arguments); } finally { r.fires++; r.ms += performance.now() - s; } };
+      };
+      try { new PerformanceObserver(l => { for (const e of l.getEntries()) busy += e.duration; }).observe({ type: 'longtask', buffered: true }); } catch (e) { }
+      W.perfMeter = {
+        track,
+        reset() { t0 = performance.now(); busy = 0; for (const r of [...sites.values(), ...subs.values()]) { r.fires = 0; r.ms = 0; } },
+        report() {
+          const min = Math.max((performance.now() - t0) / 60000, 1 / 60);
+          return {
+            page: document.body && document.body.dataset.page, minutes: +min.toFixed(2), busyMsPerMin: Math.round(busy / min), liveIntervals: live.size,
+            intervalMsPerMin: Math.round([...sites.values()].reduce((s, r) => s + r.ms, 0) / min),
+            top: [...sites.values()].sort((a, b) => b.ms - a.ms).slice(0, 15).map(r => ({ site: r.site, fires: r.fires, ms: Math.round(r.ms) })),
+            bus: [...subs.values()].filter(r => r.fires).sort((a, b) => b.ms - a.ms).slice(0, 25).map(r => ({ site: r.site, fires: r.fires, ms: Math.round(r.ms) })),
+          };
+        },
+      };
+    })();
+  </script>
   <script>/* v105.14 · phone scroll guard. On a phone, the browser's address bar slides in and out while
 you scroll, which fires a real window "resize" with the same width. Every chart on the desk listened
 to that and re-laid itself out mid-scroll — the main cause of the stutter. Swallow those (same width,
@@ -19778,12 +19821,33 @@ modules and the shell subscribe instead of running their own intervals.
 events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv {i} · life · events · flow · signal */
     (function bus() {
       'use strict';
-      const H = new Map();
+      const H = new Map(), WR = new WeakMap();   // WR: subscriber -> its timed wrapper while the dev meter is on
       const bus = {
-        on(e, f) { (H.get(e) || H.set(e, new Set()).get(e)).add(f); return () => H.get(e)?.delete(f); },
-        off(e, f) { H.get(e)?.delete(f); },
+        on(e, f) { const g = window.perfMeter ? WR.get(f) || WR.set(f, window.perfMeter.track(f, e)).get(f) : f; (H.get(e) || H.set(e, new Set()).get(e)).add(g); return () => H.get(e)?.delete(g); },
+        off(e, f) { H.get(e)?.delete(WR.get(f) || f); },
         emit(e, d) { const s = H.get(e); if (!s) return; for (const f of s) { try { f(d); } catch (x) { console.warn('desk80', e, x); } } },
-        count(e) { return H.get(e)?.size || 0; }
+        count(e) { return H.get(e)?.size || 0; },
+        /* every(ms, fn, {page, whenHidden}): periodic work on the one 1-second tick. Runs when ms has passed, the tab is
+           visible (unless whenHidden) and, if page is given, that page (or one of a list) is open; runs once straight away
+           when its page opens again. Returns an unsubscribe. Errors are logged, never swallowed. */
+        /* onOpenPage(el): el exists and sits on the open page (or on no page). Reads no layout, so it is safe in a timer. */
+        onOpenPage(el) { if (!el || !el.isConnected) return false; const pg = el.closest && el.closest('section.page'); return !pg || pg.classList.contains('on'); },
+        every(ms, fn, opt) {
+          const o = opt || {}, pages = o.page == null ? null : [].concat(o.page);
+          let last = 0, wasOn = false;
+          const run = now => { last = now; try { fn(now); } catch (x) { console.warn('desk80.every', x); } };
+          const onTick = d => {
+            const now = (d && d.now) || Date.now();
+            const pageOn = !pages || pages.includes(document.body && document.body.dataset.page);
+            const ok = pageOn && (o.whenHidden || !document.hidden);
+            if (!ok) { wasOn = false; return; }
+            if (!wasOn) { wasOn = true; if (pages && last) { run(now); return; } }
+            if (now - last >= ms - 50) run(now);
+          };
+          const onPage = () => onTick({ now: Date.now() });
+          bus.on('tick', onTick); bus.on('page', onPage);
+          return () => { bus.off('tick', onTick); bus.off('page', onPage); };
+        },
       };
       window.desk80 = bus;
       let lastTf = null, lastSpot = null, lastTheme = null, ivLen = [0, 0, 0];
@@ -25988,8 +26052,9 @@ The floating P&L pill still shows the live P&L on top of everything. */
         if (typeof chartsReady === 'undefined' || !chartsReady) return; clearInterval(wait);
         for (const p of panes) try { paint(p.i); } catch (e) { console.warn('vov', e); }
         // the RV panel can add or drop bar times on the IV chart on its own clock; follow it
+        const deskOpen = () => document.body.dataset.page === 'pgDesk' || !document.body.dataset.page;   // perf: the IV charts live on the Desk
         setInterval(() => {
-          if (document.hidden) return;
+          if (document.hidden || !deskOpen()) return;
           for (const p of panes) {
             try {
               if (!p.vovChart) { paint(p.i); continue; }
@@ -26001,7 +26066,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
         }, 1000);
         // follow a change of bars at once; and while this panel is being moved, and just after, keep the IV chart within a frame or two of it
         setInterval(() => {
-          if (document.hidden) return;
+          if (document.hidden || !deskOpen()) return;
           for (const p of panes) {
             const st = S[p.i]; if (!p.vovChart) continue;
             try {
@@ -27492,7 +27557,8 @@ Signs follow Settings → Dealer positioning.`;
         const { box, rail, btn } = st, w = psW(c);
         if (!w || !box.clientWidth) { rail.style.display = 'none'; btn.classList.remove('on'); return; }
         const left = box.offsetLeft + box.clientWidth - w, top = box.offsetTop, h = box.clientHeight - tsH(c);
-        rail.style.display = ''; rail.style.left = left + 'px'; rail.style.top = top + 'px'; rail.style.height = Math.max(0, h) + 'px';
+        const sl = left + 'px', stp = top + 'px', sh = Math.max(0, h) + 'px';   // perf: write only what changed
+        if (rail.style.display) rail.style.display = ''; if (rail.style.left !== sl) rail.style.left = sl; if (rail.style.top !== stp) rail.style.top = stp; if (rail.style.height !== sh) rail.style.height = sh;
         const on = manual(c); btn.classList.toggle('on', on);
         if (on) {
           const bw = btn.offsetWidth || 44;
@@ -27501,7 +27567,7 @@ Signs follow Settings → Dealer positioning.`;
         }
       }
 
-      function sweep() { for (const { c, box } of list()) { try { hook(c, box); place(c); } catch (e) { } } }
+      function sweep() { const B = window.desk80; for (const { c, box } of list()) { if (B && B.onOpenPage && !B.onOpenPage(box)) continue; try { hook(c, box); place(c); } catch (e) { } } }   // perf: charts on hidden pages are skipped
       function start() {
         sweep(); setInterval(sweep, 1500); addEventListener('resize', () => requestAnimationFrame(sweep));
         // Fit all resets the price scale as well as time
@@ -28103,7 +28169,7 @@ Signs follow Settings → Dealer positioning.`;
           if (x && x.ok) { h = `<b>${fx(x.r)}</b>`; cls = 's' + x.st; } else h = '<b>—</b>';
         }
         if (S.tag.__h !== h) { S.tag.innerHTML = BARS + h; S.tag.__h = h; }
-        S.tag.className = 'imp-tag ' + cls;
+        if (S.tag.className !== 'imp-tag ' + cls) S.tag.className = 'imp-tag ' + cls;   // perf: write only a change
       }
 
       /* ---------- loop ---------- */
@@ -31775,7 +31841,7 @@ Signs follow Settings → Dealer positioning.`;
         for (const p of panes) {
           try {
             if (!p.chart || !p.vovChart) continue; watchVov(p.i); const b = $('vovBox' + p.i);
-            if (!b || b.offsetParent === null || !b.clientHeight || vovDown[p.i] || Date.now() - vovTouch[p.i] < 2500) continue;
+            if (!b || (window.desk80 && desk80.onOpenPage && !desk80.onOpenPage(b)) || b.offsetParent === null || !b.clientHeight || vovDown[p.i] || Date.now() - vovTouch[p.i] < 2500) continue;
             alignTo(p.chart, p.vovChart, null);
           } catch (e) { }
         }
@@ -32745,6 +32811,7 @@ layer + v63/v64 dock fight. No layout polling: moves happen on navigation.
         const _ms = $('moreSheet'); if (_ms) { _ms.hidden = true; _ms.style.display = 'none'; }
         slotMoves(p);
         document.body.dataset.page = p;
+        try { window.desk80 && window.desk80.emit('page', { page: p }); } catch (e) { }
         kick();
         try { window.scrollTo({ top: 0 }); } catch (e) { }
       }
@@ -33966,7 +34033,13 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
       }
       function render(force) {
         if (!DOC) return; const now = Date.now(); if (!force && now - S.lastRender < 500) return; S.lastRender = now;   // ≤ 2 DOM passes per second
-        if (DOC.hidden) return; let st; try { st = state(); } catch (e) { console.warn('orderflow state', e); return; }
+        if (DOC.hidden) return;
+        // perf: skip while none of the three panels sits on the open page. closest('.page') reads no layout; the
+        // offsetParent test in visible() forces one, and running it every second on every page was the real cost.
+        const onPage = id => { const e = $(id), pg = e && e.closest('.page'); return !!e && (!pg || pg.classList.contains('on')); };
+        if (!['ofTherm', 'flowTape', 'posPanel'].some(onPage)) { S.dirty = true; return; }
+        if (!['ofTherm', 'flowTape', 'posPanel'].some(id => visible($(id)))) { S.dirty = true; return; }
+        let st; try { st = state(); } catch (e) { console.warn('orderflow state', e); return; }
 
         try { renderTherm(st); } catch (e) { } try { renderTape(st); } catch (e) { } try { renderPos(st); } catch (e) { } S.dirty = false;
       }
@@ -34485,7 +34558,12 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
       }
       function sweep() {
         const R = window.__lwcReg; if (!R) return; for (const e of R.charts) { const id = e.el && e.el.id; if (!id || !ELIG.test(id) || !e.el.isConnected) continue; try { inst(e); } catch (x) { } }
-        for (const id in I) { const o = I[id]; if (o.e.el.isConnected && ((DB[id] && DB[id].length) || o.on)) sched(o); else if (o.btn) o.btn.hidden = o.e.el.offsetParent === null; }
+        const B = window.desk80;
+        for (const id in I) {
+          const o = I[id]; if (B && B.onOpenPage && !B.onOpenPage(o.e.el)) continue;   // perf: hidden page, nothing to show or move
+          if (o.e.el.isConnected && ((DB[id] && DB[id].length) || o.on)) sched(o);
+          else if (o.btn) { const h = o.e.el.offsetParent === null; if (o.btn.hidden !== h) o.btn.hidden = h; }   // perf: write only a change
+        }
       }
       setInterval(sweep, 1000); setTimeout(sweep, 1500); addEventListener('resize', () => { for (const id in I) sched(I[id]); });
       document.addEventListener('keydown', ev => { if (ev.key !== 'Delete' && ev.key !== 'Backspace') return; if (/input|select|textarea/i.test(ev.target.tagName)) return; for (const id in I) { const o = I[id]; if (o.on && o.sel) { DB[id] = list(o).filter(x => x.id !== o.sel); o.sel = null; save(); sched(o); } } });
@@ -40980,14 +41058,16 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         if (window.__v128NoAvg) return ''; const B = BAND[k]; if (!B || !fin(B.hi)) return `<span class="dim">usual day: needs 5 full weekdays</span>`; const f = k === 'edge' ? (v => sg(v)) : (v => v.toFixed(2) + '×');
         return `<span class="dim">usual weekday ${f(B.lo)} → ${f(B.hi)} (avg low / high, ${B.n} days)</span>`;
       }
+      // perf: rewrite a legend only when its text changes (it was rewritten every second, even with the Desk hidden)
+      const setLegH = (el, h) => { if (el.__legH !== h) { el.__legH = h; el.innerHTML = h; } };
       function legend(k) {
         const P = PANES[k]; if (!P.leg) return; const Dd = P.data;
-        if (!Dd) { P.leg.innerHTML = `<b>${P.name.toUpperCase()}</b><span class="dim">waiting for BTC candles…</span>`; return; }
+        if (!Dd) { setLegH(P.leg, `<b>${P.name.toUpperCase()}</b><span class="dim">waiting for BTC candles…</span>`); return; }
         const R = Dd.R; let i = R.n - 1; if (P.hoverT != null && Dd.idx.has(P.hoverT)) i = Dd.idx.get(P.hoverT);
         let v = Dd.cl[i]; if (!fin(v) && P.hoverT == null) { for (let j = R.n - 1; j >= 0 && j >= R.n - 6; j--)if (fin(Dd.cl[j])) { v = Dd.cl[j]; i = j; break; } }
-        if (!fin(v)) { P.leg.innerHTML = `<b>${P.name.toUpperCase()}</b><span class="dim">${(() => { const L5 = fiveBars(); if (!L5 || L5.bars.size < 300) return 'loading BTC 5-minute history from Delta…'; return k === 'edge' ? 'waiting for recorded IV of ' + SLOT_NAME[slot()] + ' (backfill loading)' : 'waiting for DVOL history'; })()}</span>`; return; }
+        if (!fin(v)) { setLegH(P.leg, `<b>${P.name.toUpperCase()}</b><span class="dim">${(() => { const L5 = fiveBars(); if (!L5 || L5.bars.size < 300) return 'loading BTC 5-minute history from Delta…'; return k === 'edge' ? 'waiting for recorded IV of ' + SLOT_NAME[slot()] + ' (backfill loading)' : 'waiting for DVOL history'; })()}</span>`); return; }
         let pv = null; for (let j = i - 1; j >= 0 && j >= i - 4; j--)if (fin(Dd.cl[j])) { pv = Dd.cl[j]; break; }
-        P.leg.innerHTML = P.legend(v, pv == null || v >= pv, i === R.n - 1) + bandTxt(k);
+        setLegH(P.leg, P.legend(v, pv == null || v >= pv, i === R.n - 1) + bandTxt(k));
       }
 
       function svg(k) {
@@ -46650,7 +46730,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       }
       /* ---------- show / hide ---------- */
       function apply(force) {
-        D.body.dataset.v127 = '1'; D.body.dataset.gpane = 'none'; let ch = false;
+        // perf: write the body attributes only when they differ; every write restyles the whole page
+        if (D.body.dataset.v127 !== '1') D.body.dataset.v127 = '1'; if (D.body.dataset.gpane !== 'none') D.body.dataset.gpane = 'none'; let ch = false;
         const shown = Object.keys(IND).filter(k => on[k] && IND[k]()), n = shown.length, h = n <= 1 ? 190 : n === 2 ? 150 : n === 3 ? 120 : 100;
         for (const k in IND) {
           const el = IND[k](); if (!el) continue; const off = !on[k]; if (el.classList.contains('v127-off') !== off) { el.classList.toggle('v127-off', off); ch = true; }
@@ -47792,7 +47873,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const ev = $('pgEvents'); let nw = $('v133News'); if (ev && !nw) { nw = D.createElement('section'); nw.id = 'v133News'; nw.innerHTML = '<h3>NEWS &amp; EVENTS</h3>'; dp.appendChild(nw); }
         if (ev && nw && ev.parentElement !== nw) { ev.classList.add('on'); nw.appendChild(ev); }
         for (const b of D.querySelectorAll('#nav [data-page="pgEvents"],#tabbar [data-page="pgEvents"],#moreSheet [data-page="pgEvents"]')) b.style.display = 'none';
-        const rail = $('v89Rail'), vr = $('volRow'); if (rail && vr && rail.previousElementSibling !== vr) { rail.classList.add('v133-moved'); vr.after(rail); }
+        // perf: the rail is no longer moved after the vol row. arrange() (v111, the owner's order: Tonight first) put it back
+        // before the next paint every time, so it never showed there, and the tug of war re-appended every Desk section
+        // (charts included) every 3 s, on every page. The class stays for its styling.
+        const rail = $('v89Rail'); if (rail && !rail.classList.contains('v133-moved')) rail.classList.add('v133-moved');
       }
       /* ---------- P&L from Delta (live) ---------- */
       const P = { rows: null, at: 0, err: null, busy: false, range: '365', failed: 0 };
@@ -62025,7 +62109,7 @@ document.addEventListener('click', function(e) {
     const a = S.acct, v = a && a.view, ac = a && a.account;
     $('ppHead').innerHTML = !ac ? '' : [
       ['Equity', v ? usd(v.equity) : '-', ''], ['Available', v ? usd(v.available) : '-', v && v.available < 0 ? 'warn' : ''], ['Margin used', v ? usd(v.margin) : '-', ''],
-    ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ');
+    ].map(([k, val, c]) => '<span class="pp-chip ' + c + '">' + k + ' <b>' + esc(val) + '</b></span>').join(' ') + (S.part ? staleNote() : '');
     const mm = (a && a.marginMode) || 'portfolio';
     $('ppBtns').innerHTML = tok() ? '<span class="pp-seg" title="Portfolio margin nets hedged option legs together (condors and spreads need little margin). Standard margin charges every short option on its own."><button type="button" data-pp-mode="portfolio" class="' + (mm === 'portfolio' ? 'on' : '') + '">Portfolio margin</button><button type="button" data-pp-mode="standard" class="' + (mm === 'standard' ? 'on' : '') + '">Standard margin</button></span> <button type="button" class="pp-btn" data-pp-act="reset">Reset account</button>' : '';
   }
@@ -62036,9 +62120,13 @@ document.addEventListener('click', function(e) {
     const P = S.pnl; if (!P || !tok()) { el.innerHTML = ''; return; }
     // options: the same net figure the strategy cards show (fees included); falls back to the positions' unrealised PnL
     const strat = S.strat.open, optNet = strat.length && strat.every(x => x.netPnl != null) ? strat.reduce((t, x) => t + x.netPnl, 0) : P.options.openPnl;
-    const opt = { n: P.options.openCount, v: optNet }, fut = { n: P.futures.openCount, v: P.futures.openPnl }, total = opt.v + fut.v;
-    const box = (title, x, none) => '<div class="pp-card pnl-box"><div class="pnl-h"><span class="pnl-t">' + title + '</span><span class="dim">' + (x.n ? x.n + (title.startsWith('Options') ? (x.n === 1 ? ' open strategy' : ' open strategies') : ' open position') : none) + '</span></div><div class="pnl-big ' + (x.n ? sgn(x.v) : 'dim') + '">' + (x.n ? usd(x.v) : '-') + '</div></div>';
-    el.innerHTML = '<div class="pnl-acct"><span>Current PnL <b class="' + (opt.n + fut.n ? sgn(total) : 'dim') + '">' + (opt.n + fut.n ? usd(total) : '-') + '</b></span><span class="dim">open positions only, closed trades are not included</span></div>' +
+    // futures: net of the fees paid on the open position, like the options figure; null = a mark is missing, never shown as $0
+    const futV = P.futures.openNet !== undefined ? P.futures.openNet : P.futures.openPnl;
+    const opt = { n: P.options.openCount, v: optNet }, fut = { n: P.futures.openCount, v: futV };
+    const known = x => !x.n || (x.v != null && isFinite(x.v)), total = known(opt) && known(fut) ? (opt.n ? opt.v : 0) + (fut.n ? fut.v : 0) : null;
+    const big = x => !x.n ? '-' : known(x) ? usd(x.v) : 'no price';
+    const box = (title, x, none) => '<div class="pp-card pnl-box"><div class="pnl-h"><span class="pnl-t">' + title + '</span><span class="dim">' + (x.n ? x.n + (title.startsWith('Options') ? (x.n === 1 ? ' open strategy' : ' open strategies') : ' open position') : none) + '</span></div><div class="pnl-big ' + (x.n && known(x) ? sgn(x.v) : 'dim') + '">' + big(x) + '</div></div>';
+    el.innerHTML = '<div class="pnl-acct"><span>Current PnL <b class="' + (opt.n + fut.n && total != null ? sgn(total) : 'dim') + '">' + (opt.n + fut.n ? (total != null ? usd(total) : '-') : '-') + '</b></span><span class="dim">open positions only, after fees; closed trades are not included</span></div>' +
       '<div class="pnl-grid">' + box('Options PnL', opt, 'nothing open') + box('Futures PnL', fut, 'nothing open') + '</div>';
   }
   function renderBoard() {
@@ -62307,19 +62395,21 @@ document.addEventListener('click', function(e) {
   }
   function renderFutPrev() {
     const el = $('ppFPrev'); if (!el) return;
-    const t = S.fut, p = t.preview, perp = S.board && S.board.perp;
+    const t = S.fut, p = t.preview, perp = (S.acct && S.acct.perp) || (S.board && S.board.perp);
     const ref = perp ? (t.type === 'limit' && Number(t.price) > 0 ? Number(t.price) : t.side === 'buy' ? perp.ask : perp.bid) : null;
-    const lots = Math.floor(Number(t.lots)) || 0, notional = ref ? ref * lots * 0.001 : null, pm = !S.acct || S.acct.marginMode !== 'standard', lev = pm ? 90.3 : Number(t.lev) || 1;
-    const local = notional ? 'Position value <b>' + usd(notional) + '</b> · ' + (pm ? 'portfolio margin, about value / 90.3 = <b>' : 'margin at ' + lev + 'x = value / leverage = <b>') + usd(notional / lev) + '</b>' : 'Waiting for the live price…';
+    const lots = Math.floor(Number(t.lots)) || 0, notional = ref ? ref * lots * 0.001 : null, pm = !S.acct || S.acct.marginMode !== 'standard', lev = Number(t.lev) || 1;
+    // portfolio margin comes only from the server's preview (stress scenarios); standard margin is value / leverage
+    const local = notional ? 'Position value <b>' + usd(notional) + '</b> · ' + (pm ? (p && p.marginRequired != null ? 'portfolio margin' : 'margin: checking…') : 'margin at ' + lev + 'x = value / leverage = <b>' + usd(notional / lev) + '</b>') : 'Waiting for the live price…';
     if (!p) { el.innerHTML = local; return; }
     if (p.ok === false && p.marginRequired == null) { el.innerHTML = local + '<br><span class="neg">' + esc(p.reason || 'Not possible') + '</span>'; return; }
     el.innerHTML = local + (p.marginRequired == null ? '' : '<br>Estimated margin required <b class="' + (p.availableAfter < 0 ? 'neg' : '') + '">' + usd(Math.max(p.marginRequired, 0)) + '</b> · available after <b>' + usd(p.availableAfter) + '</b>') + (p.avgPrice ? '<br>Fills at about <b>' + px(p.avgPrice, 1) + '</b> · fee <b>' + usd(p.fee) + '</b> · slippage <b>' + usd(p.slippageUsd) + '</b>' : '') + (p.reason ? '<br><span class="neg">' + esc(p.reason) + '</span>' : '') + (p.note ? '<br><span class="dim">' + esc(p.note) + '</span>' : '');
   }
   function renderFut() {
     if (!$('ppFutQ')) return;
-    const b = S.board, t = S.fut;
-    if (b && b.perp) {
-      const p = b.perp, info = b.perpInfo || {};
+    const t = S.fut, a = S.acct, b = S.board;
+    const perpQ = (a && a.perp) || (b && b.perp), perpI = (a && a.perpInfo) || (b && b.perpInfo);
+    if (perpQ) {
+      const p = perpQ, info = perpI || {};
       $('ppFutQ').innerHTML = '<span>Mark <b>' + px(p.mark) + '</b></span><span class="neg">Sell <b>' + px(p.bid) + '</b></span><span class="pos">Buy <b>' + px(p.ask) + '</b></span><span class="dim">Funding ' + (p.funding == null ? '-' : Number(p.funding).toFixed(4) + '%') + '</span><span class="dim">Max ' + (info.maxLeverage || 100) + 'x · taker ' + ((info.takerRate || 0) * 100).toFixed(3) + '% + GST</span>';
       $('ppFLev').max = info.maxLeverage || 100;
     } else $('ppFutQ').innerHTML = '<span class="dim">' + (tok() ? 'Loading the futures quote…' : 'Log in to trade futures.') + '</span>';
@@ -62403,26 +62493,50 @@ document.addEventListener('click', function(e) {
     el.innerHTML = tok() ? dkUi.tabs([{ k: 'over', label: 'Overview', n: n || '' }, { k: 'opt', label: 'Options trade' }, { k: 'fut', label: 'Futures trade' }, { k: 'hist', label: 'History & account' }], S.tab, 'data-pp-tab', dkUi.help(S.help, 'data-pp-help')) : '';
     root.querySelectorAll('.dk-pane').forEach(p => p.classList.toggle('on', !tok() || p.dataset.pane === S.tab));
   }
-  function setTab(k) { S.tab = k; dkUi.set('pp_tab', k); ppNav(); try { window.scrollTo({ top: 0 }); } catch (e) { } if (k === 'opt') { try { renderBoard(); updateLegQuotes(); } catch (e) { } } }
+  function setTab(k) { S.tab = k; S.gen = (S.gen || 0) + 1; dkUi.set('pp_tab', k); try { window.scrollTo({ top: 0 }); } catch (e) { } drawAll(); refresh(); }
+  /* Each tab fetches and draws only what it shows. Parts update on their own: one slow or failed call keeps its last value
+     with a "stale" note instead of freezing the whole page. */
+  const NEEDS = { over: ['acct', 'strat'], opt: ['acct', 'board', 'strat'], fut: ['acct'], hist: ['acct', 'strat'] };
+  S.part = { acct: { at: 0, err: null }, board: { at: 0, err: null }, strat: { at: 0, err: null } };
   function drawAll() {
     if (!S.built) build();
     ppNav();
-    renderLogin(); renderHead(); renderPnl(); renderBoard(); renderStrats(); renderFut(); renderClosed(); renderAcct(); updateLegQuotes();
-    if (!$('ppSbSum')) renderBuilder();
+    renderLogin(); renderHead();
+    const k = tok() ? S.tab : 'opt';
+    if (k === 'over') { renderPnl(); renderStrats(); }
+    else if (k === 'opt') { renderBoard(); updateLegQuotes(); renderStrats(); if (!$('ppSbSum')) renderBuilder(); }
+    else if (k === 'fut') renderFut();
+    else if (k === 'hist') { renderClosed(); renderAcct(); }
   }
-  let busy = false;
+  function staleNote() {
+    const now = Date.now(), bad = (NEEDS[S.tab] || []).filter(k => S.part[k].err);
+    return bad.map(k => '<span class="pp-note warn"> stale · ' + (S.part[k].at ? Math.round((now - S.part[k].at) / 1000) + 's' : 'never loaded') + ' · ' + esc(S.part[k].err) + '</span>').join('');
+  }
+  let busy = false, again = false;
   async function refresh(first) {
     if (!tok()) { drawAll(); return; }
-    if (busy) return; busy = true;
-    try {
-      S.err = null;
-      const lots = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 100);
-      const [a, b, st, pn] = await Promise.all([api('/account'), api('/board?lots=' + lots + (S.expiry ? '&expiry=' + S.expiry : '')), api('/strategies'), api('/pnl').catch(() => null)]);
-      S.acct = a; S.board = b; S.pnl = pn; S.expiry = b.expiry; S.strat = { open: st.open || [], closed: st.closed || [] };
-      if (Date.now() - S.flowAt > 60000) loadFlow();
-    } catch (e) { S.err = e.message; if (e.status === 401) { S.acct = null; } }
-    busy = false; drawAll();
-    if (first && S.sb.legs.length) sbSchedule();
+    if (busy) { again = true; return; }
+    busy = true; S.lastAt = Date.now();
+    const gen = S.gen, need = NEEDS[S.tab] || NEEDS.over;
+    const lots = Math.max(1, Math.floor(Number(S.sb.baseLots)) || 100);
+    const call = {
+      acct: () => api('/account?withPnl=1').then(a => { S.acct = a; S.pnl = a.pnl || null; }),
+      board: () => api('/board?lots=' + lots + (S.expiry ? '&expiry=' + S.expiry : '')).then(b => { S.board = b; S.expiry = b.expiry; }),
+      strat: () => api('/strategies').then(st => { S.strat = { open: st.open || [], closed: st.closed || [] }; }),
+    };
+    const res = await Promise.allSettled(need.map(k => call[k]()));
+    let logout = false;
+    res.forEach((r, i) => {
+      const k = need[i];
+      if (r.status === 'fulfilled') S.part[k] = { at: Date.now(), err: null };
+      else { S.part[k] = { at: S.part[k].at, err: r.reason && r.reason.message || 'failed' }; if (r.reason && r.reason.status === 401) logout = true; }
+    });
+    if (logout) S.acct = null;
+    S.err = logout ? 'Session expired, log in again' : (!S.acct && S.part.acct.err) ? S.part.acct.err : null;
+    if (S.tab === 'opt' && Date.now() - S.flowAt > 60000) loadFlow();
+    busy = false;
+    if (gen === S.gen) { drawAll(); if (first && S.sb.legs.length) sbSchedule(); }   // a late answer for a tab already left is not drawn
+    if (again) { again = false; refresh(); }
   }
 
   /* ---------- events ---------- */
@@ -62435,7 +62549,7 @@ document.addEventListener('click', function(e) {
     root.addEventListener('click', async e => {
       const t = e.target.closest('[data-pp-q],[data-pp-act],[data-pp-close],[data-pp-mode],[data-pp-sbdel],[data-pp-edit],[data-pp-editx],[data-pp-save],[data-pp-closeall],[data-pp-fside],[data-pp-ftype],[data-pp-flots],[data-pp-cancel]'); if (!t) return; const d = t.dataset;
       if (d.ppFside) { S.fut.side = d.ppFside; renderFut(); futSchedule(); return; }
-      if (d.ppFtype) { S.fut.type = d.ppFtype; if (d.ppFtype === 'limit' && !S.fut.price && S.board && S.board.perp) { S.fut.price = String(S.fut.side === 'buy' ? S.board.perp.ask : S.board.perp.bid); $('ppFPrice').value = S.fut.price; } renderFut(); futSchedule(); return; }
+      if (d.ppFtype) { S.fut.type = d.ppFtype; const fq = (S.acct && S.acct.perp) || (S.board && S.board.perp); if (d.ppFtype === 'limit' && !S.fut.price && fq) { S.fut.price = String(S.fut.side === 'buy' ? fq.ask : fq.bid); $('ppFPrice').value = S.fut.price; } renderFut(); futSchedule(); return; }
       if (d.ppFlots) { S.fut.lots = d.ppFlots; $('ppFLots').value = d.ppFlots; renderFut(); futSchedule(); return; }
       if (d.ppCancel) { try { await api('/orders/' + d.ppCancel, { method: 'DELETE' }); } catch (er) { S.fut.msg = { k: 'bad', t: er.message }; } refresh(); return; }
       if (d.ppAct === 'fgo') { futSubmit(); return; }
@@ -62497,7 +62611,8 @@ document.addEventListener('click', function(e) {
   /* ---------- lifecycle: poll only while the page is open and visible ---------- */
   let timer = 0, wasOn = false;
   const on = () => D.body.dataset.page === 'pgPaper';
-  function enter() { drawAll(); refresh(true); clearInterval(timer); timer = setInterval(() => { if (!D.hidden && on()) refresh(); }, 3000); }
+  // every 3 s; History (closed list, account details) only every 15 s
+  function enter() { drawAll(); refresh(true); clearInterval(timer); timer = setInterval(() => { if (D.hidden || !on()) return; if (S.tab === 'hist' && Date.now() - (S.lastAt || 0) < 15000) return; refresh(); }, 3000); }
   function leave() { clearInterval(timer); timer = 0; }
   const sync = () => { const o = on(); if (o && !wasOn) enter(); else if (!o && wasOn) leave(); wasOn = o; };
   new MutationObserver(sync).observe(D.body, { attributes: true, attributeFilter: ['data-page'] });

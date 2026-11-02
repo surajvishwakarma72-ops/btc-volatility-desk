@@ -1,0 +1,405 @@
+{
+  "file": "index.html",
+  "secondsPerPage": 40,
+  "pages": [
+    {
+      "page": "pgDesk",
+      "minutes": 0.67,
+      "busyMsPerMin": 0,
+      "liveIntervals": 155,
+      "intervalMsPerMin": 485,
+      "top": [
+        {
+          "site": "bus (:19854:7) @1000",
+          "fires": 40,
+          "ms": 147
+        },
+        {
+          "site": ":46759:54 @2500",
+          "fires": 16,
+          "ms": 32
+        },
+        {
+          "site": ":47967:54 @3000",
+          "fires": 14,
+          "ms": 27
+        },
+        {
+          "site": "Regime (:35386:7) @1000",
+          "fires": 40,
+          "ms": 20
+        },
+        {
+          "site": "boot (:37717:9) @5000",
+          "fires": 8,
+          "ms": 14
+        },
+        {
+          "site": "initEconomy (:58243:9) @5000",
+          "fires": 8,
+          "ms": 6
+        },
+        {
+          "site": "boot (:26678:9) @3000",
+          "fires": 14,
+          "ms": 5
+        },
+        {
+          "site": "deskAuth (:61882:3) @2000",
+          "fires": 20,
+          "ms": 5
+        },
+        {
+          "site": ":66167:3 @5000",
+          "fires": 8,
+          "ms": 4
+        },
+        {
+          "site": ":52450:7 @1500",
+          "fires": 27,
+          "ms": 3
+        },
+        {
+          "site": ":47709:54 @3000",
+          "fires": 14,
+          "ms": 3
+        },
+        {
+          "site": ":27751:11 @4000",
+          "fires": 10,
+          "ms": 3
+        },
+        {
+          "site": "paLayer (:29286:17) @400",
+          "fires": 100,
+          "ms": 3
+        },
+        {
+          "site": "adxAtr (:29443:17) @500",
+          "fires": 80,
+          "ms": 2
+        },
+        {
+          "site": "boot (:39409:58) @5000",
+          "fires": 8,
+          "ms": 2
+        }
+      ],
+      "bus": [
+        {
+          "site": "bus:tick OrderFlow (:34080:20)",
+          "fires": 40,
+          "ms": 130
+        },
+        {
+          "site": "bus:tick init (:33546:17)",
+          "fires": 40,
+          "ms": 6
+        },
+        {
+          "site": "bus:tick ticker (:33069:17)",
+          "fires": 40,
+          "ms": 4
+        },
+        {
+          "site": "bus:tick layout (:33007:17)",
+          "fires": 40,
+          "ms": 4
+        },
+        {
+          "site": "bus:tick layout (:32998:18)",
+          "fires": 40,
+          "ms": 1
+        },
+        {
+          "site": "bus:tick signalModule (:34366:20)",
+          "fires": 40,
+          "ms": 0
+        }
+      ],
+      "cdp": {
+        "taskMsPerMin": 3947,
+        "scriptMsPerMin": 585,
+        "layoutMsPerMin": 95,
+        "styleMsPerMin": 874,
+        "layoutsPerMin": 119
+      }
+    },
+    {
+      "page": "pgPaper",
+      "minutes": 0.67,
+      "busyMsPerMin": 0,
+      "liveIntervals": 160,
+      "intervalMsPerMin": 520,
+      "top": [
+        {
+          "site": "bus (:19854:7) @1000",
+          "fires": 40,
+          "ms": 173
+        },
+        {
+          "site": "Regime (:35386:7) @1000",
+          "fires": 40,
+          "ms": 24
+        },
+        {
+          "site": ":24439:7 @1000",
+          "fires": 38,
+          "ms": 19
+        },
+        {
+          "site": ":47967:54 @3000",
+          "fires": 13,
+          "ms": 19
+        },
+        {
+          "site": "enter (:62614:78) @3000",
+          "fires": 14,
+          "ms": 17
+        },
+        {
+          "site": ":46759:54 @2500",
+          "fires": 16,
+          "ms": 7
+        },
+        {
+          "site": "boot (:26678:9) @3000",
+          "fires": 13,
+          "ms": 5
+        },
+        {
+          "site": "deskAuth (:61882:3) @2000",
+          "fires": 20,
+          "ms": 4
+        },
+        {
+          "site": "initEconomy (:58243:9) @5000",
+          "fires": 8,
+          "ms": 4
+        },
+        {
+          "site": ":27751:11 @4000",
+          "fires": 10,
+          "ms": 4
+        },
+        {
+          "site": ":52450:7 @1500",
+          "fires": 27,
+          "ms": 4
+        },
+        {
+          "site": "boot (:57258:9) @1000",
+          "fires": 40,
+          "ms": 4
+        },
+        {
+          "site": "paLayer (:29286:17) @400",
+          "fires": 100,
+          "ms": 3
+        },
+        {
+          "site": ":66167:3 @5000",
+          "fires": 8,
+          "ms": 3
+        },
+        {
+          "site": "evWire (:24278:19) @30000",
+          "fires": 1,
+          "ms": 2
+        }
+      ],
+      "bus": [
+        {
+          "site": "bus:tick init (:33546:17)",
+          "fires": 40,
+          "ms": 153
+        },
+        {
+          "site": "bus:tick layout (:32998:18)",
+          "fires": 40,
+          "ms": 5
+        },
+        {
+          "site": "bus:tick layout (:33007:17)",
+          "fires": 40,
+          "ms": 5
+        },
+        {
+          "site": "bus:tick ticker (:33069:17)",
+          "fires": 40,
+          "ms": 4
+        },
+        {
+          "site": "bus:tick OrderFlow (:34080:20)",
+          "fires": 40,
+          "ms": 3
+        },
+        {
+          "site": "bus:tick signalModule (:34366:20)",
+          "fires": 40,
+          "ms": 1
+        },
+        {
+          "site": "bus:signal carry (:35555:146)",
+          "fires": 1,
+          "ms": 0
+        },
+        {
+          "site": "bus:signal boot (:37718:51)",
+          "fires": 1,
+          "ms": 0
+        },
+        {
+          "site": "bus:signal ticker (:33070:18)",
+          "fires": 1,
+          "ms": 0
+        }
+      ],
+      "cdp": {
+        "taskMsPerMin": 4358,
+        "scriptMsPerMin": 608,
+        "layoutMsPerMin": 70,
+        "styleMsPerMin": 894,
+        "layoutsPerMin": 107
+      }
+    },
+    {
+      "page": "pgPnl",
+      "minutes": 0.67,
+      "busyMsPerMin": 0,
+      "liveIntervals": 158,
+      "intervalMsPerMin": 445,
+      "top": [
+        {
+          "site": "bus (:19854:7) @1000",
+          "fires": 40,
+          "ms": 160
+        },
+        {
+          "site": "Regime (:35386:7) @1000",
+          "fires": 40,
+          "ms": 22
+        },
+        {
+          "site": ":24439:7 @1000",
+          "fires": 40,
+          "ms": 18
+        },
+        {
+          "site": ":47967:54 @3000",
+          "fires": 13,
+          "ms": 11
+        },
+        {
+          "site": ":46759:54 @2500",
+          "fires": 16,
+          "ms": 9
+        },
+        {
+          "site": "boot (:26678:9) @3000",
+          "fires": 13,
+          "ms": 6
+        },
+        {
+          "site": "deskAuth (:61882:3) @2000",
+          "fires": 20,
+          "ms": 4
+        },
+        {
+          "site": "paLayer (:29286:17) @400",
+          "fires": 100,
+          "ms": 4
+        },
+        {
+          "site": "boot (:57258:9) @1000",
+          "fires": 40,
+          "ms": 3
+        },
+        {
+          "site": "gToolRail (:32379:17) @800",
+          "fires": 50,
+          "ms": 3
+        },
+        {
+          "site": "initEconomy (:58243:9) @5000",
+          "fires": 8,
+          "ms": 2
+        },
+        {
+          "site": ":52450:7 @1500",
+          "fires": 26,
+          "ms": 2
+        },
+        {
+          "site": ":66167:3 @5000",
+          "fires": 8,
+          "ms": 2
+        },
+        {
+          "site": ":27751:11 @4000",
+          "fires": 10,
+          "ms": 2
+        },
+        {
+          "site": "btcZoom (:29842:17) @700",
+          "fires": 57,
+          "ms": 2
+        }
+      ],
+      "bus": [
+        {
+          "site": "bus:tick init (:33546:17)",
+          "fires": 40,
+          "ms": 138
+        },
+        {
+          "site": "bus:tick ticker (:33069:17)",
+          "fires": 40,
+          "ms": 9
+        },
+        {
+          "site": "bus:tick layout (:33007:17)",
+          "fires": 40,
+          "ms": 4
+        },
+        {
+          "site": "bus:tick layout (:32998:18)",
+          "fires": 40,
+          "ms": 3
+        },
+        {
+          "site": "bus:tick OrderFlow (:34080:20)",
+          "fires": 40,
+          "ms": 2
+        },
+        {
+          "site": "bus:tick signalModule (:34366:20)",
+          "fires": 40,
+          "ms": 1
+        },
+        {
+          "site": "bus:signal carry (:35555:146)",
+          "fires": 1,
+          "ms": 0
+        },
+        {
+          "site": "bus:signal ticker (:33070:18)",
+          "fires": 1,
+          "ms": 0
+        },
+        {
+          "site": "bus:signal boot (:37718:51)",
+          "fires": 1,
+          "ms": 0
+        }
+      ],
+      "cdp": {
+        "taskMsPerMin": 3922,
+        "scriptMsPerMin": 557,
+        "layoutMsPerMin": 49,
+        "styleMsPerMin": 883,
+        "layoutsPerMin": 95
+      }
+    }
+  ]
+}

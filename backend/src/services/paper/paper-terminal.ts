@@ -10,7 +10,7 @@ import { DESK_USER_ID } from '../auth-store.js';
 import type { WatchLeg } from '../../lib/watch/classify.js';
 import { getWatchConfig } from '../watch/watch-store.js';
 import { parseExpiry } from '../bot/delta-public.js';
-import { DeltaMarket, type MarketProvider, type MarketSnapshot } from './market.js';
+import { DeltaMarket, type MarketProvider, type MarketSnapshot, type BoardRow } from './market.js';
 
 /**
  * The user's own Delta-style paper account. Separate from the bot: its own cash, orders, positions and fills.
@@ -207,6 +207,15 @@ export function parseOptionSymbol(symbol: string): { type: 'call' | 'put'; strik
   return { type: p[0] === 'C' ? 'call' : 'put', strike, expiryMs };
 }
 
+/** One expiry of the option board with, per row, the extra margin selling it would need. */
+export type BoardWithMargin = {
+  snap: MarketSnapshot;
+  rows: Array<BoardRow & { sellMargin: number | null; sellOk: boolean | null; buyCost: number }>;
+  mode: MarginMode;
+  available: number | null;
+  expiry: number | null;
+};
+
 export class PaperTerminal {
   private chain: Promise<unknown> = Promise.resolve();
   private timer: NodeJS.Timeout | null = null;
@@ -214,6 +223,15 @@ export class PaperTerminal {
   lastTickAt = 0;
   /** Nothing is open or working, so the 5-second tick does not touch the database or the market until an order is placed. */
   private idle = false;
+  /** Board-with-margin results per expiry|lots|mode for 3 s; dropped whenever positions, cash, leverage or margin mode change. */
+  private boardCache = new Map<string, { at: number; out: BoardWithMargin }>();
+  /** boardGen moves before AND after every write, so a board computed across a write is never cached. */
+  private boardGen = 0;
+  private dropBoardCache(): void { this.boardGen++; this.boardCache.clear(); }
+  /** serial() for a state change: the board cache is dropped again once the writes are done. */
+  private serialWrite<T>(fn: () => Promise<T>): Promise<T> {
+    return this.serial(async () => { try { return await fn(); } finally { this.dropBoardCache(); } });
+  }
 
   constructor(private readonly market: MarketProvider = sharedMarket(), readonly accountId: string = DESK_USER_ID) {}
 
@@ -319,6 +337,10 @@ export class PaperTerminal {
 
   /** Apply a fill to the account and the order, and record it. The caller has already simulated it. */
   private async commit(st: State, o: OrderRow, inst: Instrument, sim: FillSim, lots: number, price: number, maker: boolean, bestPrice: number, note?: string): Promise<void> {
+    this.dropBoardCache();
+    try { await this.commitWrites(st, o, inst, sim, lots, price, maker, bestPrice, note); } finally { this.dropBoardCache(); }
+  }
+  private async commitWrites(st: State, o: OrderRow, inst: Instrument, sim: FillSim, lots: number, price: number, maker: boolean, bestPrice: number, note?: string): Promise<void> {
     const sym = inst.symbol;
     const slip = maker || !Number.isFinite(bestPrice) ? 0 : Math.abs(price - bestPrice) * lots * inst.contractValue;
     await pool.query(
@@ -537,7 +559,8 @@ export class PaperTerminal {
   }
 
   setLeverage(symbol: string, leverage: number) {
-    return this.serial(async () => {
+    this.dropBoardCache();
+    return this.serialWrite(async () => {
       await this.ensure();
       const snap = await this.market.snapshot(2_000);
       const inst = snap.insts.get(symbol);
@@ -555,7 +578,8 @@ export class PaperTerminal {
   }
 
   reset(balance: number) {
-    return this.serial(async () => {
+    this.dropBoardCache();
+    return this.serialWrite(async () => {
       await ensurePaperSchema();
       const mine = [this.accountId];
       await pool.query('DELETE FROM paper_strategy_legs WHERE strategy_id IN (SELECT id FROM paper_strategies WHERE account_id = $1)', mine);
@@ -575,7 +599,7 @@ export class PaperTerminal {
       let marketError: string | null = null;
       try { snap = await this.quick(); } catch (e) { marketError = (e as Error).message; }
       if (!snap) {
-        return { account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal }, marginMode: st.mode, view: null, positions: [], working: st.working, marketError };
+        return { account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal }, marginMode: st.mode, view: null, positions: [], working: st.working, perpInfo: null, marketError };
       }
       const q = this.quoteFn(snap);
       const view = this.view(st, st.positions.values(), snap);
@@ -603,9 +627,11 @@ export class PaperTerminal {
           delta: snap!.rows.find((r) => r.symbol === p.symbol)?.delta ?? null,
         };
       });
+      const pInst = snap.insts.get(snap.perp.symbol);
+      const perpInfo = pInst ? { contractValue: pInst.contractValue, maxLeverage: pInst.maxLeverage, tick: pInst.tick, takerRate: pInst.takerRate, makerRate: pInst.makerRate } : null;
       return {
         account: { cash: st.cash, startBalance: st.start, realizedTotal: st.realizedTotal, feesTotal: st.feesTotal },
-        marginMode: st.mode, view, positions, greeks: this.netGreeks(st, snap), working: st.working, spot: snap.spot, perp: snap.perp, marketError,
+        marginMode: st.mode, view, positions, greeks: this.netGreeks(st, snap), working: st.working, spot: snap.spot, perp: snap.perp, perpInfo, marketError,
       };
     });
   }
@@ -628,7 +654,8 @@ export class PaperTerminal {
 
   /** Switch between portfolio margin and standard margin. Refused if the account could not carry its positions under the new mode. */
   setMarginMode(mode: MarginMode) {
-    return this.serial(async () => {
+    this.dropBoardCache();
+    return this.serialWrite(async () => {
       await this.ensure();
       if (mode !== 'portfolio' && mode !== 'standard') return { ok: false, reason: 'mode must be portfolio or standard' };
       const st = await this.load();
@@ -979,6 +1006,10 @@ export class PaperTerminal {
   }
 
   private async settleExpired(st: State, snap: MarketSnapshot): Promise<void> {
+    this.dropBoardCache();
+    try { await this.settleWrites(st, snap); } finally { this.dropBoardCache(); }
+  }
+  private async settleWrites(st: State, snap: MarketSnapshot): Promise<void> {
     const now = Date.now();
     for (const pos of [...st.positions.values()]) {
       const opt = parseOptionSymbol(pos.symbol);
@@ -1084,8 +1115,8 @@ export class PaperTerminal {
    * PnL for the top of the Paper page, options and futures apart. Closed PnL is realised minus fees on every fill (so an entry fee counts the moment it is paid);
    * open PnL is the unrealised PnL of what is still held. Together they equal equity minus the starting balance, which is the Account PnL line.
    */
-  async pnl() {
-    const a: any = await this.account();
+  async pnl(acct?: Awaited<ReturnType<PaperTerminal['account']>>) {
+    const a: any = acct ?? (await this.account());
     await ensurePaperSchema();
     const now = Date.now();
     const dayStart = istMidnightMs(istDateKey(now));
@@ -1099,13 +1130,28 @@ export class PaperTerminal {
       [dayStart, now - 7 * DAY, this.accountId],
     );
     const openStrategies = Number(((await pool.query(`SELECT COUNT(*)::int AS n FROM paper_strategies WHERE status = 'open' AND account_id = $1`, [this.accountId])).rows[0] as any)?.n ?? 0);
-    const positions = (a.positions ?? []) as Array<{ kind: string; unrealized: number | null }>;
+    const positions = (a.positions ?? []) as Array<{ kind: string; lots: number; unrealized: number | null }>;
+    // fees paid on the perpetual since it was last flat: walk its fills newest first until the size unwinds to zero
+    let futFees = 0;
+    let left = positions.filter((p) => p.kind === 'perp').reduce((s, p) => s + p.lots, 0);
+    if (left !== 0) {
+      const f = await pool.query(`SELECT side, lots, fee FROM paper_fills WHERE account_id = $1 AND kind = 'perp' ORDER BY at DESC, id DESC LIMIT 500`, [this.accountId]);
+      for (const x of f.rows as any[]) {
+        futFees += Number(x.fee);
+        left -= x.side === 'buy' ? Number(x.lots) : -Number(x.lots);
+        if (left === 0) break;
+      }
+    }
     const side = (fut: boolean) => {
       const row = (r.rows as any[]).find((x) => (x.kind === 'perp') === fut);
       const held = positions.filter((p) => (p.kind === 'perp') === fut);
       return {
         openCount: fut ? held.length : Math.max(openStrategies, held.length ? 1 : 0),
-        openPnl: held.reduce((s, p) => s + (p.unrealized ?? 0), 0), openKnown: held.every((p) => p.unrealized != null),
+        openFees: fut ? futFees : 0,
+        // openPnl stays before fees (entry fees already sit in the closed totals); openNet is what the open trade has made after its fees
+        openPnl: held.every((p) => p.unrealized != null) ? held.reduce((s, p) => s + p.unrealized!, 0) : null,
+        openNet: held.every((p) => p.unrealized != null) ? held.reduce((s, p) => s + p.unrealized!, 0) - (fut ? futFees : 0) : null,
+        openKnown: held.every((p) => p.unrealized != null),
         today: row ? Number(row.today) : 0, todayCloses: row ? Number(row.today_closes) : 0, week: row ? Number(row.week) : 0,
         total: row ? Number(row.total) : 0, closes: row ? Number(row.closes) : 0, wins: row ? Number(row.wins) : 0,
       };
@@ -1135,12 +1181,17 @@ export class PaperTerminal {
    * what the account already carries (so a hedged sale shows its true, smaller requirement), and the premium for
    * buying or selling that size. Same margin mode as the account.
    */
-  async boardWithMargin(lots: number, maxAgeMs = 3_000) {
+  async boardWithMargin(lots: number, expiry: number | null = null, maxAgeMs = 3_000) {
     const snap = maxAgeMs >= 3_000 ? await this.quick() : await this.market.snapshot(maxAgeMs);
+    const exp = expiry != null && snap.expiries.includes(expiry) ? expiry : snap.expiries[0] ?? null;
+    const gen0 = this.boardGen;
     let st: State | null = null;
     try { await this.ensure(); st = await this.load(); } catch { st = null; }
+    const key = `${exp}|${lots}|${st?.mode ?? 'none'}`;
+    const hit = this.boardCache.get(key);
+    if (hit && Date.now() - hit.at < 3_000) return hit.out as BoardWithMargin;
     const base = st ? this.view(st, st.positions.values(), snap) : null;
-    const rowsOut = snap.rows.map((r) => {
+    const rowsOut = snap.rows.filter((r) => r.expiryMs === exp).map((r) => {
       const inst = snap.insts.get(r.symbol);
       if (!st || !base || !inst) return { ...r, sellMargin: null as number | null, sellOk: null as boolean | null, buyCost: r.ask * lots * 0.001 };
       const cur = st.positions.get(r.symbol) ?? null;
@@ -1154,7 +1205,11 @@ export class PaperTerminal {
       const grows = Math.abs(np?.lots ?? 0) > Math.abs(cur?.lots ?? 0);
       return { ...r, sellMargin: Math.max(v.margin - base.margin, 0), sellOk: !grows || v.available >= 0, buyCost: r.ask * lots * inst.contractValue };
     });
-    return { snap, rows: rowsOut, mode: st?.mode ?? 'portfolio', available: base?.available ?? null };
+    const out: BoardWithMargin = { snap, rows: rowsOut, mode: st?.mode ?? 'portfolio', available: base?.available ?? null, expiry: exp };
+    if (this.boardGen !== gen0) return out;   // a write happened while this was computed: answer, but don't cache
+    if (this.boardCache.size >= 8) this.boardCache.delete(this.boardCache.keys().next().value!);
+    this.boardCache.set(key, { at: Date.now(), out });
+    return out;
   }
 
 
