@@ -21254,6 +21254,22 @@ on an empty top; the live board replaces it as soon as its numbers are in. Snaps
         #pgDesk #dkTools #flowRow { display: grid !important }
         @media (max-width: 760px) { #pgDesk #dkTools #flowRow { display: flex !important; flex-direction: column } #pgDesk #dkTools #side2 { flex-direction: column } }
       </style>
+      <script data-module="dkHeights">
+        /* v172 · chart heights the owner set by dragging: per profile (phone|desk × normal|full), each lane's share of the
+           chart panel height. v133.fit() applies them; nothing else sets lane heights. localStorage desk_heights_v1. */
+        (function () {
+          var K = 'desk_heights_v1', W = window, D = document;
+          function all() { try { return JSON.parse(localStorage.getItem(K) || '{}') || {}; } catch (e) { return {}; } }
+          function put(o) { try { localStorage.setItem(K, JSON.stringify(o)); } catch (e) { } }
+          function refit() { try { W.v133 && W.v133.fit && W.v133.fit(); } catch (e) { console.warn('dkHeights fit', e); } }
+          W.dkHeights = {
+            profile: function () { return (innerWidth <= 760 ? 'phone' : 'desk') + '|' + (D.body && D.body.classList.contains('gfs') ? 'full' : 'normal'); },
+            get: function (p) { var m = all()[p || this.profile()]; return m && typeof m === 'object' && Object.keys(m).length ? m : null; },
+            set: function (map, p) { var o = all(), k = p || this.profile(), m = {}; for (var id in map) if (map[id] > 0 && map[id] < 1) m[id] = Math.round(map[id] * 10000) / 10000; o[k] = m; put(o); refit(); },
+            reset: function (p) { var o = all(); if (p) delete o[p]; else o = {}; put(o); refit(); },
+          };
+        })();
+      </script>
       <script id="v105_22Arrange">/* v111 · chart order set by Abhishek (replaces the v105.22 / v110 orders).
 Trade page, top to bottom:
 1 Tonight graph
@@ -47908,8 +47924,28 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.5 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
-        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
-        W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
+        // default height of each lane (the v150 shares and minimums)
+        const defH = l => Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0);
+        const HH = new Map(lanes.map(l => [l, defH(l)])); let adxH = adxOn ? Math.round(lh * ADXW) : 0;
+        /* v172 · heights the owner dragged (dkHeights): a share of the panel height ph per lane. A shown lane with no saved
+           share (switched on later) starts at its default; the candles take what is left. Lanes >= 48 px, candles >= minC
+           (180 phone / 240 desktop). This stays the only place lane heights are set. */
+        const U = W.dkHeights && W.dkHeights.get();
+        if (U) {
+          const MINL = 48, saved = [], fresh = []; let freshH = 0, savedH = 0;
+          for (const l of lanes) { if (U[l.id] > 0) { const h = Math.round(U[l.id] * ph) + (l.id === axId ? axX : 0); HH.set(l, h); saved.push(l); savedH += h; } else { fresh.push(l); freshH += HH.get(l); } }
+          if (adxOn) { if (U.paAdxBox > 0) { adxH = Math.round(U.paAdxBox * ph); savedH += adxH; } else freshH += adxH; }
+          for (const l of lanes) HH.set(l, Math.max(MINL, HH.get(l))); if (adxOn) adxH = Math.max(MINL, adxH);
+          const room = ph - minC, tot = [...HH.values()].reduce((a, b) => a + b, 0) + adxH;
+          if (tot > room && tot > 0) {   // squeeze only what sits above each lane's 48 px floor, so the floors can't push the candles under minC
+            const n = lanes.length + (adxOn ? 1 : 0), free = tot - n * MINL, k = free > 0 ? Math.max(0, room - n * MINL) / free : 0, sq = h => MINL + Math.floor((h - MINL) * k);
+            for (const l of lanes) HH.set(l, sq(HH.get(l))); if (adxOn) adxH = sq(adxH);
+          }
+        }
+        for (const l of lanes) { const hh = HH.get(l); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); if (U) set(l, 'min-height', hh + 'px'); else if (l.dataset.dkMin) l.style.removeProperty('min-height'); if (U) l.dataset.dkMin = '1'; else delete l.dataset.dkMin; }   // min-height: some lanes carry a CSS minimum (Short Strangle 176/268 px) that would beat the dragged height
+        W.__v133Lane = lh; W.__v133Adx = adxH;   // paRefit gives the ADX strip its share
+        W.__v133Fit = { ph, minC, phone, lanes: lanes.map(l => l.id).concat(adxOn ? ['paAdxBox'] : []) };   // for the dividers (dkSplit)
+        try { W.desk80 && W.desk80.emit('fit', W.__v133Fit); } catch (e) { }
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           /* v144.2: judge the chart's own bottom edge, not the whole page. Panels below the chart made the page taller, which squeezed the chart up to 240 px and, as it gave the room back, made it pulse */
           const over = cp.getBoundingClientRect().bottom + 20 - innerHeight;
