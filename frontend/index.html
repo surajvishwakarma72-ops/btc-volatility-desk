@@ -67308,10 +67308,6 @@ body.light #vUniversalFloatingPnl,
   }
 
   const VOICE_NA = 'माफ कीजिए, ये जानकारी उपलब्ध नहीं है। इसके अलावा आप कुछ और पूछ सकते हैं।';
-  const VOICE_VERDICT = { 'SELL NOW': 'SELL ZONE', WAIT: 'WAIT, यानी रुकने का समय', AVOID: 'AVOID, यानी अभी ट्रेड से बचना चाहिए' };
-  const VOICE_VETO = [
-    ['Spread too wide', 'स्प्रेड बहुत ज़्यादा है'], ['Latest cohort found no valid strikes', 'सही स्ट्राइक नहीं मिली'],
-    ['Futures trending', 'फ्यूचर्स एक ही दिशा में चल रहा है'], ['Killer pattern', 'किलर पैटर्न चालू है'],
   const VOICE_NOT_UNDERSTOOD = 'माफ कीजिए, मैं समझ नहीं पाई। "मदद" बोलिए, तो बताऊँगी कि मैं क्या-क्या कर सकती हूँ।';
   const VOICE_NO_READING = 'अभी Strangle Pulse की ताज़ा रीडिंग नहीं है, इसलिए बाज़ार पर राय नहीं दे सकती।';
 
@@ -67322,6 +67318,10 @@ body.light #vUniversalFloatingPnl,
     const mine = new Set(w);
     return h.filter((x) => mine.has(x)).length / h.length >= 0.6 && h.length / w.length >= 0.4;
   }
+  const VOICE_VERDICT = { 'SELL NOW': 'SELL ZONE', WAIT: 'WAIT, यानी रुकने का समय', AVOID: 'AVOID, यानी अभी ट्रेड से बचना चाहिए' };
+  const VOICE_VETO = [
+    ['Spread too wide', 'स्प्रेड बहुत ज़्यादा है'], ['Latest cohort found no valid strikes', 'सही स्ट्राइक नहीं मिली'],
+    ['Futures trending', 'फ्यूचर्स एक ही दिशा में चल रहा है'], ['Killer pattern', 'किलर पैटर्न चालू है'],
     ['Term structure inverted', 'टर्म स्ट्रक्चर उल्टा है'], ['Regime gate failed', 'रेजीम गेट पास नहीं हुआ'],
   ];
 
@@ -67384,11 +67384,11 @@ body.light #vUniversalFloatingPnl,
     const listen = () => { if (on) { o.onStatus('listening'); o.input.start(); } };
     const speak = async (text) => {
       o.input.stop(); o.onStatus('speaking'); o.onLine('bot', text);
+      said = said.concat(text).slice(-3);
       await o.output.speak(text, rate);
     };
     const close = async () => {
       on = false;
-      said = said.concat(text).slice(-3);
       await speak('ठीक है, जब ज़रूरत हो मुझे बुला लीजिए।');
       o.onStatus('closed');
     };
@@ -67445,12 +67445,12 @@ body.light #vUniversalFloatingPnl,
       },
       async hear(text) {
         if (!on || busy || !String(text || '').trim()) return;
+        if (said.some((x) => voiceIsEcho(text, x))) { listen(); return; } // our own voice, not the person
         busy = true; clear();
         o.onLine('me', text); o.input.stop();
         const intent = matchIntent(text, glossary);
         misses = intent.id === 'unknown' ? misses + 1 : 0;
         const reply = misses > 1 ? VOICE_NOT_UNDERSTOOD : await replyTo(intent);
-        if (said.some((x) => voiceIsEcho(text, x))) { listen(); return; } // our own voice, not the person
         if (!on) { busy = false; return; }
         if (intent.id !== 'repeat') { last = reply; lastIntent = intent; }
         await speak(reply);
