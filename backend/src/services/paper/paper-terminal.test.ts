@@ -334,6 +334,25 @@ describe('board margin', () => {
   });
 });
 
+describe('board margin cache race', () => {
+  it('a board read that overlaps a trade is not cached as the post-trade answer', async () => {
+    // the board's load() returns the pre-trade state, and a whole trade lands before the board finishes
+    const real = (t as any).load.bind(t);
+    let armed = true;
+    vi.spyOn(t as any, 'load').mockImplementation(async () => {
+      if (!armed) return real();
+      armed = false;
+      const old = await real();
+      await t.place({ symbol: CALL, side: 'sell', type: 'market', lots: 10 });
+      return old;
+    });
+    await t.boardWithMargin(100, EXP);
+    const after = await t.boardWithMargin(100, EXP);
+    const view = (await t.account()).view!;
+    expect(after.available).toBeCloseTo(view.available, 6);
+  });
+});
+
 describe('paper pnl', () => {
   it('futures open net is unrealised minus the fees of the open position', async () => {
     const r = await t.place({ symbol: 'BTCUSD', side: 'buy', type: 'market', lots: 100 });

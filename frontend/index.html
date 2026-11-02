@@ -21256,9 +21256,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
               if (top.firstChild !== ch) top.insertBefore(ch, top.firstChild);
               var hd = $('v110PnlHd'); if (!hd) { hd = D.createElement('div'); hd.id = 'v110PnlHd'; hd.className = 'v110-hd'; hd.innerHTML = '<span>My trade · P&amp;L</span>'; }
               var wide = wideNow(), lead = $('v104Lead'), inn = $('v22SideIn');
-              // perf: the rail goes right after the vol row, the order v133 moves() also wants. With the old order (rail first) the two
-              // undid each other every 3 s and every Desk section, charts included, was re-appended each time, on every page.
-              var want = [top, $('volRow'), $('v89Rail'), wide ? null : lead, $('side2'), $('flowRow'), hd, $('v18Trade')].filter(function (e) { return e && !(e.dataset && e.dataset.v134); });
+              var want = [$('v89Rail'), top, $('volRow'), wide ? null : lead, $('side2'), $('flowRow'), hd, $('v18Trade')].filter(function (e) { return e && !(e.dataset && e.dataset.v134); });
               var kids = Array.prototype.filter.call(desk.children, function (e) { return want.indexOf(e) >= 0; });
               if (!(kids.length === want.length && want.every(function (e, i) { return kids[i] === e; }))) want.forEach(function (e) { desk.appendChild(e); });
               if (wide && lead && lead.parentNode !== inn) inn.appendChild(lead);
@@ -47875,7 +47873,10 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const ev = $('pgEvents'); let nw = $('v133News'); if (ev && !nw) { nw = D.createElement('section'); nw.id = 'v133News'; nw.innerHTML = '<h3>NEWS &amp; EVENTS</h3>'; dp.appendChild(nw); }
         if (ev && nw && ev.parentElement !== nw) { ev.classList.add('on'); nw.appendChild(ev); }
         for (const b of D.querySelectorAll('#nav [data-page="pgEvents"],#tabbar [data-page="pgEvents"],#moreSheet [data-page="pgEvents"]')) b.style.display = 'none';
-        const rail = $('v89Rail'), vr = $('volRow'); if (rail && vr && rail.previousElementSibling !== vr) { rail.classList.add('v133-moved'); vr.after(rail); }
+        // perf: the rail is no longer moved after the vol row. arrange() (v111, the owner's order: Tonight first) put it back
+        // before the next paint every time, so it never showed there, and the tug of war re-appended every Desk section
+        // (charts included) every 3 s, on every page. The class stays for its styling.
+        const rail = $('v89Rail'); if (rail && !rail.classList.contains('v133-moved')) rail.classList.add('v133-moved');
       }
       /* ---------- P&L from Delta (live) ---------- */
       const P = { rows: null, at: 0, err: null, busy: false, range: '365', failed: 0 };
