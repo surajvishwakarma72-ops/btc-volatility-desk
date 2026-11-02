@@ -1,0 +1,6 @@
+{
+  // Production build only: the server never runs the tests, and compiling them is what ran the 1 GB VM out of memory.
+  // Type-checking with tests still uses tsconfig.json (npx tsc --noEmit -p .).
+  "extends": "./tsconfig.json",
+  "exclude": ["node_modules", "dist", "src/scripts/**/*", "src/**/*.test.ts"]
+}

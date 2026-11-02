@@ -15,7 +15,8 @@ WORKDIR /app/backend
 COPY backend/package*.json ./
 RUN npm ci
 COPY backend/ ./
-RUN npm run build
+# the 1 GB VM: let the compiler use swap rather than abort when its default heap fills
+RUN NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
 # Stage 3: Production Runner
 FROM node:20-alpine AS runner
