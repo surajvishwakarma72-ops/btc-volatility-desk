@@ -4,7 +4,7 @@ import { istDateKey } from '../../lib/bot/schedule.js';
 import { deltaKeyStatus } from '../delta-keys.js';
 import { paperFor } from '../paper/paper-terminal.js';
 import { getWatchConfig } from '../watch/watch-store.js';
-import { atmIvOf, buildPlan, conditionsOf, needsHist, describePlan, runName, summariseWhy, type EntryPlan } from './algo-engine.js';
+import { atmIvOf, buildPlan, conditionsOf, needsHist, pulseSlotOf, describePlan, runName, summariseWhy, type EntryPlan } from './algo-engine.js';
 import { evalConditions } from '../../lib/algo/conditions.js';
 import { createRun, type RunRow } from './algo-store.js';
 import { paperBroker } from './brokers.js';
@@ -149,7 +149,7 @@ function startOf(rule: AlgoStrategy, when: 'now' | 'later', now: number): { star
 export async function previewEntry(userId: string, rule: AlgoStrategy, lots: number, when: 'now' | 'later' = 'now'): Promise<Preview> {
   const now = Date.now();
   const conds = conditionsOf(rule);
-  const m = await loadMarket(true, needsHist(conds)); // candles are always loaded so the recommendation can read speed vs IV
+  const m = await loadMarket(true, needsHist(conds), pulseSlotOf(rule, conds)); // candles are always loaded so the recommendation can read speed vs IV
   const { plan, reason, view } = buildPlan(rule, m, lots, now);
   const ev = evalConditions(conds, view);
   const mult = rule.exit.legStopMultiple;

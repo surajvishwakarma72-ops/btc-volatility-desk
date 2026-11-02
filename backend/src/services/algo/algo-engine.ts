@@ -1,4 +1,5 @@
-import { evalConditions, type ConditionResult, type MarketView } from '../../lib/algo/conditions.js';
+import { evalConditions, type ConditionResult, type MarketView, type PulseView } from '../../lib/algo/conditions.js';
+import type { Slot } from '../../lib/pulse/grid.js';
 import { chooseExpiries, describeLeg, planOptionEntry, type PlannedLeg } from '../../lib/algo/plan.js';
 import { entryState, exitAtMs, istDay, windowOn, type AlgoStrategy, type Condition, type EntryWindow } from '../../lib/algo/rule.js';
 import type { Bar } from '../../lib/bot/futures.js';
@@ -23,6 +24,7 @@ export interface MarketData {
   gateGo: boolean | null;
   gateReasons: string[];
   bars5m: Bar[];
+  pulse?: PulseView | null;
   hist?: Sample[];
   clock?: ClockIv | null;
 }
@@ -51,7 +53,7 @@ export interface AlgoDeps {
   disarm?(userId: string, strategyId: string): Promise<void>;
   /** Record the run's net PnL for the minute chart (optional so tests need not provide it). */
   mark?(runId: string, tMs: number, net: number, spot: number | null): Promise<void>;
-  market(needBars: boolean, needHist?: boolean): Promise<MarketData>;
+  market(needBars: boolean, needHist?: boolean, pulseSlot?: Slot): Promise<MarketData>;
   broker(mode: 'paper' | 'live'): Broker;
 }
 
@@ -67,6 +69,12 @@ export interface CheckInfo {
 
 export const needsBars = (cs: readonly Condition[]) => cs.some((c) => ['rsi', 'adx', 'ema', 'speed', 'macd', 'bb', 'atr', 'vwap', 'change', 'adx_falling', 'rsi_falling', 'rv_falling', 'edge'].includes(c.type));
 export const needsHist = (cs: readonly Condition[]) => cs.some((c) => ['atmiv_falling', 'dvol_falling', 'ivclock'].includes(c.type));
+/** The lane slot a pulse condition reads: the strategy's own expiry. A fixed expiry has no slot, so the condition cannot pass. */
+export function pulseSlotOf(r: AlgoStrategy, cs: readonly Condition[]): Slot | undefined {
+  if (!cs.some((c) => c.type === 'pulse')) return undefined;
+  const mode = r.expiry?.mode;
+  return mode === 'next' || mode === 'n2n' ? mode : mode === 'current' || mode === 'nearest' || mode === 'b2b' ? 'current' : undefined;
+}
 export const conditionsOf = (r: AlgoStrategy): Condition[] => (r.entry.kind === 'window' ? r.entry.conditions : []);
 
 /** ATM IV (vol points) of the first expiry the rule trades: the average of the call and put nearest spot. */
@@ -83,7 +91,7 @@ export function atmIvOf(rule: AlgoStrategy, m: MarketData, nowMs: number): numbe
 
 /** Build the concrete plan and the view the conditions look at. */
 export function buildPlan(rule: AlgoStrategy, m: MarketData, lots: number, nowMs: number): { plan: EntryPlan | null; reason: string | null; view: MarketView } {
-  const base: MarketView = { spot: m.spot, dvol: m.dvol, gateGo: m.gateGo, gateReasons: m.gateReasons, premium: null, bars5m: m.bars5m, atmIv: atmIvOf(rule, m, nowMs), hist: m.hist, clock: m.clock, nowMs };
+  const base: MarketView = { spot: m.spot, dvol: m.dvol, gateGo: m.gateGo, gateReasons: m.gateReasons, premium: null, bars5m: m.bars5m, atmIv: atmIvOf(rule, m, nowMs), hist: m.hist, clock: m.clock, pulse: m.pulse, nowMs };
   if (rule.instrument === 'future') return { plan: { kind: 'future', future: { side: rule.future!.side, lots: rule.future!.lots ?? lots, spot: m.spot } }, reason: null, view: base };
   const p = planOptionEntry(rule, m.chain, m.expiries, m.spot, lots, nowMs);
   if (!p.ok) return { plan: null, reason: p.reason, view: base };
@@ -156,7 +164,7 @@ export class AlgoEngine {
       return;
     }
     const conds = conditionsOf(rule);
-    const m = await d.market(needsBars(conds), needsHist(conds));
+    const m = await d.market(needsBars(conds), needsHist(conds), pulseSlotOf(rule, conds));
     const { plan, reason, view } = buildPlan(rule, m, s.lots, now);
     const ev = evalConditions(conds, view);
     this.checks.set(s.id, { at: now, state: 'waiting', met: ev.met && !!plan, results: ev.results, planReason: reason, windowStart: w.startMs, windowEnd: w.endMs });

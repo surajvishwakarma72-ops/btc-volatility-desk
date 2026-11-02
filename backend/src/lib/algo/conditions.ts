@@ -19,8 +19,20 @@ export interface MarketView {
   /** Recorded ATM IV / DVOL (about a day, oldest first) for the falling conditions, and the usual IV for this clock time. */
   hist?: readonly Sample[];
   clock?: ClockIv | null;
+  /** Absent when the rule has no pulse condition, its expiry is fixed, or the reading failed. */
+  pulse?: PulseView | null;
   nowMs?: number;
 }
+
+/** The Short Strangle reading of the strategy's expiry. */
+export interface PulseView {
+  zone: 'sell' | 'caution' | 'avoid' | 'nodata';
+  risk: number | null;
+  t: number;
+}
+
+/** A reading older than this is not a reading: the collector samples every 15 minutes. */
+export const PULSE_MAX_AGE_MS = 1_800_000;
 
 export interface ConditionResult {
   label: string;
@@ -179,6 +191,12 @@ export function evalCondition(c: Condition, v: MarketView): ConditionResult {
       const cur = ck ? (ck.source === 'ATM IV' ? v.atmIv : v.dvol) : null;
       const diff = ck && cur != null ? cur - ck.value : null;
       return { label: `Tonight IV ${c.op === 'above' ? 'above' : 'below'} its clock path by ${c.points} pt`, ok: diff != null && (c.op === 'above' ? diff >= c.points : diff <= -c.points), now: ck == null ? 'no clock history yet' : diff == null ? 'no data' : `${ck.source} ${diff >= 0 ? '+' : ''}${diff.toFixed(1)} vs usual ${ck.value.toFixed(1)} (${ck.days} days)` };
+    }
+    case 'pulse': {
+      const p = v.pulse, label = c.zone === 'sell' ? 'Short Strangle in the SELL zone' : 'Short Strangle not in AVOID';
+      const fresh = p != null && (v.nowMs ?? Date.now()) - p.t <= PULSE_MAX_AGE_MS && p.zone !== 'nodata';
+      const ok = fresh && (c.zone === 'sell' ? p!.zone === 'sell' : p!.zone !== 'avoid');
+      return { label, ok, now: !fresh ? 'no fresh reading' : `${p!.zone.toUpperCase()}${p!.risk == null ? '' : `, Risk ${Math.round(p!.risk)}`}` };
     }
     case 'edge': {
       const e = edgeEstimate(v.bars5m, v.atmIv);

@@ -8,6 +8,8 @@ import { clockIv, type Sample } from '../../lib/algo/series-math.js';
 import { backfillDvol, loadSeries, recordSample } from './series.js';
 import { atmIvOf } from './algo-engine.js';
 import { defaultStrangle } from '../../lib/algo/rule.js';
+import { pulseNow } from '../pulse/pulse-score.js';
+import type { Slot } from '../../lib/pulse/grid.js';
 import { paperBroker } from './brokers.js';
 import { liveBroker, refreshTicks } from './live-entry.js';
 
@@ -16,7 +18,7 @@ let chain: { at: number; v: ChainSnapshot } | null = null;
 let bars: { at: number; v: Bar[] } | null = null;
 let hist: { at: number; hist: Sample[]; clock: ReturnType<typeof clockIv> } | null = null;
 
-export async function loadMarket(needBars: boolean, needHist = false): Promise<MarketData> {
+export async function loadMarket(needBars: boolean, needHist = false, pulseSlot?: Slot): Promise<MarketData> {
   const now = Date.now();
   if (!chain || now - chain.at > 4_000) {
     chain = { at: now, v: await fetchChain(now) };
@@ -30,8 +32,10 @@ export async function loadMarket(needBars: boolean, needHist = false): Promise<M
     const all = await loadSeries(now - 15 * 86_400_000).catch(() => [] as Sample[]);
     hist = { at: now, hist: all.filter((x) => x.t >= now - 26 * 3_600_000), clock: clockIv(all, now) };
   }
+  const pulse = pulseSlot ? await pulseNow(pulseSlot).catch(() => null) : undefined;   // a failed read leaves no reading, so the condition holds the entry
   const g = evaluateGate();
   return {
+    pulse,
     spot: chain.v.spot, chain: chain.v.options, expiries: chain.v.expiries,
     dvol: deribitWorker.currentDvol ?? null, gateGo: g.go, gateReasons: g.reasons,
     // the last bar is still forming: indicators use closed bars only

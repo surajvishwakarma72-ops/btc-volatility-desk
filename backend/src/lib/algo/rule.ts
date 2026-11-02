@@ -40,6 +40,8 @@ export const conditionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('rv_falling'), minutes: z.number().int().min(15).max(720).optional() }),
   /** Tonight IV against what the IV usually is at this clock time: `above` (rich) or `below` (cheap) by at least `points`. */
   z.object({ type: z.literal('ivclock'), op: z.enum(['above', 'below']), points: z.number().min(0).max(50) }),
+  /** The Short Strangle lane for this strategy's expiry: only in the SELL zone, or anything but AVOID. No fresh reading never passes. */
+  z.object({ type: z.literal('pulse'), zone: z.enum(['sell', 'not_avoid']) }),
   /** Edge: ATM IV minus expected realised vol, in vol points, between `low` and `high`. */
   z.object({ type: z.literal('edge'), low: z.number().min(-100).max(100), high: z.number().min(-100).max(100) }),
 ]);

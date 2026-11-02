@@ -47774,11 +47774,12 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const share = nL ? Math.min(phone ? (lanes.some(l => l.id === 'v138Iv') ? 0.5 : 0.36) : 0.48, (phone ? 0.27 : 0.33) * nW / nL) : (phone ? 0.27 : 0.33);   // v163: phones give the lanes less, the candles more
         const minL = phone ? 30 : 40, minC = phone ? 180 : 240, budget = Math.max(Math.ceil(nW * minL), Math.min(Math.floor(ph * share), ph - minC) - axX);
         const lh = nL ? Math.max(minL, Math.min(130, Math.floor(budget / nW))) : 0;
-        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
+        for (const l of lanes) { const hh = Math.max(Math.round(lh * wt(l)) + (l.id === axId ? axX : 0), l.id === 'v138Iv' && l.classList.contains('v164in') ? (nL <= 3 ? 140 : nL === 4 ? 122 : 108) : l.id === 'v153Pulse' ? (phone ? 268 : 176) : 0); set(l, 'height', hh + 'px'); set(l, 'max-height', hh + 'px'); set(l, 'flex', '0 0 auto'); set(l, 'margin-top', '0px'); set(l, 'margin-bottom', '0px'); }
         W.__v133Lane = lh; W.__v133Adx = adxOn ? Math.round(lh * ADXW) : 0;   // paRefit gives the ADX strip its share
         clearTimeout(fit.c); if (!gfs && !phone) fit.c = setTimeout(() => {
           const over = D.documentElement.scrollHeight - innerHeight, cpB = cp.getBoundingClientRect().bottom + scrollY, gap = innerHeight - 20 - cpB;   /* v144.1: the correction also gives space back (it only ever grew, so removing indicators left a blank band under the chart) */
-          if (over > 0 && over < 240 && (fit.adj || 0) < 240) { fit.adj = Math.min(240, (fit.adj || 0) + over); fit(); } else if (over <= 0 && gap > 2 && (fit.adj || 0) > 0) { fit.adj = Math.max(0, (fit.adj || 0) - gap); fit(); }
+          /* a give-back that overflows again would repeat for ever and make the chart pulse, so the height stays put until the window or the lanes change */
+          if (over > 0 && over < 240 && (fit.adj || 0) < 240) { if (Date.now() - (fit.back || 0) < 3000) fit.lock = fit.key; fit.adj = Math.min(240, (fit.adj || 0) + over); fit(); } else if (over <= 0 && gap > 2 && (fit.adj || 0) > 0 && fit.lock !== fit.key) { fit.back = Date.now(); fit.adj = Math.max(0, (fit.adj || 0) - gap); fit(); }
         }, 700);
         D.querySelectorAll('#charts .pane.on').forEach(p => { for (const [k, sel] of [['iv', ':scope>.chart-box'], ['rv', ':scope>.rv-box'], ['vov', ':scope>.vov-box'], ['dv', ':scope>.dv-box']]) { const el = p.querySelector(sel); if (!el) continue; if (on[k]) { set(el, 'height', each + 'px'); set(el, 'min-height', each + 'px'); } } });
       }
@@ -51052,11 +51053,11 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
     })();
   </script>
   <script data-module="v154">
-    /* v154 (24 Oct 2026) · keep the newest candle in the middle area. The BTC chart and every lane under it (they follow its time range) show the latest
-       candle about 62 % of the way across with free space on its right, instead of pushing it against the right edge. It re-centres when new candles arrive
+    /* v154 (24 Oct 2026, 2 Nov: 6 % free space, was 38 %) · keep the newest candle near the right edge. The BTC chart and every lane under it (they follow its time range) show the latest
+       candle about 94 % of the way across with a little free space on its right, so the view stays full. It re-centres when new candles arrive
        or the zoom changes, never while you are touching the chart (5 s after your last touch), and never when you have scrolled back to older candles. */
     (function () {
-      const W = window; W.__MIDFR = 0.38; let last = 0;
+      const W = window; W.__MIDFR = 0.06; let last = 0;
       ['pointerdown', 'touchstart', 'touchmove', 'wheel', 'pointermove'].forEach(ev => addEventListener(ev, e => { try { if (e.target && e.target.closest && e.target.closest('#chartp,#paneG')) last = Date.now(); } catch (x) { } }, { passive: true, capture: true }));
       function tick() {
         try {
@@ -60395,6 +60396,7 @@ document.addEventListener('click', function(e) {
     else if (c.type === 'rsi_falling') { o.tf = c.tf || '15m'; o.bars = Math.round(num(c.bars, 3)); o.minDrop = num(c.minDrop, 1); }
     else if (c.type === 'rv_falling') { o.minutes = Math.round(num(c.minutes, 60)); }
     else if (c.type === 'ivclock') { o.op = c.op || 'above'; o.points = num(c.points, 1); }
+    else if (c.type === 'pulse') { o.zone = c.zone === 'not_avoid' ? 'not_avoid' : 'sell'; }
     else if (c.type === 'edge') { o.low = num(c.low, 1); o.high = num(c.high, 8); }
     return o;
   }
@@ -60431,6 +60433,7 @@ document.addEventListener('click', function(e) {
   function condWords(c) {
     switch (c.type) {
       case 'gate': return 'the desk gate says GO';
+      case 'pulse': return c.zone === 'not_avoid' ? 'the Short Strangle lane is not in AVOID' : 'the Short Strangle lane is in the SELL zone';
       case 'dvol': return 'DVOL ' + c.op + ' ' + c.value;
       case 'spot': return 'spot ' + c.op + ' ' + c.value;
       case 'premium': return 'premium collected is at least $' + c.value;
@@ -60485,6 +60488,7 @@ document.addEventListener('click', function(e) {
     else if (c.type === 'atmiv_falling' || c.type === 'dvol_falling') body = '<span>' + (c.type === 'atmiv_falling' ? 'ATM IV' : 'DVOL') + ' falling over</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min, down at least</span>' + inp(b + 'minDrop', c.minDrop, { t: 'num', type: 'number', step: '0.1', cls: 's' }) + '<span>pt</span>';
     else if (c.type === 'rsi_falling') body = '<span>RSI</span>' + tf + '<span>falling: down at least</span>' + inp(b + 'minDrop', c.minDrop, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>over</span>' + inp(b + 'bars', c.bars, { t: 'num', type: 'number', cls: 's' }) + '<span>bars</span>';
     else if (c.type === 'rv_falling') body = '<span>Realised vol: the last</span>' + inp(b + 'minutes', c.minutes, { t: 'num', type: 'number', cls: 's' }) + '<span>min lower than the</span><span>min before it</span>';
+    else if (c.type === 'pulse') body = '<span>Short Strangle, for this strategy expiry, is</span>' + sel(b + 'zone', c.zone || 'sell', [['sell', 'in the SELL zone'], ['not_avoid', 'not in AVOID']]) + '<span class="dim">Not yet calibrated. No fresh reading holds the entry.</span>';
     else if (c.type === 'ivclock') body = '<span>Tonight IV is</span>' + sel(b + 'op', c.op || 'above', [['above', 'above (rich)'], ['below', 'below (cheap)']]) + '<span>its clock path by at least</span>' + inp(b + 'points', c.points, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>pt</span><span class="dim">clock path = the usual IV at this IST time on earlier days</span>';
     else if (c.type === 'edge') body = '<span>Edge between</span>' + inp(b + 'low', c.low, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>and</span>' + inp(b + 'high', c.high, { t: 'num', type: 'number', step: '0.5', cls: 's' }) + '<span>pts</span><span class="dim">ATM IV minus expected realised vol</span>';
     else if (c.type === 'atmiv') body = '<span>ATM IV</span>' + op + inp(b + 'value', c.value, { t: 'num', type: 'number', cls: 's' });
@@ -60502,15 +60506,15 @@ document.addEventListener('click', function(e) {
   /** every condition as a chip you can see and tap, grouped by what it looks at */
   const CGROUPS = [
     ['Trend', [['adx_falling', 'ADX below and falling'], ['adx', 'ADX level'], ['ema', 'EMA cross'], ['macd', 'MACD']]],
-    ['Volatility and IV', [['atmiv_falling', 'ATM IV falling'], ['dvol_falling', 'DVOL falling'], ['rv_falling', 'RV falling'], ['ivclock', 'Tonight IV vs clock'], ['edge', 'Edge between'], ['atmiv', 'ATM IV level'], ['dvol', 'DVOL level'], ['speed', 'Speed vs IV'], ['atr', 'ATR'], ['bb', 'Bollinger band']]],
+    ['Volatility and IV', [['atmiv_falling', 'ATM IV falling'], ['dvol_falling', 'DVOL falling'], ['rv_falling', 'RV falling'], ['pulse', 'Short Strangle zone'], ['ivclock', 'Tonight IV vs clock'], ['edge', 'Edge between'], ['atmiv', 'ATM IV level'], ['dvol', 'DVOL level'], ['speed', 'Speed vs IV'], ['atr', 'ATR'], ['bb', 'Bollinger band']]],
     ['Momentum and price', [['rsi_falling', 'RSI falling'], ['rsi', 'RSI level'], ['vwap', 'VWAP'], ['change', 'Price change'], ['spot', 'Spot level']]],
     ['Desk', [['gate', 'Desk gate says GO'], ['premium', 'Premium collected']]],
   ];
   /* The same ƒx list as the chart menu (same order, same short text, same "how to use" under the ⓘ). Each indicator the server can test is a button;
      the rest are shown too, marked "chart only", so nothing in the menu is missing here. */
   const pct0 = v => (v * 100).toFixed(0) + '%';
-  const FXMAP = { spd: [['speed', 'Speed vs IV']], edge: [['edge', 'Edge between']], adx: [['adx_falling', 'ADX below and falling'], ['adx', 'ADX level']], iv: [['atmiv_falling', 'ATM IV falling'], ['atmiv', 'ATM IV level']], rv: [['rv_falling', 'RV falling']], dv: [['dvol_falling', 'DVOL falling'], ['dvol', 'DVOL level']], ton: [['ivclock', 'Tonight IV vs clock']], rsi: [['rsi_falling', 'RSI falling'], ['rsi', 'RSI level']], vwap: [['vwap', 'Price vs VWAP']], risk: [['gate', 'Desk gate says GO']] };
-  const TYPE2FX = { adx: 'adx', adx_falling: 'adx', atmiv: 'iv', atmiv_falling: 'iv', dvol: 'dv', dvol_falling: 'dv', rv_falling: 'rv', rsi: 'rsi', rsi_falling: 'rsi', speed: 'spd', edge: 'edge', ivclock: 'ton', vwap: 'vwap', gate: 'risk' };
+  const FXMAP = { pulse: [['pulse', 'Short Strangle zone']], spd: [['speed', 'Speed vs IV']], edge: [['edge', 'Edge between']], adx: [['adx_falling', 'ADX below and falling'], ['adx', 'ADX level']], iv: [['atmiv_falling', 'ATM IV falling'], ['atmiv', 'ATM IV level']], rv: [['rv_falling', 'RV falling']], dv: [['dvol_falling', 'DVOL falling'], ['dvol', 'DVOL level']], ton: [['ivclock', 'Tonight IV vs clock']], rsi: [['rsi_falling', 'RSI falling'], ['rsi', 'RSI level']], vwap: [['vwap', 'Price vs VWAP']], risk: [['gate', 'Desk gate says GO']] };
+  const TYPE2FX = { pulse: 'pulse', adx: 'adx', adx_falling: 'adx', atmiv: 'iv', atmiv_falling: 'iv', dvol: 'dv', dvol_falling: 'dv', rv_falling: 'rv', rsi: 'rsi', rsi_falling: 'rsi', speed: 'spd', edge: 'edge', ivclock: 'ton', vwap: 'vwap', gate: 'risk' };
   const EXTRA = [
     ['ema', 'EMA cross', 'A fast and a slow moving average of price. Fast above slow = price has been rising lately, fast below = falling.'],
     ['macd', 'MACD', 'Difference of two moving averages with a signal line. Histogram above 0 = momentum up, below 0 = momentum down.'],
@@ -60571,7 +60575,7 @@ document.addEventListener('click', function(e) {
     const how = k ? fxInfoOf(k) : ex ? esc(ex[2]) : '';
     return '<div class="al-how" style="flex-basis:100%"><b>What it checks</b> ' + esc(condWords(c)) + '.' + (how ? '<br><b>How to use it</b><br>' + how : '') + '</div>';
   }
-  const COND_DEF = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 }, adx_falling: { tf: '15m', value: 25, bars: 3 }, atmiv_falling: { minutes: 30, minDrop: 0.3 }, dvol_falling: { minutes: 60, minDrop: 0.5 }, rsi_falling: { tf: '15m', bars: 3, minDrop: 1 }, rv_falling: { minutes: 60 }, ivclock: { op: 'above', points: 1 }, edge: { low: 1, high: 8 } };
+  const COND_DEF = { pulse: { zone: 'sell' }, gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 }, adx_falling: { tf: '15m', value: 25, bars: 3 }, atmiv_falling: { minutes: 30, minDrop: 0.3 }, dvol_falling: { minutes: 60, minDrop: 0.5 }, rsi_falling: { tf: '15m', bars: 3, minDrop: 1 }, rv_falling: { minutes: 60 }, ivclock: { op: 'above', points: 1 }, edge: { low: 1, high: 8 } };
   function addCondType(t) {
     const fm = S.form;
     if (fm.entry.kind !== 'window') { fm.entry.kind = 'window'; S.ok = 'The entry is now a window that waits for your conditions: set its From and Until times.'; }
@@ -60907,7 +60911,7 @@ document.addEventListener('click', function(e) {
     const el = e.target;
     if (el.dataset && el.dataset.alAdd === 'cond') {
       const t = el.value; if (!t) return;
-      const base = { gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 }, adx_falling: { tf: '15m', value: 25, bars: 3 }, atmiv_falling: { minutes: 30, minDrop: 0.3 }, dvol_falling: { minutes: 60, minDrop: 0.5 }, rsi_falling: { tf: '15m', bars: 3, minDrop: 1 }, rv_falling: { minutes: 60 }, ivclock: { op: 'above', points: 1 }, edge: { low: 1, high: 8 } }[t];
+      const base = { pulse: { zone: 'sell' }, gate: {}, dvol: { op: '<', value: 55 }, spot: { op: '>', value: 90000 }, premium: { value: 25 }, rsi: { tf: '15m', op: '<', value: 60 }, adx: { tf: '15m', op: '<', value: 25 }, ema: { tf: '15m', fast: 9, slow: 21, state: 'above' }, atmiv: { op: '<', value: 45 }, speed: { op: '<', value: 1, minutes: 60 }, macd: { tf: '15m', state: 'bullish' }, bb: { tf: '15m', state: 'inside' }, atr: { tf: '15m', op: '<', pct: 0.5 }, vwap: { state: 'above' }, change: { op: '<', pct: 1, minutes: 60 }, adx_falling: { tf: '15m', value: 25, bars: 3 }, atmiv_falling: { minutes: 30, minDrop: 0.3 }, dvol_falling: { minutes: 60, minDrop: 0.5 }, rsi_falling: { tf: '15m', bars: 3, minDrop: 1 }, rv_falling: { minutes: 60 }, ivclock: { op: 'above', points: 1 }, edge: { low: 1, high: 8 } }[t];
       S.form.entry.conditions.push(Object.assign({ type: t }, base)); S.formTouched = true; paintForm(); return;
     }
     if (!el.dataset || !el.dataset.f) return;
@@ -63697,13 +63701,14 @@ document.addEventListener('click', function(e) {
       rsi_falling: { type: 'rsi_falling', tf: '15m', bars: 3, minDrop: 1 },
       rv_falling: { type: 'rv_falling', minutes: 60 },
       ivclock: { type: 'ivclock', op: 'above', points: 1 },
+      pulse: { type: 'pulse', zone: 'sell' },
       edge: { type: 'edge', low: 1, high: 8 },
       gate: { type: 'gate' },
       dvol_below: { type: 'dvol', op: '<', value: 55 },
     };
     const COND_NAMES = {
       adx_falling: 'ADX below 25 and falling', atmiv_falling: 'ATM IV falling', dvol_falling: 'DVOL falling', rsi_falling: 'RSI falling',
-      rv_falling: 'Realised vol falling', ivclock: "Tonight's IV above its clock path", edge: 'Edge between 1 and 8 pts', gate: 'Desk gate says GO', dvol_below: 'DVOL below 55',
+      rv_falling: 'Realised vol falling', ivclock: "Tonight's IV above its clock path", pulse: 'Short Strangle in the SELL zone', edge: 'Edge between 1 and 8 pts', gate: 'Desk gate says GO', dvol_below: 'DVOL below 55',
     };
     const SLOT = { ASIA_SHORT: '10:00', NY_SHORT: '22:30', EVE_LONG: '17:30', PRE_LONG: '05:00' };
     const DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -63948,7 +63953,7 @@ document.addEventListener('click', function(e) {
         case 'when': return [C('now', 'Trade now (at market)'), C('later', 'Schedule it')];
         case 'entry': return [C('hard', 'Hard time'), C('window', 'Window: wait for conditions')];
         case 'time': return w.rule.entry.kind === 'window' ? extra.concat([C('22:30 to 01:30'), C('10:00 to 13:00'), C('17:30 to 20:30')]) : extra.concat([C('22:30'), C('10:00'), C('17:30'), C('05:00')]);
-        case 'conditions': return ['adx_falling', 'atmiv_falling', 'dvol_falling', 'rsi_falling', 'rv_falling', 'ivclock', 'edge', 'gate'].map(id => C(id, COND_NAMES[id])).concat([C('done', 'Done adding')]);
+        case 'conditions': return ['adx_falling', 'atmiv_falling', 'dvol_falling', 'rsi_falling', 'rv_falling', 'ivclock', 'pulse', 'edge', 'gate'].map(id => C(id, COND_NAMES[id])).concat([C('done', 'Done adding')]);
         case 'days': return extra.concat([C('every day', 'Every day'), C('weekdays', 'Weekdays (Mon to Fri)')]);
         case 'repeat': return [C('once', 'One time only'), C('daily', 'Daily on those days')];
         case 'valid': return [C('none', 'No limit'), C('today', 'End of today'), C('7 days', '7 days'), C('30 days', '30 days')];
