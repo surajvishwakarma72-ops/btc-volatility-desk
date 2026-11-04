@@ -24470,7 +24470,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
         if (!wsDataIsLive()) refresh();
         else if (Date.now() - lastRestAt >= REST_RECONCILE_MS) refresh();
       }, 15000);
-      setInterval(() => { try { render() } catch (e) { console.error(e); setText('status', 'Display error: ' + (e?.message || e) + '. The feed keeps running.') } }, 1000);
+      setInterval(() => { if (document.hidden) return; try { render() } catch (e) { console.error(e); setText('status', 'Display error: ' + (e?.message || e) + '. The feed keeps running.') } }, 1000);
       setInterval(() => { if (backupFileHandle) saveToChosenFile(); }, FILE_SAVE_MS);
       setInterval(() => { try { recMaintain(); for (const p of panes) { renderPaneMeta(p.i); frameLive(p); } } catch (e) { console.error(e) } }, 5000);
       setInterval(() => { try { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'ping' })) } catch (e) { } }, 30000);
@@ -26708,8 +26708,8 @@ Signs follow Settings → Dealer positioning.`;
       function boot() {
         wireMenu(); renderNext(); sayWire();
         const t = setInterval(() => { if (chartsReady && window.LightweightCharts) { clearInterval(t); initGex(); initIv(); tfSeen = chartPrefs.tf; } }, 250);
-        setInterval(() => levels(false), 1500);
-        setInterval(() => { renderNext(); evDirty(); schedProfile(); }, 3000);   // v80: renderSide() retired — #sideEv was never visible
+        setInterval(() => { if (!document.hidden) levels(false); }, 1500);
+        setInterval(() => { if (document.hidden) return; renderNext(); evDirty(); schedProfile(); }, 3000);   // v80: renderSide() retired — #sideEv was never visible
         el('chartFit')?.addEventListener('click', () => G.chart?.timeScale().fitContent());
         el('zoomIn')?.addEventListener('click', () => zoomAll(1.6));
         el('zoomOut')?.addEventListener('click', () => zoomAll(1 / 1.6));
@@ -35571,7 +35571,7 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
     /* v86 (10 Oct 2026) · keep bottom pop-ups from covering each other: the news-gate card moves up above the backup prompt */
     (function () {
       const $ = id => document.getElementById(id);
-      function stack() { const lp = $('lpToast'), ng = $('ngToast'); if (!ng) return; const on = lp && !lp.hidden && lp.getClientRects().length; const m = on ? (lp.offsetHeight + 10) + 'px' : ''; if (ng.style.marginBottom !== m) ng.style.marginBottom = m; }
+      function stack() { if (document.hidden) return; const lp = $('lpToast'), ng = $('ngToast'); if (!ng) return; const on = lp && !lp.hidden && lp.getClientRects().length; const m = on ? (lp.offsetHeight + 10) + 'px' : ''; if (ng.style.marginBottom !== m) ng.style.marginBottom = m; }
       setInterval(stack, 500);
     })();
   </script>
@@ -52509,7 +52509,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
           ms.insertBefore(mk('v168MoreTop', 'Best indicators (day · week · month)', openTop), theme); ms.insertBefore(mk('v168MoreTg', 'Telegram alerts', openTg), theme);
         }
       }
-      setInterval(() => { try { mount(); } catch (e) { } }, 2000); setTimeout(mount, 1500);
+      setInterval(() => { if (document.hidden) return; try { mount(); } catch (e) { } }, 2000); setTimeout(mount, 1500);
       W.v168 = { openTop, openTg, mount };
     })();
   </script>
@@ -52554,7 +52554,7 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
         const b = D.createElement('button'); b.type = 'button'; b.id = 'v170Tf'; b.setAttribute('aria-label', 'Chart timeframe'); b.textContent = 'TF · 5m'; b.addEventListener('click', open);
         const ind = $('v132IndBtn'); if (ind && ind.parentNode === r) r.insertBefore(b, ind); else r.insertBefore(b, r.firstChild); paint();
       }
-      setInterval(() => { try { mount(); } catch (e) { } }, 1500); setTimeout(mount, 1200);
+      setInterval(() => { if (document.hidden) return; try { mount(); } catch (e) { } }, 1500); setTimeout(mount, 1200);
     })();
   </script>
   <script data-module="v171">
