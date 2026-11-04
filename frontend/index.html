@@ -21967,6 +21967,14 @@ The floating P&L pill still shows the live P&L on top of everything. */
     let dirty = false, localTrimDays = 0, storageProblem = '', storagePersisted = false;
     let ws = null, wsReconnectTimer = null, wsReconnectAttempt = 0, wsConnected = false, wsGeneration = 0;
     let liveSpot = null, liveSpotAt = 0, restSpot = null, restSpotAt = 0;
+    const assetSpots = { BTC: { spot: null, at: 0 }, ETH: { spot: null, at: 0 }, XAUT: { spot: null, at: 0 } };
+    window.__assetSpots = assetSpots;
+    function getAssetSpot(asset) {
+      const a = String(asset || 'BTC').toUpperCase();
+      if (a === 'ETH') return assetSpots.ETH?.spot ?? null;
+      if (a === 'XAUT') return assetSpots.XAUT?.spot ?? null;
+      return validSpot(liveSpot) ? liveSpot : (validSpot(restSpot) ? restSpot : (assetSpots.BTC?.spot ?? null));
+    }
     let wsLastMessageAt = 0, wsLastHeartbeatAt = 0, wsMarketTs = 0, wsExpiry = '', wsBuffer = new Map(), lastRestAt = 0;
     let wsExplicitSubscribed = false, wsSubscriptionFallbackAt = 0;
     let lastA = null;
@@ -22212,7 +22220,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
       return (u === 'BTC' || s.includes('BTC')) && /^[CP]-BTC-/.test(s);
     }
     function expiryFromSymbol(symbol) {
-      const m = String(symbol || '').match(/^[CP]-BTC-[^-]+-(\d{6})$/i);
+      const m = String(symbol || '').match(/^[CP]-(?:BTC|ETH|XAUT)-[^-]+-(\d{6})$/i);
       if (!m) return null;
       return '20' + m[1].slice(4, 6) + '-' + m[1].slice(2, 4) + '-' + m[1].slice(0, 2);
     }
@@ -22282,7 +22290,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
     function parseRow(x) {
       if (!x) return null;
       if (x._n) return x;
-      const symbol = String(x.symbol || ''), m = symbol.match(/^[CP]-BTC-([0-9]+(?:\.[0-9]+)?)-/i);
+      const symbol = String(x.symbol || ''), m = symbol.match(/^[CP]-(?:BTC|ETH|XAUT)-([0-9]+(?:\.[0-9]+)?)-/i);
       const ct = String(x.contract_type || '').toLowerCase(), up = symbol.toUpperCase();
       const type = x.type === 'C' || x.type === 'P' ? x.type : (up.startsWith('C-') || ct.includes('call') ? 'C' : up.startsWith('P-') || ct.includes('put') ? 'P' : null);
       if (!type) return null;
@@ -22832,10 +22840,21 @@ The floating P&L pill still shows the live P&L on top of everything. */
     }
 
     /* ---------------- WebSocket ---------------- */
-    function expiryWsSymbol(expiry) {
+    function parseOptionSymbol(symbol) {
+      const m = String(symbol || '').match(/^([CP])-(BTC|ETH|XAUT)-([0-9]+(?:\.[0-9]+)?)-/i);
+      if (!m) return null;
+      const strike = parseFloat(m[3]);
+      return {
+        type: m[1].toUpperCase(),
+        asset: m[2].toUpperCase(),
+        strike: Number.isFinite(strike) ? strike : null
+      };
+    }
+    function expiryWsSymbol(expiry, asset = 'BTC') {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) return '';
+      const a = (typeof asset === 'string' && asset.trim()) ? asset.trim().toUpperCase() : 'BTC';
       const [y, m, d] = expiry.split('-');
-      return `BTC-${d}${m}${y.slice(-2)}`;
+      return `${a}-${d}${m}${y.slice(-2)}`;
     }
     function closeSocket(x) { try { x?.close() } catch (e) { } }
     function closeWS() {
@@ -22857,7 +22876,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
     function subscribeAllChannels(sock, sym) {
       sock.send(JSON.stringify({ type: 'enable_heartbeat' }));
       sendSub(sock, 'ticker', [sym]);
-      sendSub(sock, 'spot_price', ['.DEXBTUSD']);
+      sendSub(sock, 'spot_price', ['.DEXBTUSD', '.DEETHUSD', '.DEXAUTUSD']);
       wsExplicitSubscribed = false; wsSubscriptionFallbackAt = Date.now();
     }
     function subscribeExplicitTickerFallback() {
@@ -22870,18 +22889,45 @@ The floating P&L pill still shows the live P&L on top of everything. */
     function applyTickerMessage(msg) {
       const rows = Array.isArray(msg?.d) ? msg.d : [];
       const sp = N(msg?.sp), ts = Number(msg?.ts || 0);
-      if (validSpot(sp)) { liveSpot = sp; liveSpotAt = Date.now(); restSpot = sp; restSpotAt = Date.now(); }
       const marketTs = ts > 1e15 ? ts / 1e6 : ts > 1e12 ? ts / 1e3 : Date.now() / 1000;
+
+      let msgAsset = null;
+      const topSym = String(msg?.symbol || msg?.s || '');
+      if (/BTC/i.test(topSym)) msgAsset = 'BTC';
+      else if (/ETH/i.test(topSym)) msgAsset = 'ETH';
+      else if (/XAUT/i.test(topSym)) msgAsset = 'XAUT';
+
+      if (!msgAsset) {
+        for (const d of rows) {
+          const parsed = parseOptionSymbol(d?.s);
+          if (parsed?.asset) { msgAsset = parsed.asset; break; }
+        }
+      }
+
+      if (validSpot(sp)) {
+        const now = Date.now();
+        if (msgAsset === 'ETH') {
+          assetSpots.ETH = { spot: sp, at: now };
+        } else if (msgAsset === 'XAUT') {
+          assetSpots.XAUT = { spot: sp, at: now };
+        } else {
+          liveSpot = sp; liveSpotAt = now; restSpot = sp; restSpotAt = now;
+          assetSpots.BTC = { spot: sp, at: now };
+        }
+      }
+
       for (const d of rows) {
-        const symbol = String(d?.s || ''), m = symbol.match(/^[CP]-BTC-([0-9]+(?:\.[0-9]+)?)-/i);
-        if (!m) continue;
-        const type = symbol.toUpperCase().startsWith('C-') ? 'C' : 'P';
+        const symbol = String(d?.s || '');
+        const parsed = parseOptionSymbol(symbol);
+        if (!parsed) continue;
+        const { asset, type, strike } = parsed;
         const qiv = Array.isArray(d.qiv) ? d.qiv : [], oi = Array.isArray(d.oi) ? d.oi : [], g = Array.isArray(d.g) ? d.g : [];
         const ask = normalizeIV(qiv[0]), bid = normalizeIV(qiv[1]), mark = normalizeIV(qiv[2]);   // mark <= 0 means unavailable
         const old = wsBuffer.get(symbol);
-        const rowSpot = validSpot(sp) ? sp : (validSpot(liveSpot) ? liveSpot : (validSpot(restSpot) ? restSpot : (validSpot(old?.spot) ? old.spot : null)));
+        const candidateSpot = (validSpot(sp) && msgAsset === asset) ? sp : getAssetSpot(asset);
+        const rowSpot = validSpot(candidateSpot) ? candidateSpot : (validSpot(old?.spot) ? old.spot : null);
         wsBuffer.set(symbol, {
-          _n: true, _at: Date.now(), type, strike: N(m[1]), symbol, iv: pickIV(ask, bid, mark), ask, bid, mark,
+          _n: true, _at: Date.now(), asset, type, strike, symbol, iv: pickIV(ask, bid, mark), ask, bid, mark,
           oi: N(oi[0]), delta: N(g[0]), spot: rowSpot, ts: marketTs
         });
       }
@@ -22891,10 +22937,27 @@ The floating P&L pill still shows the live P&L on top of everything. */
       }
     }
     function applySpotMessage(m) {
-      const sy = String(m.sy || m.symbol || '');
-      if (sy !== '.DEXBTUSD') return;
-      const p = N(m.p ?? m.price);
-      if (validSpot(p)) { liveSpot = p; liveSpotAt = Date.now(); restSpot = p; restSpotAt = Date.now(); for (const r of chain) r.spot = p; }
+      const sy = String(m?.sy || m?.symbol || '').toUpperCase().trim();
+      const p = N(m?.p ?? m?.price);
+      if (!validSpot(p)) return;
+      const now = Date.now();
+      if (sy === '.DEXBTUSD') {
+        assetSpots.BTC = { spot: p, at: now };
+        liveSpot = p; liveSpotAt = now; restSpot = p; restSpotAt = now;
+        for (const r of chain) {
+          if (!r.asset || r.asset === 'BTC') r.spot = p;
+        }
+      } else if (sy === '.DEETHUSD') {
+        assetSpots.ETH = { spot: p, at: now };
+        for (const r of chain) {
+          if (r.asset === 'ETH') r.spot = p;
+        }
+      } else if (sy === '.DEXAUTUSD') {
+        assetSpots.XAUT = { spot: p, at: now };
+        for (const r of chain) {
+          if (r.asset === 'XAUT') r.spot = p;
+        }
+      }
     }
     function connectWS() {
       if (!selected || typeof WebSocket === 'undefined') return;
