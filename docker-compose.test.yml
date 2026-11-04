@@ -1,0 +1,44 @@
+# Local test stack: the real app with its own throwaway database. Run before any deploy.
+#
+#   docker compose -f docker-compose.test.yml up -d --build     then open http://localhost:4100
+#   docker compose -f docker-compose.test.yml down              removes the database too
+#
+# It has no Delta keys and live trading is off, so it cannot reach an account or send an order. It never reads .env files,
+# so it cannot pick up the live database. The memory limit matches the VM, so a leak fails here first.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: local-test-only
+      POSTGRES_DB: desk
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d desk"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    image: desk-app:local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "4000"
+      DATABASE_URL: postgres://postgres:local-test-only@db:5432/desk
+      JWT_SECRET: local-test-only-not-a-real-secret-000000
+      ENCRYPTION_MASTER_KEY: local-test-only-not-a-real-key-0000000
+      DESK_PASSWORD: local-test-only
+      CORS_ORIGINS: http://localhost:4100
+      BOT_ENABLED: "true"
+      BOT_MODE: paper
+      PULSE_ENABLED: "true"
+      LIVE_TRADING_ENABLED: "false"
+      NEWS_DEMO: "true"   # POST /api/v1/news/demo fires a labelled test shock alert (local stack only)
+    mem_limit: 512m
+    ports:
+      - "127.0.0.1:4100:4000"
