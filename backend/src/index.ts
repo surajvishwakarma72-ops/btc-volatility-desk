@@ -10,7 +10,7 @@ dotenv.config();
 // tick. Anything else is a real bug and still stops the process.
 process.on('unhandledRejection', (reason) => {
   const code = (reason as { code?: string } | null)?.code;
-  if (isConnectFailure(reason) || code === 'ENOTFOUND' || code === 'ECONNRESET') {
+  if (isConnectFailure(reason) || code === 'ENOTFOUND' || code === 'ECONNRESET' || code === '53000' || code === 'XX000') {
     console.error('[server] database unreachable, continuing:', reason instanceof Error ? reason.message : reason);
     return;
   }

@@ -183,7 +183,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
     // the desk owner: the shared desk password, no email
     await ensureAuthSchema().catch(() => undefined);
-    const owner = await findUserById(DESK_USER_ID);
+    const owner = await findUserById(DESK_USER_ID).catch(() => null);
     const hasDbPw = !!(owner && owner.passwordHash && owner.passwordHash !== '!');
     let ok = false;
     if (hasDbPw) {
