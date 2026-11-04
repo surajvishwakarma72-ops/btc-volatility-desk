@@ -12,6 +12,19 @@ describe('time decay per day', () => {
     expect(thetaPerDayUsd([sold(-30), bought(-10)])).toBeCloseTo(3 - 1);
     expect(thetaPerDayUsd([bought(-30)])).toBeCloseTo(-3);
   });
+
+  it('uses verified asset lot sizes for ETH and XAUT without guessing BTC defaults', () => {
+    // ETH lot size is 0.01 (10x BTC's 0.001): 100 lots of theta -30 = $30/day
+    expect(thetaPerDayUsd([{ side: 'sell', lots: 100, theta: -30, asset: 'ETH' }])).toBeCloseTo(30);
+    // XAUT lot size is 0.001: 100 lots of theta -30 = $3/day
+    expect(thetaPerDayUsd([{ side: 'sell', lots: 100, theta: -30, asset: 'XAUT' }])).toBeCloseTo(3);
+    // Symbol with asset part: C-ETH-3000-261027
+    expect(thetaPerDayUsd([{ side: 'sell', lots: 100, theta: -30, symbol: 'C-ETH-3000-261027' }])).toBeCloseTo(30);
+    // Explicit contractValue overrides asset
+    expect(thetaPerDayUsd([{ side: 'sell', lots: 100, theta: -30, contractValue: 0.05 }])).toBeCloseTo(150);
+    // Unknown asset refuses to guess and returns null
+    expect(thetaPerDayUsd([{ side: 'sell', lots: 100, theta: -30, asset: 'SOL' }])).toBeNull();
+  });
   it('without a theta on any leg there is no number, not a guess', () => {
     expect(thetaPerDayUsd([sold(-30), { side: 'sell', lots: 10, theta: null }])).toBeNull();
     expect(thetaPerDayUsd([{ side: 'sell', lots: 10 }])).toBeNull();
