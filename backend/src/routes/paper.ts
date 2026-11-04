@@ -4,6 +4,7 @@ import { paperFor } from '../services/paper/paper-terminal.js';
 import { userId } from '../lib/guards.js';
 import { getOptionFlow } from '../services/paper/flow.js';
 import { getPaperMarks } from '../services/paper/paper-marks.js';
+import { getProfessionalStrangleState, executeProfessionalStrangle, closeProfessionalStrangle } from '../services/paper/professional-strangle.js';
 
 /**
  * The Paper Trade terminal's API. The account is fake money against real Delta order books; there is no
@@ -168,6 +169,41 @@ export const paperRoutes: FastifyPluginAsync = async (fastify) => {
         run: { id: st.id, name: st.name, status: isOpen ? 'open' : 'closed', mode: 'paper', lots: null, enteredAt: st.openedAt, exitedAt: st.closedAt, exitReason: st.closeReason, margin: st.marginAtEntry },
         recordedMinutes: m.t.length,
       };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  
+  // Professional Strangle Strategy (Paper Trading Only)
+  fastify.get('/professional-strangle', auth, async (req, reply) => {
+    try {
+      return { success: true, ...(await getProfessionalStrangleState(userId(req))) };
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  fastify.post('/professional-strangle/execute', limited, async (req, reply) => {
+    const b = z.object({
+      mode: z.enum(['auto', 'weekly_long', 'daily_short']).default('auto'),
+      lots: z.number().int().min(1).max(100_000).optional().default(100),
+    }).safeParse(req.body || {});
+    if (!b.success) return bad(reply, b.error.issues[0]?.message ?? 'invalid parameters');
+    try {
+      const res = await executeProfessionalStrangle(userId(req), b.data.mode, b.data.lots);
+      return res.ok ? { success: true, ...res } : reply.code(400).send({ success: false, error: res.reason });
+    } catch (e) {
+      return fail(reply, e);
+    }
+  });
+
+  fastify.post('/professional-strangle/close', limited, async (req, reply) => {
+    const b = z.object({ strategyId: z.string().uuid() }).safeParse(req.body);
+    if (!b.success) return bad(reply, 'strategyId is required');
+    try {
+      const res = await closeProfessionalStrangle(userId(req), b.data.strategyId);
+      return res.ok ? { success: true } : reply.code(400).send({ success: false, error: res.reason });
     } catch (e) {
       return fail(reply, e);
     }

@@ -647,6 +647,37 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
     href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
     rel="stylesheet">
   <style id="engineCss">
+    .v-asset-switch {
+      display: inline-flex;
+      background: var(--bg2, #18202f);
+      border: 1px solid var(--border, rgba(255,255,255,0.08));
+      border-radius: 8px;
+      padding: 2px;
+      gap: 3px;
+      margin: 0 14px;
+    }
+    .v-asset-btn {
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: var(--font-mono, monospace);
+      color: var(--muted, #8e9bae);
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .v-asset-btn:hover {
+      color: var(--fg, #f8fafc);
+      background: var(--bg3, #222d42);
+    }
+    .v-asset-btn.on {
+      color: #fff;
+      background: var(--primary, #0284c7);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+    }
+
     /* ---- 00_main ---- */
     :root {
       color-scheme: dark;
@@ -20147,7 +20178,16 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
       <!-- Password Reset Form View (Hidden by default) -->
       <form id="vGateResetForm" class="vtg-form" style="display:none;" onsubmit="return false;">
         <div id="vGateResetIntro" style="font-size:13px; color:var(--vtg-muted); line-height:1.4;">
-          Ask the desk owner for a reset link and open it. If you were given a code instead, enter it here.
+          Request a password reset link to your email, or enter a reset code if you already received one.
+        </div>
+
+        <div class="vtg-group" data-reset-manual style="margin-top:10px; margin-bottom:12px; padding:10px; background:rgba(255,255,255,0.04); border-radius:6px; border:1px solid rgba(255,255,255,0.08);">
+          <label class="vtg-label" for="vGateReqEmail" style="display:block; margin-bottom:4px;">Request Reset Link via Email</label>
+          <div style="display:flex; gap:6px;">
+            <input type="email" id="vGateReqEmail" class="vtg-input" style="padding-left:10px; flex:1;" placeholder="Enter account email">
+            <button type="button" id="vGateReqLinkBtn" class="vtg-btn" style="width:auto; padding:0 12px; font-size:12px; white-space:nowrap;">Send Link</button>
+          </div>
+          <div id="vGateReqMsg" style="display:none; font-size:11.5px; margin-top:6px;"></div>
         </div>
 
         <div class="vtg-group" data-reset-manual>
@@ -20551,7 +20591,51 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         resetAlert.textContent = msg;
       }
       if (resetSubmit) {
-        resetSubmit.addEventListener('click', async function () {
+        
+      // Password reset email request dispatcher
+      const reqBtn = document.getElementById('vGateReqLinkBtn');
+      const reqEmail = document.getElementById('vGateReqEmail');
+      const reqMsg = document.getElementById('vGateReqMsg');
+      if (reqBtn && reqEmail) {
+        reqBtn.addEventListener('click', async function () {
+          const email = reqEmail.value.trim();
+          if (!email) {
+            if (reqMsg) { reqMsg.style.display = 'block'; reqMsg.style.color = '#f6465d'; reqMsg.textContent = 'Please enter your registered email address.'; }
+            return;
+          }
+          reqBtn.disabled = true;
+          if (reqMsg) { reqMsg.style.display = 'block'; reqMsg.style.color = 'var(--vtg-muted)'; reqMsg.textContent = 'Sending reset email...'; }
+          try {
+            const r = await fetch('/api/v1/auth/password-reset/request', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ email: email })
+            });
+            const j = await r.json().catch(function () { return null; });
+            if (r.ok && j && j.success) {
+              if (reqMsg) {
+                reqMsg.style.display = 'block';
+                reqMsg.style.color = '#16c784';
+                reqMsg.textContent = 'Reset instructions sent! Check your inbox or enter code below.';
+              }
+              const re = document.getElementById('vGateResetEmail');
+              if (re) re.value = email;
+            } else {
+              if (reqMsg) {
+                reqMsg.style.display = 'block';
+                reqMsg.style.color = '#f6465d';
+                reqMsg.textContent = (j && j.error) || 'Failed to send reset link.';
+              }
+            }
+          } catch (e) {
+            if (reqMsg) { reqMsg.style.display = 'block'; reqMsg.style.color = '#f6465d'; reqMsg.textContent = 'Network error requesting reset link.'; }
+          } finally {
+            reqBtn.disabled = false;
+          }
+        });
+      }
+
+      resetSubmit.addEventListener('click', async function () {
           const val = function (id) { const el = document.getElementById(id); return el ? el.value : ''; };
           const email = val('vGateResetEmail').trim();
           const code = val('vGateResetCode').trim();
@@ -20640,6 +20724,11 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
           <rect x="9.25" y="8" width="5.5" height="14" rx="1.4" />
           <rect x="17" y="13" width="5.5" height="9" rx="1.4" />
         </svg><span class="n">Suraj Vishwakarma<small>Volatility desk · 24×7</small></span></h1>
+      <div class="v-asset-switch" id="vAssetSwitch" role="group" aria-label="Underlying asset switch">
+        <button type="button" class="v-asset-btn on" data-asset="BTC" title="Switch to BTC options and market data">BTC</button>
+        <button type="button" class="v-asset-btn" data-asset="ETH" title="Switch to ETH options and market data">ETH</button>
+        <button type="button" class="v-asset-btn" data-asset="XAUT" title="Switch to XAUT gold options and market data">XAUT</button>
+      </div>
       <nav class="nav" id="nav" aria-label="Pages">
         <button type="button" class="on" data-page="pgDesk">Trade</button>
     <button type="button" data-page="pgPnl" data-v132="1">P&L analysis</button>
@@ -21643,6 +21732,51 @@ The floating P&L pill still shows the live P&L on top of everything. */
       </section>
 
           <section class="page" id="pgAlgo" aria-label="Algo trading: write entry and exit rules for options and futures">
+        <!-- Algo Strategy Description (Plain Language Documentation & Config) -->
+        <section class="panel" id="algoDescPanel" style="margin-bottom:16px;" aria-label="Algo Strategy Description">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <h2 class="metrics-title" style="margin:0; font-size:16px;">Algo Strategy Description</h2>
+              <div style="font-size:12px; color:var(--muted,#8e9bae); margin-top:2px;">Document and save your trading logic in plain language.</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" id="algoDescReloadBtn" class="btn" style="font-size:11px; padding:4px 10px;">Reload</button>
+              <button type="button" id="algoDescSaveBtn" class="btn primary" style="font-size:11px; padding:4px 12px;">Save Description</button>
+            </div>
+          </div>
+
+          <div style="background:rgba(2,132,199,0.08); border:1px solid rgba(2,132,199,0.3); border-radius:6px; padding:6px 12px; font-size:11.5px; color:var(--primary,#38bdf8); margin-bottom:12px;">
+            <b>Documentation &amp; Configuration Feature:</b> Free-form text saved here documents your rules and does not automatically place real trades.
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:12px;">
+            <div class="field">
+              <span style="font-weight:600; font-size:11.5px; display:block; margin-bottom:4px;">1. Entry Conditions</span>
+              <textarea id="algoDescEntry" class="rs-in" rows="3" style="width:100%; resize:vertical; font-family:inherit; font-size:12px; padding:6px 8px;" placeholder="e.g. Enter short strangle when 20D HV < ATM IV, VRP >= 2 pts, delta between 0.10 and 0.15"></textarea>
+            </div>
+            <div class="field">
+              <span style="font-weight:600; font-size:11.5px; display:block; margin-bottom:4px;">2. Hold Conditions</span>
+              <textarea id="algoDescHold" class="rs-in" rows="3" style="width:100%; resize:vertical; font-family:inherit; font-size:12px; padding:6px 8px;" placeholder="e.g. Hold through the session while spot stays inside 1.5x expected move"></textarea>
+            </div>
+            <div class="field">
+              <span style="font-weight:600; font-size:11.5px; display:block; margin-bottom:4px;">3. Exit Conditions</span>
+              <textarea id="algoDescExit" class="rs-in" rows="3" style="width:100%; resize:vertical; font-family:inherit; font-size:12px; padding:6px 8px;" placeholder="e.g. Take profit at 50% max premium. Hard stop at 2x premium sold on either leg"></textarea>
+            </div>
+            <div class="field">
+              <span style="font-weight:600; font-size:11.5px; display:block; margin-bottom:4px;">4. Risk Management</span>
+              <textarea id="algoDescRisk" class="rs-in" rows="3" style="width:100%; resize:vertical; font-family:inherit; font-size:12px; padding:6px 8px;" placeholder="e.g. Max 100 lots per leg. Daily account drawdown stop at $50. Never trade unhedged"></textarea>
+            </div>
+            <div class="field">
+              <span style="font-weight:600; font-size:11.5px; display:block; margin-bottom:4px;">5. Session &amp; Timing Rules</span>
+              <textarea id="algoDescTiming" class="rs-in" rows="3" style="width:100%; resize:vertical; font-family:inherit; font-size:12px; padding:6px 8px;" placeholder="e.g. Execute between 13:00 and 15:30 IST. Settle at 17:30 IST. Skip FOMC and US CPI release windows"></textarea>
+            </div>
+            <div class="field">
+              <span style="font-weight:600; font-size:11.5px; display:block; margin-bottom:4px;">6. Market Conditions &amp; Notes</span>
+              <textarea id="algoDescNotes" class="rs-in" rows="3" style="width:100%; resize:vertical; font-family:inherit; font-size:12px; padding:6px 8px;" placeholder="e.g. Current regime: IV crush environment. Bullish skew on puts"></textarea>
+            </div>
+          </div>
+          <div id="algoDescStatus" style="display:none; font-size:12px; margin-top:8px; font-weight:600;"></div>
+        </section>
         <div id="alRoot"></div>
       </section>
 
@@ -21967,6 +22101,48 @@ The floating P&L pill still shows the live P&L on top of everything. */
     let dirty = false, localTrimDays = 0, storageProblem = '', storagePersisted = false;
     let ws = null, wsReconnectTimer = null, wsReconnectAttempt = 0, wsConnected = false, wsGeneration = 0;
     let liveSpot = null, liveSpotAt = 0, restSpot = null, restSpotAt = 0;
+    let currentAsset = (function() {
+      try {
+        const a = localStorage.getItem('v_selected_asset');
+        if (a && ['BTC', 'ETH', 'XAUT'].includes(a.toUpperCase())) return a.toUpperCase();
+      } catch(e) {}
+      return 'BTC';
+    })();
+    window.__currentAsset = currentAsset;
+
+    async function switchAsset(asset) {
+      const a = String(asset || 'BTC').toUpperCase();
+      if (a !== 'BTC' && a !== 'ETH' && a !== 'XAUT') return;
+      currentAsset = a;
+      window.__currentAsset = a;
+      try { localStorage.setItem('v_selected_asset', a); } catch(e) {}
+      document.querySelectorAll('.v-asset-btn').forEach(b => {
+        b.classList.toggle('on', b.dataset.asset === a);
+      });
+      const spotLbl = document.querySelector('#tkSpot b');
+      if (spotLbl) spotLbl.textContent = a;
+      const sp = getAssetSpot(a);
+      setText('tkSpot', sp != null ? (a === 'BTC' ? Math.round(sp).toLocaleString('en-US') : F(sp, 2)) : '—');
+      chain = [];
+      wsBuffer.clear();
+      CHAIN_CACHE.clear();
+      selected = '';
+      dirty = true;
+      flushAll();
+      closeWS();
+      setBadge('warn', 'Searching');
+      setText('status', 'Finding ' + a + ' option expiries…');
+      await discover(a);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.v-asset-btn').forEach(b => {
+        b.classList.toggle('on', b.dataset.asset === currentAsset);
+        b.addEventListener('click', () => switchAsset(b.dataset.asset));
+      });
+      const spotLbl = document.querySelector('#tkSpot b');
+      if (spotLbl) spotLbl.textContent = currentAsset;
+    });
     const assetSpots = { BTC: { spot: null, at: 0 }, ETH: { spot: null, at: 0 }, XAUT: { spot: null, at: 0 } };
     window.__assetSpots = assetSpots;
     function getAssetSpot(asset) {
@@ -22203,21 +22379,27 @@ The floating P&L pill still shows the live P&L on top of everything. */
        model all ask for the same expiries within seconds of each other at startup. One
        download serves them all (in-flight calls are joined, results reused for 8 s). */
     const CHAIN_CACHE = new Map(), CHAIN_TTL = 8000;
-    function getChain(expiry) {
-      const hit = CHAIN_CACHE.get(expiry), now = Date.now();
+    function getChain(expiry, asset = currentAsset) {
+      const a = (asset || currentAsset || 'BTC').toUpperCase();
+      const cacheKey = a + '|' + expiry;
+      const hit = CHAIN_CACHE.get(cacheKey), now = Date.now();
       if (hit && (hit.pending || now - hit.at < CHAIN_TTL)) return hit.p;
       // /v2/tickers must be given expiry_date (DD-MM-YYYY) or it returns HTTP 400
-      const u = API + '/v2/tickers?contract_types=call_options,put_options&underlying_asset_symbols=BTC&expiry_date=' + encodeURIComponent(apiDate(expiry));
+      const u = API + '/v2/tickers?contract_types=call_options,put_options&underlying_asset_symbols=' + encodeURIComponent(a) + '&expiry_date=' + encodeURIComponent(apiDate(expiry));
       const ent = { pending: true, at: now };
       ent.p = getJSON(u).then(j => { ent.pending = false; ent.at = Date.now(); return Array.isArray(j.result) ? j.result : []; },
-        err => { CHAIN_CACHE.delete(expiry); throw err; });
-      CHAIN_CACHE.set(expiry, ent);
+        err => { CHAIN_CACHE.delete(cacheKey); throw err; });
+      CHAIN_CACHE.set(cacheKey, ent);
       if (CHAIN_CACHE.size > 40) for (const [k, v] of CHAIN_CACHE) if (!v.pending && now - v.at > CHAIN_TTL) CHAIN_CACHE.delete(k);
       return ent.p;
     }
-    function isBTCOption(x) {
+    function isAssetOption(x, asset = currentAsset) {
+      const a = (asset || currentAsset || 'BTC').toUpperCase();
       const s = String(x?.symbol || '').toUpperCase(), u = String(x?.underlying_asset_symbol || x?.underlying_asset || '').toUpperCase();
-      return (u === 'BTC' || s.includes('BTC')) && /^[CP]-BTC-/.test(s);
+      return (u === a || s.includes(a)) && (new RegExp('^[CP]-' + a + '-').test(s) || s.includes('-' + a + '-'));
+    }
+    function isBTCOption(x) {
+      return isAssetOption(x, currentAsset);
     }
     function expiryFromSymbol(symbol) {
       const m = String(symbol || '').match(/^[CP]-(?:BTC|ETH|XAUT)-[^-]+-(\d{6})$/i);
@@ -22227,25 +22409,27 @@ The floating P&L pill still shows the live P&L on top of everything. */
     function candidateDates(n = 14) { const today = istDateKeyAt(Date.now()), a = []; for (let i = 0; i < n; i++)a.push(shiftDateKey(today, i)); return a; }
 
     let discoverFull = false;
-    async function discover() {
+    async function discover(asset = currentAsset) {
       if (discovering) return;
       discovering = true; lastDiscoverAt = Date.now();
-      setBadge('warn', 'Searching'); setText('status', 'Finding BTC option expiries…');
+      const a = (asset || currentAsset || 'BTC').toUpperCase();
+      setBadge('warn', 'Searching'); setText('status', 'Finding ' + a + ' option expiries…');
       try {
         const now = Date.now();
         let cached = null; try {
-          const x = JSON.parse(localStorage.getItem('btc_expiry_list_v1') || 'null');
-          if (x && Date.now() - x.at < 12 * 3600000) cached = x.list.filter(d => expiryEpoch(d) > now);
+          const cacheKey = a.toLowerCase() + '_expiry_list_v1';
+          const x = JSON.parse(localStorage.getItem(cacheKey) || 'null');
+          if (x && Date.now() - x.at < 6 * 3600000) cached = x.list.filter(d => expiryEpoch(d) > now);
         } catch (e) { }
         const quick = !discoverFull && cached && cached.length >= 2;
-        const ds = quick ? cached : candidateDates().filter(d => expiryEpoch(d) > now);
-        if (quick) setTimeout(() => { discoverFull = true; discover(); }, 45000);       // full scan once things are running
-        const rs = await Promise.allSettled(ds.map(getChain));
-        let found = rs.map((r, i) => r.status === 'fulfilled' && r.value.some(isBTCOption) ? ds[i] : null).filter(Boolean).sort();
+        const ds = quick ? cached : candidateDates(21).filter(d => expiryEpoch(d) > now);
+        if (quick) setTimeout(() => { discoverFull = true; discover(a); }, 45000);
+        const rs = await Promise.allSettled(ds.map(d => getChain(d, a)));
+        let found = rs.map((r, i) => r.status === 'fulfilled' && r.value.some(x => isAssetOption(x, a)) ? ds[i] : null).filter(Boolean).sort();
         if (!found.length) {
           const products = await getProducts(), set = new Set();
           for (const p of products) {
-            if (!isBTCOption(p)) continue;
+            if (!isAssetOption(p, a)) continue;
             const ex = String(p.settlement_time || p.expiry || p.expiry_date || '').slice(0, 10);
             const date = /^\d{4}-\d{2}-\d{2}$/.test(ex) ? ex : expiryFromSymbol(p.symbol);
             if (date && expiryEpoch(date) > now) set.add(date);
@@ -22254,11 +22438,30 @@ The floating P&L pill still shows the live P&L on top of everything. */
         }
         const old = selected;
         if (!quick) discoverFull = true;
-        if (found.length) try { localStorage.setItem('btc_expiry_list_v1', JSON.stringify({ at: Date.now(), list: found })); } catch (e) { }
+        if (found.length) try { localStorage.setItem(a.toLowerCase() + '_expiry_list_v1', JSON.stringify({ at: Date.now(), list: found })); } catch (e) { }
         expiryList = found;
+
+        function getExpiryBadge(d) {
+          const ep = expiryEpoch(d);
+          const dte = (ep - now) / 86400000;
+          const istDay = new Date(ep + IST_OFFSET_MS).getUTCDay();
+          const isFri = istDay === 5;
+          if (dte < 1.4) return 'Daily (0DTE/1DTE)';
+          if (isFri) {
+            if (dte <= 7.5) return 'Weekly (Fri)';
+            if (dte <= 15.5) return 'Bi-weekly (2W)';
+            return 'Monthly';
+          }
+          return 'Daily';
+        }
+
         $('expiry').innerHTML = found.length
-          ? found.map((d, i) => `<option value="${d}">${d}${i === 0 ? ' (nearest)' : ''} · ${fmtDuration(expiryEpoch(d) - now)}</option>`).join('')
-          : '<option value="">No BTC options found</option>';
+          ? found.map((d, i) => {
+              const badge = getExpiryBadge(d);
+              const dur = fmtDuration(expiryEpoch(d) - now);
+              return '<option value="' + d + '">' + d + ' · ' + badge + ' · ' + dur + '</option>';
+            }).join('')
+          : '<option value="">No ' + a + ' options found</option>';
         if (found.length) {
           selected = found.includes(old) ? old : (localData.lastExpiry && found.includes(localData.lastExpiry) ? localData.lastExpiry : found[0]);
           $('expiry').value = selected;
@@ -22962,7 +23165,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
     function connectWS() {
       if (!selected || typeof WebSocket === 'undefined') return;
       if (wsReconnectTimer) { clearTimeout(wsReconnectTimer); wsReconnectTimer = null; }
-      const sym = expiryWsSymbol(selected); if (!sym) return;
+      const sym = expiryWsSymbol(selected, currentAsset); if (!sym) return;
       const generation = ++wsGeneration;
       closeSocket(ws); ws = null; wsConnected = false; wsExpiry = selected;
       try {
@@ -25747,7 +25950,73 @@ The floating P&L pill still shows the live P&L on top of everything. */
         { const fb = el('rvFastBtn'); if (fb) fb.setAttribute('aria-pressed', String(FAST())); }
         const w = el('rvWin'); if (w) w.classList.toggle('is-off', pref.mode === 'off');
       }
-      function wire() {
+      
+  /* ---------- Professional Strangle Engine (Paper Trading Only) ---------- */
+  async function loadProfessionalStrangleStatus() {
+    const pill = $('ppPsSchedulePill');
+    const box = $('ppPsStatusBox');
+    if (!pill || !box) return;
+    try {
+      const j = await api('/professional-strangle');
+      if (j && j.success) {
+        const t = j.today;
+        const e = j.eligibility;
+        let pillText = t.dayName;
+        let pillColor = '#8e9bae';
+        if (t.isFriday) {
+          pillText = 'Friday · Weekly Long ' + (e.weeklyLongEligible ? 'Eligible' : 'Active');
+          pillColor = e.weeklyLongEligible ? '#16c784' : '#38bdf8';
+        } else if (t.isDailyDay) {
+          pillText = t.dayName + ' · Daily Short ' + (e.dailyShortEligible ? 'Eligible' : 'Active');
+          pillColor = e.dailyShortEligible ? '#16c784' : '#38bdf8';
+        } else {
+          pillText = t.dayName + ' · Monitoring';
+        }
+        pill.textContent = pillText;
+        pill.style.color = pillColor;
+
+        let activeHtml = '';
+        if (j.activeWeeklyLong) {
+          const w = j.activeWeeklyLong;
+          activeHtml += '<div style="margin-top:6px; padding:6px 8px; background:rgba(2,132,199,0.12); border-radius:4px;"><b>Active Weekly Long:</b> ' + esc(w.name) + ' · Net P&L: <b class="' + (w.netPnl >= 0 ? 'pos' : 'neg') + '">' + (w.netPnl != null ? usd(w.netPnl) : '-') + '</b></div>';
+        }
+        if (j.activeDailyShort) {
+          const d = j.activeDailyShort;
+          activeHtml += '<div style="margin-top:6px; padding:6px 8px; background:rgba(245,158,11,0.12); border-radius:4px;"><b>Active Daily Short:</b> ' + esc(d.name) + ' · Net P&L: <b class="' + (d.netPnl >= 0 ? 'pos' : 'neg') + '">' + (d.netPnl != null ? usd(d.netPnl) : '-') + '</b></div>';
+        }
+
+        box.innerHTML = '<div>' + esc(j.summary) + '</div>' +
+          '<div style="margin-top:4px; color:var(--muted,#8e9bae); font-size:11px;">Next Expiry: <b>' + esc(j.expiries.next || 'None') + '</b> · Next Weekly: <b>' + esc(j.expiries.nextWeekly || 'None') + '</b> · N2N: <b>' + esc(j.expiries.n2n || 'None') + '</b></div>' +
+          activeHtml;
+      }
+    } catch(e) {
+      if (box) box.textContent = 'Could not load Professional Strangle status (' + (e.message || e) + ')';
+    }
+  }
+
+  async function execProfessionalStrangle(targetType) {
+    const msg = $('ppPsMsg');
+    const lotsInput = $('ppPsLots');
+    const lots = lotsInput ? parseInt(lotsInput.value, 10) || 100 : 100;
+    if (msg) { msg.style.display = 'block'; msg.style.color = 'var(--muted,#8e9bae)'; msg.textContent = 'Executing ' + targetType + ' strangle...'; }
+    try {
+      const j = await api('/professional-strangle/execute', {
+        method: 'POST',
+        body: { targetType, lots }
+      });
+      if (j && j.success) {
+        if (msg) { msg.style.display = 'block'; msg.style.color = '#16c784'; msg.textContent = '✓ Successfully executed ' + j.name; }
+        await loadProfessionalStrangleStatus();
+        await refresh(true);
+      } else {
+        if (msg) { msg.style.display = 'block'; msg.style.color = '#f6465d'; msg.textContent = 'Execution rejected: ' + ((j && j.error) || 'Failed to place strangle'); }
+      }
+    } catch(e) {
+      if (msg) { msg.style.display = 'block'; msg.style.color = '#f6465d'; msg.textContent = 'Execution error: ' + (e.message || e); }
+    }
+  }
+
+  function wire() {
         document.querySelectorAll('#rvMode button').forEach(b => b.onclick = () => {
           pref.mode = b.dataset.v; savePref(); syncButtons(); paintAll();
           for (const p of panes) { p.liveSig = ''; frameLive(p, true); }
@@ -60418,8 +60687,8 @@ document.addEventListener('click', function(e) {
 #pgAlgo .al-sec h3{margin:0 0 8px;font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 #pgAlgo .al-sub{margin:12px 0 6px;font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 #pgAlgo .dim{color:var(--faint)}
-#pgAlgo .pos{color:var(--down)}
-#pgAlgo .neg{color:var(--up)}
+#pgAlgo .pos{color:var(--up,#16c784)}
+#pgAlgo .neg{color:var(--down,#f6465d)}
 #pgAlgo .al-chips{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:0 0 10px}
 #pgAlgo .al-sp{flex:1}
 #pgAlgo .al-chip{display:inline-flex;align-items:center;padding:3px 9px;border:1px solid var(--line2);border-radius:999px;font-size:12px;color:var(--muted);background:var(--panel)}
@@ -61183,7 +61452,16 @@ document.addEventListener('click', function(e) {
       paintForm();
     }
   });
-  root.addEventListener('click', async e => {
+  
+    const autoBtn = $('ppPsExecAutoBtn');
+    const weeklyBtn = $('ppPsExecWeeklyBtn');
+    const dailyBtn = $('ppPsExecDailyBtn');
+    if (autoBtn && !autoBtn.__bound) { autoBtn.__bound = true; autoBtn.addEventListener('click', () => execProfessionalStrangle('auto')); }
+    if (weeklyBtn && !weeklyBtn.__bound) { weeklyBtn.__bound = true; weeklyBtn.addEventListener('click', () => execProfessionalStrangle('weekly_long')); }
+    if (dailyBtn && !dailyBtn.__bound) { dailyBtn.__bound = true; dailyBtn.addEventListener('click', () => execProfessionalStrangle('daily_short')); }
+    if (!S.__psPoll) { S.__psPoll = true; setInterval(loadProfessionalStrangleStatus, 15000); setTimeout(loadProfessionalStrangleStatus, 800); }
+
+    root.addEventListener('click', async e => {
     const b = e.target.closest('[data-al]'); if (!b) return;
     const a = b.dataset.al, f = S.form;
     if (a === 'gosettings') { e.preventDefault(); const nb = D.querySelector('#nav button[data-page="pgSettings"]'); if (nb) nb.click(); return; }
@@ -61243,6 +61521,80 @@ document.addEventListener('click', function(e) {
   function tick() { if (active() && !D.hidden) refresh(); }
   new MutationObserver(() => { if (active() && Date.now() - S.at > 1500) { S.at = Date.now(); refresh(); } }).observe($('pgAlgo'), { attributes: true, attributeFilter: ['class'] });
   timer = setInterval(tick, 5000);
+  
+  // Wire Algo Strategy Description
+  async function loadAlgoDescription() {
+    try {
+      const tok = (function() { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch(e) { return localStorage.getItem('desk_jwt'); } })();
+      const headers = { Accept: 'application/json' };
+      if (tok) headers.Authorization = 'Bearer ' + tok;
+      const r = await fetch('/api/v1/algo/description', { headers });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j && j.success && j.description) {
+        const d = j.description;
+        const set = (id, v) => { const el = $(id); if (el) el.value = v || ''; };
+        set('algoDescEntry', d.entryConditions);
+        set('algoDescHold', d.holdConditions);
+        set('algoDescExit', d.exitConditions);
+        set('algoDescRisk', d.riskManagement);
+        set('algoDescTiming', d.sessionTimingRules);
+        set('algoDescNotes', d.marketConditionsNotes);
+      }
+    } catch(e) {}
+  }
+
+  async function saveAlgoDescription() {
+    const status = $('algoDescStatus');
+    const getVal = id => { const el = $(id); return el ? el.value : ''; };
+    const payload = {
+      entryConditions: getVal('algoDescEntry'),
+      holdConditions: getVal('algoDescHold'),
+      exitConditions: getVal('algoDescExit'),
+      riskManagement: getVal('algoDescRisk'),
+      sessionTimingRules: getVal('algoDescTiming'),
+      marketConditionsNotes: getVal('algoDescNotes'),
+    };
+    try {
+      const tok = (function() { try { const v = localStorage.getItem('desk_jwt'); return v ? JSON.parse(v) : null; } catch(e) { return localStorage.getItem('desk_jwt'); } })();
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+      if (tok) headers.Authorization = 'Bearer ' + tok;
+      const r = await fetch('/api/v1/algo/description', {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json().catch(() => null);
+      if (r.ok && j && j.success) {
+        if (status) {
+          status.style.display = 'block';
+          status.style.color = '#16c784';
+          status.textContent = '✓ Strategy description saved successfully at ' + new Date().toLocaleTimeString();
+          setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
+        }
+      } else {
+        if (status) {
+          status.style.display = 'block';
+          status.style.color = '#f6465d';
+          status.textContent = 'Error: ' + ((j && j.error) || 'Failed to save description');
+        }
+      }
+    } catch(e) {
+      if (status) {
+        status.style.display = 'block';
+        status.style.color = '#f6465d';
+        status.textContent = 'Network error saving strategy description';
+      }
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const saveBtn = $('algoDescSaveBtn');
+    const reloadBtn = $('algoDescReloadBtn');
+    if (saveBtn) saveBtn.addEventListener('click', saveAlgoDescription);
+    if (reloadBtn) reloadBtn.addEventListener('click', loadAlgoDescription);
+    loadAlgoDescription();
+  });
+
   window.algoPage = { refresh, toRule, words, fill, condWords, fx: { items: fxItems, map: FXMAP, extra: EXTRA, def: COND_DEF },  reset: () => { S.form = newForm(); S.formTouched = false; S.pv = null; if (S.built) skeleton(); }, track: id => { S.sel = id; S.pnl = null; S.hair = -1; S.tab = 'runs'; const nb = D.querySelector('#nav button[data-page="pgAlgo"]'); if (nb) nb.click(); S.built = false; refresh(); } };
   if (active()) refresh();
 })();
@@ -61805,8 +62157,8 @@ document.addEventListener('click', function(e) {
 #pgPaper .pp-t td.q.sell{color:var(--up)}
 #pgPaper .pp-t td.sel{box-shadow:inset 0 0 0 2px var(--focus)}
 #pgPaper .pp-t th.grp{text-align:center;border-bottom:0;letter-spacing:.08em;text-transform:uppercase}
-#pgPaper .pos{color:var(--down)}
-#pgPaper .neg{color:var(--up)}
+#pgPaper .pos{color:var(--up,#16c784)}
+#pgPaper .neg{color:var(--down,#f6465d)}
 #pgPaper .dim{color:var(--faint)}
 #pgPaper .pp-perp{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:0 0 8px;font-size:13px}
 #pgPaper .pp-perp b{font-variant-numeric:tabular-nums}
@@ -62252,6 +62604,21 @@ document.addEventListener('click', function(e) {
     root.innerHTML = '<div class="pp' + (S.help ? ' help' : '') + '"><div class="pp-top"><h2>Paper Trade</h2><span id="ppHead" class="pp-sp"></span><span id="ppBtns"></span></div>' +
       '<div class="pp-note pp-help" style="margin:-4px 0 10px">Fake money, real Delta order books. Three steps: pick strikes on the chain, check the margin, execute. Every strategy gets a stop on each sold leg, and if any leg hits its stop the whole strategy is closed. Separate from the bot; it cannot place a real order.</div>' +
       '<div id="ppLogin"></div><div id="ppNav"></div><div class="dk-pane" data-pane="over"><div id="ppPnl"></div><div class="dk-quick"><button type="button" class="dk-big" data-pp-tab="opt"><b>New options trade</b><span>Pick strikes on the chain, check the margin, execute</span></button><button type="button" class="dk-big" data-pp-tab="fut"><b>New futures trade</b><span>BTC perpetual, long or short, with a stop and a target</span></button></div><div class="pp-card"><h3>Your open strategies</h3><div id="ppStratMsg"></div><div id="ppStrats"></div></div></div><div class="dk-pane" data-pane="opt">' +
+      '<div class="pp-card" id="ppProfessionalStrangle" style="border:1px solid rgba(2,132,199,0.35); background:rgba(2,132,199,0.04); margin-bottom:14px;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:6px;">' +
+          '<div><h3 style="margin:0; font-size:14px;"><span class="pp-step" style="background:#0284c7;">⚡</span> Professional Strangle Strategy</h3>' +
+          '<div style="font-size:11px; color:var(--muted,#8e9bae); margin-top:2px;">Weekly Long Strangle (Friday) · Daily Short Strangle (Mon/Tue/Wed on N2N expiry) · Paper Trading Only</div></div>' +
+          '<div id="ppPsSchedulePill" style="padding:3px 8px; border-radius:5px; font-size:10.5px; font-weight:700; background:rgba(255,255,255,0.06);">Checking…</div>' +
+        '</div>' +
+        '<div id="ppPsStatusBox" style="font-size:11.5px; margin-bottom:8px; padding:6px 8px; background:rgba(0,0,0,0.15); border-radius:4px; line-height:1.4;">Checking Professional Strangle status…</div>' +
+        '<div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">' +
+          '<label style="font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">Lots: <input type="number" id="ppPsLots" value="100" min="1" max="10000" class="pp-in" style="width:70px; padding:2px 4px; font-size:11.5px;"></label>' +
+          '<button type="button" id="ppPsExecAutoBtn" class="pp-btn primary" style="font-size:11px; padding:4px 10px;">Execute Scheduled Strangle</button>' +
+          '<button type="button" id="ppPsExecWeeklyBtn" class="pp-btn" style="font-size:10.5px; padding:4px 8px;">Force Weekly Long</button>' +
+          '<button type="button" id="ppPsExecDailyBtn" class="pp-btn" style="font-size:10.5px; padding:4px 8px;">Force Daily Short</button>' +
+        '</div>' +
+        '<div id="ppPsMsg" style="display:none; font-size:11px; margin-top:4px; font-weight:600;"></div>' +
+      '</div>' +
       '<div class="pp-card"><h3><span class="pp-step">1</span> Pick strikes on the option chain</h3>' +
       '<div class="pp-bar"><label>Expiry <select id="ppExp" class="pp-in" style="width:auto"></select></label><label>Lots per new leg <input type="number" id="ppBase" class="pp-in" style="width:90px" min="1" step="1" value="100"></label><span class="pp-note" id="ppBoardAt"></span></div>' +
       '<div class="pp-scroll board" id="ppBoard"></div>' +
@@ -62662,7 +63029,13 @@ document.addEventListener('click', function(e) {
     el.innerHTML = tok() ? dkUi.tabs([{ k: 'over', label: 'Overview', n: n || '' }, { k: 'opt', label: 'Options trade' }, { k: 'fut', label: 'Futures trade' }, { k: 'hist', label: 'History & account' }], S.tab, 'data-pp-tab', dkUi.help(S.help, 'data-pp-help')) : '';
     root.querySelectorAll('.dk-pane').forEach(p => p.classList.toggle('on', !tok() || p.dataset.pane === S.tab));
   }
-  function setTab(k) { S.tab = k; S.gen = (S.gen || 0) + 1; dkUi.set('pp_tab', k); try { window.scrollTo({ top: 0 }); } catch (e) { } drawAll(); refresh(); }
+  function setTab(k) {
+    S.tab = k; S.gen = (S.gen || 0) + 1; dkUi.set('pp_tab', k);
+    try { window.scrollTo({ top: 0 }); } catch (e) { }
+    root.querySelectorAll('.dk-pane').forEach(p => p.classList.toggle('on', !tok() || p.dataset.pane === S.tab));
+    drawAll();
+    refresh();
+  }
   /* Each tab fetches and draws only what it shows. Parts update on their own: one slow or failed call keeps its last value
      with a "stale" note instead of freezing the whole page. */
   const NEEDS = { over: ['acct', 'strat'], opt: ['acct', 'board', 'strat'], fut: ['acct'], hist: ['acct', 'strat'] };
@@ -62673,7 +63046,7 @@ document.addEventListener('click', function(e) {
     renderLogin(); renderHead();
     const k = tok() ? S.tab : 'opt';
     if (k === 'over') { renderPnl(); renderStrats(); }
-    else if (k === 'opt') { renderBoard(); updateLegQuotes(); renderStrats(); if (!$('ppSbSum')) renderBuilder(); }
+    else if (k === 'opt') { renderBoard(); updateLegQuotes(); renderStrats(); renderBuilder(); }
     else if (k === 'fut') renderFut();
     else if (k === 'hist') { renderClosed(); renderAcct(); }
   }
@@ -65842,8 +66215,11 @@ body.light #vUniversalFloatingPnl,
             '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readonly' ? 'active' : '') + '" data-mode="readonly">' +
               '<span class="v-mode-dot"></span> Delta (Read-Only)' +
             '</button>' +
-            '<button type="button" class="v-acc-btn ' + (activeViewMode === 'readtrade' ? 'active' : '') + '" data-mode="readtrade">' +
-              '<span class="v-mode-dot"></span> Read + Trade' +
+            '<button type="button" class="v-acc-btn ' + (activeViewMode === 'paper' ? 'active' : '') + '" data-mode="paper">' +
+              '<span class="v-mode-dot"></span> Paper Trading' +
+            '</button>' +
+            '<button type="button" class="v-acc-btn ' + (activeViewMode === 'combined' ? 'active' : '') + '" data-mode="combined">' +
+              '<span class="v-mode-dot"></span> Combined' +
             '</button>' +
           '</div>' +
           '<div class="v-mode-status">' +
@@ -67169,41 +67545,58 @@ body.light #vUniversalFloatingPnl,
         const body = document.getElementById('vFpnlBody');
         if (!body) return;
 
+        if (d.no_positions) {
+          body.innerHTML = '<div class="v-fpnl-content" style="text-align:center; padding:12px 6px; color:var(--vtg-muted,#8e9bae); font-size:12px;">' +
+            '<div style="font-weight:600; margin-bottom:4px; color:var(--vtg-fg,#f8fafc);">No Open Positions</div>' +
+            '<div>Greeks attribution active. Open a position in Paper or Read-Only account to track Greek P&L.</div></div>';
+          return;
+        }
+
         const total = formatVal(d.total_pnl);
         const delta = formatVal(d.delta_pnl);
         const gamma = formatVal(d.gamma_pnl);
         const theta = formatVal(d.theta_pnl);
         const vega = formatVal(d.vega_pnl);
         const other = formatVal(d.other_pnl);
+        const exch = (d.exchange_unrealized_pnl != null) ? formatVal(d.exchange_unrealized_pnl) : null;
 
-        body.innerHTML =
-          '<div class="v-fpnl-content">' +
-            '<div class="v-fpnl-row v-fpnl-total">' +
-              '<span class="v-fpnl-label" style="font-weight:700;">Total P&L (USD)</span>' +
-              '<span class="v-fpnl-value ' + total.cls + '">' + total.text + '</span>' +
-            '</div>' +
-            '<div class="v-fpnl-divider"></div>' +
-            '<div class="v-fpnl-row">' +
-              '<span class="v-fpnl-label">Delta P&L</span>' +
-              '<span class="v-fpnl-value ' + delta.cls + '">' + delta.text + '</span>' +
-            '</div>' +
-            '<div class="v-fpnl-row">' +
-              '<span class="v-fpnl-label">Gamma P&L</span>' +
-              '<span class="v-fpnl-value ' + gamma.cls + '">' + gamma.text + '</span>' +
-            '</div>' +
-            '<div class="v-fpnl-row">' +
-              '<span class="v-fpnl-label">Theta P&L</span>' +
-              '<span class="v-fpnl-value ' + theta.cls + '">' + theta.text + '</span>' +
-            '</div>' +
-            '<div class="v-fpnl-row">' +
-              '<span class="v-fpnl-label">Vega P&L</span>' +
-              '<span class="v-fpnl-value ' + vega.cls + '">' + vega.text + '</span>' +
-            '</div>' +
-            '<div class="v-fpnl-row">' +
-              '<span class="v-fpnl-label">Other P&L</span>' +
-              '<span class="v-fpnl-value ' + other.cls + '">' + other.text + '</span>' +
-            '</div>' +
+        let html = '<div class="v-fpnl-content">' +
+          '<div class="v-fpnl-row v-fpnl-total">' +
+            '<span class="v-fpnl-label" style="font-weight:700;">Model Attributed P&L</span>' +
+            '<span class="v-fpnl-value ' + total.cls + '">' + total.text + '</span>' +
           '</div>';
+
+        if (exch) {
+          html += '<div class="v-fpnl-row" style="font-size:11px; opacity:0.9;">' +
+            '<span class="v-fpnl-label">Exchange Unrealized</span>' +
+            '<span class="v-fpnl-value ' + exch.cls + '">' + exch.text + '</span>' +
+          '</div>';
+        }
+
+        html += '<div class="v-fpnl-divider"></div>' +
+          '<div class="v-fpnl-row">' +
+            '<span class="v-fpnl-label">Delta P&L</span>' +
+            '<span class="v-fpnl-value ' + delta.cls + '">' + delta.text + '</span>' +
+          '</div>' +
+          '<div class="v-fpnl-row">' +
+            '<span class="v-fpnl-label">Gamma P&L</span>' +
+            '<span class="v-fpnl-value ' + gamma.cls + '">' + gamma.text + '</span>' +
+          '</div>' +
+          '<div class="v-fpnl-row">' +
+            '<span class="v-fpnl-label">Theta P&L</span>' +
+            '<span class="v-fpnl-value ' + theta.cls + '">' + theta.text + '</span>' +
+          '</div>' +
+          '<div class="v-fpnl-row">' +
+            '<span class="v-fpnl-label">Vega (IV) P&L</span>' +
+            '<span class="v-fpnl-value ' + vega.cls + '">' + vega.text + '</span>' +
+          '</div>' +
+          '<div class="v-fpnl-row">' +
+            '<span class="v-fpnl-label">Residual / Other</span>' +
+            '<span class="v-fpnl-value ' + other.cls + '">' + other.text + '</span>' +
+          '</div>' +
+        '</div>';
+
+        body.innerHTML = html;
       }
 
       function showError() {
@@ -67223,12 +67616,27 @@ body.light #vUniversalFloatingPnl,
 
         try {
           const headers = { Accept: 'application/json' };
-          const token = localStorage.getItem('desk_token') || localStorage.getItem('jwt') || localStorage.getItem('token');
+          let token = null;
+          try {
+            const raw = localStorage.getItem('desk_jwt') || localStorage.getItem('desk_token') || localStorage.getItem('jwt');
+            if (raw) {
+              token = (raw.startsWith('"') || raw.startsWith('{')) ? JSON.parse(raw) : raw;
+            }
+          } catch(e) {}
           if (token) {
             headers['Authorization'] = 'Bearer ' + token;
           }
 
-          const res = await fetch('/api/v1/pnl/greek?symbol=' + encodeURIComponent(sym), {
+          let queryUrl = '/api/v1/pnl/greek?symbol=' + encodeURIComponent(sym);
+          const livePos = (window.vLivePnl && typeof window.vLivePnl.getAnyOpenPosition === 'function') ? window.vLivePnl.getAnyOpenPosition() : null;
+          if (livePos && livePos.open) {
+            queryUrl += '&total_pnl=' + encodeURIComponent(livePos.totalPnl || 0);
+            if (livePos.callLeg) {
+              queryUrl += '&delta=' + encodeURIComponent(livePos.callLeg.delta || 0) + '&gamma=' + encodeURIComponent(livePos.callLeg.gamma || 0) + '&theta=' + encodeURIComponent(livePos.callLeg.theta || 0) + '&vega=' + encodeURIComponent(livePos.callLeg.vega || 0);
+            }
+          }
+
+          const res = await fetch(queryUrl, {
             headers,
             credentials: 'include',
           });

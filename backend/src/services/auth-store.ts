@@ -165,7 +165,7 @@ export async function createResetCode(userId: string, createdBy: string): Promis
 /** Use the code in one atomic statement: true only if it is this person's, unused and not expired. */
 export async function consumeResetCode(userId: string, code: string): Promise<boolean> {
   await ensureAuthSchema();
-  const r = await pool.query('UPDATE desk_password_resets SET used_at = now() WHERE user_id = $1 AND code_hash = $2 AND used_at IS NULL AND expires_at > now() RETURNING id', [userId, hashCode(code)]);
+  const r = await pool.query('UPDATE desk_password_resets SET used_at = now(), status = \'used\' WHERE user_id = $1 AND (code_hash = $2 OR token_hash = $3) AND used_at IS NULL AND (expires_at IS NULL OR expires_at > now()) RETURNING id', [userId, hashCode(code.trim()), crypto.createHash('sha256').update(code.trim()).digest('hex')]);
   return (r.rowCount ?? 0) > 0;
 }
 
@@ -214,7 +214,7 @@ export async function approvePasswordReset(resetId: string, decidedBy: string): 
   return (r.rowCount ?? 0) > 0;
 }
 
-export async function completePasswordReset(token: string, newPassword: string): Promise<{ success: boolean; status?: number; error?: string }> {
+export async function completePasswordReset(token: string, newPassword: string): Promise<{ success: boolean; status?: number; error?: string; user?: any }> {
   await ensureAuthSchema();
   const tokenHash = crypto.createHash('sha256').update(token.trim()).digest('hex');
   const r = await pool.query(
@@ -237,5 +237,6 @@ export async function completePasswordReset(token: string, newPassword: string):
 
   await pool.query(`UPDATE desk_password_resets SET status = 'used', used_at = now() WHERE id = $1`, [row.id]);
   await setPasswordHash(row.user_id, await hashPassword(newPassword));
-  return { success: true };
+  const u = await findUserById(row.user_id);
+  return { success: true, user: u ? { id: u.id, email: u.email, displayName: u.displayName, role: u.role } : undefined };
 }

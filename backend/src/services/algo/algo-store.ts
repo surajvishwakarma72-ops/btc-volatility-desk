@@ -66,6 +66,16 @@ CREATE TABLE IF NOT EXISTS algo_defaults (
   rule jsonb NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS algo_strategy_descriptions (
+  user_id uuid PRIMARY KEY,
+  entry_conditions text NOT NULL DEFAULT '',
+  hold_conditions text NOT NULL DEFAULT '',
+  exit_conditions text NOT NULL DEFAULT '',
+  risk_management text NOT NULL DEFAULT '',
+  session_timing_rules text NOT NULL DEFAULT '',
+  market_conditions_notes text NOT NULL DEFAULT '',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS algo_pending (
   user_id uuid PRIMARY KEY,
   data jsonb NOT NULL,
@@ -279,4 +289,67 @@ export async function getPending(userId: string): Promise<PendingOrder | null> {
 export async function clearPending(userId: string): Promise<void> {
   await ensureAlgoSchema();
   await pool.query('DELETE FROM algo_pending WHERE user_id = $1', [userId]);
+}
+
+
+export interface AlgoDescription {
+  entryConditions: string;
+  holdConditions: string;
+  exitConditions: string;
+  riskManagement: string;
+  sessionTimingRules: string;
+  marketConditionsNotes: string;
+  updatedAt: number;
+}
+
+export async function getAlgoDescription(userId: string): Promise<AlgoDescription> {
+  await ensureAlgoSchema();
+  const res = await pool.query('SELECT * FROM algo_strategy_descriptions WHERE user_id = $1', [userId]);
+  if (!res.rows.length) {
+    return {
+      entryConditions: '',
+      holdConditions: '',
+      exitConditions: '',
+      riskManagement: '',
+      sessionTimingRules: '',
+      marketConditionsNotes: '',
+      updatedAt: Date.now(),
+    };
+  }
+  const r = res.rows[0];
+  return {
+    entryConditions: r.entry_conditions ?? '',
+    holdConditions: r.hold_conditions ?? '',
+    exitConditions: r.exit_conditions ?? '',
+    riskManagement: r.risk_management ?? '',
+    sessionTimingRules: r.session_timing_rules ?? '',
+    marketConditionsNotes: r.market_conditions_notes ?? '',
+    updatedAt: new Date(r.updated_at).getTime(),
+  };
+}
+
+export async function saveAlgoDescription(userId: string, desc: Partial<AlgoDescription>): Promise<AlgoDescription> {
+  await ensureAlgoSchema();
+  await pool.query(
+    `INSERT INTO algo_strategy_descriptions (user_id, entry_conditions, hold_conditions, exit_conditions, risk_management, session_timing_rules, market_conditions_notes, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+     ON CONFLICT (user_id) DO UPDATE SET
+       entry_conditions = EXCLUDED.entry_conditions,
+       hold_conditions = EXCLUDED.hold_conditions,
+       exit_conditions = EXCLUDED.exit_conditions,
+       risk_management = EXCLUDED.risk_management,
+       session_timing_rules = EXCLUDED.session_timing_rules,
+       market_conditions_notes = EXCLUDED.market_conditions_notes,
+       updated_at = now()`,
+    [
+      userId,
+      desc.entryConditions ?? '',
+      desc.holdConditions ?? '',
+      desc.exitConditions ?? '',
+      desc.riskManagement ?? '',
+      desc.sessionTimingRules ?? '',
+      desc.marketConditionsNotes ?? '',
+    ],
+  );
+  return getAlgoDescription(userId);
 }
