@@ -19,7 +19,7 @@ let lastPollAt: string | null = null;
 let errorCount = 0;
 let pollTimer: NodeJS.Timeout | null = null;
 
-export const DELTA_OPTIONS_GREEKS_URL = 'https://api.india.delta.exchange/v2/options/greeks';
+export const DELTA_OPTIONS_GREEKS_URL = 'https://api.india.delta.exchange/v2/tickers?contract_types=call_options,put_options';
 
 export function getFeedStatus(): FeedStatus {
   return {

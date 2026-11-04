@@ -74,16 +74,21 @@ export class AlertService {
       const ntfyTopic = process.env.NTFY_DEFAULT_TOPIC || 'btc-volatility-desk';
       const ntfyServer = process.env.NTFY_SERVER_URL || 'https://ntfy.sh';
       try {
-        await fetch(`${ntfyServer}/${ntfyTopic}`, {
+        await fetch(ntfyServer, {
           method: 'POST',
-          headers: { Title: title, Priority: 'high', Tags: 'chart_with_upwards_trend,warning' },
-          body: message,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: ntfyTopic,
+            title,
+            message,
+            priority: 4,
+            tags: ['chart_with_upwards_trend', 'warning'],
+          }),
         });
       } catch (err: any) {
         console.error('[AlertService] ntfy dispatch error:', err.message);
       }
     }
-
     // Web push to registered devices
     try {
       const { pushDevices } = await import('../db/index.js');
