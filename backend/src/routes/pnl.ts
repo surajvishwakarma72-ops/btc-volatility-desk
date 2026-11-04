@@ -4,8 +4,6 @@ import { computeGreekPnl, type PositionInput } from '../services/greek-pnl.js';
 import { getSessionPnl } from '../services/session-pnl.js';
 import { isTokenRevoked, sessionStillValid } from '../services/session-guard.js';
 import { DESK_USER_ID } from '../services/auth-store.js';
-import { paperFor } from '../services/paper/paper-terminal.js';
-import { marketFeed } from '../services/paper/paper-terminal.js';
 
 function parseCookies(header?: string): Record<string, string> {
   const list: Record<string, string> = {};
@@ -103,29 +101,6 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         basePosition = await customLookupProvider(userId, symbol);
       } catch {}
-    } else {
-      // Fallback: lookup user position from paper trading or market snapshot
-      try {
-        const acct = await paperFor(userId).account();
-        const pos = acct.positions.find((p) => p.symbol === symbol) || acct.positions[0];
-        if (pos) {
-          const snap = await marketFeed().snapshot(3000).catch(() => null);
-          const row = snap?.rows.find((r: any) => r.symbol === pos.symbol);
-          basePosition = {
-            symbol: pos.symbol,
-            quantity: pos.lots,
-            contract_value: 0.001,
-            delta: pos.delta ?? row?.delta ?? 0,
-            gamma: row?.gamma ?? 0,
-            theta: row?.theta ?? 0,
-            vega: row?.vega ?? 0,
-            elapsed_seconds: 0,
-            total_pnl: pos.unrealized ?? 0,
-            current_spot: snap?.spot,
-            entry_spot: snap?.spot,
-          };
-        }
-      } catch {}
     }
 
     const posInput: PositionInput = {
@@ -149,8 +124,6 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
     const res = computeGreekPnl(posInput);
 
     return reply.status(200).send({
-      exchange_unrealized_pnl: posInput.total_pnl ?? 0,
-      model_attributed_pnl: res.total_pnl,
       symbol: res.symbol,
       delta_pnl: res.delta_pnl,
       gamma_pnl: res.gamma_pnl,

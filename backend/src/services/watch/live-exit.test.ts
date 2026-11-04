@@ -49,15 +49,9 @@ describe('closing orders: only ever reduce-only, immediate-or-cancel, closing', 
     expect(r.orders.map((o) => o.symbol)).toEqual([C]);
     expect(r.problems[0]).toMatch(/P-BTC-78000.*no ask/);
   });
-  it('verified option symbols for BTC, ETH and XAUT are accepted, others rejected', () => {
+  it('only BTC option symbols are ever accepted', () => {
     expect(OPTION_SYMBOL.test(C)).toBe(true);
-    expect(OPTION_SYMBOL.test('C-ETH-3000-261027')).toBe(true);
-    expect(OPTION_SYMBOL.test('P-ETH-2500-261027')).toBe(true);
-    expect(OPTION_SYMBOL.test('C-XAUT-2750-281026')).toBe(true);
-    expect(OPTION_SYMBOL.test('P-XAUT-2650-281026')).toBe(true);
-    for (const s of ['BTCUSD', 'ETH-USD', 'C-SOL-100-261027', 'C-BTC-82000-27102', "C-BTC-1-261027'; DROP"]) {
-      expect(OPTION_SYMBOL.test(s), s).toBe(false);
-    }
+    for (const s of ['BTCUSD', 'ETH-USD', 'C-ETH-3000-261027', 'C-BTC-82000-27102', "C-BTC-1-261027'; DROP"]) expect(OPTION_SYMBOL.test(s), s).toBe(false);
   });
 });
 

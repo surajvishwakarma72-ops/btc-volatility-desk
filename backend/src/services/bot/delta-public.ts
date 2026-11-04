@@ -146,61 +146,41 @@ export interface FeeRates {
   contractValue: number;
 }
 
-export const ASSET_LOT_SIZES: Readonly<Record<string, number>> = {
-  BTC: 0.001,
-  ETH: 0.01,
-  XAUT: 0.001,
-};
-
 export const DEFAULT_OPTION_FEES: FeeRates = { takerRate: 0.0001, makerRate: 0.0001, premiumCapRate: 0.035, contractValue: 0.001 };
 
-/** Fee rates read from the products API (never hardcoded beyond verified asset fallbacks). */
+/** Fee rates read from the products API (never hardcoded beyond this fallback). */
 export async function fetchOptionFeeRates(symbols: string[]): Promise<Map<string, FeeRates>> {
   const out = new Map<string, FeeRates>();
-  const assets = Array.from(new Set(symbols.map((s) => s.split('-')[1]).filter((a): a is string => Boolean(a))));
-  if (!assets.length) assets.push('BTC');
-
   try {
-    for (const asset of assets) {
-      let after: string | null | undefined;
-      do {
-        const cursor: string = after ? `&after=${encodeURIComponent(after)}` : '';
-        const j: {
-          result?: Array<{
-            symbol: string;
-            taker_commission_rate?: string;
-            maker_commission_rate?: string;
-            contract_value?: string;
-            product_specs?: { premium_commission_rate?: number };
-          }>;
-          meta?: { after?: string | null };
-        } = await getJson(`/v2/products?contract_types=call_options,put_options&underlying_asset_symbols=${encodeURIComponent(asset)}&states=live&page_size=500${cursor}`, 20_000);
-        for (const p of j.result ?? []) {
-          if (!symbols.includes(p.symbol)) continue;
-          const cv = num(p.contract_value);
-          const knownLot = ASSET_LOT_SIZES[asset];
-          out.set(p.symbol, {
-            takerRate: num(p.taker_commission_rate) || DEFAULT_OPTION_FEES.takerRate,
-            makerRate: num(p.maker_commission_rate) || DEFAULT_OPTION_FEES.makerRate,
-            premiumCapRate: num(p.product_specs?.premium_commission_rate) || DEFAULT_OPTION_FEES.premiumCapRate,
-            contractValue: cv || knownLot || (asset === 'BTC' ? DEFAULT_OPTION_FEES.contractValue : 0),
-          });
-        }
-        after = j.meta?.after;
-      } while (after && symbols.some((s) => !out.has(s)));
-    }
+    let after: string | null | undefined;
+    do {
+      const cursor: string = after ? `&after=${encodeURIComponent(after)}` : '';
+      const j: {
+        result?: Array<{
+          symbol: string;
+          taker_commission_rate?: string;
+          maker_commission_rate?: string;
+          contract_value?: string;
+          product_specs?: { premium_commission_rate?: number };
+        }>;
+        meta?: { after?: string | null };
+      } = await getJson(`/v2/products?contract_types=call_options,put_options&underlying_asset_symbols=BTC&states=live&page_size=500${cursor}`, 20_000);
+      for (const p of j.result ?? []) {
+        if (!symbols.includes(p.symbol)) continue;
+        out.set(p.symbol, {
+          takerRate: num(p.taker_commission_rate) || DEFAULT_OPTION_FEES.takerRate,
+          makerRate: num(p.maker_commission_rate) || DEFAULT_OPTION_FEES.makerRate,
+          premiumCapRate: num(p.product_specs?.premium_commission_rate) || DEFAULT_OPTION_FEES.premiumCapRate,
+          contractValue: num(p.contract_value) || DEFAULT_OPTION_FEES.contractValue,
+        });
+      }
+      after = j.meta?.after;
+    } while (after && symbols.some((s) => !out.has(s)));
   } catch (e) {
     console.warn('[delta-public] option fee lookup failed:', e instanceof Error ? e.message : e);
   }
-
   for (const s of symbols) {
-    if (out.has(s)) {
-      const existing = out.get(s)!;
-      if (!existing.contractValue || existing.contractValue <= 0) {
-        throw new Error(`Invalid contractValue for ${s}, refusing to use BTC fallback`);
-      }
-      continue;
-    }
+    if (out.has(s)) continue;
     // The defaults are BTC's real values. Any other asset has a different lot, so a guess would give a wrong P&L.
     if (!s.includes('-BTC-')) throw new Error(`No fee data for ${s}, and BTC defaults do not apply to it`);
     console.warn(`[delta-public] using default option fees for ${s}`);

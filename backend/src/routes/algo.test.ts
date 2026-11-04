@@ -281,10 +281,6 @@ describe('algo API', () => {
     h.strategiesOpen = [];
     expect((await app.inject({ method: 'POST', url: '/algo/adopt', headers: tok(app, U), payload: { source: 'paper', id: sid, exit } })).statusCode).toBe(404);
     expect((await app.inject({ method: 'POST', url: '/algo/adopt', headers: tok(app, V), payload: { source: 'delta', symbols: ['C-BTC-1-261027'], exit } })).statusCode).toBe(409);
-    // multi-asset symbols validate schema (409 means schema passed and hit run conflict, 400 means schema failed)
-    expect((await app.inject({ method: 'POST', url: '/algo/adopt', headers: tok(app, V), payload: { source: 'delta', symbols: ['C-SOL-100-261027'], exit } })).statusCode).toBe(400);
-    expect((await app.inject({ method: 'POST', url: '/algo/adopt', headers: tok(app, V), payload: { source: 'delta', symbols: ['C-ETH-3000-261027'], exit } })).statusCode).toBe(409);
-    expect((await app.inject({ method: 'POST', url: '/algo/adopt', headers: tok(app, V), payload: { source: 'delta', symbols: ['C-XAUT-2750-281026'], exit } })).statusCode).toBe(409);
     await app.close();
   });
 

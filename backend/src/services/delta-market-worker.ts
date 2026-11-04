@@ -2,31 +2,6 @@ import WebSocket from 'ws';
 import { db, indicatorSnapshots } from '../db/index.js';
 import { alertService } from './alert-service.js';
 
-export type SupportedMarketAsset = 'BTC' | 'ETH' | 'XAUT';
-
-export interface AssetMarketState {
-  symbol: string;
-  asset: SupportedMarketAsset;
-  spotPrice: number | null;
-  markPrice: number | null;
-  openInterest: number | null;
-  fundingRate: number | null;
-  lastTickTime: Date | null;
-}
-
-/**
- * Maps a Delta Exchange symbol to its canonical underlying asset.
- * Returns null if the symbol is not recognized as BTC, ETH, or XAUT.
- */
-export function assetFromSymbol(rawSymbol: string | undefined | null): SupportedMarketAsset | null {
-  if (!rawSymbol) return null;
-  const s = String(rawSymbol).toUpperCase().trim();
-  if (s.includes('BTC') || s === '.DEXBTUSD') return 'BTC';
-  if (s.includes('ETH') || s === '.DEETHUSD') return 'ETH';
-  if (s.includes('XAUT') || s === '.DEXAUTUSD') return 'XAUT';
-  return null;
-}
-
 export class DeltaMarketWorker {
   private ws: WebSocket | null = null;
   private isRunning: boolean = false;
@@ -34,7 +9,6 @@ export class DeltaMarketWorker {
   private heartbeatTimeout: NodeJS.Timeout | null = null;
   private snapshotInterval: NodeJS.Timeout | null = null;
 
-  // Legacy BTC scalar properties preserved exactly for backward compatibility
   public currentMarkPrice: number | null = null;
   public currentSpotPrice: number | null = null;
   public currentOi: number | null = null;
@@ -43,31 +17,12 @@ export class DeltaMarketWorker {
   private lastAlertCheck = 0;
   public status: 'CONNECTED' | 'DISCONNECTED' | 'RECONNECTING' = 'DISCONNECTED';
 
-  // Isolated asset-keyed market state for multi-asset support
-  public marketByAsset: Map<SupportedMarketAsset, AssetMarketState> = new Map([
-    ['BTC', { symbol: 'BTCUSD', asset: 'BTC', spotPrice: null, markPrice: null, openInterest: null, fundingRate: null, lastTickTime: null }],
-    ['ETH', { symbol: 'ETHUSD', asset: 'ETH', spotPrice: null, markPrice: null, openInterest: null, fundingRate: null, lastTickTime: null }],
-    ['XAUT', { symbol: 'XAUTUSD', asset: 'XAUT', spotPrice: null, markPrice: null, openInterest: null, fundingRate: null, lastTickTime: null }],
-  ]);
-
-  public getAssetState(asset: SupportedMarketAsset): AssetMarketState {
-    return this.marketByAsset.get(asset)!;
-  }
-
-  public getSpot(asset: SupportedMarketAsset): number | null {
-    return this.marketByAsset.get(asset)?.spotPrice ?? null;
-  }
-
-  public getMark(asset: SupportedMarketAsset): number | null {
-    return this.marketByAsset.get(asset)?.markPrice ?? null;
-  }
-
   start() {
     if (this.isRunning) return;
     this.isRunning = true;
     this.connect();
 
-    // Persist 5-minute indicator snapshot (strictly for BTCUSDT)
+    // Persist 5-minute indicator snapshot
     const fiveMinutes = 5 * 60 * 1000;
     this.snapshotInterval = setInterval(() => this.recordSnapshot(), fiveMinutes);
   }
@@ -113,18 +68,14 @@ export class DeltaMarketWorker {
         this.resetHeartbeat();
         console.log('[DeltaWorker] Connected to Delta Exchange India WebSocket.');
 
-        // Subscribe to BTC, ETH, and XAUT perpetuals and spot price indices
+        // Subscribe to BTCUSD and options ticker channel
         const subMsg = {
           type: 'subscribe',
           payload: {
             channels: [
               {
                 name: 'v2/ticker',
-                symbols: ['BTCUSD', 'BTCUSDT', 'ETHUSD', 'ETHUSDT', 'XAUTUSD'],
-              },
-              {
-                name: 'spot_price',
-                symbols: ['.DEXBTUSD', '.DEETHUSD', '.DEXAUTUSD'],
+                symbols: ['BTCUSD', 'BTCUSDT'],
               },
             ],
           },
@@ -133,7 +84,29 @@ export class DeltaMarketWorker {
       });
 
       this.ws.on('message', async (data: WebSocket.Data) => {
-        await this.handleMessage(data);
+        this.resetHeartbeat();
+        try {
+          const payload = JSON.parse(data.toString());
+          if (payload.type === 'v2/ticker' || payload.channel === 'v2/ticker') {
+            const d = payload.data || payload;
+            if (d.mark_price) this.currentMarkPrice = parseFloat(d.mark_price);
+            if (d.spot_price) this.currentSpotPrice = parseFloat(d.spot_price);
+            if (d.open_interest) this.currentOi = parseFloat(d.open_interest);
+            if (d.funding_rate) this.currentFundingRate = parseFloat(d.funding_rate);
+            this.lastTickTime = new Date();
+
+            // Spot barrier / speed alert checks
+            if (this.currentSpotPrice) {
+              const now = Date.now();
+              if (now - this.lastAlertCheck >= 1000) {
+                this.lastAlertCheck = now;
+                await alertService.checkMetrics({ spotPrice: this.currentSpotPrice });
+              }
+            }
+          }
+        } catch (err: any) {
+          // Non-critical tick parsing error
+        }
       });
 
       this.ws.on('error', (err: any) => {
@@ -160,81 +133,7 @@ export class DeltaMarketWorker {
   }
 
   /**
-   * Process an incoming WebSocket message safely routing ticks to isolated asset states.
-   */
-  public async handleMessage(data: WebSocket.Data | string) {
-    this.resetHeartbeat();
-    try {
-      const payload = typeof data === 'string' ? JSON.parse(data) : JSON.parse(data.toString());
-
-      if (payload.type === 'v2/ticker' || payload.channel === 'v2/ticker') {
-        const d = payload.data || payload;
-        const symbol = String(d.symbol || payload.symbol || '');
-        const asset = assetFromSymbol(symbol);
-        if (!asset) return; // Safely ignore unknown or invalid symbols
-
-        const mark = d.mark_price ? parseFloat(d.mark_price) : null;
-        const spot = d.spot_price ? parseFloat(d.spot_price) : null;
-        const oi = d.open_interest ? parseFloat(d.open_interest) : null;
-        const funding = d.funding_rate ? parseFloat(d.funding_rate) : null;
-        const now = new Date();
-
-        // 1. Update the isolated asset state
-        const state = this.marketByAsset.get(asset)!;
-        state.symbol = symbol || state.symbol;
-        if (mark !== null && !isNaN(mark)) state.markPrice = mark;
-        if (spot !== null && !isNaN(spot)) state.spotPrice = spot;
-        if (oi !== null && !isNaN(oi)) state.openInterest = oi;
-        if (funding !== null && !isNaN(funding)) state.fundingRate = funding;
-        state.lastTickTime = now;
-
-        // 2. Existing scalar properties and alert triggers are STRICTLY for BTC
-        if (asset === 'BTC') {
-          if (mark !== null && !isNaN(mark)) this.currentMarkPrice = mark;
-          if (spot !== null && !isNaN(spot)) this.currentSpotPrice = spot;
-          if (oi !== null && !isNaN(oi)) this.currentOi = oi;
-          if (funding !== null && !isNaN(funding)) this.currentFundingRate = funding;
-          this.lastTickTime = now;
-
-          // Spot barrier / speed alert checks strictly for BTC
-          if (this.currentSpotPrice) {
-            const nowMs = Date.now();
-            if (nowMs - this.lastAlertCheck >= 1000) {
-              this.lastAlertCheck = nowMs;
-              await alertService.checkMetrics({ spotPrice: this.currentSpotPrice });
-            }
-          }
-        }
-      } else if (payload.type === 'spot_price') {
-        const symbol = String(payload.symbol || payload.sy || '');
-        const asset = assetFromSymbol(symbol);
-        if (!asset) return;
-
-        const spot = payload.price != null ? parseFloat(payload.price) : null;
-        if (spot !== null && !isNaN(spot)) {
-          const state = this.marketByAsset.get(asset)!;
-          state.spotPrice = spot;
-          state.lastTickTime = new Date();
-
-          if (asset === 'BTC') {
-            this.currentSpotPrice = spot;
-            this.lastTickTime = state.lastTickTime;
-            const nowMs = Date.now();
-            if (nowMs - this.lastAlertCheck >= 1000) {
-              this.lastAlertCheck = nowMs;
-              await alertService.checkMetrics({ spotPrice: this.currentSpotPrice });
-            }
-          }
-        }
-      }
-    } catch (err: any) {
-      // Non-critical tick parsing error
-    }
-  }
-
-  /**
-   * Persists normalized 5-minute indicator snapshot into indicator_snapshots table.
-   * STRICTLY records BTCUSDT for downstream ask and terminal compatibility.
+   * Persists normalized 5-minute indicator snapshot into indicator_snapshots table
    */
   private async recordSnapshot() {
     if (!this.currentSpotPrice && !this.currentMarkPrice) return;

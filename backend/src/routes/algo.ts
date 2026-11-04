@@ -6,7 +6,7 @@ import { istDateKey } from '../lib/bot/schedule.js';
 import { algoEngine, loadMarket } from '../services/algo/algo-runtime.js';
 import { chooseExpiries, expiryCodeOf } from '../lib/algo/plan.js';
 import { conditionsOf } from '../services/algo/algo-engine.js';
-import { clearPending, createRun, deleteStrategy, finishRun, getAlgoDescription, getDefaults, getMarks, getRunById, getStrategy, listStrategies, recentRuns, saveAlgoDescription, saveDefaults, saveStrategy, setArmed } from '../services/algo/algo-store.js';
+import { clearPending, createRun, deleteStrategy, finishRun, getDefaults, getMarks, getRunById, getStrategy, listStrategies, recentRuns, saveDefaults, saveStrategy, setArmed } from '../services/algo/algo-store.js';
 import { enterNow, exitAll, liveState, marketReport, previewEntry } from '../services/algo/algo-service.js';
 import { loadInsights, ownRunStats } from '../services/algo/insights-service.js';
 import { paperBroker } from '../services/algo/brokers.js';
@@ -167,28 +167,6 @@ export const algoRoutes: FastifyPluginAsync = async (fastify) => {
     } catch (e) {
       return bad(reply, (e as Error).message, 502);
     }
-  });
-
-  
-  // Algo Strategy Description (plain language documentation / configuration)
-  const descBody = z.object({
-    entryConditions: z.string().max(10_000).optional().default(''),
-    holdConditions: z.string().max(10_000).optional().default(''),
-    exitConditions: z.string().max(10_000).optional().default(''),
-    riskManagement: z.string().max(10_000).optional().default(''),
-    sessionTimingRules: z.string().max(10_000).optional().default(''),
-    marketConditionsNotes: z.string().max(10_000).optional().default(''),
-  });
-
-  fastify.get('/description', auth, async (req) => {
-    return { success: true, description: await getAlgoDescription(userId(req)) };
-  });
-
-  fastify.put('/description', limited, async (req, reply) => {
-    const b = descBody.safeParse(req.body);
-    if (!b.success) return bad(reply, need(b.error));
-    const saved = await saveAlgoDescription(userId(req), b.data);
-    return { success: true, description: saved };
   });
 
   fastify.get('/defaults', auth, async (req) => ({ success: true, defaults: (await getDefaults(userId(req))) ?? defaultStrangle() }));

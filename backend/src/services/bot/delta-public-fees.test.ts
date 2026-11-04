@@ -30,16 +30,6 @@ describe('fetchOptionFeeRates', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('down'); }));
     await expect(fetchOptionFeeRates(['C-ETH-2400-271126'])).rejects.toThrow(/C-ETH-2400-271126/);
   });
-
-  it('correctly queries and parses ETH options with their real lot size', async () => {
-    const f = vi.fn(async (url: string) => {
-      expect(url).toContain('underlying_asset_symbols=ETH');
-      return json({ result: [product('C-ETH-2400-271126', '0.01')], meta: { after: null } });
-    });
-    vi.stubGlobal('fetch', f);
-    const rates = await fetchOptionFeeRates(['C-ETH-2400-271126']);
-    expect(rates.get('C-ETH-2400-271126')?.contractValue).toBe(0.01);
-  });
 });
 
 describe('fetchPerpInfo', () => {

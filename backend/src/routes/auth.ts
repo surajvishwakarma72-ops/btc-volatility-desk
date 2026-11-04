@@ -9,7 +9,6 @@ import { loginCooldown } from '../lib/cooldown.js';
 import { isTokenRevoked, revokeToken, sessionStillValid } from '../services/session-guard.js';
 import { pool } from '../db/index.js';
 import { logAudit } from '../services/audit-logger.js';
-import { emailService } from '../services/email-service.js';
 
 function passwordOk(submitted: string, expected: string): boolean {
   const a = Buffer.from(submitted);
@@ -283,27 +282,12 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
 
     const res = await createPasswordResetRequest(email, token);
-    let emailSent = false;
-    let emailReason: string | undefined;
-    if (res.token) {
-      const host = (request.headers['x-forwarded-host'] as string) || request.headers.host || process.env.DOMAIN || 'suraj-voldesk.duckdns.org';
-      const proto = (request.headers['x-forwarded-proto'] as string) || 'https';
-      const resetLink = `${proto}://${host}/#reset=${encodeURIComponent(res.token)}&email=${encodeURIComponent(email)}`;
-      const mailRes = await emailService.sendPasswordResetEmail(email, resetLink);
-      emailSent = mailRes.sent;
-      emailReason = mailRes.reason;
-    }
-
     return reply.status(200).send({
       success: true,
-      message: emailSent
-        ? 'A password reset link has been sent to your email.'
-        : 'If that email exists, a password reset request has been submitted for owner approval.',
+      message: 'If that email exists, a password reset request has been submitted for owner approval.',
       reset_id: res.resetId,
       resetId: res.resetId,
       token: res.token,
-      emailSent,
-      emailReason,
     });
   });
 
@@ -366,16 +350,6 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     if (!res.success) {
       return reply.status(res.status || 400).send({ success: false, error: res.error });
     }
-    let jwtToken: string | undefined;
-    if (res.user) {
-      jwtToken = await sign(reply, res.user);
-      reply.header('Set-Cookie', `desk_token=${jwtToken}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`);
-    }
-    return reply.status(200).send({
-      success: true,
-      message: 'Password reset successfully',
-      token: jwtToken,
-      user: res.user,
-    });
+    return reply.status(200).send({ success: true, message: 'Password reset successfully' });
   });
 };

@@ -18,12 +18,8 @@ import type { WatchGroup } from './watch.js';
  */
 export interface OptionPosition { productId: number; symbol: string; size: number; entry: number }
 
-export const SUPPORTED_OPTION_ASSETS = ['BTC', 'ETH', 'XAUT'] as const;
-export type SupportedOptionAsset = (typeof SUPPORTED_OPTION_ASSETS)[number];
-
-export const OPTION_SYMBOL = /^[CP]-(?:BTC|ETH|XAUT)-\d+(?:\.\d+)?-\d{6}$/;
+export const OPTION_SYMBOL = /^[CP]-BTC-\d+-\d{6}$/;
 export const expiryOf = (symbol: string): string => symbol.split('-')[3] ?? '';
-export const assetOf = (symbol: string): string => symbol.split('-')[1] ?? '';
 /** DDMMYY, the expiry part of a Delta option symbol. */
 export const OPTION_EXPIRY = /^\d{6}$/;
 
@@ -52,8 +48,7 @@ export function buildClosingOrders(positions: readonly OptionPosition[], books: 
   // shorts first: they are the ones that can lose without limit
   mine.sort((a, b) => (a.size < 0 ? 0 : 1) - (b.size < 0 ? 0 : 1));
   for (const p of mine) {
-    const fallbackTick = assetOf(p.symbol) === 'BTC' ? 0.1 : 0.01;
-    const book = books.get(p.symbol), tick = tickOf(p.symbol) || fallbackTick;
+    const book = books.get(p.symbol), tick = tickOf(p.symbol) || 0.1;
     const buy = p.size < 0, touch = buy ? book?.asks[0]?.[0] : book?.bids[0]?.[0];
     if (!touch || !(touch > 0)) { problems.push(`${p.symbol}: no ${buy ? 'ask' : 'bid'} in the book to close against`); continue; }
     const buffer = Math.max(3 * tick, touch * 0.03) * Math.pow(3, Math.max(0, attempt));

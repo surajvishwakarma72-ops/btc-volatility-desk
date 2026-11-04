@@ -36,7 +36,6 @@ _to_delete/
 # Logs & agent runs
 *.log
 .claude/
-.superpowers/
 
 backend/src/backtest/output/
 graphify-out/
