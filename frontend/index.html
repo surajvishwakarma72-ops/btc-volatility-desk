@@ -61901,6 +61901,7 @@ document.addEventListener('click', function(e) {
 </style>
 <style id="ppCss">
 #pgPaper .pp{max-width:1360px;margin:0 auto;padding:4px 2px 24px;color:var(--text)}
+@media (max-width:768px){#pgPaper .pp{padding-bottom:120px !important}}
 #pgPaper .pp-top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 10px}
 #pgPaper .pp-top h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
 #pgPaper .pp-sp{flex:1}
@@ -62785,7 +62786,7 @@ document.addEventListener('click', function(e) {
     el.innerHTML = tok() ? dkUi.tabs([{ k: 'over', label: 'Overview', n: n || '' }, { k: 'opt', label: 'Options trade' }, { k: 'fut', label: 'Futures trade' }, { k: 'hist', label: 'History & account' }], S.tab, 'data-pp-tab', dkUi.help(S.help, 'data-pp-help')) : '';
     root.querySelectorAll('.dk-pane').forEach(p => p.classList.toggle('on', !tok() || p.dataset.pane === S.tab));
   }
-  function setTab(k) { S.tab = k; S.gen = (S.gen || 0) + 1; dkUi.set('pp_tab', k); try { window.scrollTo({ top: 0 }); } catch (e) { } drawAll(); refresh(); }
+  function setTab(k) { S.tab = k; S.gen = (S.gen || 0) + 1; dkUi.set('pp_tab', k); try { window.scrollTo({ top: 0 }); } catch (e) { } drawAll(); refresh(); if (k === 'fut') futSchedule(); }
   /* Each tab fetches and draws only what it shows. Parts update on their own: one slow or failed call keeps its last value
      with a "stale" note instead of freezing the whole page. */
   const NEEDS = { over: ['acct', 'strat'], opt: ['acct', 'board', 'strat'], fut: ['acct'], hist: ['acct', 'strat'] };
@@ -62797,7 +62798,7 @@ document.addEventListener('click', function(e) {
     const k = tok() ? S.tab : 'opt';
     if (k === 'over') { renderPnl(); renderStrats(); }
     else if (k === 'opt') { renderBoard(); updateLegQuotes(); renderStrats(); if (!$('ppSbSum')) renderBuilder(); }
-    else if (k === 'fut') renderFut();
+    else if (k === 'fut') { renderFut(); if (!S.fut.preview) futSchedule(); }
     else if (k === 'hist') { renderClosed(); renderAcct(); }
   }
   function staleNote() {
@@ -62827,7 +62828,7 @@ document.addEventListener('click', function(e) {
     S.err = logout ? 'Session expired, log in again' : (!S.acct && S.part.acct.err) ? S.part.acct.err : null;
     if (S.tab === 'opt' && Date.now() - S.flowAt > 60000) loadFlow();
     busy = false;
-    if (gen === S.gen) { drawAll(); if (first && S.sb.legs.length) sbSchedule(); }   // a late answer for a tab already left is not drawn
+    if (gen === S.gen) { drawAll(); if (first && S.sb.legs.length) sbSchedule(); if (S.tab === 'fut' && !S.fut.preview) futSchedule(); }   // a late answer for a tab already left is not drawn
     if (again) { again = false; refresh(); }
   }
 
@@ -62836,7 +62837,8 @@ document.addEventListener('click', function(e) {
     root.addEventListener('click', e => {
       const t = e.target.closest && e.target.closest('[data-pp-tab],[data-pp-help]'); if (!t) return;
       if (t.dataset.ppHelp !== undefined && t.hasAttribute('data-pp-help')) { S.help = !S.help; dkUi.set('pp_help', S.help ? '1' : ''); root.querySelector('.pp').classList.toggle('help', S.help); ppNav(); return; }
-      if (t.dataset.ppTab) setTab(t.dataset.ppTab);
+      const tab = t.dataset.k || t.dataset.ppTab;
+      if (tab) setTab(tab);
     });
     root.addEventListener('click', async e => {
       const t = e.target.closest('[data-pp-q],[data-pp-act],[data-pp-close],[data-pp-mode],[data-pp-sbdel],[data-pp-edit],[data-pp-editx],[data-pp-save],[data-pp-closeall],[data-pp-fside],[data-pp-ftype],[data-pp-flots],[data-pp-cancel]'); if (!t) return; const d = t.dataset;
