@@ -269,6 +269,7 @@ describe('positions, market, events and desk records', () => {
   });
 
   it('manual trades, nightly reviews, audits, recalibration and alerts read their own tables', async () => {
+    await pool.query(`INSERT INTO trades (strategy, status, entry_time, exit_time, call_strike, put_strike, realized_pnl, exit_reason) VALUES ('SHORT_STRANGLE','CLOSED', now() - interval '2 days', now() - interval '1 day', 82500, 78500, 12, 'TAKE_PROFIT'), ('SHORT_STRANGLE','CLOSED', now() - interval '3 days', now() - interval '2 days', 82000, 78000, -20, 'STOP_LOSS')`);
     await pool.query(`INSERT INTO trades (strategy, status, entry_time, exit_time, call_strike, put_strike, realized_pnl, exit_reason) VALUES ('SHORT_STRANGLE','CLOSED', to_timestamp(${NOW / 1000.0}) - interval '2 days', to_timestamp(${NOW / 1000.0}) - interval '1 day', 82500, 78500, 12, 'TAKE_PROFIT'), ('SHORT_STRANGLE','CLOSED', to_timestamp(${NOW / 1000.0}) - interval '3 days', to_timestamp(${NOW / 1000.0}) - interval '2 days', 82000, 78000, -20, 'STOP_LOSS')`);
     const t = await answer('my manual trades', ctx());
     expect(t.text).toMatch(/2 logged trades.*Realised -\$8\.00, win rate 50%/);

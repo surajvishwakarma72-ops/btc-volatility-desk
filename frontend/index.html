@@ -19854,6 +19854,31 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         color: #4ade80;
         border: 1px solid rgba(74, 222, 128, 0.3);
       }
+      #vTerminalLockGate .vtg-tabs {
+        display: flex;
+        gap: 6px;
+        background: var(--vtg-input-bg);
+        padding: 4px;
+        border-radius: 8px;
+        border: 1px solid var(--vtg-line);
+        margin-bottom: 20px;
+      }
+      #vTerminalLockGate .vtg-tab {
+        flex: 1;
+        padding: 8px 12px;
+        border: none;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--vtg-muted);
+        font-weight: 600;
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      #vTerminalLockGate .vtg-tab.active {
+        background: var(--vtg-btn-bg);
+        color: #FFFFFF;
+      }
 
       #vTerminalLockGate * {
         box-sizing: border-box;
@@ -20097,14 +20122,20 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
         </div>
       </div>
 
-      <!-- Login Form View -->
-            <!-- Inactivity Toast / Banner inside the lock card -->
+      <!-- Auth Mode Tabs (Sign In / Create Account) -->
+      <div id="vGateTabs" class="vtg-tabs">
+        <button type="button" id="vGateTabLogin" class="vtg-tab active">Sign In</button>
+        <button type="button" id="vGateTabSignup" class="vtg-tab">Create Account</button>
+      </div>
+
+      <!-- Inactivity Toast / Banner inside the lock card -->
       <div id="vGateInactivityToast" class="vtg-alert vtg-alert-cooldown" style="display:none; margin-bottom:16px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
         <span>Session locked after 30 min inactivity</span>
       </div>
 
-<form id="vGateLoginForm" class="vtg-form" onsubmit="return false;">
+      <!-- Login Form View -->
+      <form id="vGateLoginForm" class="vtg-form" onsubmit="return false;">
         <div class="vtg-group">
           <label class="vtg-label" for="vGateEmail">Trader Email / Desk ID</label>
           <div class="vtg-input-wrap">
@@ -20142,6 +20173,60 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
           <span>Unlock Terminal</span>
         </button>
+      </form>
+
+      <!-- Sign Up Form View (for friends with invite code) -->
+      <form id="vGateSignupForm" class="vtg-form" style="display:none;" onsubmit="return false;">
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateSignupName">Your Name</label>
+          <div class="vtg-input-wrap">
+            <span class="vtg-icon-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+            </span>
+            <input type="text" id="vGateSignupName" class="vtg-input" placeholder="e.g. Vaibhavi Sharma" autocomplete="name">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateSignupEmail">Account Email</label>
+          <div class="vtg-input-wrap">
+            <span class="vtg-icon-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+            </span>
+            <input type="email" id="vGateSignupEmail" class="vtg-input" placeholder="friend@example.com" autocomplete="email">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateSignupPassword">New Password (min 10 chars)</label>
+          <div class="vtg-input-wrap">
+            <span class="vtg-icon-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+            </span>
+            <input type="password" id="vGateSignupPassword" class="vtg-input" placeholder="Create password (min 10 chars)" autocomplete="new-password">
+          </div>
+        </div>
+
+        <div class="vtg-group">
+          <label class="vtg-label" for="vGateSignupInvite">Invite Code (from Desk Owner)</label>
+          <div class="vtg-input-wrap">
+            <span class="vtg-icon-left">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </span>
+            <input type="text" id="vGateSignupInvite" class="vtg-input" style="font-family:var(--font-mono, monospace);" placeholder="12-character invite code" autocomplete="off">
+          </div>
+        </div>
+
+        <div id="vGateSignupAlert" class="vtg-alert"></div>
+
+        <button type="button" id="vGateSignupSubmit" class="vtg-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          <span>Create Account & Unlock</span>
+        </button>
+
+        <div style="text-align:center; margin-top:8px;">
+          <a href="#" id="vGateSignupBack" class="vtg-link">Already have an account? Sign In</a>
+        </div>
       </form>
 
       <!-- Password Reset Form View (Hidden by default) -->
@@ -20211,6 +20296,49 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
       const resetAlert = document.getElementById('vGateResetAlert');
       const inactivityToast = document.getElementById('vGateInactivityToast');
       const sessionTimerEl = document.getElementById('vGateSessionTimer');
+      const tabsWrap = document.getElementById('vGateTabs');
+      const tabLogin = document.getElementById('vGateTabLogin');
+      const tabSignup = document.getElementById('vGateTabSignup');
+      const signupForm = document.getElementById('vGateSignupForm');
+      const signupNameInput = document.getElementById('vGateSignupName');
+      const signupEmailInput = document.getElementById('vGateSignupEmail');
+      const signupPwInput = document.getElementById('vGateSignupPassword');
+      const signupInviteInput = document.getElementById('vGateSignupInvite');
+      const signupSubmit = document.getElementById('vGateSignupSubmit');
+      const signupAlert = document.getElementById('vGateSignupAlert');
+      const signupBack = document.getElementById('vGateSignupBack');
+
+      function switchGateTab(mode) {
+        if (alertBox) alertBox.style.display = 'none';
+        if (signupAlert) signupAlert.style.display = 'none';
+        if (resetAlert) resetAlert.style.display = 'none';
+        if (mode === 'signup') {
+          if (loginForm) loginForm.style.display = 'none';
+          if (resetForm) resetForm.style.display = 'none';
+          if (signupForm) signupForm.style.display = 'flex';
+          if (tabLogin) tabLogin.classList.remove('active');
+          if (tabSignup) tabSignup.classList.add('active');
+          if (tabsWrap) tabsWrap.style.display = 'flex';
+          setTimeout(function () { if (signupNameInput) signupNameInput.focus(); }, 50);
+        } else if (mode === 'login') {
+          if (signupForm) signupForm.style.display = 'none';
+          if (resetForm) resetForm.style.display = 'none';
+          if (loginForm) loginForm.style.display = 'flex';
+          if (tabSignup) tabSignup.classList.remove('active');
+          if (tabLogin) tabLogin.classList.add('active');
+          if (tabsWrap) tabsWrap.style.display = 'flex';
+          setTimeout(function () { if (emailInput) emailInput.focus(); }, 50);
+        } else if (mode === 'reset') {
+          if (loginForm) loginForm.style.display = 'none';
+          if (signupForm) signupForm.style.display = 'none';
+          if (resetForm) resetForm.style.display = 'flex';
+          if (tabsWrap) tabsWrap.style.display = 'none';
+        }
+      }
+
+      if (tabLogin) tabLogin.addEventListener('click', function () { switchGateTab('login'); });
+      if (tabSignup) tabSignup.addEventListener('click', function () { switchGateTab('signup'); });
+      if (signupBack) signupBack.addEventListener('click', function (e) { e.preventDefault(); switchGateTab('login'); });
 
       const INACTIVITY_MS = 30 * 60 * 1000; // 30 minutes
       let lastActivity = Date.now();
@@ -20506,8 +20634,7 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
       if (resetLink && loginForm && resetForm) {
         resetLink.addEventListener('click', function (e) {
           e.preventDefault();
-          loginForm.style.display = 'none';
-          resetForm.style.display = 'flex';
+          switchGateTab('reset');
           if (alertBox) alertBox.style.display = 'none';
           if (inactivityToast) inactivityToast.style.display = 'none';
         });
@@ -20517,10 +20644,69 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
           e.preventDefault();
           clearResetHash();
           document.querySelectorAll('#vGateResetForm [data-reset-manual]').forEach(function (el) { el.style.display = ''; });
-          resetForm.style.display = 'none';
-          loginForm.style.display = 'flex';
+          switchGateTab('login');
           if (resetAlert) resetAlert.style.display = 'none';
         });
+      }
+
+      function showSignupAlert(msg, isSuccess) {
+        if (!signupAlert) return;
+        signupAlert.className = 'vtg-alert ' + (isSuccess ? 'vtg-alert-ok' : 'vtg-alert-error');
+        signupAlert.style.display = 'flex';
+        signupAlert.innerHTML = '<span>' + msg + '</span>';
+      }
+
+      if (signupSubmit) {
+        signupSubmit.addEventListener('click', async function () {
+          const name = (signupNameInput ? signupNameInput.value : '').trim();
+          const email = (signupEmailInput ? signupEmailInput.value : '').trim().toLowerCase();
+          const password = signupPwInput ? signupPwInput.value : '';
+          const inviteCode = (signupInviteInput ? signupInviteInput.value : '').trim();
+
+          if (!name) return showSignupAlert('Please enter your name.');
+          if (!email || !email.includes('@')) return showSignupAlert('Please enter a valid email address.');
+          if (password.length < 10) return showSignupAlert('Password must be at least 10 characters.');
+          if (!inviteCode) return showSignupAlert('Please enter your invite code from the desk owner.');
+
+          signupSubmit.disabled = true;
+          signupSubmit.innerHTML = '<span>Creating Account…</span>';
+
+          try {
+            const r = await fetch('/api/v1/auth/signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ displayName: name, email: email, password: password, inviteCode: inviteCode })
+            });
+            const j = await r.json().catch(function () { return null; });
+            if (r.ok && j && j.success && j.token) {
+              showSignupAlert('Account created successfully! Unlocking…', true);
+              try {
+                if (j.token) localStorage.setItem('desk_jwt', JSON.stringify(j.token));
+                if (j.user) localStorage.setItem('desk_user', JSON.stringify(j.user));
+                localStorage.removeItem('vTerminalLockFails');
+              } catch (e) { }
+              setTimeout(function () { location.reload(); }, 600);
+              return;
+            }
+            showSignupAlert((j && j.error) || 'Could not create account. Verify your invite code.');
+          } catch (e) {
+            showSignupAlert('Network error during signup. Check connection.');
+          } finally {
+            signupSubmit.disabled = false;
+            signupSubmit.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg><span>Create Account & Unlock</span>';
+          }
+        });
+      }
+
+      // Check for URL hash invite code (#invite=XXXX)
+      const inviteFromHash = (function () {
+        const m = /^#invite=([^&]+)$/.exec(location.hash);
+        if (!m) return null;
+        try { return decodeURIComponent(m[1]); } catch (e) { return null; }
+      })();
+      if (inviteFromHash) {
+        if (signupInviteInput) signupInviteInput.value = inviteFromHash;
+        switchGateTab('signup');
       }
 
       // A reset link from the desk owner: /#reset=<code>&email=<email>. The part after # never reaches the server or its logs.
