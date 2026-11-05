@@ -14921,8 +14921,10 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       --text: #E6EDF3;
       --muted: #8B9FB1;
       --faint: #5A6F82;
-      --pos: #26A69A;
-      --neg: #EF5350;
+      --pos: #00C087;
+      --neg: #FF4343;
+      --pos-bg: rgba(0, 192, 135, 0.12);
+      --neg-bg: rgba(255, 67, 67, 0.12);
       --amber: #F2A93B;
       --warn: #F2A93B;
       --iv: #F2A93B;
@@ -14936,8 +14938,8 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       --up: #EF5350;
       --mid: #5FA8E8;
       --down: #26A69A;
-      --c-up: #26A69A;
-      --c-dn: #EF5350;
+      --c-up: #00C087;
+      --c-dn: #FF4343;
       --iv-line: #F2A93B;
       --term-line: rgba(255, 255, 255, .07);
       --chart-bg: #10181F;
@@ -14946,8 +14948,8 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       --london: #E3AE45;
       --ny: #A98BE6;
       --night: #45BFA9;
-      --ok: #26A69A;
-      --err: #EF5350;
+      --ok: #00C087;
+      --err: #FF4343;
       --radius: 0;
       --shadow: none;
       --elev-1: none;
@@ -14971,8 +14973,10 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       --text: #13202B;
       --muted: #556777;
       --faint: #8797A5;
-      --pos: #188E58;
-      --neg: #D23B40;
+      --pos: #00B87A;
+      --neg: #E03535;
+      --pos-bg: rgba(0, 184, 122, 0.12);
+      --neg-bg: rgba(224, 53, 53, 0.12);
       --amber: #B9780A;
       --warn: #B9780A;
       --iv: #B9780A;
@@ -14985,8 +14989,8 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
       --up: #D23B40;
       --mid: #2A6FB8;
       --down: #188E58;
-      --c-up: #188E58;
-      --c-dn: #D23B40;
+      --c-up: #00B87A;
+      --c-dn: #E03535;
       --iv-line: #B9780A;
       --term-line: rgba(19, 32, 43, .09);
       --chart-bg: #FFFFFF;
@@ -15057,11 +15061,11 @@ requests in 30 s, which starved the live requests and could hit the exchanges' r
     }
 
     .pos {
-      color: var(--pos)
+      color: var(--pos, #00C087) !important;
     }
 
     .neg {
-      color: var(--neg)
+      color: var(--neg, #FF4343) !important;
     }
 
     .amber {
@@ -21014,19 +21018,19 @@ events: tick {now} · visible {hidden} · theme · tf {tf} · spot {spot} · iv 
             font-family: var(--font, system-ui, sans-serif) !important;
           }
           .v-pos-side-long {
-            color: #4CAF50;
+            color: #00C087;
             font-weight: 700;
           }
           .v-pos-side-short {
-            color: #F44336;
+            color: #FF4343;
             font-weight: 700;
           }
           .v-pos-pnl-pos {
-            color: #4CAF50 !important;
+            color: #00C087 !important;
             font-weight: 600;
           }
           .v-pos-pnl-neg {
-            color: #F44336 !important;
+            color: #FF4343 !important;
             font-weight: 600;
           }
           .v-pos-pnl-zero {
@@ -46811,48 +46815,8 @@ when fewer candles are loaded than the zoom would show). Replay and Go-to are le
       /* ---------- the menu ---------- */
       function button() {
         const top = $('gTop'); if (!top || $('v132IndBtn')) return; const r = top.querySelector('.r') || top;
+        $('flashRibbon')?.remove();
 
-        // Mount Strategy Flash Indicators Ribbon immediately below toolbar (Ultra-Compact Single-Line Light Strip with Dismiss)
-        if (!$('flashRibbon')) {
-          const fl = D.createElement('div');
-          fl.id = 'flashRibbon';
-          fl.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:2px 6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:4px;font-size:9.5px;font-family:Inter,sans-serif;box-sizing:border-box;white-space:nowrap;flex-shrink:0;';
-          fl.innerHTML = `
-            <div style="display:inline-flex;align-items:center;gap:5px;">
-              <span style="font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:800;color:#64748b;letter-spacing:0.04em;display:inline-flex;align-items:center;gap:2px;flex-shrink:0;">
-                ⚡ FLASH:
-              </span>
-              <div style="display:inline-flex;align-items:center;gap:3px;background:#ffffff;border:1px solid #cbd5e1;border-left:3px solid #10b981;border-radius:3px;padding:1px 5px;cursor:help;" title="IV 51.4% vs RV 45.2% (+6.2 vol spread). Institutional short premium cushion tonight.">
-                <span style="font-weight:700;color:#0f172a;font-size:9px;">DAY: Edge</span>
-                <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:800;color:#059669;">+65.3%</span>
-              </div>
-              <div style="display:inline-flex;align-items:center;gap:3px;background:#ffffff;border:1px solid #cbd5e1;border-left:3px solid #0284c7;border-radius:3px;padding:1px 5px;" title="Filtered 4 erratic whipsaws during London close. Successfully defended the short strangle put-wing.">
-                <span style="font-weight:700;color:#0f172a;font-size:9px;">WEEK: Speed</span>
-                <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:800;color:#0284c7;">4 Vetoes</span>
-              </div>
-              <div style="display:inline-flex;align-items:center;gap:3px;background:#ffffff;border:1px solid #cbd5e1;border-left:3px solid #7c3aed;border-radius:3px;padding:1px 5px;" title="Vol of Vol below 28th percentile and call/put skew held within 1.04 band, yielding max theta.">
-                <span style="font-weight:700;color:#0f172a;font-size:9px;">MONTH: VoV+Skew</span>
-                <span style="font-family:'JetBrains Mono',monospace;font-size:8.5px;font-weight:800;color:#7c3aed;">Sharpe 2.41</span>
-              </div>
-            </div>
-            <button type="button" id="v148CloseRibbonBtn" style="border:none;background:none;color:#94a3b8;cursor:pointer;font-size:10px;font-weight:700;padding:0 3px;" title="Dismiss flash ribbon">✕</button>
-          `;
-          const wrap = $('v147StrategyNearFri') || $('v147DeskDock')?.parentNode;
-          if (wrap) {
-            wrap.appendChild(fl);
-          } else {
-            const chipEl = $('v136Chip') || $('ph89') || $('nav');
-            if (chipEl && chipEl.parentNode) chipEl.after(fl);
-          }
-          fl.querySelector('#v148CloseRibbonBtn')?.addEventListener('click', () => {
-            fl.style.display = 'none';
-            try { localStorage.setItem('v148_flash_dismiss', '1'); } catch (e) { }
-            setTimeout(() => { try { W.dispatchEvent(new Event('resize')); } catch (x) { } }, 50);
-          });
-          if (localStorage.getItem('v148_flash_dismiss') === '1') {
-            fl.style.display = 'none';
-          }
-        }
         const newsBtn = D.createElement('button');
         newsBtn.type = 'button';
         newsBtn.id = 'v148ToolbarNewsBtn';
@@ -61901,7 +61865,7 @@ document.addEventListener('click', function(e) {
 </style>
 <style id="ppCss">
 #pgPaper .pp{max-width:1360px;margin:0 auto;padding:4px 2px 24px;color:var(--text)}
-@media (max-width:768px){#pgPaper .pp{padding-bottom:120px !important}}
+@media (max-width:768px){#pgPaper .pp{padding-bottom:200px !important}}
 #pgPaper .pp-top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 10px}
 #pgPaper .pp-top h2{margin:0;font-size:18px;font-weight:700;letter-spacing:.02em}
 #pgPaper .pp-sp{flex:1}
@@ -61925,12 +61889,12 @@ document.addEventListener('click', function(e) {
 #pgPaper .pp-t tr.atm td.k{background:rgba(227,174,69,.28)}
 #pgPaper .pp-t td.q{cursor:pointer}
 #pgPaper .pp-t td.q:hover{outline:1px solid var(--focus);outline-offset:-1px}
-#pgPaper .pp-t td.q.buy{color:var(--down)}
-#pgPaper .pp-t td.q.sell{color:var(--up)}
+#pgPaper .pp-t td.q.buy{color:var(--pos, #00C087)}
+#pgPaper .pp-t td.q.sell{color:var(--neg, #FF4343)}
 #pgPaper .pp-t td.sel{box-shadow:inset 0 0 0 2px var(--focus)}
 #pgPaper .pp-t th.grp{text-align:center;border-bottom:0;letter-spacing:.08em;text-transform:uppercase}
-#pgPaper .pos{color:var(--down)}
-#pgPaper .neg{color:var(--up)}
+#pgPaper .pos{color:var(--pos, #00C087) !important}
+#pgPaper .neg{color:var(--neg, #FF4343) !important}
 #pgPaper .dim{color:var(--faint)}
 #pgPaper .pp-perp{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;margin:0 0 8px;font-size:13px}
 #pgPaper .pp-perp b{font-variant-numeric:tabular-nums}
@@ -62505,6 +62469,7 @@ document.addEventListener('click', function(e) {
       S.sb.legs = []; S.sb.preview = null; S.smsg = null; setTab('over');
     } catch (e) { S.sb.msg = { k: 'bad', t: 'Not executed: ' + e.message }; }
     S.sb.busy = false; renderBuilder(); await refresh();
+    try { window.dispatchEvent(new CustomEvent('trade:updated', { detail: { type: 'paper_strategy' } })); } catch (e) { }
   }
 
   function payoffSvg(p, spot) {
@@ -62733,6 +62698,7 @@ document.addEventListener('click', function(e) {
             : { k: 'ok', t: 'Filled ' + o.filledLots + ' lots at ' + px(o.avgPrice, 1) + ', fee ' + usd(o.fee) + '.' + brk };
     } catch (e) { t.msg = { k: 'bad', t: e.message }; }
     t.busy = false; await refresh();
+    try { window.dispatchEvent(new CustomEvent('trade:updated', { detail: { type: 'paper_order' } })); } catch (e) { }
   }
 
   /* ---------- account details ---------- */
@@ -62767,6 +62733,7 @@ document.addEventListener('click', function(e) {
     try { await api('/orders', { method: 'POST', body: { symbol: sym, side: p.lots > 0 ? 'sell' : 'buy', type: 'market', lots: Math.abs(p.lots), reduceOnly: true } }); S.smsg = { k: 'ok', t: 'Closed ' + labelOf(sym) + '.' }; }
     catch (e) { S.smsg = { k: 'bad', t: e.message }; }
     await refresh();
+    try { window.dispatchEvent(new CustomEvent('trade:updated', { detail: { type: 'paper_close' } })); } catch (e) { }
   }
   async function login() {
     const pw = ($('ppPw') || {}).value || ''; S.loginErr = null;
@@ -62828,6 +62795,8 @@ document.addEventListener('click', function(e) {
     S.err = logout ? 'Session expired, log in again' : (!S.acct && S.part.acct.err) ? S.part.acct.err : null;
     if (S.tab === 'opt' && Date.now() - S.flowAt > 60000) loadFlow();
     busy = false;
+    window.__paperState = S;
+    try { window.dispatchEvent(new CustomEvent('trade:updated', { detail: { type: 'paper_sync' } })); } catch (e) { }
     if (gen === S.gen) { drawAll(); if (first && S.sb.legs.length) sbSchedule(); if (S.tab === 'fut' && !S.fut.preview) futSchedule(); }   // a late answer for a tab already left is not drawn
     if (again) { again = false; refresh(); }
   }
@@ -62991,7 +62960,7 @@ document.addEventListener('click', function(e) {
 #askPanel .abFact:first-of-type{border-top:0}
 #askPanel .abFact b{display:block}
 #askPanel .abNote{border-left:4px solid var(--line2,#2C4459);background:var(--panel,#132230);border-radius:0 10px 10px 0;padding:8px 10px;margin:0 0 6px;font-size:13px;line-height:1.5}
-@media (max-width:760px){#askFab{bottom:78px;right:12px;padding:9px 14px}#askPanel{left:8px;right:8px;width:auto;max-width:none;bottom:130px;height:min(60vh,calc(100vh - 200px))}}
+@media (max-width:760px){#askFab{bottom:68px;right:14px;padding:8px 14px;font-size:13px}#askPanel{left:8px;right:8px;width:auto;max-width:none;bottom:120px;height:min(60vh,calc(100vh - 200px))}}
 </style><script id="askBrain">
 /* Ask brain: understands plain-language questions about the desk and answers with pictures (verdict dial, check list, bars, tiles, step cards)
    built from the numbers already loaded in this page: the live decision, the entry gauge and the 5-year backtests.
@@ -64972,8 +64941,8 @@ body.light #vLivePnlTick,
   font-family: var(--mono, monospace);
   color: #fff;
 }
-#vLivePnlTick .v-kpi-num.pos { color: #16c784; }
-#vLivePnlTick .v-kpi-num.neg { color: #f6465d; }
+#vLivePnlTick .v-kpi-num.pos { color: #00C087; }
+#vLivePnlTick .v-kpi-num.neg { color: #FF4343; }
 #vLivePnlTick .v-kpi-num.zero { color: #94a3b8; }
 #vLivePnlTick .v-kpi-sub {
   font-size: 10px;
@@ -65057,8 +65026,8 @@ body.light #vLivePnlTick,
   font-family: var(--mono, monospace);
   text-align: right;
 }
-#vLivePnlTick .v-leg-pnl.pos { color: #16c784; }
-#vLivePnlTick .v-leg-pnl.neg { color: #f6465d; }
+#vLivePnlTick .v-leg-pnl.pos { color: #00C087; }
+#vLivePnlTick .v-leg-pnl.neg { color: #FF4343; }
 
 /* SVG Chart Container */
 #vLivePnlTick .v-chart-wrap {
@@ -65169,8 +65138,8 @@ body.light #vUniversalFloatingPnl,
   font-weight: 800;
   font-family: var(--mono, monospace);
 }
-#vUniversalFloatingPnl .v-fpnl-val.pos { color: #16c784; }
-#vUniversalFloatingPnl .v-fpnl-val.neg { color: #f6465d; }
+#vUniversalFloatingPnl .v-fpnl-val.pos { color: #00C087; }
+#vUniversalFloatingPnl .v-fpnl-val.neg { color: #FF4343; }
 #vUniversalFloatingPnl .v-fpnl-val.zero { color: #888; }
 #vUniversalFloatingPnl .v-fpnl-badge {
   font-size: 10px;
@@ -66814,16 +66783,16 @@ body.light #vUniversalFloatingPnl,
   <style id="vFeedbackWidgetCss">
     #vFeedbackBtn {
       position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 9999;
-      width: 44px;
-      height: 44px;
+      bottom: 74px;
+      right: 18px;
+      z-index: 9992;
+      width: 42px;
+      height: 42px;
       border-radius: 50%;
       background: var(--panel, #132230);
       border: 1px solid var(--line, #223648);
       color: var(--text, #E4ECF2);
-      font-size: 20px;
+      font-size: 19px;
       cursor: pointer;
       display: none;
       align-items: center;
@@ -66836,6 +66805,15 @@ body.light #vUniversalFloatingPnl,
       transform: scale(1.08);
       background: var(--panel2, #182A3B);
       border-color: var(--accent, #58A6D6);
+    }
+    @media (max-width: 760px) {
+      #vFeedbackBtn {
+        bottom: 122px !important;
+        right: 14px !important;
+        width: 38px !important;
+        height: 38px !important;
+        font-size: 17px !important;
+      }
     }
     #vTerminalLockGate:not([style*="display: none"]) ~ #vFeedbackBtn,
     #vTerminalLockGate:not([style*="display: none"]) ~ #vFeedbackModal,
@@ -67018,19 +66996,15 @@ body.light #vUniversalFloatingPnl,
 
   <!-- ════════ Universal Floating P&L Panel (Greek P&L Attribution - Task T2.4) ════════ -->
   <style id="vUniversalFloatingPnlCss">
-    #vFeedbackBtn {
-      left: 20px !important;
-      right: auto !important;
-    }
     #vUniversalFloatingPnl {
       position: fixed !important;
-      bottom: 74px !important;
-      left: 20px !important;
-      top: auto !important;
-      right: auto !important;
+      top: 75px !important;
+      right: 18px !important;
+      bottom: auto !important;
+      left: auto !important;
       z-index: 9998 !important;
-      width: 280px !important;
-      max-width: calc(100vw - 40px) !important;
+      width: 270px !important;
+      max-width: calc(100vw - 28px) !important;
       background: var(--panel, #132230) !important;
       border: 1px solid var(--line, #223648) !important;
       border-radius: 8px !important;
@@ -67044,6 +67018,15 @@ body.light #vUniversalFloatingPnl,
       padding: 0 !important;
       cursor: default !important;
       transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
+    }
+    @media (max-width: 760px) {
+      #vUniversalFloatingPnl {
+        top: auto !important;
+        right: auto !important;
+        bottom: 114px !important;
+        left: 14px !important;
+        width: 250px !important;
+      }
     }
     html[data-theme="light"] #vUniversalFloatingPnl,
     body.light #vUniversalFloatingPnl,
@@ -67173,10 +67156,10 @@ body.light #vUniversalFloatingPnl,
       font-size: 12px;
     }
     .v-fpnl-val-pos {
-      color: #4CAF50 !important;
+      color: #00C087 !important;
     }
     .v-fpnl-val-neg {
-      color: #F44336 !important;
+      color: #FF4343 !important;
     }
     .v-fpnl-val-zero {
       color: var(--muted, #8FA3B5) !important;
@@ -67219,6 +67202,7 @@ body.light #vUniversalFloatingPnl,
         <span class="v-fpnl-indicator">●</span>
         <span class="v-fpnl-title">Greek P&L Attribution</span>
         <span id="vFpnlSymbolBadge" class="v-fpnl-badge">BTC</span>
+        <span id="vFpnlHeaderPnl" class="v-fpnl-header-pnl" style="font-family:var(--mono,monospace);font-size:11px;font-weight:700;margin-left:4px;">$0.00</span>
       </div>
       <div class="v-fpnl-actions">
         <button type="button" id="vFpnlToggleBtn" class="v-fpnl-toggle-btn" aria-label="Toggle Greek P&L Attribution panel" title="Collapse / Expand panel">▼</button>
@@ -67239,44 +67223,117 @@ body.light #vUniversalFloatingPnl,
       let _fpnlPollingTimer = null;
       let _fpnlCollapsed = false;
 
-      function getTerminalSymbol() {
+      function getActivePosition() {
+        // 1. Paper trading positions
+        const ps = window.__paperState;
+        if (ps && ps.acct && Array.isArray(ps.acct.positions) && ps.acct.positions.length > 0) {
+          const activePos = ps.acct.positions.find(p => Math.abs(Number(p.lots) || 0) > 0) || ps.acct.positions[0];
+          if (activePos && Math.abs(Number(activePos.lots) || 0) > 0) {
+            const isPerp = activePos.kind === 'perp' || activePos.symbol.includes('USD') || activePos.symbol.includes('PERP');
+            const g = ps.acct.greeks || {};
+            const cv = activePos.contract_value ?? 0.001;
+            const spotVal = (ps.acct.spot && (ps.acct.spot.mark || ps.acct.spot)) || (ps.board && ps.board.spot) || activePos.mark || activePos.avgEntry;
+            const dSpot = (activePos.mark || spotVal) - activePos.avgEntry;
+            return {
+              hasPosition: true,
+              symbol: activePos.symbol,
+              quantity: activePos.lots,
+              contract_value: cv,
+              delta: activePos.delta != null ? activePos.delta : (isPerp ? 1 : (g.delta ?? 0)),
+              gamma: isPerp ? 0 : (g.gamma ?? 0),
+              theta: isPerp ? 0 : (g.theta ?? 0),
+              vega: isPerp ? 0 : (g.vega ?? 0),
+              current_spot: spotVal,
+              entry_spot: activePos.avgEntry,
+              delta_spot: dSpot,
+              total_pnl: activePos.unrealized ?? 0,
+            };
+          }
+        }
+
+        // 2. Open paper strategies
+        if (ps && ps.strat && Array.isArray(ps.strat.open) && ps.strat.open.length > 0) {
+          const st = ps.strat.open[0];
+          const legs = st.legs || [];
+          const leg0 = legs[0] || {};
+          const isPerp = false;
+          const g = ps.acct?.greeks || {};
+          const spotVal = (ps.board && ps.board.spot) || leg0.mark || leg0.entry || 0;
+          return {
+            hasPosition: true,
+            symbol: st.name || leg0.symbol || 'STRANGLE',
+            quantity: leg0.lots || 100,
+            contract_value: 0.001,
+            delta: g.delta ?? 0,
+            gamma: g.gamma ?? 0,
+            theta: g.theta ?? 0,
+            vega: g.vega ?? 0,
+            current_spot: spotVal,
+            entry_spot: leg0.entry || spotVal,
+            delta_spot: spotVal - (leg0.entry || spotVal),
+            total_pnl: st.unrealized ?? 0,
+          };
+        }
+
+        // 3. Live Positions Tracker
+        const posCell = document.querySelector('#vPosTrackerRows td:first-child');
+        if (posCell && !posCell.classList.contains('v-pos-empty')) {
+          const sym = posCell.textContent.trim();
+          if (sym && sym !== '—' && sym !== 'No open positions') {
+            const pnlCell = document.querySelector('#vPosTrackerRows td[data-pnl], #vPosTrackerRows td:nth-child(5)');
+            const pnlText = pnlCell ? pnlCell.textContent.replace(/[^0-9.-]/g, '') : '0';
+            const pnlVal = parseFloat(pnlText) || 0;
+            return {
+              hasPosition: true,
+              symbol: sym,
+              quantity: 100,
+              contract_value: 0.001,
+              delta: sym.includes('USD') ? 1 : 0.5,
+              gamma: 0,
+              theta: 0,
+              vega: 0,
+              total_pnl: pnlVal,
+            };
+          }
+        }
+
+        // 4. Live API positions
+        if (window.S && Array.isArray(window.S.apiPositions) && window.S.apiPositions.length > 0) {
+          const p = window.S.apiPositions[0];
+          const s = p.symbol || p.product_symbol;
+          if (s) {
+            return {
+              hasPosition: true,
+              symbol: s,
+              quantity: p.size || p.lots || 100,
+              contract_value: 0.001,
+              delta: p.delta ?? (s.includes('USD') ? 1 : 0),
+              gamma: p.gamma ?? 0,
+              theta: p.theta ?? 0,
+              vega: p.vega ?? 0,
+              total_pnl: p.unrealized_pnl ?? 0,
+            };
+          }
+        }
+
+        // 5. Default/view symbol (when no trade is open)
         const el = document.getElementById('symbol') ||
                    document.getElementById('symbolSel') ||
                    document.getElementById('currentSymbol') ||
                    document.querySelector('select[name="symbol"]') ||
                    document.querySelector('[data-symbol]');
-        if (el && el.value) return el.value.trim();
-
-        const posCell = document.querySelector('#vPosTrackerRows td:first-child');
-        if (posCell && !posCell.classList.contains('v-pos-empty')) {
-          const sym = posCell.textContent.trim();
-          if (sym && sym !== '—' && sym !== 'No open positions') return sym;
-        }
-
-        if (window.S && Array.isArray(window.S.apiPositions) && window.S.apiPositions.length > 0) {
-          const p = window.S.apiPositions[0];
-          const s = p.symbol || p.product_symbol;
-          if (s) return s;
-        }
-
-        if (window.S && Array.isArray(window.S.deltaPositionsReadOnly) && window.S.deltaPositionsReadOnly.length > 0) {
-          const p = window.S.deltaPositionsReadOnly[0];
-          const s = p.product_symbol || p.symbol;
-          if (s) return s;
-        }
-
-        if (window.S && window.S.tickerGreeks) {
-          const keys = Object.keys(window.S.tickerGreeks);
-          if (keys.length > 0) return keys[0];
-        }
-
-        const symSpan = document.querySelector('#gTop .sym');
-        if (symSpan) {
-          const t = symSpan.childNodes[0]?.textContent?.trim();
-          if (t) return t;
-        }
-
-        return 'BTC';
+        const vSym = (el && el.value && el.value.trim()) || 'BTC';
+        return {
+          hasPosition: false,
+          symbol: vSym,
+          quantity: 0,
+          contract_value: 0.001,
+          delta: 0,
+          gamma: 0,
+          theta: 0,
+          vega: 0,
+          total_pnl: 0,
+        };
       }
 
       function formatVal(v) {
@@ -67290,16 +67347,22 @@ body.light #vUniversalFloatingPnl,
         return { text: '-$' + Math.abs(n).toFixed(2), cls: 'v-fpnl-val-neg' };
       }
 
-      function renderData(d) {
-        const body = document.getElementById('vFpnlBody');
-        if (!body) return;
-
+      function renderData(d, pos) {
         const total = formatVal(d.total_pnl);
         const delta = formatVal(d.delta_pnl);
         const gamma = formatVal(d.gamma_pnl);
         const theta = formatVal(d.theta_pnl);
         const vega = formatVal(d.vega_pnl);
         const other = formatVal(d.other_pnl);
+
+        const hdrPnl = document.getElementById('vFpnlHeaderPnl');
+        if (hdrPnl) {
+          hdrPnl.textContent = total.text;
+          hdrPnl.style.color = d.total_pnl > 0.001 ? '#00C087' : (d.total_pnl < -0.001 ? '#FF4343' : '#94a3b8');
+        }
+
+        const body = document.getElementById('vFpnlBody');
+        if (!body) return;
 
         body.innerHTML =
           '<div class="v-fpnl-content">' +
@@ -67340,20 +67403,34 @@ body.light #vUniversalFloatingPnl,
       async function fetchAttribution() {
         const gate = document.getElementById('vTerminalLockGate');
         const isAuth = Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
-        if (!isAuth || _fpnlCollapsed) return;
+        if (!isAuth) return;
 
-        const sym = getTerminalSymbol();
+        const pos = getActivePosition();
         const badge = document.getElementById('vFpnlSymbolBadge');
-        if (badge) badge.textContent = sym;
+        if (badge) badge.textContent = pos.hasPosition ? pos.symbol : (pos.symbol + ' (IDLE)');
 
         try {
           const headers = { Accept: 'application/json' };
-          const token = localStorage.getItem('desk_token') || localStorage.getItem('jwt') || localStorage.getItem('token');
+          const token = localStorage.getItem('desk_token') || localStorage.getItem('jwt') || localStorage.getItem('token') || localStorage.getItem('desk_jwt');
           if (token) {
-            headers['Authorization'] = 'Bearer ' + token;
+            headers['Authorization'] = 'Bearer ' + String(token).replace(/^"|"$/g, '');
           }
 
-          const res = await fetch('/api/v1/pnl/greek?symbol=' + encodeURIComponent(sym), {
+          const qs = new URLSearchParams({
+            symbol: pos.symbol,
+            quantity: String(pos.quantity),
+            contract_value: String(pos.contract_value),
+            delta: String(pos.delta),
+            gamma: String(pos.gamma),
+            theta: String(pos.theta),
+            vega: String(pos.vega),
+            total_pnl: String(pos.total_pnl),
+          });
+          if (pos.current_spot != null) qs.set('current_spot', String(pos.current_spot));
+          if (pos.entry_spot != null) qs.set('entry_spot', String(pos.entry_spot));
+          if (pos.delta_spot != null) qs.set('delta_spot', String(pos.delta_spot));
+
+          const res = await fetch('/api/v1/pnl/greek?' + qs.toString(), {
             headers,
             credentials: 'include',
           });
@@ -67369,7 +67446,7 @@ body.light #vUniversalFloatingPnl,
             return;
           }
 
-          renderData(data);
+          renderData(data, pos);
         } catch {
           showError();
         }
@@ -67377,19 +67454,14 @@ body.light #vUniversalFloatingPnl,
 
       function startPolling() {
         stopPolling();
-        if (_fpnlCollapsed) return;
         const gate = document.getElementById('vTerminalLockGate');
         const isAuth = Boolean(window.__vTerminalAuthenticated) && (!gate || gate.style.display === 'none');
         if (!isAuth) return;
 
         fetchAttribution();
         _fpnlPollingTimer = setInterval(() => {
-          if (_fpnlCollapsed) {
-            stopPolling();
-            return;
-          }
           fetchAttribution();
-        }, 5000);
+        }, 4000);
       }
 
       function stopPolling() {
@@ -67410,12 +67482,6 @@ body.light #vUniversalFloatingPnl,
         if (btn) {
           btn.textContent = collapsed ? '▶' : '▼';
         }
-
-        if (collapsed) {
-          stopPolling();
-        } else {
-          startPolling();
-        }
       }
 
       function updateVisibility() {
@@ -67429,7 +67495,7 @@ body.light #vUniversalFloatingPnl,
           stopPolling();
         } else {
           panel.style.display = 'flex';
-          if (!_fpnlCollapsed && !_fpnlPollingTimer) {
+          if (!_fpnlPollingTimer) {
             startPolling();
           }
         }
@@ -67445,12 +67511,16 @@ body.light #vUniversalFloatingPnl,
 
         window.addEventListener('terminal:unlocked', () => {
           updateVisibility();
-          if (!_fpnlCollapsed) startPolling();
+          startPolling();
         });
 
         window.addEventListener('terminal:locked', () => {
           updateVisibility();
           stopPolling();
+        });
+
+        window.addEventListener('trade:updated', () => {
+          fetchAttribution();
         });
 
         updateVisibility();
@@ -69218,11 +69288,11 @@ body.light #vUniversalFloatingPnl,
     /* Value styling */
     .v-session-row-val.pos,
     .v-session-total-val.pos {
-      color: #22c55e !important;
+      color: #00C087 !important;
     }
     .v-session-row-val.neg,
     .v-session-total-val.neg {
-      color: #ef4444 !important;
+      color: #FF4343 !important;
     }
     .v-session-row-val.zero,
     .v-session-total-val.zero {
@@ -69255,10 +69325,10 @@ body.light #vUniversalFloatingPnl,
 
         if (num > 0) {
           el.classList.add('pos', 'val-pos', 'pnl-pos', 'green');
-          el.style.color = '#22c55e';
+          el.style.color = '#00C087';
         } else if (num < 0) {
           el.classList.add('neg', 'val-neg', 'pnl-neg', 'red');
-          el.style.color = '#ef4444';
+          el.style.color = '#FF4343';
         } else {
           el.classList.add('zero', 'val-zero', 'pnl-zero');
           el.style.color = '#94a3b8';
@@ -69536,7 +69606,8 @@ body.light #vUniversalFloatingPnl,
     })();
   </script>
   <style id="vRulebookCss">
-    #vRbBtn { position: fixed; left: 14px; bottom: 14px; z-index: 9000; display: flex; align-items: center; gap: 6px; padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.14)); background: var(--panel, #121a2b); color: var(--txt, #e8edf5); font: 700 13px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+    #vRbBtn { position: fixed; left: 18px; bottom: 18px; z-index: 9000; display: flex; align-items: center; gap: 6px; padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.14)); background: var(--panel, #121a2b); color: var(--txt, #e8edf5); font: 700 13px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
+    @media (max-width: 760px) { #vRbBtn { left: 14px; bottom: 68px; padding: 7px 11px; font-size: 12px; } }
     #vRbBtn .dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; }
     #vRbBtn[data-v="GO"] .dot { background: #22c55e; } #vRbBtn[data-v="BLOCK"] .dot { background: #ef4444; }
     #vRb { position: fixed; inset: 0 auto 0 0; width: min(520px, 100vw); z-index: 9001; display: none; flex-direction: column; background: var(--bg, #0b1220); color: var(--txt, #e8edf5); border-right: 1px solid var(--line, rgba(255,255,255,.12)); box-shadow: 8px 0 30px rgba(0,0,0,.45); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }

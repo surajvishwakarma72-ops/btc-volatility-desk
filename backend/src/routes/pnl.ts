@@ -4,6 +4,7 @@ import { computeGreekPnl, type PositionInput } from '../services/greek-pnl.js';
 import { getSessionPnl } from '../services/session-pnl.js';
 import { isTokenRevoked, sessionStillValid } from '../services/session-guard.js';
 import { DESK_USER_ID } from '../services/auth-store.js';
+import { paperFor } from '../services/paper/paper-terminal.js';
 
 function parseCookies(header?: string): Record<string, string> {
   const list: Record<string, string> = {};
@@ -101,6 +102,41 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
       try {
         basePosition = await customLookupProvider(userId, symbol);
       } catch {}
+    } else {
+      // Default lookup from user's active paper positions
+      try {
+        const paper = paperFor(userId);
+        const acct: any = await paper.account();
+        if (acct && Array.isArray(acct.positions) && acct.positions.length > 0) {
+          const match: any = acct.positions.find((p: any) => p.symbol && p.symbol.toLowerCase() === symbol.toLowerCase())
+            || (symbol.toUpperCase() === 'BTC' || symbol.toUpperCase() === 'ALL' ? acct.positions[0] : null);
+          if (match) {
+            const spotMark = (acct.spot && typeof acct.spot === 'object' && acct.spot.mark)
+              || (typeof acct.spot === 'number' ? acct.spot : null)
+              || match.mark
+              || match.avgEntry;
+            const deltaSpot = (match.mark || spotMark) - (match.avgEntry || spotMark);
+            const g: any = acct.greeks || {};
+            const isPerp = match.kind === 'perp' || match.symbol.includes('USD') || match.symbol.includes('PERP');
+            basePosition = {
+              symbol: match.symbol,
+              quantity: match.lots,
+              contract_value: match.contract_value ?? 0.001,
+              delta: match.delta != null ? match.delta : (isPerp ? 1 : (g.delta ?? 0)),
+              gamma: isPerp ? 0 : (g.gamma ?? 0),
+              theta: isPerp ? 0 : (g.theta ?? 0),
+              vega: isPerp ? 0 : (g.vega ?? 0),
+              delta_spot: deltaSpot,
+              current_spot: spotMark,
+              entry_spot: match.avgEntry,
+              total_pnl: match.unrealized ?? 0,
+              elapsed_seconds: 60,
+            };
+          }
+        }
+      } catch (err) {
+        request.log?.warn({ err }, 'Failed to resolve default paper position for greek pnl');
+      }
     }
 
     const posInput: PositionInput = {
