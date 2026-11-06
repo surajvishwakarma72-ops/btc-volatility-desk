@@ -22664,15 +22664,19 @@ The floating P&L pill still shows the live P&L on top of everything. */
         if (quick) setTimeout(() => { discoverFull = true; discover(); }, 45000);       // full scan once things are running
         const rs = await Promise.allSettled(ds.map(getChain));
         let found = rs.map((r, i) => r.status === 'fulfilled' && r.value.some(isBTCOption) ? ds[i] : null).filter(Boolean).sort();
-        if (!found.length) {
-          const products = await getProducts(), set = new Set();
+        try {
+          const products = await getProducts(), set = new Set(found);
           for (const p of products) {
             if (!isBTCOption(p)) continue;
             const ex = String(p.settlement_time || p.expiry || p.expiry_date || '').slice(0, 10);
             const date = /^\d{4}-\d{2}-\d{2}$/.test(ex) ? ex : expiryFromSymbol(p.symbol);
             if (date && expiryEpoch(date) > now) set.add(date);
           }
-          found = [...set].sort();
+          if (set.size) found = [...set].sort();
+        } catch (pe) {
+          if (!found.length) {
+            console.warn('getProducts fallback failed', pe);
+          }
         }
         const old = selected;
         if (!quick) discoverFull = true;
@@ -24173,6 +24177,7 @@ The floating P&L pill still shows the live P&L on top of everything. */
     function onExpiryList() {
       buildPaneSelects(); updateRecorder(); renderPanes(); try { evRender(); } catch (e) { } if (expiryList.length && typeof desk !== 'undefined' && !desk.gexAt && !desk.gexBusy) try { gexFetch(true); } catch (e) { } for (const p of panes) queueBackfill(p.expiry);
       if (!rollStarted && expiryList.length) { rollStarted = true; setTimeout(() => { for (const e of expiryList.slice(0, REC_COUNT)) queueBackfill(e); }, 3000); setTimeout(() => backfillRolling(false), 2500); setInterval(() => backfillRolling(false), 3 * 3600000); }
+      try { window.v100 && window.v100.paintMaster && window.v100.paintMaster(); } catch (e) { }
     }
     function wireCharts() {
       document.querySelectorAll('.tf button').forEach(b => b.onclick = () => setTf(b.dataset.tf));
@@ -34521,7 +34526,7 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
       const MIN = 60000, HR = 3600000, DAY = 86400000, IST_MS = 19800000, YEAR_H = 8760;
       const K_TERM = 'v80:signal:term', LS_BACKW = 'v80_signal_backw';
       const DELTA_API = 'https://api.india.delta.exchange', DERIBIT = 'https://www.deribit.com/api/v2/public';
-      const SLOT_NAME = ['Current', 'Next', 'Next-to-next'], SLOT_PANE = [0, 2, 1];   // PANE_ORDER=[0,2,1]: slot 0 → pane 0, slot 1 → pane 2, slot 2 → pane 1
+      const SLOT_NAME = ['Current', 'Next', 'Next-to-next', 'Weekly', 'Bi-Weekly', 'Monthly'], SLOT_PANE = [0, 2, 1, 0, 0, 0];   // PANE_ORDER=[0,2,1]: slot 0 → pane 0, slot 1 → pane 2, slot 2 → pane 1
       // calendar codes that are not data releases (engine evAll: DBX/FUND/HOL; Events24: DERIBIT_EXP/DELTA_EXP/FUND/NEWS/HACK)
       const NON_RELEASE = new Set(['DBX', 'DERIBIT_EXP', 'DELTA', 'DELTA_EXP', 'DX', 'EXP', 'HOL', 'FUND', 'FUNDING', 'NEWS', 'HACK']);
       // research_signal.md §6.2 — announcement-hour IV crush (BVIV close−open, vol pts); used only when Events24 is absent
@@ -34679,14 +34684,25 @@ change; never colour-only (arrows and signs). Updates on the bus tick.
          ===================================================================== */
       function chooseSlot(now, ctx) {
         const P = eng().panes; if (!P) return null;
-        const exp = s => { const e = P[SLOT_PANE[s]] && P[SLOT_PANE[s]].expiry; const ms = expiryMs(e); return ms && ms - now >= 3 * HR ? { expiry: e, settle: ms } : null; };
-        // v89: Next by default (keeps ~60–65 % of credit by the 17:00 IST exit, 2.1× vega at equal gamma); the ladder can pin Current or N2N
-        let pin = null; try { const v = localStorage.getItem('v89_slot'); if (v === '0' || v === '1' || v === '2') pin = Number(v); } catch (x) { }
+        const exp = s => {
+          let e = null;
+          if (s >= 0 && s <= 2) {
+            e = P[SLOT_PANE[s]] && P[SLOT_PANE[s]].expiry;
+          }
+          if (!e && typeof window.v100 !== 'undefined' && window.v100.expOfSlot) {
+            e = window.v100.expOfSlot(s);
+          }
+          const ms = expiryMs(e);
+          return ms && ms - now >= 3 * HR ? { expiry: e, settle: ms } : null;
+        };
+        // v89: Next by default (keeps ~60–65 % of credit by the 17:00 IST exit, 2.1× vega at equal gamma); pins 0-5 from ladder or master buttons
+        let pin = null; try { const v = localStorage.getItem('v89_slot'); if (/^[0-5]$/.test(v)) pin = Number(v); } catch (x) { }
         let slot = pin != null ? pin : 1; let e = exp(slot);
         if (!e && slot === 0) { slot = 1; e = exp(1); }
         if (!e && slot === 2) { slot = 1; e = exp(1); }
+        if (!e && slot >= 3) { slot = 1; e = exp(1); }
         if (!e && slot === 1) { const ok = ctx.vrp30Pct != null && ctx.vrp30Pct >= 0.9 && ctx.termSlope != null && ctx.termSlope <= -2 && ctx.dvol >= 36 && ctx.dvol <= 55; if (ok && exp(2)) { slot = 2; e = exp(2); } }   // N2N only in top-decile VRP_30 + contango + DVOL 36–55
-        if (!e) return null; return { slot, expiry: e.expiry, settle: e.settle, pane: SLOT_PANE[slot] };
+        if (!e) return null; return { slot, expiry: e.expiry, settle: e.settle, pane: (SLOT_PANE[slot] ?? 0) };
       }
       function roundStrike(K, rows, type) {
         if (rows && rows.length) { let best = null; for (const r of rows) { if (r.type !== type) continue; if (!best || Math.abs(r.K - K) < Math.abs(best.K - K)) best = r; } if (best) return { K: best.K, mark: best.mark, delta: best.delta, listed: true }; }
@@ -38237,12 +38253,23 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
 
     @media (max-width:760px) {
       .v100-master {
-        height: 26px
+        height: 26px;
+        max-width: 52vw;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        white-space: nowrap;
+      }
+
+      .v100-master::-webkit-scrollbar {
+        display: none;
       }
 
       .v100-master button {
-        padding: 0 7px;
-        font-size: 11.5px
+        padding: 0 6px;
+        font-size: 11px;
+        flex: 0 0 auto;
       }
 
       .v100-master .v100-auto {
@@ -38390,15 +38417,76 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
       const ago = ms => { const s = Math.max(0, Math.round(ms / 1000)); return s < 90 ? s + ' s' : s < 5400 ? Math.round(s / 60) + ' min' : Math.round(s / 3600) + ' h'; };
       const LS = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } }, del(k) { try { localStorage.removeItem(k); } catch (e) { } } };
       const css = n => getComputedStyle(D.documentElement).getPropertyValue(n).trim();
-      const SLOT_NAME = ['Current', 'Next', 'N2N'], SLOT_PANE = [0, 2, 1];
+      const SLOT_NAME = ['Current', 'Next', 'N2N', 'Weekly', 'Bi-Weekly', 'Monthly'], SLOT_PANE = [0, 2, 1, 0, 0, 0];
+      const SLOT_SHORT = ['Cur', 'Next', 'N2N', 'Wkly', 'BiWk', 'Mth'];
       let ENTRY = 20, EXIT = 25; const COOL = 2, TF = 900;   // v101: levels set by the backtest (W.v100.setLevels)
 
+      /* ---------------- helpers for multi-expiry resolution ---------------- */
+      function getExpiryList() {
+        try {
+          if (Array.isArray(window.expiryList) && window.expiryList.length) return window.expiryList;
+          if (typeof expiryList !== 'undefined' && Array.isArray(expiryList) && expiryList.length) return expiryList;
+        } catch (e) { }
+        return [];
+      }
+      function findUpcomingFridays() {
+        const list = getExpiryList(), now = Date.now(), out = [];
+        for (const d of list) {
+          const ms = settleOf(d);
+          if (ms && ms - now > 2.5 * DAY) {
+            const dow = new Date(ms + IST).getUTCDay();
+            if (dow === 5) out.push(d);
+          }
+        }
+        return out;
+      }
+      function findWeeklyExpiry() {
+        const fri = findUpcomingFridays();
+        return fri[0] || (getExpiryList()[3] || null);
+      }
+      function findBiWeeklyExpiry() {
+        const fri = findUpcomingFridays();
+        return fri[1] || (getExpiryList()[4] || null);
+      }
+      function findMonthlyExpiry() {
+        const fri = findUpcomingFridays();
+        if (!fri.length) {
+          const list = getExpiryList();
+          return list.length >= 6 ? list[5] : (list.length >= 4 ? list[list.length - 1] : null);
+        }
+        const now = Date.now(), nowDt = new Date(now + IST), curM = nowDt.getUTCMonth();
+        const curMFri = fri.filter(d => {
+          const ms = settleOf(d);
+          return ms && new Date(ms + IST).getUTCMonth() === curM;
+        });
+        let mth = curMFri.length ? curMFri[curMFri.length - 1] : null;
+        if (!mth || (settleOf(mth) - now < 4 * DAY)) {
+          const nextMFri = fri.filter(d => {
+            const ms = settleOf(d);
+            return ms && new Date(ms + IST).getUTCMonth() === (curM + 1) % 12;
+          });
+          if (nextMFri.length) mth = nextMFri[nextMFri.length - 1];
+          else mth = fri[fri.length - 1];
+        }
+        return mth;
+      }
+
       /* ---------------- engine access ---------------- */
-      function expOfSlot(s) { try { return panes[SLOT_PANE[s]].expiry || null; } catch (e) { return null; } }
+      function expOfSlot(s) {
+        try {
+          if (s === 0) return (panes[0] && panes[0].expiry) || (getExpiryList()[0] || null);
+          if (s === 1) return (panes[2] && panes[2].expiry) || (getExpiryList()[1] || null);
+          if (s === 2) return (panes[1] && panes[1].expiry) || (getExpiryList()[2] || null);
+          if (s === 3) return findWeeklyExpiry();
+          if (s === 4) return findBiWeeklyExpiry();
+          if (s === 5) return findMonthlyExpiry();
+          return null;
+        } catch (e) { return null; }
+      }
       function settleOf(e) { try { const t = expiryEpoch(e); return Number.isFinite(t) ? t : null; } catch (x) { return null; } }
       function plan() { try { return W.Signal && W.Signal.plan ? W.Signal.plan() : null; } catch (e) { return null; } }
       function sstate() { try { return W.Signal && W.Signal.state ? W.Signal.state() : null; } catch (e) { return null; } }
-      function pinned() { try { const v = localStorage.getItem('v89_slot'); return v === '0' || v === '1' || v === '2' ? Number(v) : null; } catch (e) { return null; } }
+      function pinned() { try { const v = localStorage.getItem('v89_slot'); return /^[0-5]$/.test(v) ? Number(v) : null; } catch (e) { return null; } }
       function slot() { const p = pinned(); if (p != null) return p; const P = plan(); return P && typeof P.slot === 'number' ? P.slot : 1; }
       function expNow() { const P = plan(); if (P && P.expiry && P.slot === slot()) return P.expiry; return expOfSlot(slot()); }
       function V89() { try { return W.v89 && W.v89.state ? W.v89.state() : null; } catch (e) { return null; } }
@@ -38429,8 +38517,14 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
           });
         }
         const pin = pinned(), act = slot(); let h = '';
-        for (const s of [0, 1, 2]) { const e = expOfSlot(s), st = e ? settleOf(e) : null; h += `<button type="button" data-s="${s}" aria-pressed="${act === s}" title="${(st ? dayLab(st) + ' ' + dLab(st) + ' 17:30 IST · ' : '') + (pin === s ? 'pinned · double-tap (or the Auto chip) for the ladder\'s pick' : 'make ' + SLOT_NAME[s] + ' the desk\'s expiry')}">${SLOT_NAME[s] === 'Current' ? 'Cur' : SLOT_NAME[s]}<small>${st ? dayLab(st) + ' ' + dLab(st) : '—'}</small></button>`; }
+        for (const s of [0, 1, 2, 3, 4, 5]) {
+          const e = expOfSlot(s), st = e ? settleOf(e) : null;
+          if (!e && s >= 3) continue;
+          h += `<button type="button" data-s="${s}" aria-pressed="${act === s}" title="${(st ? dayLab(st) + ' ' + dLab(st) + ' 17:30 IST · ' : '') + (pin === s ? 'pinned · double-tap (or the Auto chip) for the ladder\'s pick' : 'make ' + SLOT_NAME[s] + ' the desk\'s expiry')}">${SLOT_SHORT[s]}<small>${st ? dayLab(st) + ' ' + dLab(st) : '—'}</small></button>`;
+        }
         h += `<span class="v100-auto${pin == null ? ' on' : ''}" role="button" tabindex="0" title="${pin == null ? 'Auto: the plan picks (Next unless the ladder says otherwise)' : 'Pinned by you · tap for Auto'}">${pin == null ? 'auto' : 'pinned'}</span>`;
+        if (el.__h !== h) { el.innerHTML = h; el.__h = h; }
+      }
         if (el.__h !== h) { el.innerHTML = h; el.__h = h; }
       }
 
@@ -38606,7 +38700,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         apiPoll(true); D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v100Conn')) onConn(e); });
       }
       if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', () => setTimeout(boot, 1500)); else setTimeout(boot, 1500);
-      W.v100 = { dget: (p, q) => dget(p, q), dgetMeta: () => dget.meta, setLevels: (e, x) => { if (e > 0 && x > e && (e !== ENTRY || x !== EXIT)) { ENTRY = e; EXIT = x; VS.at = 0; computeSig(true); } }, levels: () => ({ E: ENTRY, X: EXIT }), ivHourly, expShort, slot, expNow, setSlot, computeSig: () => computeSig(true), vs: () => VS, api: API, tradeFrom, oi: () => OI.last, poll: () => apiPoll(true) };
+      W.v100 = { dget: (p, q) => dget(p, q), dgetMeta: () => dget.meta, setLevels: (e, x) => { if (e > 0 && x > e && (e !== ENTRY || x !== EXIT)) { ENTRY = e; EXIT = x; VS.at = 0; computeSig(true); } }, levels: () => ({ E: ENTRY, X: EXIT }), ivHourly, expShort, slot, expNow, expOfSlot, findWeeklyExpiry, findBiWeeklyExpiry, findMonthlyExpiry, setSlot, paintMaster, computeSig: () => computeSig(true), vs: () => VS, api: API, tradeFrom, oi: () => OI.last, poll: () => apiPoll(true) };
     })();
   </script>
 
@@ -38664,7 +38758,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
       const f1 = v => v == null || !isFinite(v) ? '—' : v.toFixed(1), sg = (v, d = 1) => v == null || !isFinite(v) ? '—' : (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
       const pct = (a, b) => b ? Math.round(100 * a / b) + '%' : '—';
       const LS = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } } };
-      const SLOT_NAME = ['Current', 'Next', 'N2N'], SLOT_PANE = [0, 2, 1], PK = 1 / (4 * Math.LN2), TF = 900;
+      const SLOT_NAME = ['Current', 'Next', 'N2N', 'Weekly', 'Bi-Weekly', 'Monthly'], SLOT_PANE = [0, 2, 1, 0, 0, 0], PK = 1 / (4 * Math.LN2), TF = 900;
       const istDow = t => new Date(t + IST).getUTCDay(), istHour = t => new Date(t + IST).getUTCHours();
       const istMidnight = t => Math.floor((t + IST) / DAY) * DAY - IST;
       const weekdayIst = t => { const d = istDow(t); return d >= 1 && d <= 5; };
@@ -39371,12 +39465,12 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
       const dur = ms => { if (!fin(ms)) return '—'; const m = Math.max(0, Math.round(ms / MIN)), d = Math.floor(m / 1440), h = Math.floor((m % 1440) / 60); return d ? d + 'd ' + h + 'h' : h ? h + 'h ' + p2(m % 60) + 'm' : m + 'm'; };
       const LS = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } } };
       const median = a => { const v = a.filter(fin).sort((x, y) => x - y), n = v.length; return n ? (n % 2 ? v[n >> 1] : (v[n / 2 - 1] + v[n / 2]) / 2) : null; };
-      const SLOT_NAME = ['Current', 'Next', 'N2N'], SLOT_PANE = [0, 2, 1], PK = 1 / (4 * Math.LN2);
+      const SLOT_NAME = ['Current', 'Next', 'N2N', 'Weekly', 'Bi-Weekly', 'Monthly'], SLOT_PANE = [0, 2, 1, 0, 0, 0], PK = 1 / (4 * Math.LN2);
       function ncdf(x) { const t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989423 * Math.exp(-x * x / 2), p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x >= 0 ? 1 - p : p; }
 
       /* ---------------- engine access (script-scope engine names are typeof-guarded) ---------------- */
       function slot() { try { return W.v100 && W.v100.slot ? W.v100.slot() : 1; } catch (e) { return 1; } }
-      function expOfSlot(s) { try { return panes[SLOT_PANE[s]].expiry || null; } catch (e) { return null; } }
+      function expOfSlot(s) { try { if (W.v100 && W.v100.expOfSlot) return W.v100.expOfSlot(s); return panes[SLOT_PANE[s]].expiry || null; } catch (e) { return null; } }
       function expNow() { try { const e = W.v100 && W.v100.expNow ? W.v100.expNow() : null; if (e) return e; } catch (e) { } return expOfSlot(slot()); }
       function settleOf(e) { try { const t = expiryEpoch(e); if (fin(t)) return t; } catch (x) { } if (!/^\d{4}-\d{2}-\d{2}$/.test(e || '')) return null; const [y, m, d] = e.split('-').map(Number); return Date.UTC(y, m - 1, d, 12); }
       function spot() { try { const s = typeof W.spotNow === 'function' ? W.spotNow() : null; if (s > 1000) return s; } catch (e) { } try { if (typeof liveSpot !== 'undefined' && liveSpot > 1000) return liveSpot; } catch (e) { } try { const P = W.Signal && W.Signal.plan(); if (P && P.spot > 1000) return P.spot; } catch (e) { } return null; }
@@ -41240,7 +41334,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
       const ha = (c, a) => { try { return typeof hexA === 'function' ? hexA(c, a) : c; } catch (e) { return c; } };
       const col = () => ({ up: cv('--c-up', '#26A69A'), dn: cv('--c-dn', '#EF5350'), mu: cv('--muted', '#8FA3B5'), pos: cv('--pos', '#35BB7D'), neg: cv('--neg', '#EF5A5E'), warn: cv('--warn', '#E3AE45'), bg: cv('--chart-bg', '#0F1C28') });
       const near = (a, b) => a && b && Math.abs(a.from - b.from) < 0.02 && Math.abs(a.to - b.to) < 0.02;
-      const SLOT_NAME = ['Current', 'Next', 'N2N'];
+      const SLOT_NAME = ['Current', 'Next', 'N2N', 'Weekly', 'Bi-Weekly', 'Monthly'];
       const slot = () => { try { return W.v100 && W.v100.slot ? W.v100.slot() : 1; } catch (e) { return 1; } };
       const exitTxt = () => { try { return localStorage.getItem('v92_exit') === '1730' ? '17:30' : '17:00'; } catch (e) { return '17:00'; } };
 
@@ -41604,7 +41698,7 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
          VoV / DVOL chart row (stuck on a tab once tapped), a chart pane re-pointed at a fixed date, and Speed vs IV / vol turn
          (synced only while the old console ran). This keeps them on the master expiry and re-checks after every 17:30 roll. */
       const MS = { slot: null, exp: null, selTry: 0, selFor: null };
-      const SLOT_PANE = [0, 2, 1];
+      const SLOT_PANE = [0, 2, 1, 0, 0, 0];
       function msExp() { try { return W.v100 && W.v100.expNow ? W.v100.expNow() : null; } catch (e) { return null; } }
       function syncSelected(e) {
         try {
@@ -41617,24 +41711,36 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
       }
       function syncPane(sl) {
         try {
-          const i = SLOT_PANE[sl], want = 'rel:' + sl;
-          if (typeof chartPrefs !== 'undefined' && chartPrefs.p && chartPrefs.p[i] !== want) {
-            const ps = $('paneSel' + i);
-            if (ps && [...ps.options].some(o => o.value === want)) { ps.value = want; if (typeof ps.onchange === 'function') ps.onchange({ target: ps }); }
+          const i = (SLOT_PANE[sl] != null ? SLOT_PANE[sl] : 0);
+          if (sl <= 2) {
+            const want = 'rel:' + sl;
+            if (typeof chartPrefs !== 'undefined' && chartPrefs.p && chartPrefs.p[i] !== want) {
+              const ps = $('paneSel' + i);
+              if (ps && [...ps.options].some(o => o.value === want)) { ps.value = want; if (typeof ps.onchange === 'function') ps.onchange({ target: ps }); }
+            }
+            const tab = D.querySelector('#charts .pane-tabs button[data-p="pane' + i + '"]'); if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
+          } else {
+            const e = msExp();
+            if (e) {
+              const ps = $('paneSel' + i);
+              if (ps && [...ps.options].some(o => o.value === e)) {
+                if (ps.value !== e) { ps.value = e; if (typeof ps.onchange === 'function') ps.onchange({ target: ps }); }
+              }
+              const tab = D.querySelector('#charts .pane-tabs button[data-p="pane' + i + '"]'); if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
+            }
           }
-          const tab = D.querySelector('#charts .pane-tabs button[data-p="pane' + i + '"]'); if (tab && tab.getAttribute('aria-selected') !== 'true') tab.click();
         } catch (x) { console.warn('v105 master pane', x); }
       }
       function syncLegs(sl) {
-        try { if (W.Carry && W.Carry.setExp) W.Carry.setExp(['cur', 'next', 'n2n'][sl]); } catch (e) { }
-        try { const i = SLOT_PANE[sl]; if (W.VolTurn && W.VolTurn.setPane && W.VolTurn.pane && W.VolTurn.pane() !== i) W.VolTurn.setPane(i); } catch (e) { }
+        try { if (W.Carry && W.Carry.setExp) W.Carry.setExp(['cur', 'next', 'n2n', 'wkly', 'biwk', 'mth'][sl] || 'cur'); } catch (e) { }
+        try { const i = (SLOT_PANE[sl] != null ? SLOT_PANE[sl] : 0); if (W.VolTurn && W.VolTurn.setPane && W.VolTurn.pane && W.VolTurn.pane() !== i) W.VolTurn.setPane(i); } catch (e) { }
       }
       /* v105.15: a switch is staged so each step paints before the next starts: chart tab + Edge from memory first (what you
          look at), then Speed vs IV / vol turn, then the engine chain (a network read). */
       function masterTick() {
         let sl = 1; try { sl = W.v100 && W.v100.slot ? W.v100.slot() : 1; } catch (e) { } const e = msExp();
         if (sl !== MS.slot) {
-          MS.slot = sl; D.body.dataset.master = ['cur', 'next', 'n2n'][sl]; syncPane(sl);
+          MS.slot = sl; D.body.dataset.master = ['cur', 'next', 'n2n', 'wkly', 'biwk', 'mth'][sl] || 'cur'; syncPane(sl);
           try { if (EG.key !== edgeKey()) { useKey(edgeKey()); PANES.edge.sig = ''; paint('edge'); } } catch (x) { }
           setTimeout(() => { syncLegs(sl); setTimeout(() => { try { refresh(); } catch (x) { } setTimeout(() => { MS.exp = msExp(); syncSelected(MS.exp); }, 60); }, 40); }, 40); return;
         }
