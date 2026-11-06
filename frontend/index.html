@@ -62064,9 +62064,10 @@ document.addEventListener('click', function(e) {
     '#daOv .daLink{display:block;margin:10px auto 0;background:none;border:0;color:#2F7CC0;font:700 13px var(--font,system-ui);cursor:pointer;padding:2px 4px}',
     '#daOv .daNote{font-size:12px;color:var(--muted,#667085);line-height:1.45;margin:6px 0 0}',
     '#daOv .daX{float:right;background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:var(--muted,#667085)}',
-    '#daChip{position:fixed;left:10px;bottom:10px;z-index:9000;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
+    '#daChip{position:fixed;left:150px;bottom:18px;z-index:9000;display:flex;gap:8px;align-items:center;padding:6px 12px;border-radius:999px;background:var(--panel,#121a2b);border:1px solid var(--line,rgba(255,255,255,.14));font:600 12px var(--font,system-ui);color:var(--text,#e8edf5);box-shadow:0 4px 16px rgba(0,0,0,.35)}',
     '#daChip button{background:none;border:0;color:#2F7CC0;font:700 12px var(--font,system-ui);cursor:pointer;padding:0}',
-    '@media (max-width:760px){#daChip{bottom:64px}}',
+    'html[data-theme="light"] #daChip{background:#fff;border-color:#ccc;color:#111}',
+    '@media (max-width:760px){#daChip{display:none !important}}',
   ].join('\n');
   D.head.appendChild(css);
 
@@ -62114,6 +62115,19 @@ document.addEventListener('click', function(e) {
     else if (e.key === 'Enter' && e.target && /^da(Email|Pw|PwConfirm|Name|Code|Reset)$/.test(e.target.id)) submit();
   });
 
+  function updateMoreAuth(html) {
+    const ms = D.getElementById('moreSheet');
+    if (!ms) return;
+    let ma = D.getElementById('moreAuth');
+    if (!ma) {
+      ma = D.createElement('div');
+      ma.id = 'moreAuth';
+      ma.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;margin:4px 0 10px;border-radius:8px;background:rgba(255,255,255,0.06);border:1px solid var(--line,rgba(255,255,255,0.12));font:600 12.5px var(--font,system-ui);color:var(--txt,#e8edf5);';
+      ms.insertBefore(ma, ms.firstChild);
+    }
+    if (ma.innerHTML !== html) ma.innerHTML = html;
+  }
+
   /** The small "signed in as" chip (bottom left) with Log out or Sign in. */
   function chip() {
     let c = D.getElementById('daChip');
@@ -62121,12 +62135,14 @@ document.addEventListener('click', function(e) {
       if (!c) { c = D.createElement('div'); c.id = 'daChip'; D.body.appendChild(c); }
       const html = '<span>Not signed in</span><button type="button" data-da-open>Sign in</button>';
       if (c.innerHTML !== html) c.innerHTML = html;
+      updateMoreAuth(html);
       return;
     }
     const u = user();
     if (!c) { c = D.createElement('div'); c.id = 'daChip'; D.body.appendChild(c); }
     const html = '<span>' + (u ? esc(u.name || u.email) + (u.role === 'admin' ? ' · owner' : '') : 'Signed in') + '</span><button type="button" data-da-logout>Log out</button>';
     if (c.innerHTML !== html) c.innerHTML = html;
+    updateMoreAuth(html);
   }
   // a token from before accounts existed has no saved user: fetch it once
   async function ensureUser() {
@@ -69606,8 +69622,12 @@ body.light #vUniversalFloatingPnl,
     })();
   </script>
   <style id="vRulebookCss">
-    #vRbBtn { position: fixed; left: 18px; bottom: 18px; z-index: 9000; display: flex; align-items: center; gap: 6px; padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.14)); background: var(--panel, #121a2b); color: var(--txt, #e8edf5); font: 700 13px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); }
-    @media (max-width: 760px) { #vRbBtn { left: 14px; bottom: 68px; padding: 7px 11px; font-size: 12px; } }
+    #vRbBtn { position: fixed !important; left: 18px !important; bottom: 18px !important; z-index: 9995 !important; display: flex !important; align-items: center; gap: 6px; padding: 9px 13px; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.14)); background: var(--panel, #121a2b); color: var(--txt, #e8edf5); font: 700 13px/1 system-ui, sans-serif; cursor: pointer; box-shadow: 0 4px 16px rgba(0,0,0,.35); pointer-events: auto !important; }
+    @media (max-width: 760px) { #vRbBtn { left: 14px !important; bottom: 68px !important; padding: 7px 11px !important; font-size: 12px !important; z-index: 9995 !important; display: flex !important; } }
+    #vTerminalLockGate:not([style*="display: none"]) ~ #vRbBtn,
+    body:has(#vTerminalLockGate:not([style*="display: none"])) #vRbBtn {
+      display: none !important;
+    }
     #vRbBtn .dot { width: 10px; height: 10px; border-radius: 50%; background: #64748b; }
     #vRbBtn[data-v="GO"] .dot { background: #22c55e; } #vRbBtn[data-v="BLOCK"] .dot { background: #ef4444; }
     #vRb { position: fixed; inset: 0 auto 0 0; width: min(520px, 100vw); z-index: 9001; display: none; flex-direction: column; background: var(--bg, #0b1220); color: var(--txt, #e8edf5); border-right: 1px solid var(--line, rgba(255,255,255,.12)); box-shadow: 8px 0 30px rgba(0,0,0,.45); font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif; }
