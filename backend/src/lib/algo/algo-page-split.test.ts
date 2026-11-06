@@ -9,9 +9,20 @@ import { fileURLToPath } from 'node:url';
  */
 const here = path.dirname(fileURLToPath(import.meta.url));
 const html = fs.readFileSync(path.resolve(here, '../../../../frontend/index.html'), 'utf8');
-const ha = html.indexOf('  function heroHtml() {'), hb = html.indexOf('  function skeleton() {', ha);
-const ra = html.indexOf('  function runsHtml() {'), rb = html.indexOf('\n  function ', ra + 10);
-if (ha < 0 || hb < ha || ra < 0 || rb < ra) throw new Error('heroHtml / runsHtml not found in frontend/index.html');
+function extractFunction(name: string): string {
+  const start = html.indexOf(`function ${name}(`);
+  if (start < 0) throw new Error(`${name} not found`);
+  const braceStart = html.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < html.length; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}') {
+      depth--;
+      if (depth === 0) return html.slice(start, i + 1);
+    }
+  }
+  throw new Error(`closing brace for ${name} not found`);
+}
 
 const usd = (v: number) => (v < 0 ? '-$' : '$') + Math.abs(v).toFixed(2);
 const stubs = {
@@ -19,7 +30,7 @@ const stubs = {
   dkUi: { kpi: (label: string, value: string, _cls: string, sub: string) => `[${label}=${value}|${sub}]`, bars: () => '[bars]' },
 };
 function pageFns(S: Record<string, unknown>) {
-  return new Function('S', 'usd', 'sgn', 'esc', 'IST', 'dkUi', `${html.slice(ha, hb)}\n${html.slice(ra, rb)}\nreturn { heroHtml, runsHtml };`)(S, stubs.usd, stubs.sgn, stubs.esc, stubs.IST, stubs.dkUi) as { heroHtml(): string; runsHtml(): string };
+  return new Function('S', 'usd', 'sgn', 'esc', 'IST', 'dkUi', `${extractFunction('heroHtml')}\n${extractFunction('runsHtml')}\nreturn { heroHtml, runsHtml };`)(S, stubs.usd, stubs.sgn, stubs.esc, stubs.IST, stubs.dkUi) as { heroHtml(): string; runsHtml(): string };
 }
 
 const now = Date.now();

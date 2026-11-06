@@ -8,8 +8,16 @@ const html = readFileSync(resolve(__dirname, '../../../frontend/index.html'), 'u
 function fnSource(name: string): string {
   const start = html.indexOf(`function ${name}(`);
   if (start < 0) throw new Error(`${name} not found`);
-  const end = html.indexOf('\r\n  }\r\n', start);
-  return html.slice(start, end + 5);
+  const braceStart = html.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < html.length; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}') {
+      depth--;
+      if (depth === 0) return html.slice(start, i + 1);
+    }
+  }
+  throw new Error(`closing brace for ${name} not found`);
 }
 
 const parseSym = (s: string) => {

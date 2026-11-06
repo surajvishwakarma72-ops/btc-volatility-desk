@@ -7,7 +7,16 @@ const html = readFileSync(resolve(__dirname, '../../../frontend/index.html'), 'u
 function fnSource(name: string): string {
   const start = html.indexOf(`function ${name}(`);
   if (start < 0) throw new Error(`${name} not found`);
-  return html.slice(start, html.indexOf('\r\n  }\r\n', start) + 5);
+  const braceStart = html.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < html.length; i++) {
+    if (html[i] === '{') depth++;
+    else if (html[i] === '}') {
+      depth--;
+      if (depth === 0) return html.slice(start, i + 1);
+    }
+  }
+  throw new Error(`closing brace for ${name} not found`);
 }
 
 const load = (S: Record<string, any>) => new Function('S', `${fnSource('applyAccounts')}\n${fnSource('accountWarning')}\nreturn { applyAccounts, accountWarning };`)(S) as { applyAccounts(l: unknown[]): void; accountWarning(m: string): string };
@@ -57,8 +66,7 @@ describe('browser account state', () => {
 });
 
 describe('Key Health panel', () => {
-  const start = html.indexOf('function dkHealth(');
-  const source = html.slice(start, html.indexOf('\r\n      }\r\n', start) + 9);
+  const source = fnSource('dkHealth');
   const esc = (x: unknown) => String(x).replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
   const render = (health: unknown) => new Function('DK', 'esc', `${source}\nreturn dkHealth();`)({ health }, esc) as string;
   const row = { serverTs: 100_000, lastOkAt: 87_000, error: null, keyLast4: 'a4f2' };

@@ -65802,7 +65802,7 @@ is back on screen and the pin hides */
         '#daOv .daLink{display:block;margin:10px auto 0;background:none;border:0;color:#2F7CC0;font:700 13px var(--font,system-ui);cursor:pointer;padding:2px 4px}',
         '#daOv .daNote{font-size:12px;color:var(--muted,#667085);line-height:1.45;margin:6px 0 0}',
         '#daOv .daX{float:right;background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:var(--muted,#667085)}',
-        '#daChip{position:fixed;left:18px;bottom:58px;z-index:9998;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
+        '#daChip{position:fixed;left:18px;bottom:64px;z-index:9998;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
         '#daChip button{background:none;border:0;color:#2F7CC0;font:700 12px var(--font,system-ui);cursor:pointer;padding:0}',
         '@media (max-width:760px){#daChip{display:none !important}}',
       ].join('\n');
@@ -71396,10 +71396,10 @@ is back on screen and the pin hides */
 
     @media (max-width: 760px) {
       #vUniversalFloatingPnl {
-        top: auto !important;
-        right: auto !important;
-        bottom: 114px !important;
-        left: 14px !important;
+        top: 70px !important;
+        right: 10px !important;
+        bottom: auto !important;
+        left: auto !important;
         width: 250px !important;
       }
     }
@@ -71647,10 +71647,12 @@ is back on screen and the pin hides */
           const activePos = ps.acct.positions.find(p => Math.abs(Number(p.lots) || 0) > 0);
           if (activePos && Math.abs(Number(activePos.lots) || 0) > 0) {
             const isPerp = activePos.kind === 'perp' || activePos.symbol.includes('USD') || activePos.symbol.includes('PERP');
-            const g = ps.acct.greeks || {};
+            const g = (ps.acct.view && ps.acct.view.greeks) || ps.acct.greeks || {};
             const cv = activePos.contract_value ?? 0.001;
-            const spotVal = (ps.acct.spot && (ps.acct.spot.mark || ps.acct.spot)) || (ps.board && ps.board.spot) || activePos.mark || activePos.avgEntry;
-            const dSpot = (activePos.mark || spotVal) - activePos.avgEntry;
+            const spotVal = (ps.acct.spot && (ps.acct.spot.mark || ps.acct.spot)) || (ps.board && ps.board.spot) || (typeof window.spotNow === 'function' ? window.spotNow() : null) || activePos.mark || activePos.avgEntry;
+            const entrySpot = isPerp ? activePos.avgEntry : (activePos.entrySpot || spotVal);
+            const dSpot = isPerp ? (spotVal - activePos.avgEntry) : 0;
+            const elapsedSec = activePos.openedAt ? Math.max(1, Math.round((Date.now() - activePos.openedAt) / 1000)) : 60;
             return {
               hasPosition: true,
               symbol: activePos.symbol,
@@ -71661,8 +71663,9 @@ is back on screen and the pin hides */
               theta: isPerp ? 0 : (g.theta ?? 0),
               vega: isPerp ? 0 : (g.vega ?? 0),
               current_spot: spotVal,
-              entry_spot: activePos.avgEntry,
+              entry_spot: entrySpot,
               delta_spot: dSpot,
+              elapsed_seconds: elapsedSec,
               total_pnl: activePos.unrealized ?? 0,
             };
           }
@@ -71674,8 +71677,9 @@ is back on screen and the pin hides */
           const legs = st.legs || [];
           const leg0 = legs[0] || {};
           const isPerp = false;
-          const g = ps.acct?.greeks || {};
-          const spotVal = (ps.board && ps.board.spot) || leg0.mark || leg0.entry || 0;
+          const g = (ps.acct?.view && ps.acct.view.greeks) || ps.acct?.greeks || {};
+          const spotVal = (ps.board && ps.board.spot) || (ps.acct && (ps.acct.spot && (ps.acct.spot.mark || ps.acct.spot))) || (typeof window.spotNow === 'function' ? window.spotNow() : 0);
+          const elapsedSec = st.openedAt ? Math.max(1, Math.round((Date.now() - st.openedAt) / 1000)) : 60;
           return {
             hasPosition: true,
             symbol: st.name || leg0.symbol || 'STRANGLE',
@@ -71686,9 +71690,10 @@ is back on screen and the pin hides */
             theta: g.theta ?? 0,
             vega: g.vega ?? 0,
             current_spot: spotVal,
-            entry_spot: leg0.entry || spotVal,
-            delta_spot: spotVal - (leg0.entry || spotVal),
-            total_pnl: st.unrealized ?? 0,
+            entry_spot: st.entrySpot || spotVal,
+            delta_spot: 0,
+            elapsed_seconds: elapsedSec,
+            total_pnl: st.netPnl != null ? st.netPnl : (st.unrealized ?? 0),
           };
         }
 
@@ -71839,9 +71844,12 @@ is back on screen and the pin hides */
 
         try {
           const headers = { Accept: 'application/json' };
-          const token = localStorage.getItem('desk_token') || localStorage.getItem('jwt') || localStorage.getItem('token') || localStorage.getItem('desk_jwt');
-          if (token) {
-            headers['Authorization'] = 'Bearer ' + String(token).replace(/^"|"$/g, '');
+          let rawTok = localStorage.getItem('desk_token') || localStorage.getItem('desk_jwt') || localStorage.getItem('jwt') || localStorage.getItem('token');
+          if (rawTok) {
+            try { if (typeof rawTok === 'string' && (rawTok.startsWith('"') || rawTok.startsWith('{'))) rawTok = JSON.parse(rawTok); } catch (e) {}
+            if (typeof rawTok === 'string' && rawTok) {
+              headers['Authorization'] = 'Bearer ' + rawTok.replace(/^["']|["']$/g, '');
+            }
           }
 
           const qs = new URLSearchParams({
@@ -71853,10 +71861,12 @@ is back on screen and the pin hides */
             theta: String(pos.theta),
             vega: String(pos.vega),
             total_pnl: String(pos.total_pnl),
+            elapsed_seconds: String(pos.elapsed_seconds || 60),
           });
           if (pos.current_spot != null) qs.set('current_spot', String(pos.current_spot));
           if (pos.entry_spot != null) qs.set('entry_spot', String(pos.entry_spot));
           if (pos.delta_spot != null) qs.set('delta_spot', String(pos.delta_spot));
+          if (pos.delta_vol != null) qs.set('delta_vol', String(pos.delta_vol));
 
           const res = await fetch('/api/v1/pnl/greek?' + qs.toString(), {
             headers,
@@ -74359,7 +74369,7 @@ is back on screen and the pin hides */
       position: fixed;
       left: 18px;
       bottom: 18px;
-      z-index: 9999 !important;
+      z-index: 99999 !important;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -74376,10 +74386,10 @@ is back on screen and the pin hides */
     @media (max-width: 760px) {
       #vRbBtn {
         left: 14px !important;
-        bottom: 68px !important;
+        bottom: 18px !important;
         padding: 7px 11px;
         font-size: 12px;
-        z-index: 9999 !important;
+        z-index: 99999 !important;
       }
     }
 

@@ -21,11 +21,11 @@ function getSessionToken(request: FastifyRequest): string | null {
   if (cookieHeader) {
     const cookies = parseCookies(cookieHeader);
     const token = cookies.desk_token || cookies.session_token || cookies.token;
-    if (token) return token;
+    if (token) return token.replace(/^["']|["']$/g, '');
   }
   const authHeader = request.headers.authorization;
   if (authHeader && typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
-    return authHeader.slice(7).trim();
+    return authHeader.slice(7).trim().replace(/^["']|["']$/g, '');
   }
   return null;
 }
@@ -111,13 +111,15 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
           const match: any = acct.positions.find((p: any) => p.symbol && p.symbol.toLowerCase() === symbol.toLowerCase())
             || (symbol.toUpperCase() === 'BTC' || symbol.toUpperCase() === 'ALL' ? acct.positions[0] : null);
           if (match) {
+            const isPerp = match.kind === 'perp' || match.symbol.includes('USD') || match.symbol.includes('PERP');
             const spotMark = (acct.spot && typeof acct.spot === 'object' && acct.spot.mark)
               || (typeof acct.spot === 'number' ? acct.spot : null)
-              || match.mark
-              || match.avgEntry;
-            const deltaSpot = (match.mark || spotMark) - (match.avgEntry || spotMark);
+              || (isPerp ? (match.mark || match.avgEntry) : null);
+            const deltaSpot = isPerp && spotMark && match.avgEntry
+              ? (spotMark - match.avgEntry)
+              : (q.delta_spot !== undefined ? q.delta_spot : 0);
             const g: any = acct.greeks || {};
-            const isPerp = match.kind === 'perp' || match.symbol.includes('USD') || match.symbol.includes('PERP');
+            const elapsedSec = match.openedAt ? Math.max(1, Math.round((Date.now() - match.openedAt) / 1000)) : 60;
             basePosition = {
               symbol: match.symbol,
               quantity: match.lots,
@@ -128,9 +130,9 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
               vega: isPerp ? 0 : (g.vega ?? 0),
               delta_spot: deltaSpot,
               current_spot: spotMark,
-              entry_spot: match.avgEntry,
+              entry_spot: isPerp ? match.avgEntry : spotMark,
               total_pnl: match.unrealized ?? 0,
-              elapsed_seconds: 60,
+              elapsed_seconds: elapsedSec,
             };
           }
         }
@@ -147,19 +149,20 @@ export const pnlRoutes: FastifyPluginAsync = async (fastify) => {
       gamma: q.gamma !== undefined ? q.gamma : (basePosition?.gamma ?? 0),
       theta: q.theta !== undefined ? q.theta : (basePosition?.theta ?? 0),
       vega: q.vega !== undefined ? q.vega : (basePosition?.vega ?? 0),
-      delta_spot: q.delta_spot !== undefined ? q.delta_spot : basePosition?.delta_spot,
-      delta_vol: q.delta_vol !== undefined ? q.delta_vol : basePosition?.delta_vol,
+      delta_spot: q.delta_spot !== undefined ? q.delta_spot : (basePosition?.delta_spot ?? 0),
+      delta_vol: q.delta_vol !== undefined ? q.delta_vol : (basePosition?.delta_vol ?? 0),
       current_spot: q.current_spot !== undefined ? q.current_spot : basePosition?.current_spot,
       entry_spot: q.entry_spot !== undefined ? q.entry_spot : basePosition?.entry_spot,
       current_iv: q.current_iv !== undefined ? q.current_iv : basePosition?.current_iv,
       entry_iv: q.entry_iv !== undefined ? q.entry_iv : basePosition?.entry_iv,
-      elapsed_seconds: q.elapsed_seconds !== undefined ? q.elapsed_seconds : (basePosition?.elapsed_seconds ?? 0),
+      elapsed_seconds: q.elapsed_seconds !== undefined ? q.elapsed_seconds : (basePosition?.elapsed_seconds ?? 60),
       total_pnl: q.total_pnl !== undefined ? q.total_pnl : (basePosition?.total_pnl ?? 0),
     };
 
     const res = computeGreekPnl(posInput);
 
     return reply.status(200).send({
+      success: true,
       symbol: res.symbol,
       delta_pnl: res.delta_pnl,
       gamma_pnl: res.gamma_pnl,
