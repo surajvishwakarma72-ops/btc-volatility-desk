@@ -38525,8 +38525,6 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         h += `<span class="v100-auto${pin == null ? ' on' : ''}" role="button" tabindex="0" title="${pin == null ? 'Auto: the plan picks (Next unless the ladder says otherwise)' : 'Pinned by you · tap for Auto'}">${pin == null ? 'auto' : 'pinned'}</span>`;
         if (el.__h !== h) { el.innerHTML = h; el.__h = h; }
       }
-        if (el.__h !== h) { el.innerHTML = h; el.__h = h; }
-      }
 
       /* ================= VPI on 15 m of the master expiry ================= */
       const VS = { key: '', at: 0, R: null, idx: [], T: [], closed: -1, ev: [], state: 'out', since: null, live: null };
@@ -38699,7 +38697,8 @@ open trade in localStorage v99_trade — for v100 / v104 / the trade lab; the re
         setTimeout(() => { paintOI(true); computeSig(true); }, 6000);
         apiPoll(true); D.addEventListener('click', e => { if (e.target.closest && e.target.closest('#v100Conn')) onConn(e); });
       }
-      if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', () => setTimeout(boot, 1500)); else setTimeout(boot, 1500);
+      try { paintMaster(); } catch (e) { }
+      if (D.readyState === 'loading') D.addEventListener('DOMContentLoaded', () => { try { paintMaster(); } catch (e) { } setTimeout(boot, 400); }); else { try { paintMaster(); } catch (e) { } setTimeout(boot, 400); }
       W.v100 = { dget: (p, q) => dget(p, q), dgetMeta: () => dget.meta, setLevels: (e, x) => { if (e > 0 && x > e && (e !== ENTRY || x !== EXIT)) { ENTRY = e; EXIT = x; VS.at = 0; computeSig(true); } }, levels: () => ({ E: ENTRY, X: EXIT }), ivHourly, expShort, slot, expNow, expOfSlot, findWeeklyExpiry, findBiWeeklyExpiry, findMonthlyExpiry, setSlot, paintMaster, computeSig: () => computeSig(true), vs: () => VS, api: API, tradeFrom, oi: () => OI.last, poll: () => apiPoll(true) };
     })();
   </script>
@@ -65803,9 +65802,9 @@ is back on screen and the pin hides */
         '#daOv .daLink{display:block;margin:10px auto 0;background:none;border:0;color:#2F7CC0;font:700 13px var(--font,system-ui);cursor:pointer;padding:2px 4px}',
         '#daOv .daNote{font-size:12px;color:var(--muted,#667085);line-height:1.45;margin:6px 0 0}',
         '#daOv .daX{float:right;background:none;border:0;font-size:20px;line-height:1;cursor:pointer;color:var(--muted,#667085)}',
-        '#daChip{position:fixed;left:10px;bottom:10px;z-index:9000;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
+        '#daChip{position:fixed;left:18px;bottom:58px;z-index:9998;display:flex;gap:8px;align-items:center;padding:5px 10px;border-radius:999px;background:var(--panel,#fff);border:1px solid var(--line2,#ccc);font:600 12px var(--font,system-ui);color:var(--text,#111);box-shadow:0 2px 8px rgba(0,0,0,.15)}',
         '#daChip button{background:none;border:0;color:#2F7CC0;font:700 12px var(--font,system-ui);cursor:pointer;padding:0}',
-        '@media (max-width:760px){#daChip{bottom:64px}}',
+        '@media (max-width:760px){#daChip{display:none !important}}',
       ].join('\n');
       D.head.appendChild(css);
 
@@ -74360,7 +74359,7 @@ is back on screen and the pin hides */
       position: fixed;
       left: 18px;
       bottom: 18px;
-      z-index: 9000;
+      z-index: 9999 !important;
       display: flex;
       align-items: center;
       gap: 6px;
@@ -74376,10 +74375,11 @@ is back on screen and the pin hides */
 
     @media (max-width: 760px) {
       #vRbBtn {
-        left: 14px;
-        bottom: 68px;
+        left: 14px !important;
+        bottom: 68px !important;
         padding: 7px 11px;
         font-size: 12px;
+        z-index: 9999 !important;
       }
     }
 
